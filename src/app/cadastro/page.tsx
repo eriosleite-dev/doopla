@@ -3,16 +3,19 @@ import Link from 'next/link';
 
 import { eyebrowClass } from '@/app/auth/ui';
 import { SignupForm } from './signup-form';
-import type { UserRole } from '@/lib/supabase/types';
 
 export const metadata: Metadata = {
   title: 'Criar conta | Doopla',
 };
 
-const VALID_ROLES: UserRole[] = ['artista', 'booker', 'agencia'];
+// Agência não é mais um tipo de conta selecionável no cadastro — quem cai
+// aqui com ?role=agencia (links antigos) recebe o padrão "artista".
+type SignupRole = 'artista' | 'booker';
 
-function isUserRole(value: string | undefined): value is UserRole {
-  return VALID_ROLES.includes(value as UserRole);
+const VALID_ROLES: SignupRole[] = ['artista', 'booker'];
+
+function isSignupRole(value: string | undefined): value is SignupRole {
+  return VALID_ROLES.includes(value as SignupRole);
 }
 
 export default async function CadastroPage({
@@ -21,7 +24,7 @@ export default async function CadastroPage({
   searchParams: Promise<{ role?: string }>;
 }) {
   const params = await searchParams;
-  const defaultRole = isUserRole(params.role) ? params.role : 'artista';
+  const defaultRole = isSignupRole(params.role) ? params.role : 'artista';
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">

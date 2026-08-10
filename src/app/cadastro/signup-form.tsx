@@ -12,38 +12,39 @@ import {
   primaryButtonClass,
   textLinkClass,
 } from '@/app/auth/ui';
-import type { UserRole } from '@/lib/supabase/types';
 
 const initialState: AuthFormState = {};
 
-const ROLE_OPTIONS: { value: UserRole; label: string; hint: string }[] = [
+// Agência não é mais um tipo de conta separado: quem representa vários
+// artistas se cadastra como booker e indica isso na pergunta de perfil.
+type SignupRole = 'artista' | 'booker';
+
+const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
   {
     value: 'artista',
     label: 'Artista',
-    hint: 'Quero divulgar meu trabalho e receber propostas.',
+    hint: 'Quero ter alguém pra me representar.',
   },
   {
     value: 'booker',
     label: 'Booker',
-    hint: 'Contrato artistas para shows e eventos.',
-  },
-  {
-    value: 'agencia',
-    label: 'Agência',
-    hint: 'Represento um ou mais artistas.',
+    hint: 'Quero representar artistas.',
   },
 ];
 
 // As mesmas perguntas do fluxo original do site (doopla-site.html),
 // por tipo de conta — só o backend por trás mudou.
+// 'chip-multi': pode marcar mais de uma opção, sempre com "Outro" + texto livre.
 type WizardStep = {
   formKey: string;
-  kind: 'text' | 'chip';
+  kind: 'text' | 'chip' | 'chip-multi';
   label: string;
   hint?: string;
   placeholder?: string;
   options?: string[];
 };
+
+const OUTRO = 'Outro';
 
 const ARTISTA_INTENCAO_STEP: WizardStep = {
   formKey: 'intencao',
@@ -77,7 +78,7 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
   },
   {
     formKey: 'funcao',
-    kind: 'chip',
+    kind: 'chip-multi',
     label: 'O que você faz?',
     options: [
       'DJ',
@@ -87,7 +88,7 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
       'Ator',
       'Fotógrafo',
       'Palestrante',
-      'Outro',
+      OUTRO,
     ],
   },
   {
@@ -99,7 +100,7 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
   },
   {
     formKey: 'mercados',
-    kind: 'chip',
+    kind: 'chip-multi',
     label: 'Em quais mercados você gostaria de ser mais representado?',
     options: [
       'Minha cidade',
@@ -109,6 +110,7 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
       'Eventos',
       'Festivais',
       'Corporativo',
+      OUTRO,
     ],
   },
   {
@@ -123,29 +125,41 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
   },
 ];
 
-const BOOKER_STEPS: WizardStep[] = [
-  {
-    formKey: 'fullName',
-    kind: 'text',
-    label: 'Como você se chama?',
-    placeholder: 'Ex: Léo Martins',
-  },
-  {
-    formKey: 'perfil',
-    kind: 'chip',
-    label: 'Qual dessas opções melhor te descreve?',
-    options: [
-      'Booker profissional',
-      'Agência pequena',
-      'Profissional de eventos',
-      'Freelancer',
-      'Quero começar como booker',
-      'Pessoa bem conectada',
-    ],
-  },
+const BOOKER_NAME_STEP: WizardStep = {
+  formKey: 'fullName',
+  kind: 'text',
+  label: 'Como você se chama?',
+  placeholder: 'Ex: Léo Martins',
+};
+
+const BOOKER_PERFIL_STEP: WizardStep = {
+  formKey: 'perfil',
+  kind: 'chip-multi',
+  label: 'Qual dessas opções melhor te descreve?',
+  options: [
+    'Booker profissional',
+    'Agência pequena',
+    'Profissional de eventos',
+    'Freelancer',
+    'Quero começar como booker',
+    'Pessoa bem conectada',
+    OUTRO,
+  ],
+};
+
+// Agência não é mais um tipo de conta separado — quando a pessoa se
+// descreve como "Agência pequena" no passo acima, pedimos o roster aqui.
+const BOOKER_ROSTER_STEP: WizardStep = {
+  formKey: 'roster',
+  kind: 'text',
+  label: 'Número aproximado de artistas que vocês representam',
+  placeholder: 'Ex: 15',
+};
+
+const BOOKER_REMAINING_STEPS: WizardStep[] = [
   {
     formKey: 'mercados',
-    kind: 'chip',
+    kind: 'chip-multi',
     label: 'Em quais mercados você tem relacionamento?',
     options: [
       'Clubs',
@@ -156,7 +170,7 @@ const BOOKER_STEPS: WizardStep[] = [
       'Casamentos / eventos sociais',
       'Creators',
       'Audiovisual',
-      'Outro',
+      OUTRO,
     ],
   },
   {
@@ -179,41 +193,17 @@ const BOOKER_STEPS: WizardStep[] = [
   },
 ];
 
-const AGENCIA_STEPS: WizardStep[] = [
-  {
-    formKey: 'agencia',
-    kind: 'text',
-    label: 'Nome da agência',
-    placeholder: 'Ex: Estúdio Norte',
-  },
-  {
-    formKey: 'fullName',
-    kind: 'text',
-    label: 'Seu nome',
-    placeholder: 'Ex: Camila Ribeiro',
-  },
-  {
-    formKey: 'roster',
-    kind: 'text',
-    label: 'Número aproximado de artistas que vocês representam',
-    placeholder: 'Ex: 15',
-  },
-  {
-    formKey: 'agentes',
-    kind: 'text',
-    label: 'Número de agentes / bookers',
-    placeholder: 'Ex: 4',
-  },
-  {
-    formKey: 'mercado',
-    kind: 'text',
-    label: 'Principal mercado',
-    placeholder: 'Ex: música, moda, esportes',
-  },
-];
+function getBookerSteps(answers: Record<string, string>): WizardStep[] {
+  const steps = [BOOKER_NAME_STEP, BOOKER_PERFIL_STEP];
+  if ((answers.perfil ?? '').includes('Agência pequena')) {
+    steps.push(BOOKER_ROSTER_STEP);
+  }
+  steps.push(...BOOKER_REMAINING_STEPS);
+  return steps;
+}
 
 function getQuestionSteps(
-  role: UserRole,
+  role: SignupRole,
   answers: Record<string, string>
 ): WizardStep[] {
   if (role === 'artista') {
@@ -225,27 +215,32 @@ function getQuestionSteps(
     }
     return steps;
   }
-  if (role === 'booker') return BOOKER_STEPS;
-  return AGENCIA_STEPS;
+  return getBookerSteps(answers);
 }
 
-export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
+export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
   const [state, formAction, pending] = useActionState(
     signupAction,
     initialState
   );
-  const [role, setRole] = useState<UserRole>(defaultRole);
+  const [role, setRole] = useState<SignupRole>(defaultRole);
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [multiSelections, setMultiSelections] = useState<
+    Record<string, string[]>
+  >({});
+  const [otherText, setOtherText] = useState<Record<string, string>>({});
 
   const questionSteps = getQuestionSteps(role, answers);
   const onAccountStep = stepIndex >= questionSteps.length;
   const currentStep = onAccountStep ? null : questionSteps[stepIndex];
   const totalSteps = questionSteps.length + 1;
 
-  function handleRoleChange(next: UserRole) {
+  function handleRoleChange(next: SignupRole) {
     setRole(next);
     setAnswers({});
+    setMultiSelections({});
+    setOtherText({});
     setStepIndex(0);
   }
 
@@ -255,7 +250,29 @@ export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
     );
   }
 
+  function toggleMultiOption(key: string, option: string) {
+    setMultiSelections((prev) => {
+      const current = prev[key] ?? [];
+      const next = current.includes(option)
+        ? current.filter((o) => o !== option)
+        : [...current, option];
+      return { ...prev, [key]: next };
+    });
+  }
+
+  function computeMultiValue(key: string): string {
+    const selected = multiSelections[key] ?? [];
+    const other = otherText[key]?.trim();
+    return selected
+      .filter((o) => o !== OUTRO)
+      .concat(selected.includes(OUTRO) && other ? [other] : [])
+      .join(', ');
+  }
+
   function goNext() {
+    if (currentStep?.kind === 'chip-multi') {
+      setAnswer(currentStep.formKey, computeMultiValue(currentStep.formKey));
+    }
     setStepIndex((i) => Math.min(i + 1, questionSteps.length));
   }
 
@@ -264,7 +281,17 @@ export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
   }
 
   const currentValue = currentStep ? (answers[currentStep.formKey] ?? '') : '';
-  const canContinue = currentValue.trim().length > 0;
+  const currentMultiSelected = currentStep
+    ? (multiSelections[currentStep.formKey] ?? [])
+    : [];
+  const currentOtherText = currentStep
+    ? (otherText[currentStep.formKey] ?? '')
+    : '';
+  const canContinue =
+    currentStep?.kind === 'chip-multi'
+      ? currentMultiSelected.length > 0 &&
+        (!currentMultiSelected.includes(OUTRO) || currentOtherText.trim().length > 0)
+      : currentValue.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -272,7 +299,7 @@ export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
         <legend className="mb-1 text-sm font-medium text-[var(--ink)]">
           Tipo de conta
         </legend>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {ROLE_OPTIONS.map((option) => (
             <label
               key={option.value}
@@ -319,7 +346,7 @@ export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
               </p>
             )}
 
-            {currentStep.kind === 'text' ? (
+            {currentStep.kind === 'text' && (
               <input
                 autoFocus
                 value={currentValue}
@@ -327,7 +354,9 @@ export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
                 placeholder={currentStep.placeholder}
                 className={fieldInputClass}
               />
-            ) : (
+            )}
+
+            {currentStep.kind === 'chip' && (
               <div className="flex flex-wrap gap-2">
                 {currentStep.options!.map((option) => (
                   <button
@@ -339,6 +368,40 @@ export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
                     {option}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {currentStep.kind === 'chip-multi' && (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-[var(--ink)]/50">
+                  Pode marcar mais de uma opção.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {currentStep.options!.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => toggleMultiOption(currentStep.formKey, option)}
+                      className={chipClass(currentMultiSelected.includes(option))}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+                {currentMultiSelected.includes(OUTRO) && (
+                  <input
+                    autoFocus
+                    value={currentOtherText}
+                    onChange={(e) =>
+                      setOtherText((prev) => ({
+                        ...prev,
+                        [currentStep.formKey]: e.target.value,
+                      }))
+                    }
+                    placeholder="Qual?"
+                    className={fieldInputClass}
+                  />
+                )}
               </div>
             )}
 

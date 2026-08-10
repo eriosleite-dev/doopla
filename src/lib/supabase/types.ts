@@ -45,6 +45,7 @@ export interface BookerProfile {
   quem: string | null;
   cidades: string | null;
   ja_representa: string | null;
+  roster: string | null;
   created_at: string;
   updated_at: string;
 }

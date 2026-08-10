@@ -176,6 +176,12 @@ function RoleDetails({
         <dd>{booker.cidades || '—'}</dd>
         <dt className="text-black/60 dark:text-white/60">Já representa alguém</dt>
         <dd>{booker.ja_representa || '—'}</dd>
+        {booker.roster && (
+          <>
+            <dt className="text-black/60 dark:text-white/60">Nº de artistas (agência)</dt>
+            <dd>{booker.roster}</dd>
+          </>
+        )}
       </dl>
     );
   }

@@ -10,7 +10,11 @@ export interface AuthFormState {
   error?: string;
 }
 
-const ROLES: UserRole[] = ['artista', 'booker', 'agencia'];
+// A "agência" deixou de ser um tipo de conta selecionável no cadastro —
+// agora é só um booker que indica isso no perfil. 'agencia' continua
+// existindo no enum do banco (dado legado / uso futuro), mas o cadastro
+// não aceita mais esse valor.
+const ROLES: UserRole[] = ['artista', 'booker'];
 
 async function siteOrigin() {
   const h = await headers();
@@ -56,7 +60,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'mercados',
     'temBooker',
   ],
-  booker: ['perfil', 'mercados', 'quem', 'cidades', 'jaRepresenta'],
+  booker: ['perfil', 'mercados', 'quem', 'cidades', 'jaRepresenta', 'roster'],
   agencia: ['agencia', 'roster', 'agentes', 'mercado'],
 };
 
