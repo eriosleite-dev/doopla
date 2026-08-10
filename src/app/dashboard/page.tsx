@@ -229,6 +229,8 @@ function RoleDetails({
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-black/60 dark:text-white/60">Perfil</dt>
         <dd>{booker.perfil || '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">Foco</dt>
+        <dd>{booker.foco || '—'}</dd>
         <dt className="text-black/60 dark:text-white/60">Mercados</dt>
         <dd>{booker.mercados || '—'}</dd>
         <dt className="text-black/60 dark:text-white/60">Quem quer representar</dt>

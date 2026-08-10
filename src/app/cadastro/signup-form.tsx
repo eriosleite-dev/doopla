@@ -37,13 +37,16 @@ const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
 // 'chip-multi': pode marcar mais de uma opção, sempre com "Outro" + texto livre.
 // 'invites': lista repetível de nome + contato (convite pra quem já
 // trabalha com o booker fora da doopla).
+// 'choice-cards': seleção única entre poucas opções que precisam de
+// uma descrição cada (não cabe num chip simples).
 type WizardStep = {
   formKey: string;
-  kind: 'text' | 'chip' | 'chip-multi' | 'invites';
+  kind: 'text' | 'chip' | 'chip-multi' | 'invites' | 'choice-cards';
   label: string;
   hint?: string;
   placeholder?: string;
   options?: string[];
+  choices?: { value: string; label: string; description: string }[];
 };
 
 export type PendingInvite = { name: string; contact: string };
@@ -160,6 +163,26 @@ const BOOKER_ROSTER_STEP: WizardStep = {
   placeholder: 'Ex: 15',
 };
 
+const BOOKER_FOCO_STEP: WizardStep = {
+  formKey: 'foco',
+  kind: 'choice-cards',
+  label: 'Você atende qualquer tipo de artista, ou foca num nicho específico?',
+  choices: [
+    {
+      value: 'Universal',
+      label: 'Universal',
+      description:
+        'Qualquer artista, qualquer nicho. Maior chance de renda: mais artistas e mercados disponíveis significam mais oportunidades de comissão.',
+    },
+    {
+      value: 'Nichado',
+      label: 'Nichado',
+      description:
+        'Foco em um nicho específico, onde você já tem rede e experiência.',
+    },
+  ],
+};
+
 const BOOKER_REMAINING_STEPS: WizardStep[] = [
   {
     formKey: 'mercados',
@@ -209,6 +232,7 @@ function getBookerSteps(answers: Record<string, string>): WizardStep[] {
   if ((answers.perfil ?? '').includes('Agência pequena')) {
     steps.push(BOOKER_ROSTER_STEP);
   }
+  steps.push(BOOKER_FOCO_STEP);
   steps.push(...BOOKER_REMAINING_STEPS);
   if (answers.jaRepresenta === 'Sim') {
     steps.push(BOOKER_INVITES_STEP);
@@ -408,6 +432,30 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
                     className={chipClass(currentValue === option)}
                   >
                     {option}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {currentStep.kind === 'choice-cards' && (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {currentStep.choices!.map((choice) => (
+                  <button
+                    key={choice.value}
+                    type="button"
+                    onClick={() => setAnswer(currentStep.formKey, choice.value)}
+                    className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                      currentValue === choice.value
+                        ? 'border-[var(--ink)] bg-[var(--paper-dim)]'
+                        : 'border-[var(--line-light)] hover:border-[var(--ink)]/40'
+                    }`}
+                  >
+                    <span className="block font-medium text-[var(--ink)]">
+                      {choice.label}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--ink)]/60">
+                      {choice.description}
+                    </span>
                   </button>
                 ))}
               </div>

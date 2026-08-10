@@ -62,6 +62,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
   ],
   booker: [
     'perfil',
+    'foco',
     'mercados',
     'quem',
     'cidades',
