@@ -47,6 +47,7 @@ export type BookerProfile = {
   cidades: string | null;
   ja_representa: string | null;
   roster: string | null;
+  opportunities_seen_at: string;
   created_at: string;
   updated_at: string;
 };
@@ -78,6 +79,7 @@ export type Booking = {
   status: BookingStatus;
   proposed_by: UserRole;
   commission_percent: number;
+  cache_amount_cents: number | null;
   description: string | null;
   created_at: string;
   updated_at: string;
@@ -112,6 +114,25 @@ export type Representation = {
   artist_profile_id: string;
   booker_profile_id: string;
   created_via_invite_id: string | null;
+  created_at: string;
+};
+
+export type OpportunityStatus = 'aberta' | 'preenchida' | 'cancelada';
+
+export type Opportunity = {
+  id: string;
+  artist_profile_id: string;
+  description: string;
+  cache_amount_cents: number | null;
+  commission_percent: number;
+  status: OpportunityStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OpportunityDismissal = {
+  opportunity_id: string;
+  booker_profile_id: string;
   created_at: string;
 };
 
@@ -175,6 +196,20 @@ export type Database = {
         Insert: Partial<Representation> &
           Pick<Representation, 'artist_profile_id' | 'booker_profile_id'>;
         Update: Partial<Representation>;
+        Relationships: [];
+      };
+      opportunities: {
+        Row: Opportunity;
+        Insert: Partial<Opportunity> &
+          Pick<Opportunity, 'artist_profile_id' | 'description' | 'commission_percent'>;
+        Update: Partial<Opportunity>;
+        Relationships: [];
+      };
+      opportunity_dismissals: {
+        Row: OpportunityDismissal;
+        Insert: Partial<OpportunityDismissal> &
+          Pick<OpportunityDismissal, 'opportunity_id' | 'booker_profile_id'>;
+        Update: Partial<OpportunityDismissal>;
         Relationships: [];
       };
     };

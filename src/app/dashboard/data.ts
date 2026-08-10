@@ -1,0 +1,244 @@
+import type { createClient } from '@/lib/supabase/server';
+import { formatRelativeDate } from '@/lib/format';
+import type { Booking, BookingStatus, Invite, Profile } from '@/lib/supabase/types';
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+export type BookingWithOtherParty = Booking & { otherPartyName: string };
+
+async function attachOtherPartyNames(
+  bookings: Booking[],
+  role: Profile['role'],
+  supabase: SupabaseServerClient
+): Promise<BookingWithOtherParty[]> {
+  if (bookings.length === 0) return [];
+
+  const otherIds = [
+    ...new Set(
+      bookings.map((b) =>
+        role === 'booker' ? b.artist_profile_id : b.booker_profile_id
+      )
+    ),
+  ];
+  const { data: others } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', otherIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  const nameById = new Map((others ?? []).map((p) => [p.id, p.full_name]));
+  return bookings.map((b) => ({
+    ...b,
+    otherPartyName:
+      nameById.get(role === 'booker' ? b.artist_profile_id : b.booker_profile_id) ??
+      'Alguém',
+  }));
+}
+
+export async function getUserBookings(
+  userId: string,
+  role: Profile['role'],
+  supabase: SupabaseServerClient
+): Promise<BookingWithOtherParty[]> {
+  const column = role === 'booker' ? 'booker_profile_id' : 'artist_profile_id';
+  const { data } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq(column, userId)
+    .order('updated_at', { ascending: false })
+    .returns<Booking[]>();
+
+  return attachOtherPartyNames(data ?? [], role, supabase);
+}
+
+function isThisMonth(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+function isPrevMonth(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
+}
+
+function commissionCents(booking: Booking): number {
+  if (!booking.cache_amount_cents) return 0;
+  return Math.round((booking.cache_amount_cents * booking.commission_percent) / 100);
+}
+
+export type BookerStats = {
+  totalEarnedCents: number;
+  monthEarnedCents: number;
+  monthEarnedPrevCents: number;
+  activeCount: number;
+  awaitingPaymentCount: number;
+  acceptanceRatePercent: number;
+  acceptedCount: number;
+  decidedCount: number;
+};
+
+export function computeBookerStats(bookings: Booking[]): BookerStats {
+  const concluded = bookings.filter((b) => b.status === 'concluida');
+  const totalEarnedCents = concluded.reduce((sum, b) => sum + commissionCents(b), 0);
+  const monthEarnedCents = concluded
+    .filter((b) => isThisMonth(b.updated_at))
+    .reduce((sum, b) => sum + commissionCents(b), 0);
+  const monthEarnedPrevCents = concluded
+    .filter((b) => isPrevMonth(b.updated_at))
+    .reduce((sum, b) => sum + commissionCents(b), 0);
+
+  const activeCount = bookings.filter((b) =>
+    ['proposta_enviada', 'aceita', 'aguardando_pagamento'].includes(b.status)
+  ).length;
+  const awaitingPaymentCount = bookings.filter(
+    (b) => b.status === 'aguardando_pagamento'
+  ).length;
+
+  const decided = bookings.filter(
+    (b) => b.proposed_by === 'booker' && b.status !== 'proposta_enviada'
+  );
+  const acceptedCount = decided.filter((b) =>
+    ['aceita', 'aguardando_pagamento', 'concluida'].includes(b.status)
+  ).length;
+
+  return {
+    totalEarnedCents,
+    monthEarnedCents,
+    monthEarnedPrevCents,
+    activeCount,
+    awaitingPaymentCount,
+    acceptanceRatePercent:
+      decided.length > 0 ? Math.round((acceptedCount / decided.length) * 100) : 0,
+    acceptedCount,
+    decidedCount: decided.length,
+  };
+}
+
+export type ArtistStats = {
+  netReceivedCents: number;
+  monthNetReceivedCents: number;
+  closedCount: number;
+  avgCommissionPercent: number;
+};
+
+export function computeArtistStats(bookings: Booking[]): ArtistStats {
+  const concluded = bookings.filter((b) => b.status === 'concluida');
+  const netOf = (b: Booking) =>
+    (b.cache_amount_cents ?? 0) - commissionCents(b);
+
+  const netReceivedCents = concluded.reduce((sum, b) => sum + netOf(b), 0);
+  const monthNetReceivedCents = concluded
+    .filter((b) => isThisMonth(b.updated_at))
+    .reduce((sum, b) => sum + netOf(b), 0);
+
+  const recent = [...concluded]
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .slice(0, 5);
+  const avgCommissionPercent =
+    recent.length > 0
+      ? recent.reduce((sum, b) => sum + Number(b.commission_percent), 0) / recent.length
+      : 0;
+
+  return {
+    netReceivedCents,
+    monthNetReceivedCents,
+    closedCount: concluded.length,
+    avgCommissionPercent,
+  };
+}
+
+export type AttentionItem = { text: string; href: string };
+
+export async function getAttentionItems(
+  userId: string,
+  role: Profile['role'],
+  bookings: BookingWithOtherParty[],
+  supabase: SupabaseServerClient
+): Promise<AttentionItem[]> {
+  const items: AttentionItem[] = [];
+
+  if (role === 'booker') {
+    const { data: bookerProfile } = await supabase
+      .from('booker_profiles')
+      .select('opportunities_seen_at')
+      .eq('profile_id', userId)
+      .single<{ opportunities_seen_at: string }>();
+    const { count: newOppsCount } = await supabase
+      .from('opportunities')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'aberta')
+      .gt('created_at', bookerProfile?.opportunities_seen_at ?? '1970-01-01');
+    if (newOppsCount && newOppsCount > 0) {
+      items.push({
+        text: `${newOppsCount} ${newOppsCount === 1 ? 'oportunidade nova combina' : 'oportunidades novas combinam'} com o seu nicho, ainda não vistas`,
+        href: '/dashboard/oportunidades',
+      });
+    }
+
+    for (const b of bookings.filter((x) => x.status === 'aguardando_pagamento')) {
+      items.push({
+        text: `${b.otherPartyName}, cliente ainda não pagou, booking fechado ${formatRelativeDate(b.updated_at)}`,
+        href: `/dashboard/bookings/${b.id}`,
+      });
+    }
+    for (const b of bookings.filter(
+      (x) => x.status === 'proposta_enviada' && x.proposed_by === 'booker'
+    )) {
+      items.push({
+        text: `Sua proposta de ${b.commission_percent}% pra ${b.otherPartyName} está aguardando resposta`,
+        href: `/dashboard/bookings/${b.id}`,
+      });
+    }
+  } else {
+    for (const b of bookings.filter(
+      (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'artista'
+    )) {
+      items.push({
+        text: `${b.otherPartyName} propôs ${b.commission_percent}% de comissão`,
+        href: `/dashboard/bookings/${b.id}`,
+      });
+    }
+  }
+
+  return items;
+}
+
+export type PendingInvite = Invite & { inviterName: string };
+
+export async function getPendingInvites(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<PendingInvite[]> {
+  const { data: invites } = await supabase
+    .from('invites')
+    .select('*')
+    .eq('invitee_profile_id', userId)
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: false })
+    .returns<Invite[]>();
+
+  if (!invites || invites.length === 0) return [];
+
+  const inviterIds = [...new Set(invites.map((i) => i.inviter_profile_id))];
+  const { data: inviters } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', inviterIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  const nameById = new Map((inviters ?? []).map((p) => [p.id, p.full_name]));
+  return invites.map((invite) => ({
+    ...invite,
+    inviterName: nameById.get(invite.inviter_profile_id) ?? 'Alguém',
+  }));
+}
+
+export const BOOKING_STATUS_FILTERS: { value: BookingStatus | 'todos'; label: string }[] = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'proposta_enviada', label: 'Aguardando' },
+  { value: 'aceita', label: 'Aceitos' },
+  { value: 'concluida', label: 'Concluídos' },
+];
