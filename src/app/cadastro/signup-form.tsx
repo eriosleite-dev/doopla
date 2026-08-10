@@ -26,12 +26,12 @@ const ROLE_OPTIONS: { value: UserRole; label: string; hint: string }[] = [
   },
 ];
 
-export function SignupForm() {
+export function SignupForm({ defaultRole }: { defaultRole: UserRole }) {
   const [state, formAction, pending] = useActionState(
     signupAction,
     initialState
   );
-  const [role, setRole] = useState<UserRole>('artista');
+  const [role, setRole] = useState<UserRole>(defaultRole);
 
   return (
     <form action={formAction} className="flex flex-col gap-5">

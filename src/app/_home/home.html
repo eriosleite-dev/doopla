@@ -1,0 +1,314 @@
+<div id="home-marketing">
+<nav>
+  <div class="navpill">
+    <div class="logo on-dark" id="navlogo">d<span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span><span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span>pla</div>
+    <div class="navlinks">
+      <a href="#como-funciona" onclick="revealAndGo(event,'shared','como-funciona')">Como funciona</a>
+      <a href="#planos" onclick="revealAndGo(event,'artista','planos')">Planos</a>
+      <a href="#faq" onclick="revealAndGo(event,'shared','faq')">FAQ</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-login" href="/login">Entrar</a>
+      <a class="btn on-dark" href="/cadastro">Entrar na doopla</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= HERO ================= -->
+<section class="hero" id="hero">
+  <div class="wrap">
+    <span class="eyebrow">a nova rede de representação artística</span>
+    <div class="logo logo-hero on-light" id="herologo">d<span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span><span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span>pla</div>
+    <div class="hero-sub">TODA CARREIRA MERECE SUA DOOPLA.</div>
+    <p class="lede">Um novo jeito de conectar artistas, bookers e agências e organizar tudo que acontece entre eles.</p>
+    <p class="lede" style="margin-top:8px; opacity:.9;">Do primeiro e-mail ao contrato fechado, tudo em um só lugar.</p>
+    <div class="eyebrow" style="margin-top:38px;">quem é você?</div>
+    <div class="role-boxes hero-roles" id="heroRoles" style="grid-template-columns:1fr 1fr 1fr;">
+      <div class="role-box" onclick="selectAudience('artista')">
+        <div class="role-icon">🎤</div>
+        <h4>Sou artista</h4>
+        <p>Quero encontrar representação</p>
+      </div>
+      <div class="role-box" onclick="selectAudience('booker')">
+        <div class="role-icon">🤝</div>
+        <h4>Sou booker</h4>
+        <p>Quero gerar oportunidades</p>
+      </div>
+      <div class="role-box" onclick="selectAudience('agencia')">
+        <div class="role-icon">🏢</div>
+        <h4>Sou agência</h4>
+        <p>Quero conhecer a infraestrutura</p>
+      </div>
+    </div>
+  </div>
+  <div class="hero-foot">
+    <div class="role-switch" id="roleSwitch">
+      <button data-role="artista" onclick="selectAudience('artista')">Sou artista</button>
+      <button data-role="booker" onclick="selectAudience('booker')">Sou booker</button>
+      <button data-role="agencia" onclick="selectAudience('agencia')">Sou agência</button>
+    </div>
+    <div class="marquee">
+      <div class="marquee-track">
+        <span>ARTISTAS</span><span class="thin">·</span><span>BOOKERS</span><span class="thin">·</span><span>OPORTUNIDADES</span><span class="thin">·</span><span>REPRESENTAÇÃO</span><span class="thin">·</span><span>ARTISTAS</span><span class="thin">·</span><span>BOOKERS</span><span class="thin">·</span><span>OPORTUNIDADES</span><span class="thin">·</span><span>REPRESENTAÇÃO</span><span class="thin">·</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MARKETPLACE ================= -->
+<section id="marketplace" class="on-dark gated shared">
+  <div class="bleed" style="min-height:56vh;">
+    <img class="bg" src="https://picsum.photos/seed/doopla-market/1800/1000" alt="">
+    <span class="edge-label">marketplace de representação</span>
+    <div class="bleed-content">
+      <h2>Encontre sua doopla.</h2>
+      <p>Artistas encontram bookers. Bookers encontram artistas. Os dois escolhem com quem querem trabalhar.</p>
+      <p style="margin-top:10px; opacity:.75;">Sem exclusividade obrigatória. Toda representação começa com aprovação dos dois lados.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CONTEÚDO PARA ARTISTA ================= -->
+<section id="pra-quem" class="pad gated view-artista">
+  <div class="wrap">
+    <span class="eyebrow">para artistas</span>
+    <div class="market-grid" style="align-items:start;">
+      <div class="simple-col" style="padding:0; background:none;">
+        <h3 style="margin-top:14px;">Foque no seu trabalho. Tenha alguém cuidando do negócio.</h3>
+        <div class="tags">DJ · músico · banda · fotógrafo · creator · modelo · ator</div>
+        <p class="desc">Encontre bookers, escolha quem pode representar você e receba oportunidades sem precisar cuidar sozinho de toda a parte comercial.</p>
+        <p class="desc" style="font-weight:600; opacity:1;">Não precisa ser representação de carreira inteira. Também serve pra quem só precisa de ajuda pontual: alguém pra responder um e-mail, cobrar um cliente ou negociar uma proposta específica.</p>
+        <ul class="simple-list">
+          <li><span class="bullet">✓</span>Encontre bookers</li>
+          <li><span class="bullet">✓</span>Escolha quem representa você</li>
+          <li><span class="bullet">✓</span>Receba oportunidades</li>
+          <li><span class="bullet">✓</span>Organize bookings e pagamentos</li>
+          <li><span class="bullet">✓</span>Peça ajuda pontual, sem compromisso de longo prazo</li>
+        </ul>
+        <a class="btn ghost" href="/cadastro?role=artista">Quero representação</a>
+      </div>
+      <div class="request-card">
+        <div class="eyebrow">solicitação recebida pelo artista</div>
+        <p style="font-size:16px; font-family:'Fraunces',serif; font-weight:600; margin-top:12px;">Marina quer representar você.</p>
+        <div class="req-row" style="border-top:none; margin-top:18px; padding-top:0;">
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div class="req-avatar">MC</div>
+            <div>
+              <div class="req-name" style="margin-top:0; font-size:17px;">Marina Costa <span style="font-size:10px; font-family:'IBM Plex Mono',monospace; opacity:.6; text-transform:uppercase;">· booker</span></div>
+              <div class="req-meta">São Paulo · Música eletrônica · Fashion · Brands</div>
+            </div>
+          </div>
+        </div>
+        <div class="req-stats">37 negociações · 4,9 ★</div>
+        <button class="btn on-dark">Aceitar</button>
+        <button class="btn ghost-dark">Ver perfil</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CONTEÚDO PARA BOOKER ================= -->
+<section id="pra-quem-booker" class="pad gated view-booker">
+  <div class="wrap">
+    <span class="eyebrow">para bookers</span>
+    <div class="single-col-wrap">
+      <div class="simple-col is-booker" style="padding:0; background:none; color:inherit;">
+        <h3 style="margin-top:14px;">Transforme seu networking em negócio.</h3>
+        <div class="tags" style="color:var(--accent-ink); opacity:.85;">bem conectado · quer renda extra · booker independente · agência</div>
+        <p class="desc">Encontre artistas, represente quem você acredita e ganhe criando oportunidades pra eles.</p>
+        <p class="desc" style="font-weight:600; opacity:1;">Não precisa ser booker profissional pra começar. Se você é bem conectado, conhece gente e quer transformar isso em renda extra, também é pra você.</p>
+        <ul class="simple-list">
+          <li><span class="bullet">✓</span>Encontre artistas</li>
+          <li><span class="bullet">✓</span>Represente quem você acredita</li>
+          <li><span class="bullet">✓</span>Gere oportunidades</li>
+          <li><span class="bullet">✓</span>Ganhe representando talentos</li>
+        </ul>
+        <a class="btn accent" href="/cadastro?role=booker">Quero ser booker</a>
+      </div>
+    </div>
+
+    <div class="commission-block">
+      <span class="eyebrow">quanto você ganha</span>
+      <div class="range">100% seu</div>
+      <p>Entrar na doopla como booker é grátis, R$0/mês. Você propõe a comissão daquele booking. O artista aceita, contrapropõe ou recusa antes do fechamento. Comissões maiores fazem sentido quando você traz o cliente ou gera diretamente a oportunidade. A doopla não desconta nada da sua comissão.</p>
+      <ul>
+        <li><span class="bullet">✓</span>Grátis pra entrar, sem mensalidade</li>
+        <li><span class="bullet">✓</span>A comissão é definida por booking e aceita antes do fechamento</li>
+        <li><span class="bullet">✓</span>Você fica com 100% do que negociar com o artista</li>
+        <li><span class="bullet">✓</span>Você só recebe quando o booking acontece</li>
+        <li><span class="bullet">✓</span>Sem vínculo, sem exclusividade</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CONTEÚDO PARA AGÊNCIA ================= -->
+<section id="pra-agencia" class="pad gated view-agencia">
+  <div class="wrap">
+    <span class="eyebrow">para agências</span>
+    <div class="agencia-block">
+      <h3>Amplie sua rede. Não sua estrutura.</h3>
+      <p>Sua agência recebe mais talentos do que consegue representar. A doopla transforma esse alcance em uma nova fonte de receita, sem aumentar sua equipe, sem assumir novos artistas e sem mudar a operação do seu casting principal.</p>
+      <a class="btn accent" style="margin-top:22px;" href="/cadastro?role=agencia">Quero ser uma agência parceira</a>
+    </div>
+
+    <div class="agency-list">
+      <p><strong>Do "não" pro "ainda não".</strong> Em vez de encerrar a relação com quem sua agência não consegue absorver hoje, convide essas pessoas a continuarem a carreira de forma independente pela doopla, permanecendo no seu radar.</p>
+      <p><strong>Um link exclusivo, uma origem rastreada.</strong> Cada agência parceira tem um link próprio. Quem entra por ele fica identificado como originado pela sua agência, automaticamente.</p>
+      <p><strong>Zero nova operação.</strong> Sua agência não precisa conseguir trabalhos, negociar cachês, elaborar contratos, cobrar clientes nem administrar agenda pra essas pessoas. A doopla e a rede de bookers cuidam disso.</p>
+      <p><strong>Uma nova fonte de receita.</strong> Profissionais originados pela sua parceria podem gerar revenue share pra agência, sobre a receita que a doopla gera com eles, durante um período definido.</p>
+      <p><strong>Eles continuam no seu radar.</strong> Acompanhe sinais reais de atividade profissional (bookings, cachê médio, recorrência) de quem veio pela sua rede, e decida quando fizer sentido olhar de novo.</p>
+      <p><strong>Não é representação pela sua agência.</strong> O profissional continua independente, sem entrar no casting oficial, sem exclusividade e sem sua agência assumir obrigação de gerar trabalho pra ele. A relação é de origem e conexão com o ecossistema, não de representação.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HUMANO x DOOPLA ================= -->
+<section class="pad gated shared">
+  <div class="wrap">
+    <span class="eyebrow">tecnologia nos bastidores</span>
+    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px; max-width:640px;">Pessoas fazem relações. A doopla faz o resto.</h2>
+    <p style="font-size:15px; opacity:.75; max-width:520px; margin-top:14px; line-height:1.6;">A representação continua humana. A tecnologia cuida do operacional.</p>
+    <div class="tech-cols">
+      <div class="tech-col">
+        <span class="eyebrow">lado humano</span>
+        <div class="tech-label">Humano</div>
+        <ul>
+          <li>Relacionamento</li>
+          <li>Networking</li>
+          <li>Oportunidades</li>
+          <li>Negociação</li>
+          <li>Posicionamento</li>
+        </ul>
+      </div>
+      <div class="tech-col is-tech">
+        <span class="eyebrow on-dark">tecnologia</span>
+        <div class="tech-label">doopla</div>
+        <ul>
+          <li>Propostas</li>
+          <li>Contratos</li>
+          <li>Agenda</li>
+          <li>Follow-ups</li>
+          <li>CRM</li>
+          <li>Pagamentos</li>
+        </ul>
+      </div>
+    </div>
+    <p style="font-size:14.5px; opacity:.6; margin-top:22px; max-width:480px;">Mais tempo criando oportunidades. Menos tempo administrando planilhas, mensagens e documentos.</p>
+  </div>
+</section>
+
+<!-- ================= COMO FUNCIONA ================= -->
+<section id="como-funciona" class="pad gated shared">
+  <div class="wrap">
+    <span class="eyebrow">como funciona</span>
+    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px;">Da conexão ao pagamento.</h2>
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="step-idx">01</div>
+        <h4>Encontre</h4>
+        <p>Artistas encontram bookers. Bookers encontram artistas.</p>
+      </div>
+      <div class="flow-step">
+        <div class="step-idx">02</div>
+        <h4>Conecte</h4>
+        <p>Os dois escolhem com quem querem trabalhar.</p>
+      </div>
+      <div class="flow-step">
+        <div class="step-idx">03</div>
+        <h4>Represente</h4>
+        <p>O booker gera e negocia oportunidades em nome do artista.</p>
+      </div>
+      <div class="flow-step">
+        <div class="step-idx">04</div>
+        <h4>Feche</h4>
+        <p>Proposta, contrato, pagamento e histórico ficam organizados na doopla.</p>
+      </div>
+    </div>
+    <p style="font-size:14.5px; opacity:.6; margin-top:24px;">Você cuida das relações. A doopla organiza o resto.</p>
+
+    <!-- ================= SEGURANÇA (compacta) ================= -->
+    <div class="safety-band">
+      <span class="eyebrow on-dark">representação com controle</span>
+      <ul>
+        <li>✓ Você escolhe quem pode representar você</li>
+        <li>✓ Nenhuma negociação oficial acontece sem autorização</li>
+        <li>✓ Propostas e pagamentos ficam registrados na plataforma</li>
+      </ul>
+      <a href="/seguranca">Saiba mais sobre segurança →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PLANOS ================= -->
+<section id="planos" class="pad gated view-artista">
+  <div class="wrap">
+    <span class="eyebrow">planos</span>
+    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px;">Um preço simples, sem comissão sobre o cachê.</h2>
+    <div class="plans">
+      <div class="plan">
+        <div class="plan-info">
+          <span class="eyebrow">artista</span>
+          <div class="plan-price">R$ 19,90<span> /mês</span></div>
+          <span class="plan-fee">sem comissão sobre o cachê</span>
+        </div>
+        <p class="plan-desc">Perfil, marketplace, representação, propostas, pagamentos, agenda. A doopla não fica com nada do seu cachê. Comece com 30 dias grátis, sem cartão.</p>
+        <a class="btn accent" href="/cadastro?role=artista">Começar teste grátis</a>
+      </div>
+    </div>
+    <a class="link-more" href="/precos">Entenda como funciona →</a>
+  </div>
+</section>
+
+<!-- ================= FAQ (reduzida) ================= -->
+<section id="faq" class="pad gated shared">
+  <div class="wrap">
+    <span class="eyebrow">perguntas frequentes</span>
+    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px; margin-bottom:20px;">O essencial, antes de entrar.</h2>
+    <div id="faqlist"></div>
+    <a class="link-more" href="/ajuda">Ver central de ajuda completa →</a>
+  </div>
+</section>
+
+<!-- ================= CTA FINAL ================= -->
+<section class="final-cta gated shared">
+  <div class="wrap">
+    <h2>Sua carreira não precisa<br>crescer sozinha.</h2>
+    <div class="sub">Encontre sua doopla.</div>
+    <div class="ctas">
+      <a class="btn on-dark" href="/cadastro?role=artista">Encontrar representação</a>
+      <a class="btn ghost-dark" href="/cadastro?role=booker">Começar como booker</a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FOOTER ================= -->
+<footer>
+  <div class="wrap">
+    <div class="foot-cols">
+      <div class="foot-col">
+        <h5>Produto</h5>
+        <a href="#pra-quem" onclick="revealAndGo(event,'artista','pra-quem')">Para artistas</a>
+        <a href="#pra-quem-booker" onclick="revealAndGo(event,'booker','pra-quem-booker')">Para bookers</a>
+        <a href="#como-funciona" onclick="revealAndGo(event,'shared','como-funciona')">Como funciona</a>
+        <a href="#planos" onclick="revealAndGo(event,'artista','planos')">Planos</a>
+      </div>
+      <div class="foot-col">
+        <h5>Doopla</h5>
+        <a href="#pra-agencia" onclick="revealAndGo(event,'agencia','pra-agencia')">Para agências</a>
+        <a href="/sobre">Sobre</a>
+        <a href="#faq" onclick="revealAndGo(event,'shared','faq')">Contato</a>
+      </div>
+      <div class="foot-col">
+        <h5>Legal</h5>
+        <a href="/termos">Termos</a>
+        <a href="/privacidade">Privacidade</a>
+      </div>
+    </div>
+  </div>
+  <div class="logo foot-word on-dark" id="footlogo">d<span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span><span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span>pla</div>
+  <div class="wrap foot-bottom">
+    <span>Toda carreira merece representação.</span>
+  </div>
+</footer>
+</div>

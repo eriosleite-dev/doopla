@@ -1,30 +1,29 @@
-import Link from 'next/link';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { Metadata } from 'next';
+
+const homeDir = path.join(process.cwd(), 'src/app/_home');
+const HOME_CSS = fs.readFileSync(path.join(homeDir, 'home.css'), 'utf8');
+const HOME_HTML = fs.readFileSync(path.join(homeDir, 'home.html'), 'utf8');
+const HOME_JS = fs.readFileSync(path.join(homeDir, 'home.js'), 'utf8');
+
+export const metadata: Metadata = {
+  title: 'doopla, toda carreira merece representação',
+  description:
+    'Um novo jeito de conectar artistas, bookers e agências e organizar tudo que acontece entre eles.',
+};
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-1 flex-col items-center justify-center gap-8 px-6 text-center">
-      <div className="flex flex-col gap-3">
-        <h1 className="text-4xl font-semibold tracking-tight">Doopla</h1>
-        <p className="max-w-md text-lg text-black/60 dark:text-white/60">
-          Marketplace de representação para artistas independentes. Conecte
-          artistas, bookers e agências em um só lugar.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-        <Link
-          href="/cadastro"
-          className="flex h-12 w-full items-center justify-center rounded-full bg-black px-6 text-white transition-colors hover:bg-black/80 dark:bg-white dark:text-black dark:hover:bg-white/80 sm:w-auto"
-        >
-          Criar conta
-        </Link>
-        <Link
-          href="/login"
-          className="flex h-12 w-full items-center justify-center rounded-full border border-black/15 px-6 transition-colors hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10 sm:w-auto"
-        >
-          Entrar
-        </Link>
-      </div>
-    </main>
+    <>
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Familjen+Grotesk:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet"
+      />
+      <style>{HOME_CSS}</style>
+      <div dangerouslySetInnerHTML={{ __html: HOME_HTML }} />
+      <script dangerouslySetInnerHTML={{ __html: HOME_JS }} />
+    </>
   );
 }

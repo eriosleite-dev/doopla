@@ -1,0 +1,329 @@
+:root{
+    --ink:#0b0b0a;
+    --ink-soft:#151513;
+    --paper:#f2efe6;
+    --paper-dim:#e7e2d2;
+    --accent:#c79a4b;
+    --accent-ink:#7a5620;
+    --musgo:#48562F;
+    --line-dark: rgba(242,239,230,0.16);
+    --line-light: rgba(11,11,10,0.14);
+  }
+  #home-marketing *{box-sizing:border-box;}
+  #home-marketing{ background:var(--paper); color:var(--ink); font-family:'IBM Plex Sans', sans-serif; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+  #home-marketing h1,#home-marketing h2,#home-marketing h3,#home-marketing .display{ font-family:'Fraunces', serif; font-weight:600; letter-spacing:-0.01em; margin:0; }
+  #home-marketing .italic{ font-weight:500; }
+  #home-marketing .mono{ font-family:'IBM Plex Mono', monospace; }
+  #home-marketing .eyebrow{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent-ink); }
+  #home-marketing .eyebrow.on-dark{ color:var(--accent); }
+  #home-marketing a{color:inherit;}
+  #home-marketing .wrap{ max-width:1180px; margin:0 auto; padding:0 32px; }
+  #home-marketing section{ border-top:1px solid var(--line-light); }
+  #home-marketing section.on-dark{ border-top:1px solid var(--line-dark); }
+  #home-marketing .pad{ padding:96px 0; }
+  #home-marketing .rel{ position:relative; }
+
+  /* ---- Buttons: editorial, rectangular, bordered ---- */
+  #home-marketing .btn{ display:inline-flex; align-items:center; gap:10px; background:var(--ink); color:var(--paper); border:1px solid var(--ink); border-radius:999px; padding:14px 26px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; font-weight:500; font-family:'IBM Plex Sans', sans-serif; cursor:pointer; text-decoration:none; transition:background .18s ease, color .18s ease, transform .18s ease; }
+  #home-marketing .btn:hover{ transform:translateY(-1px); }
+  #home-marketing .btn.ghost{ background:transparent; color:var(--ink); border:1px solid var(--ink); }
+  #home-marketing .btn.ghost:hover{ background:var(--ink); color:var(--paper); }
+  #home-marketing .btn.on-dark{ background:var(--paper); color:var(--ink); border-color:var(--paper); }
+  #home-marketing .btn.on-dark:hover{ background:transparent; color:var(--paper); }
+  #home-marketing .btn.ghost-dark{ background:transparent; color:var(--paper); border:1px solid rgba(242,239,230,.5); }
+  #home-marketing .btn.ghost-dark:hover{ background:var(--paper); color:var(--ink); }
+  #home-marketing .btn.accent{ background:var(--accent); color:var(--ink); border-color:var(--accent); }
+
+  #home-marketing nav{ position:sticky; top:0; z-index:50; display:flex; justify-content:center; padding:0; background:rgba(11,11,10,0.88); backdrop-filter:blur(10px); border-bottom:1px solid var(--line-dark); }
+  #home-marketing .navpill{ width:100%; max-width:1180px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; row-gap:12px; padding:16px 32px; color:var(--paper); }
+  #home-marketing .navlinks{ display:none; gap:20px; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; font-family:'IBM Plex Mono',monospace; flex-wrap:wrap; }
+  #home-marketing .navlinks a{ text-decoration:none; opacity:.7; white-space:nowrap; }
+  #home-marketing .navlinks a:hover{ opacity:1; }
+  #home-marketing .nav-actions{ display:flex; align-items:center; gap:18px; }
+  #home-marketing .nav-login{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--paper); opacity:.75; text-decoration:none; white-space:nowrap; }
+  #home-marketing .nav-login:hover{ opacity:1; }
+  @media(min-width:980px){ #home-marketing .navlinks{ display:flex; } }
+
+  #home-marketing .logo{ display:inline-flex; align-items:baseline; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:22px; line-height:1; cursor:pointer; user-select:none; }
+  #home-marketing .logo.on-dark{ color:var(--paper); }
+  #home-marketing .logo.on-light{ color:var(--ink); }
+  #home-marketing .logo .eye-o{ position:relative; display:inline-block; width:0.6em; height:0.6em; margin:0 0.02em; overflow:hidden; border-radius:50%; }
+  #home-marketing .eye-white{ position:absolute; inset:0; border-radius:50%; background:var(--musgo); }
+  #home-marketing .eye-pupil{ position:absolute; width:34%; height:34%; border-radius:50%; background:var(--paper); top:33%; left:33%; will-change:transform; }
+  #home-marketing .eye-lid{ position:absolute; left:-2px; right:-2px; top:-2px; height:0%; background:inherit; border-radius:50% 50% 0 0; transition:height .06s ease-out; pointer-events:none; }
+  #home-marketing .logo.blink .eye-lid{ height:110%; background:currentColor; }
+  #home-marketing .logo-hero{ font-size:clamp(64px,15vw,220px); letter-spacing:-0.02em; }
+
+  /* ---- HERO: full black, giant wordmark ---- */
+  #home-marketing .hero{ background:var(--paper-dim); color:var(--ink); padding:120px 0 0; text-align:center; overflow:hidden; }
+  #home-marketing .hero .eyebrow{ display:block; }
+  #home-marketing .hero-sub{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; letter-spacing:.08em; color:rgba(11,11,10,.55); max-width:460px; margin:22px auto 0; line-height:1.6; }
+  #home-marketing .hero h1{ margin-top:8px; }
+  #home-marketing .hero .lede{ font-size:17px; max-width:480px; margin:26px auto 0; opacity:.78; line-height:1.6; }
+  #home-marketing .hero-ctas{ display:flex; gap:14px; justify-content:center; margin-top:34px; flex-wrap:wrap; }
+  #home-marketing .hero-foot{ margin-top:70px; }
+
+  /* ---- Kinetic marquee band ---- */
+  #home-marketing .marquee{ overflow:hidden; white-space:nowrap; border-top:1px solid var(--line-dark); border-bottom:1px solid var(--line-dark); background:var(--ink); padding:22px 0; }
+  #home-marketing .marquee.on-paper{ background:var(--paper); border-color:var(--line-light); }
+  #home-marketing .marquee-track{ display:inline-block; padding-left:100%; animation:doopla-marquee 26s linear infinite; }
+  #home-marketing .marquee-track span{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(30px,6vw,72px); color:var(--paper); padding:0 34px; letter-spacing:-0.01em; }
+  #home-marketing .marquee.on-paper .marquee-track span{ color:var(--ink); }
+  #home-marketing .marquee-track span.thin{ font-family:'IBM Plex Mono',monospace; font-style:normal; font-weight:400; font-size:clamp(14px,1.6vw,18px); text-transform:uppercase; letter-spacing:.14em; vertical-align:middle; color:var(--accent); padding:0 26px;}
+  @keyframes doopla-marquee{ from{ transform:translateX(0);} to{ transform:translateX(-100%);} }
+
+  /* ---- Full-bleed image sections with rotated edge label ---- */
+  #home-marketing .bleed{ position:relative; min-height:78vh; display:flex; align-items:flex-end; background-size:cover; background-position:center; overflow:hidden; background:var(--ink); }
+  #home-marketing .bleed img.bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:grayscale(1) contrast(1.05) brightness(.6); }
+  #home-marketing .bleed::after{ content:''; position:absolute; inset:0; background:linear-gradient(180deg, rgba(11,11,10,.25) 0%, rgba(11,11,10,.55) 45%, rgba(11,11,10,.92) 100%); }
+  #home-marketing .bleed-content{ position:relative; z-index:2; padding:52px 40px; color:var(--paper); width:100%; }
+  #home-marketing .bleed-content h2{ font-size:clamp(30px,5vw,64px); max-width:640px; }
+  #home-marketing .bleed-content p{ font-size:15px; max-width:420px; margin-top:14px; opacity:.85; line-height:1.6; }
+  #home-marketing .bleed-content .btn{ margin-top:26px; }
+  #home-marketing .edge-label{ position:absolute; top:40px; right:28px; writing-mode:vertical-rl; transform:rotate(180deg); font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:rgba(242,239,230,.85); z-index:2; }
+  #home-marketing .edge-label.left{ left:28px; right:auto; }
+
+  /* ---- Section heads ---- */
+  #home-marketing .sec-head{ padding:96px 0 0; }
+  #home-marketing .sec-head h2{ font-size:clamp(28px,4.4vw,50px); max-width:680px; margin-top:16px; }
+  #home-marketing .sec-head .kicker{ font-size:15px; opacity:.7; max-width:460px; margin-top:14px; line-height:1.6; }
+
+  /* ---- Problem compare ---- */
+  #home-marketing .problem{ display:grid; grid-template-columns:1fr; gap:40px; align-items:start; margin-top:44px; }
+  @media(min-width:860px){ #home-marketing .problem{ grid-template-columns:1.1fr 0.9fr; } }
+  #home-marketing .problem-copy p{ font-size:16px; line-height:1.7; opacity:.86; max-width:480px; }
+  #home-marketing .problem-copy p + p{ margin-top:16px; }
+  #home-marketing .problem-compare{ display:flex; flex-direction:column; gap:16px; }
+  #home-marketing .problem-card{ padding:26px 28px; background:var(--paper); border-radius:16px; }
+  #home-marketing .problem-card.new{ background:var(--ink); color:var(--paper); }
+  #home-marketing .problem-card .label{ font-family:'IBM Plex Mono',monospace; font-size:13.5px; letter-spacing:.08em; text-transform:uppercase; opacity:.6; }
+  #home-marketing .problem-card.new .label{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:20px; letter-spacing:normal; text-transform:none; color:var(--accent); opacity:1; }
+  #home-marketing .problem-card .pct{ font-family:'Fraunces',serif; font-size:36px; font-weight:600; margin-top:8px; opacity:.7; }
+  #home-marketing .problem-card.new .pct{ opacity:1; color:var(--accent); }
+  #home-marketing .problem-card p{ font-size:13.5px; line-height:1.6; margin:10px 0 0; opacity:.8; max-width:320px; }
+
+  /* ---- Audience columns ---- */
+  #home-marketing .audience-cols{ display:grid; grid-template-columns:1fr; gap:16px; margin-top:44px; }
+  @media(min-width:800px){ #home-marketing .audience-cols{ grid-template-columns:1fr 1fr; } }
+  #home-marketing .audience-col{ background:var(--paper); padding:44px 36px; border-radius:16px; }
+  #home-marketing .audience-col.is-booker{ background:var(--ink); color:var(--paper); }
+  #home-marketing .audience-col h3{ font-size:24px; margin-top:16px; max-width:340px; line-height:1.2; font-weight:500;}
+  #home-marketing .persona-tags{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.02em; opacity:.6; margin-top:10px; max-width:340px; line-height:1.6; text-transform:uppercase; }
+  #home-marketing .persona-tags.on-dark{ color:var(--accent); opacity:.85; }
+  #home-marketing .audience-list{ list-style:none; padding:0; margin:28px 0 0; display:flex; flex-direction:column; gap:18px; }
+  #home-marketing .audience-list li{ display:flex; gap:14px; align-items:flex-start; font-size:14px; line-height:1.6; opacity:.9; }
+  #home-marketing .audience-list .bullet{ flex:none; width:20px; height:20px; border:1px solid currentColor; font-family:'IBM Plex Mono',monospace; font-size:10px; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+  #home-marketing .audience-col .btn{ margin-top:30px; }
+  #home-marketing .audience-more{ margin:16px 0 0; font-size:13px; font-family:'IBM Plex Mono',monospace; opacity:.6; }
+
+  /* ---- Marketplace example ---- */
+  #home-marketing .market-grid{ display:grid; grid-template-columns:1fr; gap:40px; margin-top:40px; align-items:center; }
+  @media(min-width:840px){ #home-marketing .market-grid{ grid-template-columns:1fr 0.85fr; } }
+  #home-marketing .market-copy p{ font-size:15px; line-height:1.68; opacity:.85; max-width:460px; }
+  #home-marketing .market-copy p + p{ margin-top:14px; }
+  #home-marketing .market-example{ background:var(--ink); color:var(--paper); padding:34px 30px; border-radius:16px; }
+  #home-marketing .market-example .eyebrow{ color:var(--accent); }
+  #home-marketing .market-row{ display:flex; justify-content:space-between; align-items:baseline; padding:14px 0; border-top:1px solid var(--line-dark); font-size:14px; }
+  #home-marketing .market-row:first-of-type{ border-top:none; margin-top:18px; }
+  #home-marketing .market-row .label{ opacity:.7; }
+  #home-marketing .market-row .val{ font-family:'IBM Plex Mono',monospace; }
+  #home-marketing .market-row.total{ margin-top:6px; padding-top:18px; border-top:1px solid rgba(242,239,230,.3); font-size:17px; }
+  #home-marketing .market-row.total .val{ color:var(--accent); font-weight:600; }
+
+  /* ---- Testimonial cards: compact, avatar + quote ---- */
+  #home-marketing .testi-grid{ display:grid; grid-template-columns:1fr; gap:16px; margin-top:44px; }
+  @media(min-width:640px){ #home-marketing .testi-grid{ grid-template-columns:1fr 1fr; } }
+  @media(min-width:960px){ #home-marketing .testi-grid{ grid-template-columns:1fr 1fr 1fr; } }
+  #home-marketing .testi-card{ background:var(--paper); padding:26px 24px; display:flex; flex-direction:column; gap:14px; border-radius:16px; }
+  #home-marketing .testi-card .tag{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent-ink); }
+  #home-marketing .testi-card p{ font-size:14px; line-height:1.6; opacity:.88; margin:0; }
+  #home-marketing .testi-foot{ display:flex; align-items:center; gap:10px; margin-top:auto; padding-top:6px; }
+  #home-marketing .testi-avatar{ width:38px; height:38px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; background:var(--ink); color:var(--paper); font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; }
+  #home-marketing .testi-avatar.is-booker{ background:var(--musgo); }
+  #home-marketing .testi-who .name{ font-size:12.5px; font-weight:600; display:block; }
+  #home-marketing .testi-who .role{ font-size:11px; opacity:.55; font-family:'IBM Plex Mono',monospace; }
+
+  /* ---- Community block ---- */
+  #home-marketing .community{ background:var(--ink); color:var(--paper); padding:64px 44px; }
+  #home-marketing .community h3{ font-size:clamp(24px,3.4vw,36px); margin-top:14px; max-width:520px; font-weight:500; }
+  #home-marketing .community p{ font-size:15px; margin-top:16px; max-width:520px; opacity:.82; line-height:1.65; }
+
+  /* ---- Safety ---- */
+  #home-marketing .safety{ display:grid; grid-template-columns:1fr; gap:32px; margin-top:40px; align-items:start; }
+  @media(min-width:800px){ #home-marketing .safety{ grid-template-columns:0.9fr 1.1fr; } }
+  #home-marketing .safety-note{ border:1px solid var(--line-light); padding:28px; background:var(--paper-dim); font-size:14px; line-height:1.65; }
+  #home-marketing .safety-note strong{ display:block; margin-bottom:10px; font-family:'Fraunces',serif; font-weight:600; font-size:16px; }
+  #home-marketing .safety-scenario{ font-size:14.5px; line-height:1.68; opacity:.86; }
+  #home-marketing .safety-scenario p{ margin:0 0 14px; }
+  #home-marketing .flow-scam{ font-size:12.5px; opacity:.75; border-left:2px solid var(--accent); padding-left:14px; line-height:1.6; }
+
+  /* ---- Plans ---- */
+  #home-marketing .plans{ display:flex; flex-direction:column; gap:16px; margin-top:40px; }
+  #home-marketing .plan{ padding:24px 28px; background:var(--paper); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; border-radius:16px; }
+  #home-marketing .plan.premium{ background:var(--ink); color:var(--paper); }
+  #home-marketing .plan-info{ display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  #home-marketing .plan-price{ font-family:'Fraunces',serif; font-size:26px; font-weight:600; }
+  #home-marketing .plan-price span{ font-size:13px; font-family:'IBM Plex Mono',monospace; font-weight:400; opacity:.6; font-style:normal; }
+  #home-marketing .plan-fee{ font-family:'IBM Plex Mono',monospace; font-size:12px; opacity:.6; }
+  #home-marketing .plan .btn{ flex:none; }
+  #home-marketing .plan-desc{ width:100%; font-size:13px; opacity:.7; margin-top:6px; order:3; }
+  @media(min-width:600px){ #home-marketing .plan{ flex-wrap:wrap; } #home-marketing .plan-desc{ flex:1 1 100%; margin-top:10px; } }
+  #home-marketing .fee-examples{ display:grid; grid-template-columns:1fr; gap:16px; margin-top:36px; max-width:1100px; }
+  @media(min-width:700px){ #home-marketing .fee-examples{ grid-template-columns:1fr 1fr; } }
+  @media(min-width:1000px){ #home-marketing .fee-examples{ grid-template-columns:1fr 1fr 1fr; } }
+  #home-marketing .th-price{ font-family:'IBM Plex Mono',monospace; font-weight:400; font-size:12px; opacity:.7; }
+  #home-marketing .th-note{ font-family:'IBM Plex Mono',monospace; font-weight:400; font-size:10px; opacity:.55; text-transform:none; }
+
+  /* ---- Como funciona: steps ---- */
+  #home-marketing .steps-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:16px; margin-top:40px; }
+  #home-marketing .steps-grid .step-card{ flex:1 1 100%; }
+  @media(min-width:700px){ #home-marketing .steps-grid .step-card{ flex:1 1 calc(33.333% - 11px); } }
+  #home-marketing .step-card{ background:var(--paper); padding:28px 26px; border-radius:16px; }
+  #home-marketing .step-idx{ font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--accent-ink); letter-spacing:.06em; }
+  #home-marketing .step-card h4{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:17px; margin-top:10px; }
+  #home-marketing .step-card p{ font-size:13.5px; line-height:1.6; margin-top:10px; opacity:.8; }
+  #home-marketing .steps-eyebrow{ display:flex; align-items:baseline; gap:12px; margin-top:40px; padding-bottom:10px; border-bottom:2px solid var(--ink); }
+  #home-marketing .steps-eyebrow .label-big{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(22px,2.8vw,30px); }
+  #home-marketing .steps-eyebrow .label-small{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent-ink); }
+
+  #home-marketing .plan-compare{ margin-top:44px; border:1px solid var(--line-light); border-radius:16px; overflow:hidden; }
+  #home-marketing .plan-compare table{ width:100%; border-collapse:collapse; }
+  #home-marketing .plan-compare th, #home-marketing .plan-compare td{ padding:15px 18px; text-align:left; font-size:14px; }
+  #home-marketing .plan-compare thead th{ background:var(--paper-dim); font-family:'Fraunces',serif; font-weight:600; font-size:15px; }
+  #home-marketing .plan-compare thead th:not(:first-child){ text-align:center; }
+  #home-marketing .plan-compare thead th.premium-col{ background:var(--ink); color:var(--paper); }
+  #home-marketing .plan-compare tbody tr{ border-top:1px solid var(--line-light); }
+  #home-marketing .plan-compare td:not(:first-child){ text-align:center; }
+  #home-marketing .plan-compare .feat{ opacity:.85; }
+  #home-marketing .plan-compare .yes{ color:var(--ink); font-weight:700; font-size:16px; }
+  #home-marketing .plan-compare .no{ opacity:.35; font-size:16px; }
+
+  /* ---- FAQ ---- */
+  #home-marketing .faq-item{ border-top:1px solid var(--line-light); }
+  #home-marketing .faq-item:last-child{ border-bottom:1px solid var(--line-light); }
+  #home-marketing .faq-q{ width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:22px 0; font-family:'Fraunces',serif; font-weight:600; font-size:17px; color:var(--ink); display:flex; justify-content:space-between; align-items:center; gap:20px; }
+  #home-marketing .faq-q .plus{ font-family:'IBM Plex Mono',monospace; font-size:18px; color:var(--accent-ink); transition:transform .2s; flex:none;}
+  #home-marketing .faq-item.open .plus{ transform:rotate(45deg); }
+  #home-marketing .faq-a{ max-height:0; overflow:hidden; transition:max-height .25s ease; }
+  #home-marketing .faq-a p{ font-size:14px; line-height:1.65; opacity:.82; padding-bottom:22px; max-width:620px; }
+
+  /* ---- Footer: giant wordmark ---- */
+  #home-marketing footer{ background:var(--ink); color:var(--paper); padding-top:70px; }
+  #home-marketing .foot-cols{ display:grid; grid-template-columns:repeat(2,1fr); gap:32px; padding-bottom:56px; }
+  @media(min-width:700px){ #home-marketing .foot-cols{ grid-template-columns:repeat(4,1fr); } }
+  #home-marketing .foot-col h5{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; opacity:.55; margin-bottom:14px; }
+  #home-marketing .foot-col a{ display:block; font-size:13.5px; text-decoration:none; opacity:.82; margin-bottom:10px; }
+  #home-marketing .foot-col a:hover{ opacity:1; }
+  #home-marketing .foot-word{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:clamp(60px,14vw,190px); line-height:.85; letter-spacing:-0.02em; padding:0 32px; user-select:none; display:flex; align-items:center; }
+  #home-marketing .foot-word .eye-o{ width:0.62em; height:0.62em; margin:0 0.015em; }
+  #home-marketing .foot-bottom{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; padding:26px 0; border-top:1px solid var(--line-dark); font-size:12px; opacity:.55; }
+
+  /* ---- Signup flow role picker (reused by hero "quem é você") ---- */
+  #home-marketing .role-boxes{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:32px; }
+  #home-marketing .role-box{ border:1px solid var(--line-light); padding:28px 18px; text-align:center; cursor:pointer; background:var(--paper-dim); transition:.15s; }
+  #home-marketing .role-box:hover{ border-color:var(--ink); transform:translateY(-2px); }
+  #home-marketing .role-box .role-icon{ font-size:26px; }
+  #home-marketing .role-box h4{ font-family:'Fraunces',serif; font-weight:600; font-size:16px; margin-top:12px; }
+  #home-marketing .role-box p{ font-size:12.5px; opacity:.65; margin-top:6px; }
+
+  #home-marketing ::selection{ background:var(--accent); color:var(--ink); }
+  @media (prefers-reduced-motion: reduce){ #home-marketing .marquee-track{ animation:none; } }
+
+  /* ---- Marketplace request card ---- */
+  #home-marketing .request-card{ background:var(--ink); color:var(--paper); padding:32px 28px; max-width:400px; border-radius:18px; }
+  #home-marketing .request-card .req-avatar{ width:52px; height:52px; border-radius:50%; background:var(--musgo); display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px; }
+  #home-marketing .request-card .req-name{ font-family:'Fraunces',serif; font-weight:600; font-size:21px; margin-top:16px; }
+  #home-marketing .request-card .req-meta{ font-size:12.5px; opacity:.6; font-family:'IBM Plex Mono',monospace; margin-top:4px; }
+  #home-marketing .request-card .req-stats{ font-size:12.5px; opacity:.8; margin-top:10px; color:var(--accent); }
+  #home-marketing .request-card .req-row{ display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line-dark); font-size:13px; }
+  #home-marketing .request-card .req-row:first-of-type{ margin-top:18px; }
+  #home-marketing .request-card .btn{ margin-top:22px; width:100%; justify-content:center; }
+  #home-marketing .request-card .btn.ghost-dark{ margin-top:10px; }
+
+  /* ---- Suggested bookers (cold-start) ---- */
+  #home-marketing .suggest-block{ margin-top:44px; padding-top:36px; border-top:1px solid var(--line-light); }
+  #home-marketing .suggest-grid{ display:grid; grid-template-columns:1fr; gap:12px; margin-top:20px; }
+  @media(min-width:700px){ #home-marketing .suggest-grid{ grid-template-columns:repeat(3,1fr); } }
+  #home-marketing .suggest-card{ background:var(--paper); padding:20px 18px; border-radius:14px; }
+  #home-marketing .suggest-card .req-avatar{ width:38px; height:38px; font-size:12px; }
+  #home-marketing .suggest-card .sc-name{ font-family:'Fraunces',serif; font-weight:600; font-size:15px; margin-top:12px; }
+  #home-marketing .suggest-card .sc-meta{ font-size:11.5px; opacity:.6; font-family:'IBM Plex Mono',monospace; margin-top:3px; }
+  #home-marketing .suggest-card .sc-stats{ font-size:11.5px; color:var(--accent-ink); margin-top:8px; }
+
+  /* ---- Tech vs Human columns ---- */
+  #home-marketing .tech-cols{ display:grid; grid-template-columns:1fr; gap:16px; margin-top:44px; }
+  @media(min-width:700px){ #home-marketing .tech-cols{ grid-template-columns:1fr 1fr; } }
+  #home-marketing .tech-col{ padding:32px 30px; background:var(--paper); border-radius:16px; }
+  #home-marketing .tech-col.is-tech{ background:var(--ink); color:var(--paper); }
+  #home-marketing .tech-col .eyebrow.on-dark{ color:var(--accent); }
+  #home-marketing .tech-col ul{ list-style:none; padding:0; margin:20px 0 0; display:flex; flex-direction:column; gap:11px; font-size:14.5px; }
+  #home-marketing .tech-col .tech-label{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(24px,3vw,32px); }
+
+  /* ---- Quote list (no fake testimonials) ---- */
+  #home-marketing .quote-list{ display:flex; flex-direction:column; gap:10px; margin-top:40px; }
+  #home-marketing .quote-item{ background:var(--paper); padding:22px 26px; font-family:'Fraunces',serif; font-size:18px; font-weight:500; }
+
+  /* ---- Agency CTA block ---- */
+  #home-marketing .agency-list{ display:grid; grid-template-columns:1fr; gap:12px 32px; margin-top:32px; }
+  @media(min-width:700px){ #home-marketing .agency-list{ grid-template-columns:1fr 1fr; } }
+  #home-marketing .agency-list p{ font-size:14.5px; line-height:1.6; opacity:.85; padding-left:16px; border-left:2px solid var(--accent-ink); margin:0; }
+
+  /* ---- Simple 2-side cards (home) ---- */
+  #home-marketing .simple-cols{ display:grid; grid-template-columns:1fr; gap:16px; margin-top:40px; }
+  @media(min-width:800px){ #home-marketing .simple-cols{ grid-template-columns:1fr 1fr; } }
+  #home-marketing .simple-col{ background:var(--paper); padding:40px 34px; border-radius:16px; }
+  #home-marketing .simple-col.is-booker{ background:var(--ink); color:var(--paper); }
+  #home-marketing .simple-col h3{ font-size:24px; margin-top:14px; font-weight:500; line-height:1.2; }
+  #home-marketing .simple-col .tags{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.04em; opacity:.55; margin-top:10px; text-transform:uppercase; }
+  #home-marketing .simple-col p.desc{ font-size:14px; opacity:.82; margin-top:14px; line-height:1.6; }
+  #home-marketing .simple-list{ list-style:none; padding:0; margin:22px 0 0; display:flex; flex-direction:column; gap:10px; }
+  #home-marketing .simple-list li{ font-size:14px; display:flex; gap:10px; align-items:flex-start; opacity:.92; }
+  #home-marketing .simple-list .bullet{ flex:none; width:18px; height:18px; border:1px solid currentColor; font-family:'IBM Plex Mono',monospace; font-size:9px; display:flex; align-items:center; justify-content:center; margin-top:2px; }
+  #home-marketing .simple-col .btn{ margin-top:26px; }
+
+  /* ---- 4-step flow (horizontal on desktop) ---- */
+  #home-marketing .flow-steps{ display:grid; grid-template-columns:1fr; gap:2px; margin-top:40px; }
+  @media(min-width:800px){ #home-marketing .flow-steps{ grid-template-columns:repeat(4,1fr); gap:16px; } }
+  #home-marketing .flow-step{ background:var(--paper); padding:26px 22px; border-radius:14px; }
+  #home-marketing .flow-step .step-idx{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--accent-ink); }
+  #home-marketing .flow-step h4{ font-family:'Fraunces',serif; font-weight:600; font-size:19px; margin-top:8px; }
+  #home-marketing .flow-step p{ font-size:13.5px; opacity:.8; margin-top:8px; line-height:1.55; }
+
+  /* ---- Security compact band ---- */
+  #home-marketing .safety-band{ background:var(--ink); color:var(--paper); border-radius:18px; padding:34px 30px; margin-top:40px; }
+  #home-marketing .safety-band ul{ list-style:none; padding:0; margin:16px 0 0; display:flex; flex-direction:column; gap:9px; }
+  #home-marketing .safety-band li{ font-size:14.5px; opacity:.92; }
+  #home-marketing .safety-band a{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--accent); text-decoration:none; display:inline-block; margin-top:16px; }
+
+  /* ---- Small link under section ---- */
+  #home-marketing .link-more{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink); text-decoration:none; opacity:.7; display:inline-block; margin-top:16px; border-bottom:1px solid currentColor; padding-bottom:2px; }
+
+  /* ---- Agencies small callout ---- */
+  #home-marketing .agency-callout{ background:var(--paper-dim); border-radius:16px; padding:30px 28px; margin-top:0; display:flex; flex-direction:column; gap:10px; }
+  #home-marketing .agency-callout h4{ font-family:'Fraunces',serif; font-weight:600; font-size:18px; }
+  #home-marketing .agency-callout p{ font-size:14px; opacity:.8; line-height:1.6; margin:0; }
+
+  /* ---- Final CTA ---- */
+  #home-marketing .final-cta{ background:var(--ink); color:var(--paper); text-align:center; padding:100px 28px; }
+  #home-marketing .final-cta h2{ font-size:clamp(32px,6vw,64px); line-height:1.05; }
+  #home-marketing .final-cta .sub{ font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-top:18px; }
+  #home-marketing .final-cta .ctas{ display:flex; gap:14px; justify-content:center; margin-top:34px; flex-wrap:wrap; }
+
+  /* ---- Audience gating (home segmentada por público) ---- */
+  #home-marketing .gated{ display:none; }
+  #home-marketing .gated.revealed{ display:block; }
+  #home-marketing .hero-roles{ margin:34px auto 0; max-width:640px; }
+  #home-marketing .role-switch{ display:none; justify-content:center; gap:10px; padding:14px 0; flex-wrap:wrap; }
+  #home-marketing .role-switch.show{ display:flex; }
+  #home-marketing .role-switch button{ background:none; border:1px solid var(--line-dark); color:var(--paper); font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:8px 16px; border-radius:999px; cursor:pointer; opacity:.65; }
+  #home-marketing .role-switch button.active{ opacity:1; background:var(--paper); color:var(--ink); border-color:var(--paper); }
+  #home-marketing .single-col-wrap{ max-width:560px; }
+  #home-marketing .agencia-block{ background:var(--paper-dim); border-radius:18px; padding:44px 40px; margin-top:40px; }
+  #home-marketing .agencia-block h3{ font-size:24px; font-weight:500; max-width:420px; }
+  #home-marketing .agencia-block p{ font-size:14.5px; opacity:.82; margin-top:14px; max-width:460px; line-height:1.6; }
+  #home-marketing .commission-block{ margin-top:40px; padding:32px 30px; background:var(--paper); border-radius:16px; }
+  #home-marketing .commission-block .range{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(30px,4vw,44px); margin-top:10px; color:var(--accent-ink); }
+  #home-marketing .commission-block p{ font-size:14.5px; opacity:.85; margin-top:14px; line-height:1.65; max-width:460px; }
+  #home-marketing .commission-block ul{ list-style:none; padding:0; margin:22px 0 0; display:flex; flex-direction:column; gap:10px; }
+  #home-marketing .commission-block li{ font-size:14px; display:flex; gap:10px; align-items:flex-start; opacity:.9; }
+  #home-marketing .commission-block .bullet{ flex:none; width:18px; height:18px; border:1px solid currentColor; font-family:'IBM Plex Mono',monospace; font-size:9px; display:flex; align-items:center; justify-content:center; margin-top:2px; }
