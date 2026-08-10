@@ -3,6 +3,30 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* doopla brand tokens — shared with the marketing home (src/app/_home) */
+  --paper: #f2efe6;
+  --paper-dim: #e7e2d2;
+  --ink: #0b0b0a;
+  --accent: #c79a4b;
+  --accent-ink: #7a5620;
+  --musgo: #48562f;
+  --line-light: rgba(11, 11, 10, 0.14);
+  --line-dark: rgba(242, 239, 230, 0.16);
+}
+
+.font-doopla-display {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.font-doopla-sans {
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.font-doopla-mono {
+  font-family: 'IBM Plex Mono', monospace;
 }
 
 @theme inline {

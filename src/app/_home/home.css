@@ -1,14 +1,5 @@
-:root{
-    --ink:#0b0b0a;
-    --ink-soft:#151513;
-    --paper:#f2efe6;
-    --paper-dim:#e7e2d2;
-    --accent:#c79a4b;
-    --accent-ink:#7a5620;
-    --musgo:#48562F;
-    --line-dark: rgba(242,239,230,0.16);
-    --line-light: rgba(11,11,10,0.14);
-  }
+  /* Tokens de marca (--paper, --ink, --accent, --musgo, --line-*) ficam
+     centralizados em src/app/globals.css e são reaproveitados aqui. */
   #home-marketing *{box-sizing:border-box;}
   #home-marketing{ background:var(--paper); color:var(--ink); font-family:'IBM Plex Sans', sans-serif; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
   #home-marketing h1,#home-marketing h2,#home-marketing h3,#home-marketing .display{ font-family:'Fraunces', serif; font-weight:600; letter-spacing:-0.01em; margin:0; }

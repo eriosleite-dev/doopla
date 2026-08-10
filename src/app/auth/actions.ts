@@ -44,6 +44,22 @@ export async function loginAction(
   redirect(next.startsWith('/') ? next : '/dashboard');
 }
 
+// Campos de onboarding por tipo de conta (mesmas perguntas do fluxo
+// original do site), enviados como metadata do signUp e gravados pela
+// trigger handle_new_user (ver supabase/migrations/0002_onboarding_fields.sql).
+const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
+  artista: [
+    'intencao',
+    'pontualDetalhe',
+    'funcao',
+    'local',
+    'mercados',
+    'temBooker',
+  ],
+  booker: ['perfil', 'mercados', 'quem', 'cidades', 'jaRepresenta'],
+  agencia: ['agencia', 'roster', 'agentes', 'mercado'],
+};
+
 export async function signupAction(
   _prevState: AuthFormState,
   formData: FormData
@@ -54,17 +70,25 @@ export async function signupAction(
   const confirmPassword = String(formData.get('confirmPassword') ?? '');
   const role = String(formData.get('role') ?? '') as UserRole;
 
-  if (!fullName || !email || !password) {
-    return { error: 'Preencha todos os campos obrigatórios.' };
-  }
   if (!ROLES.includes(role)) {
     return { error: 'Selecione o tipo de conta.' };
+  }
+  if (!fullName || !email || !password) {
+    return { error: 'Preencha todos os campos obrigatórios.' };
   }
   if (password.length < 8) {
     return { error: 'A senha precisa ter pelo menos 8 caracteres.' };
   }
   if (password !== confirmPassword) {
     return { error: 'As senhas não conferem.' };
+  }
+
+  const metadata: Record<string, string> = { role, full_name: fullName };
+  for (const key of ONBOARDING_FIELDS[role]) {
+    const value = formData.get(key);
+    if (typeof value === 'string' && value.trim()) {
+      metadata[key] = value.trim();
+    }
   }
 
   const supabase = await createClient();
@@ -74,7 +98,7 @@ export async function signupAction(
     email,
     password,
     options: {
-      data: { role, full_name: fullName },
+      data: metadata,
       emailRedirectTo: `${origin}/auth/confirm`,
     },
   });

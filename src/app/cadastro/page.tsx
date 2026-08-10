@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
+import { eyebrowClass } from '@/app/auth/ui';
 import { SignupForm } from './signup-form';
 import type { UserRole } from '@/lib/supabase/types';
 
@@ -22,15 +24,25 @@ export default async function CadastroPage({
   const defaultRole = isUserRole(params.role) ? params.role : 'artista';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-6 px-6 py-12">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Criar conta na Doopla</h1>
-        <p className="text-sm text-black/60 dark:text-white/60">
-          Marketplace de representação para artistas independentes.
-        </p>
-      </div>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">
+      <div className="flex w-full max-w-md flex-col gap-6">
+        <Link
+          href="/"
+          className="font-doopla-display inline-flex w-fit items-baseline text-xl font-semibold"
+        >
+          doopla
+        </Link>
 
-      <SignupForm defaultRole={defaultRole} />
+        <div className="flex flex-col gap-1">
+          <span className={eyebrowClass}>toda carreira merece representação</span>
+          <h1 className="font-doopla-display text-3xl">Criar conta</h1>
+          <p className="text-sm text-[var(--ink)]/60">
+            Marketplace de representação para artistas independentes.
+          </p>
+        </div>
+
+        <SignupForm defaultRole={defaultRole} />
+      </div>
     </main>
   );
 }

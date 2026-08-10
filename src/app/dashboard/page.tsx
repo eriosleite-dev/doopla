@@ -136,12 +136,28 @@ function RoleDetails({
 
   if (role === 'artista') {
     const artist = details as ArtistProfile;
+    const isPontual = artist.intencao === 'Ajuda pontual num caso específico';
     return (
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-black/60 dark:text-white/60">Nome artístico</dt>
-        <dd>{artist.stage_name || '—'}</dd>
-        <dt className="text-black/60 dark:text-white/60">Gêneros</dt>
-        <dd>{artist.genres.length ? artist.genres.join(', ') : '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">O que busca</dt>
+        <dd>{artist.intencao || '—'}</dd>
+        {isPontual ? (
+          <>
+            <dt className="text-black/60 dark:text-white/60">Ajuda pedida</dt>
+            <dd>{artist.pontual_detalhe || '—'}</dd>
+          </>
+        ) : (
+          <>
+            <dt className="text-black/60 dark:text-white/60">O que faz</dt>
+            <dd>{artist.funcao || '—'}</dd>
+            <dt className="text-black/60 dark:text-white/60">Onde atua</dt>
+            <dd>{artist.local || '—'}</dd>
+            <dt className="text-black/60 dark:text-white/60">Mercados</dt>
+            <dd>{artist.mercados || '—'}</dd>
+            <dt className="text-black/60 dark:text-white/60">Já tem booker</dt>
+            <dd>{artist.tem_booker || '—'}</dd>
+          </>
+        )}
       </dl>
     );
   }
@@ -150,10 +166,16 @@ function RoleDetails({
     const booker = details as BookerProfile;
     return (
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-black/60 dark:text-white/60">Empresa/local</dt>
-        <dd>{booker.venue_name || booker.company_name || '—'}</dd>
-        <dt className="text-black/60 dark:text-white/60">Cargo</dt>
-        <dd>{booker.position || '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">Perfil</dt>
+        <dd>{booker.perfil || '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">Mercados</dt>
+        <dd>{booker.mercados || '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">Quem quer representar</dt>
+        <dd>{booker.quem || '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">Cidades da rede</dt>
+        <dd>{booker.cidades || '—'}</dd>
+        <dt className="text-black/60 dark:text-white/60">Já representa alguém</dt>
+        <dd>{booker.ja_representa || '—'}</dd>
       </dl>
     );
   }
@@ -163,8 +185,12 @@ function RoleDetails({
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
       <dt className="text-black/60 dark:text-white/60">Agência</dt>
       <dd>{agency.agency_name}</dd>
-      <dt className="text-black/60 dark:text-white/60">Site</dt>
-      <dd>{agency.website || '—'}</dd>
+      <dt className="text-black/60 dark:text-white/60">Nº de artistas</dt>
+      <dd>{agency.roster || '—'}</dd>
+      <dt className="text-black/60 dark:text-white/60">Nº de agentes</dt>
+      <dd>{agency.agentes || '—'}</dd>
+      <dt className="text-black/60 dark:text-white/60">Principal mercado</dt>
+      <dd>{agency.mercado || '—'}</dd>
     </dl>
   );
 }
