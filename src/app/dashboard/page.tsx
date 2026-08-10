@@ -7,8 +7,10 @@ import type {
   AgencyProfile,
   ArtistProfile,
   BookerProfile,
+  Invite,
   Profile,
 } from '@/lib/supabase/types';
+import { confirmInviteAction } from './actions';
 
 export const metadata: Metadata = {
   title: 'Painel | Doopla',
@@ -44,6 +46,10 @@ export default async function DashboardPage() {
   }
 
   const roleDetails = await getRoleDetails(profile.role, user.id, supabase);
+  const pendingInvites =
+    profile.role === 'artista'
+      ? await getPendingInvites(user.id, supabase)
+      : [];
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-12">
@@ -65,6 +71,36 @@ export default async function DashboardPage() {
           </button>
         </form>
       </header>
+
+      {pendingInvites.length > 0 && (
+        <section className="rounded-lg border border-[var(--accent-ink)]/30 bg-[var(--paper-dim)] p-4">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--accent-ink)]">
+            Convites pendentes
+          </h2>
+          <ul className="flex flex-col gap-3">
+            {pendingInvites.map((invite) => (
+              <li
+                key={invite.id}
+                className="flex items-center justify-between gap-3 text-sm"
+              >
+                <span>
+                  <strong>{invite.inviterName}</strong> convidou você para
+                  trabalhar com ele na doopla.
+                </span>
+                <form action={confirmInviteAction}>
+                  <input type="hidden" name="inviteId" value={invite.id} />
+                  <button
+                    type="submit"
+                    className="rounded-full bg-black px-4 py-1.5 text-xs font-medium text-white dark:bg-white dark:text-black"
+                  >
+                    Confirmar
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="rounded-lg border border-black/10 p-4 dark:border-white/10">
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
@@ -89,6 +125,31 @@ export default async function DashboardPage() {
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+async function getPendingInvites(userId: string, supabase: SupabaseServerClient) {
+  const { data: invites } = await supabase
+    .from('invites')
+    .select('*')
+    .eq('invitee_profile_id', userId)
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: false })
+    .returns<Invite[]>();
+
+  if (!invites || invites.length === 0) return [];
+
+  const inviterIds = [...new Set(invites.map((i) => i.inviter_profile_id))];
+  const { data: inviters } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', inviterIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  const nameById = new Map((inviters ?? []).map((p) => [p.id, p.full_name]));
+  return invites.map((invite) => ({
+    ...invite,
+    inviterName: nameById.get(invite.inviter_profile_id) ?? 'Alguém',
+  }));
+}
 
 async function getRoleDetails(
   role: Profile['role'],

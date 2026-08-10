@@ -60,7 +60,15 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'mercados',
     'temBooker',
   ],
-  booker: ['perfil', 'mercados', 'quem', 'cidades', 'jaRepresenta', 'roster'],
+  booker: [
+    'perfil',
+    'mercados',
+    'quem',
+    'cidades',
+    'jaRepresenta',
+    'roster',
+    'pendingInvites',
+  ],
   agencia: ['agencia', 'roster', 'agentes', 'mercado'],
 };
 

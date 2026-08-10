@@ -4,7 +4,7 @@
 
 export type UserRole = 'artista' | 'booker' | 'agencia';
 
-export interface Profile {
+export type Profile = {
   id: string;
   role: UserRole;
   full_name: string;
@@ -15,9 +15,9 @@ export interface Profile {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface ArtistProfile {
+export type ArtistProfile = {
   profile_id: string;
   stage_name: string | null;
   bio: string | null;
@@ -32,9 +32,9 @@ export interface ArtistProfile {
   tem_booker: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface BookerProfile {
+export type BookerProfile = {
   profile_id: string;
   company_name: string | null;
   venue_name: string | null;
@@ -48,9 +48,9 @@ export interface BookerProfile {
   roster: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface AgencyProfile {
+export type AgencyProfile = {
   profile_id: string;
   agency_name: string;
   cnpj: string | null;
@@ -61,7 +61,7 @@ export interface AgencyProfile {
   mercado: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
 export type BookingStatus =
   | 'proposta_enviada'
@@ -70,7 +70,7 @@ export type BookingStatus =
   | 'aguardando_pagamento'
   | 'concluida';
 
-export interface Booking {
+export type Booking = {
   id: string;
   artist_profile_id: string;
   booker_profile_id: string;
@@ -80,9 +80,9 @@ export interface Booking {
   description: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface BookingEvent {
+export type BookingEvent = {
   id: string;
   booking_id: string;
   actor_profile_id: string;
@@ -90,31 +90,60 @@ export interface BookingEvent {
   commission_percent: number | null;
   note: string | null;
   created_at: string;
-}
+};
 
-export interface Database {
+export type InviteStatus = 'pendente' | 'confirmado';
+
+export type Invite = {
+  id: string;
+  inviter_profile_id: string;
+  invitee_name: string;
+  invitee_contact: string;
+  invitee_profile_id: string | null;
+  status: InviteStatus;
+  token: string;
+  created_at: string;
+  confirmed_at: string | null;
+};
+
+export type Representation = {
+  id: string;
+  artist_profile_id: string;
+  booker_profile_id: string;
+  created_via_invite_id: string | null;
+  created_at: string;
+};
+
+// A lib do Supabase exige `Relationships` em cada tabela (usado só pra
+// joins embutidos via .select('foo(*)')). Não usamos essa sintaxe — as
+// junções são feitas com queries separadas — então fica sempre [].
+export type Database = {
   public: {
     Tables: {
       profiles: {
         Row: Profile;
         Insert: Partial<Profile> & Pick<Profile, 'id' | 'role' | 'full_name'>;
         Update: Partial<Profile>;
+        Relationships: [];
       };
       artist_profiles: {
         Row: ArtistProfile;
         Insert: Partial<ArtistProfile> & Pick<ArtistProfile, 'profile_id'>;
         Update: Partial<ArtistProfile>;
+        Relationships: [];
       };
       booker_profiles: {
         Row: BookerProfile;
         Insert: Partial<BookerProfile> & Pick<BookerProfile, 'profile_id'>;
         Update: Partial<BookerProfile>;
+        Relationships: [];
       };
       agency_profiles: {
         Row: AgencyProfile;
         Insert: Partial<AgencyProfile> &
           Pick<AgencyProfile, 'profile_id' | 'agency_name'>;
         Update: Partial<AgencyProfile>;
+        Relationships: [];
       };
       bookings: {
         Row: Booking;
@@ -124,13 +153,31 @@ export interface Database {
             'artist_profile_id' | 'booker_profile_id' | 'proposed_by' | 'commission_percent'
           >;
         Update: Partial<Booking>;
+        Relationships: [];
       };
       booking_events: {
         Row: BookingEvent;
         Insert: Partial<BookingEvent> &
           Pick<BookingEvent, 'booking_id' | 'actor_profile_id' | 'event_type'>;
         Update: Partial<BookingEvent>;
+        Relationships: [];
+      };
+      invites: {
+        Row: Invite;
+        Insert: Partial<Invite> &
+          Pick<Invite, 'inviter_profile_id' | 'invitee_name' | 'invitee_contact'>;
+        Update: Partial<Invite>;
+        Relationships: [];
+      };
+      representations: {
+        Row: Representation;
+        Insert: Partial<Representation> &
+          Pick<Representation, 'artist_profile_id' | 'booker_profile_id'>;
+        Update: Partial<Representation>;
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
-}
+};

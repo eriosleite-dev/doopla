@@ -35,14 +35,18 @@ const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
 // As mesmas perguntas do fluxo original do site (doopla-site.html),
 // por tipo de conta — só o backend por trás mudou.
 // 'chip-multi': pode marcar mais de uma opção, sempre com "Outro" + texto livre.
+// 'invites': lista repetível de nome + contato (convite pra quem já
+// trabalha com o booker fora da doopla).
 type WizardStep = {
   formKey: string;
-  kind: 'text' | 'chip' | 'chip-multi';
+  kind: 'text' | 'chip' | 'chip-multi' | 'invites';
   label: string;
   hint?: string;
   placeholder?: string;
   options?: string[];
 };
+
+export type PendingInvite = { name: string; contact: string };
 
 const OUTRO = 'Outro';
 
@@ -193,12 +197,22 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
   },
 ];
 
+const BOOKER_INVITES_STEP: WizardStep = {
+  formKey: 'pendingInvites',
+  kind: 'invites',
+  label: 'Convidar artistas',
+  hint: 'Adicione quem já trabalha com você.',
+};
+
 function getBookerSteps(answers: Record<string, string>): WizardStep[] {
   const steps = [BOOKER_NAME_STEP, BOOKER_PERFIL_STEP];
   if ((answers.perfil ?? '').includes('Agência pequena')) {
     steps.push(BOOKER_ROSTER_STEP);
   }
   steps.push(...BOOKER_REMAINING_STEPS);
+  if (answers.jaRepresenta === 'Sim') {
+    steps.push(BOOKER_INVITES_STEP);
+  }
   return steps;
 }
 
@@ -230,6 +244,9 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
     Record<string, string[]>
   >({});
   const [otherText, setOtherText] = useState<Record<string, string>>({});
+  const [inviteRows, setInviteRows] = useState<PendingInvite[]>([
+    { name: '', contact: '' },
+  ]);
 
   const questionSteps = getQuestionSteps(role, answers);
   const onAccountStep = stepIndex >= questionSteps.length;
@@ -269,9 +286,32 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
       .join(', ');
   }
 
+  function updateInviteRow(index: number, field: keyof PendingInvite, value: string) {
+    setInviteRows((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
+  }
+
+  function addInviteRow() {
+    setInviteRows((prev) => [...prev, { name: '', contact: '' }]);
+  }
+
+  function removeInviteRow(index: number) {
+    setInviteRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function goNext() {
     if (currentStep?.kind === 'chip-multi') {
       setAnswer(currentStep.formKey, computeMultiValue(currentStep.formKey));
+    }
+    if (currentStep?.kind === 'invites') {
+      const filled = inviteRows.filter(
+        (row) => row.name.trim() && row.contact.trim()
+      );
+      setAnswer(
+        currentStep.formKey,
+        filled.length > 0 ? JSON.stringify(filled) : ''
+      );
     }
     setStepIndex((i) => Math.min(i + 1, questionSteps.length));
   }
@@ -288,10 +328,12 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
     ? (otherText[currentStep.formKey] ?? '')
     : '';
   const canContinue =
-    currentStep?.kind === 'chip-multi'
-      ? currentMultiSelected.length > 0 &&
-        (!currentMultiSelected.includes(OUTRO) || currentOtherText.trim().length > 0)
-      : currentValue.trim().length > 0;
+    currentStep?.kind === 'invites'
+      ? true
+      : currentStep?.kind === 'chip-multi'
+        ? currentMultiSelected.length > 0 &&
+          (!currentMultiSelected.includes(OUTRO) || currentOtherText.trim().length > 0)
+        : currentValue.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -405,6 +447,51 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
               </div>
             )}
 
+            {currentStep.kind === 'invites' && (
+              <div className="flex flex-col gap-3">
+                {inviteRows.map((row, index) => (
+                  <div key={index} className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={row.name}
+                      onChange={(e) =>
+                        updateInviteRow(index, 'name', e.target.value)
+                      }
+                      placeholder="Nome do artista"
+                      className={`${fieldInputClass} sm:flex-1`}
+                    />
+                    <input
+                      value={row.contact}
+                      onChange={(e) =>
+                        updateInviteRow(index, 'contact', e.target.value)
+                      }
+                      placeholder="WhatsApp ou e-mail"
+                      className={`${fieldInputClass} sm:flex-1`}
+                    />
+                    {inviteRows.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeInviteRow(index)}
+                        aria-label="Remover"
+                        className="self-start text-sm text-[var(--ink)]/40 hover:text-[var(--ink)] sm:self-center"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addInviteRow}
+                  className="self-start text-sm font-medium text-[var(--ink)] underline underline-offset-2"
+                >
+                  + Adicionar outro
+                </button>
+                <p className="text-xs text-[var(--ink)]/45">
+                  Pode deixar em branco e convidar depois, a qualquer momento.
+                </p>
+              </div>
+            )}
+
             <div className="mt-2 flex items-center justify-between">
               {stepIndex > 0 ? (
                 <button
@@ -423,7 +510,9 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
                 disabled={!canContinue}
                 className={primaryButtonClass}
               >
-                Continuar
+                {currentStep.kind === 'invites'
+                  ? 'Enviar convites'
+                  : 'Continuar'}
               </button>
             </div>
           </div>
