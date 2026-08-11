@@ -203,8 +203,8 @@ export async function getAttentionItems(
       .gt('created_at', bookerProfile?.opportunities_seen_at ?? '1970-01-01');
     if (newOppsCount && newOppsCount > 0) {
       items.push({
-        text: `${newOppsCount} ${newOppsCount === 1 ? 'oportunidade nova combina' : 'oportunidades novas combinam'} com o seu nicho, ainda não vistas`,
-        href: '/dashboard/oportunidades',
+        text: `${newOppsCount} ${newOppsCount === 1 ? 'trabalho novo combina' : 'trabalhos novos combinam'} com o seu nicho, ainda não vistos`,
+        href: '/dashboard/trabalhos',
       });
     }
 
@@ -290,6 +290,32 @@ export async function getRepresentedArtists(
     .returns<Pick<Profile, 'id' | 'full_name'>[]>();
 
   return (artists ?? []).map((a) => ({ id: a.id, full_name: a.full_name }));
+}
+
+export type RepresentingBooker = { id: string; full_name: string };
+
+// Bookers que já confirmaram representar esse artista (representations),
+// pro bloco "Quem trabalha comigo".
+export async function getRepresentingBookers(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<RepresentingBooker[]> {
+  const { data: reps } = await supabase
+    .from('representations')
+    .select('booker_profile_id')
+    .eq('artist_profile_id', userId)
+    .returns<{ booker_profile_id: string }[]>();
+
+  const bookerIds = (reps ?? []).map((r) => r.booker_profile_id);
+  if (bookerIds.length === 0) return [];
+
+  const { data: bookers } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', bookerIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  return (bookers ?? []).map((b) => ({ id: b.id, full_name: b.full_name }));
 }
 
 export type OpportunityWithArtist = Opportunity & { artistName: string };

@@ -143,7 +143,7 @@ export async function dismissOpportunityAction(formData: FormData) {
     booker_profile_id: user.id,
   });
 
-  revalidatePath('/dashboard/oportunidades');
+  revalidatePath('/dashboard/trabalhos');
 }
 
 // Booker demonstra interesse numa oportunidade do mural. Fica pendente até

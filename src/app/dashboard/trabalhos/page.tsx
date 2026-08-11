@@ -1,22 +1,41 @@
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 
 import { formatCentsAsBRL, formatPercent } from '@/lib/format';
 
 import { claimOpportunityAction, dismissOpportunityAction } from '../actions';
+import { BookingsList } from '../bookings-list';
 import { CommissionField } from '../commission-field';
-import { getOpenOpportunitiesForBooker } from '../data';
+import { getOpenOpportunitiesForBooker, getUserBookings } from '../data';
 import { getSessionProfile } from '../session';
-import { avatarClass, cardClass, eyebrowClass, ghostButtonClass, initialsFromName, primaryButtonClass } from '../ui';
+import {
+  avatarClass,
+  cardClass,
+  eyebrowClass,
+  ghostButtonClass,
+  initialsFromName,
+  primaryButtonClass,
+} from '../ui';
 
 export const metadata: Metadata = {
-  title: 'Oportunidades | Doopla',
+  title: 'Trabalhos | Doopla',
 };
 
-export default async function OportunidadesPage() {
+export default async function TrabalhosPage() {
   const { supabase, user, profile } = await getSessionProfile();
+
   if (profile.role !== 'booker') {
-    redirect('/dashboard');
+    const bookings = await getUserBookings(user.id, profile.role, supabase);
+    return (
+      <main className="flex flex-col gap-8">
+        <header>
+          <p className={eyebrowClass}>Seu trabalho</p>
+          <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
+            Trabalhos
+          </h1>
+        </header>
+        <BookingsList bookings={bookings} role={profile.role} />
+      </main>
+    );
   }
 
   const opportunities = await getOpenOpportunitiesForBooker(user.id, supabase);
@@ -29,15 +48,15 @@ export default async function OportunidadesPage() {
   return (
     <main className="flex flex-col gap-8">
       <header>
-        <p className={eyebrowClass}>Novos trabalhos</p>
+        <p className={eyebrowClass}>Novos trabalhos na Doopla</p>
         <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
-          Oportunidades
+          Trabalhos
         </h1>
       </header>
 
       {opportunities.length === 0 ? (
         <p className={`${cardClass} text-sm text-[var(--ink)]/60`}>
-          Nenhuma oportunidade aberta agora. Volta aqui daqui a pouco.
+          Nenhum trabalho novo no momento. Volta aqui daqui a pouco.
         </p>
       ) : (
         <ul className="flex flex-col gap-4">

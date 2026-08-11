@@ -5,7 +5,6 @@ import { getUserBookings } from '../data';
 import { ArtistMoneyStats } from '../money-stats';
 import { getSessionProfile } from '../session';
 import { eyebrowClass } from '../ui';
-import { BookingsList } from '../bookings-list';
 
 export const metadata: Metadata = {
   title: 'Dinheiro | Doopla',
@@ -27,13 +26,6 @@ export default async function DinheiroPage() {
       </header>
 
       <ArtistMoneyStats bookings={bookings} />
-
-      <section>
-        <p className={eyebrowClass}>Seus bookings</p>
-        <div className="mt-4">
-          <BookingsList bookings={bookings} role={profile.role} />
-        </div>
-      </section>
     </main>
   );
 }
