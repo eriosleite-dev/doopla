@@ -13,6 +13,7 @@ export type Profile = {
   city: string | null;
   state: string | null;
   avatar_url: string | null;
+  is_admin: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -48,6 +49,7 @@ export type BookerProfile = {
   ja_representa: string | null;
   roster: string | null;
   opportunities_seen_at: string;
+  representation_request_limit: number;
   created_at: string;
   updated_at: string;
 };
@@ -114,10 +116,38 @@ export type Representation = {
   artist_profile_id: string;
   booker_profile_id: string;
   created_via_invite_id: string | null;
+  created_via_representation_request_id: string | null;
   created_at: string;
 };
 
-export type OpportunityStatus = 'aberta' | 'preenchida' | 'cancelada';
+// Booker pede pra representar um artista novo (ainda não trabalham
+// juntos) — distinto de `invites` (relação que já existe fora da doopla)
+// e de `opportunity_invitations` (convite pontual pra 1 oportunidade).
+export type RepresentationRequestStatus = 'pendente' | 'aceita' | 'recusada' | 'expirada';
+
+export type RepresentationRequest = {
+  id: string;
+  booker_profile_id: string;
+  artist_profile_id: string;
+  message: string | null;
+  status: RepresentationRequestStatus;
+  expires_at: string;
+  responded_at: string | null;
+  created_at: string;
+};
+
+// Jornada da publicação até a escolha do booker — nunca o andamento do
+// trabalho depois disso (isso é BookingStatus). 'rascunho' é reservado
+// pra um fluxo de salvar rascunho ainda não construído.
+export type OpportunityStatus =
+  | 'rascunho'
+  | 'aberta'
+  | 'em_distribuicao'
+  | 'interesse_recebido'
+  | 'booker_selecionado'
+  | 'cancelada';
+
+export type OpportunityDistributionMode = 'meus_bookers' | 'novos_bookers' | 'ambos';
 
 export type Opportunity = {
   id: string;
@@ -126,6 +156,18 @@ export type Opportunity = {
   cache_amount_cents: number | null;
   commission_percent: number;
   status: OpportunityStatus;
+  distribution_mode: OpportunityDistributionMode;
+  work_type: string | null;
+  category: string | null;
+  location: string | null;
+  event_date: string | null;
+  cache_min_cents: number | null;
+  cache_max_cents: number | null;
+  selected_booker_id: string | null;
+  selected_at: string | null;
+  ai_tags_status: 'pendente' | 'concluido' | 'falhou';
+  ai_tags_content_hash: string | null;
+  ai_tags_processed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -133,6 +175,65 @@ export type Opportunity = {
 export type OpportunityDismissal = {
   opportunity_id: string;
   booker_profile_id: string;
+  created_at: string;
+};
+
+// "Convidar para esta oportunidade" — aceitar é só participação nessa
+// oportunidade, nunca cria representação permanente.
+export type OpportunityInvitationStatus = 'pendente' | 'aceita' | 'recusada' | 'encerrada';
+
+export type OpportunityInvitation = {
+  id: string;
+  opportunity_id: string;
+  booker_profile_id: string;
+  status: OpportunityInvitationStatus;
+  created_at: string;
+  responded_at: string | null;
+};
+
+// "Tenho interesse" no modo aberto — não reserva a oportunidade nem
+// bloqueia convite direto.
+export type OpportunityInterestStatus = 'pendente' | 'selecionado' | 'encerrado';
+
+export type OpportunityInterest = {
+  id: string;
+  opportunity_id: string;
+  booker_profile_id: string;
+  status: OpportunityInterestStatus;
+  created_at: string;
+};
+
+// Histórico de eventos pro Matching V2 (quem recebeu, abriu, se
+// interessou, foi escolhido) — sem uso na interface ainda.
+export type OpportunityEvent = {
+  id: string;
+  opportunity_id: string;
+  booker_profile_id: string | null;
+  event_type: string;
+  source: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type OpportunityTagSource = 'explicit' | 'ai';
+
+export type OpportunityTag = {
+  id: string;
+  opportunity_id: string;
+  tag: string;
+  source: OpportunityTagSource;
+  created_at: string;
+};
+
+// Log de uso de IA por usuário/oportunidade, pra medir custo desde o beta.
+export type AiUsageEvent = {
+  id: string;
+  profile_id: string | null;
+  opportunity_id: string | null;
+  feature: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_cents_estimate: number | null;
   created_at: string;
 };
 
@@ -212,8 +313,58 @@ export type Database = {
         Update: Partial<OpportunityDismissal>;
         Relationships: [];
       };
+      representation_requests: {
+        Row: RepresentationRequest;
+        Insert: Partial<RepresentationRequest> &
+          Pick<RepresentationRequest, 'booker_profile_id' | 'artist_profile_id'>;
+        Update: Partial<RepresentationRequest>;
+        Relationships: [];
+      };
+      opportunity_invitations: {
+        Row: OpportunityInvitation;
+        Insert: Partial<OpportunityInvitation> &
+          Pick<OpportunityInvitation, 'opportunity_id' | 'booker_profile_id'>;
+        Update: Partial<OpportunityInvitation>;
+        Relationships: [];
+      };
+      opportunity_interests: {
+        Row: OpportunityInterest;
+        Insert: Partial<OpportunityInterest> &
+          Pick<OpportunityInterest, 'opportunity_id' | 'booker_profile_id'>;
+        Update: Partial<OpportunityInterest>;
+        Relationships: [];
+      };
+      opportunity_events: {
+        Row: OpportunityEvent;
+        Insert: Partial<OpportunityEvent> &
+          Pick<OpportunityEvent, 'opportunity_id' | 'event_type'>;
+        Update: Partial<OpportunityEvent>;
+        Relationships: [];
+      };
+      opportunity_tags: {
+        Row: OpportunityTag;
+        Insert: Partial<OpportunityTag> &
+          Pick<OpportunityTag, 'opportunity_id' | 'tag' | 'source'>;
+        Update: Partial<OpportunityTag>;
+        Relationships: [];
+      };
+      ai_usage_events: {
+        Row: AiUsageEvent;
+        Insert: Partial<AiUsageEvent> & Pick<AiUsageEvent, 'feature'>;
+        Update: Partial<AiUsageEvent>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      select_booker_for_opportunity: {
+        Args: { p_opportunity_id: string; p_booker_profile_id: string };
+        Returns: Opportunity;
+      };
+      expire_stale_representation_requests: {
+        Args: Record<string, never>;
+        Returns: void;
+      };
+    };
   };
 };
