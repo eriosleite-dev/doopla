@@ -1,6 +1,12 @@
 import type { createClient } from '@/lib/supabase/server';
 import { formatRelativeDate } from '@/lib/format';
-import type { Booking, BookingStatus, Invite, Profile } from '@/lib/supabase/types';
+import type {
+  Booking,
+  BookingStatus,
+  Invite,
+  Opportunity,
+  Profile,
+} from '@/lib/supabase/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -150,6 +156,30 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
   };
 }
 
+const IN_MOVEMENT_STATUSES: BookingStatus[] = [
+  'proposta_enviada',
+  'aceita',
+  'aguardando_pagamento',
+];
+
+// Número único da aba Hoje: quanto está em jogo agora em bookings que
+// ainda não fecharam (nem concluídos, nem recusados).
+export function computeInMovementCents(
+  bookings: Booking[],
+  role: Profile['role']
+): number {
+  const inMovement = bookings.filter(
+    (b) => IN_MOVEMENT_STATUSES.includes(b.status) && b.cache_amount_cents != null
+  );
+  if (role === 'booker') {
+    return inMovement.reduce((sum, b) => sum + commissionCents(b), 0);
+  }
+  return inMovement.reduce(
+    (sum, b) => sum + (b.cache_amount_cents! - commissionCents(b)),
+    0
+  );
+}
+
 export type AttentionItem = { text: string; href: string };
 
 export async function getAttentionItems(
@@ -173,8 +203,8 @@ export async function getAttentionItems(
       .gt('created_at', bookerProfile?.opportunities_seen_at ?? '1970-01-01');
     if (newOppsCount && newOppsCount > 0) {
       items.push({
-        text: `${newOppsCount} ${newOppsCount === 1 ? 'oportunidade nova combina' : 'oportunidades novas combinam'} com o seu nicho, ainda não vistas`,
-        href: '/dashboard/oportunidades',
+        text: `${newOppsCount} ${newOppsCount === 1 ? 'trabalho novo combina' : 'trabalhos novos combinam'} com o seu nicho, ainda não vistos`,
+        href: '/dashboard/trabalhos',
       });
     }
 
@@ -233,6 +263,108 @@ export async function getPendingInvites(
   return invites.map((invite) => ({
     ...invite,
     inviterName: nameById.get(invite.inviter_profile_id) ?? 'Alguém',
+  }));
+}
+
+export type RepresentedArtist = { id: string; full_name: string };
+
+// Artistas confirmados desse booker (representations), pro seletor da
+// tela de "Nova proposta".
+export async function getRepresentedArtists(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<RepresentedArtist[]> {
+  const { data: reps } = await supabase
+    .from('representations')
+    .select('artist_profile_id')
+    .eq('booker_profile_id', userId)
+    .returns<{ artist_profile_id: string }[]>();
+
+  const artistIds = (reps ?? []).map((r) => r.artist_profile_id);
+  if (artistIds.length === 0) return [];
+
+  const { data: artists } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', artistIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  return (artists ?? []).map((a) => ({ id: a.id, full_name: a.full_name }));
+}
+
+export type RepresentingBooker = { id: string; full_name: string };
+
+// Bookers que já confirmaram representar esse artista (representations),
+// pro bloco "Quem trabalha comigo".
+export async function getRepresentingBookers(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<RepresentingBooker[]> {
+  const { data: reps } = await supabase
+    .from('representations')
+    .select('booker_profile_id')
+    .eq('artist_profile_id', userId)
+    .returns<{ booker_profile_id: string }[]>();
+
+  const bookerIds = (reps ?? []).map((r) => r.booker_profile_id);
+  if (bookerIds.length === 0) return [];
+
+  const { data: bookers } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', bookerIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  return (bookers ?? []).map((b) => ({ id: b.id, full_name: b.full_name }));
+}
+
+export type OpportunityWithArtist = Opportunity & { artistName: string };
+
+// Mural do booker: oportunidades abertas, sem as que ele já dispensou ou
+// já demonstrou interesse (tem um booking apontando pra elas).
+export async function getOpenOpportunitiesForBooker(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<OpportunityWithArtist[]> {
+  const { data: opportunities } = await supabase
+    .from('opportunities')
+    .select('*')
+    .eq('status', 'aberta')
+    .order('created_at', { ascending: false })
+    .returns<Opportunity[]>();
+  if (!opportunities || opportunities.length === 0) return [];
+
+  const { data: dismissals } = await supabase
+    .from('opportunity_dismissals')
+    .select('opportunity_id')
+    .eq('booker_profile_id', userId)
+    .returns<{ opportunity_id: string }[]>();
+  const dismissedIds = new Set((dismissals ?? []).map((d) => d.opportunity_id));
+
+  const { data: claimed } = await supabase
+    .from('bookings')
+    .select('opportunity_id')
+    .eq('booker_profile_id', userId)
+    .not('opportunity_id', 'is', null)
+    .returns<{ opportunity_id: string | null }[]>();
+  const claimedIds = new Set((claimed ?? []).map((c) => c.opportunity_id));
+
+  const visible = opportunities.filter(
+    (o) => !dismissedIds.has(o.id) && !claimedIds.has(o.id)
+  );
+  if (visible.length === 0) return [];
+
+  const artistIds = [...new Set(visible.map((o) => o.artist_profile_id))];
+  const { data: artists } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', artistIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const nameById = new Map((artists ?? []).map((p) => [p.id, p.full_name]));
+
+  return visible.map((o) => ({
+    ...o,
+    artistName: nameById.get(o.artist_profile_id) ?? 'Alguém',
   }));
 }
 
