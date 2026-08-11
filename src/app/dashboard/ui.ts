@@ -15,6 +15,14 @@ export const statSubUpClass = 'mt-2 text-[12.5px] text-[var(--accent-ink)]';
 
 export const cardClass = 'rounded-[18px] bg-white p-6';
 
+export const fieldLabelClass = 'text-sm font-medium text-[var(--ink)]';
+export const fieldInputClass =
+  'rounded-lg border border-[var(--line-light)] bg-[var(--paper)] px-3 py-2 text-[var(--ink)] outline-none placeholder:text-[var(--ink)]/40 focus:border-[var(--ink)] focus:outline focus:outline-2 focus:outline-[var(--ink)] focus:outline-offset-1';
+export const fieldTextareaClass = `${fieldInputClass} min-h-24 resize-y`;
+
+export const textLinkClass =
+  'font-medium text-[var(--ink)] underline underline-offset-2 hover:text-[var(--accent-ink)]';
+
 export const primaryButtonClass =
   'inline-flex items-center justify-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3 text-xs font-medium uppercase tracking-[.06em] text-[var(--paper)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
 export const accentButtonClass =
@@ -48,6 +56,15 @@ export const STATUS_LABELS: Record<string, string> = {
   recusada: 'Recusada',
   aguardando_pagamento: 'Aguardando pagamento',
   concluida: 'Concluída',
+};
+
+export const EVENT_LABELS: Record<string, string> = {
+  proposta_enviada: 'Proposta enviada',
+  contraproposta: 'Contraproposta',
+  aceita: 'Aceita',
+  recusada: 'Recusada',
+  pagamento_confirmado: 'Trabalho realizado, aguardando pagamento',
+  concluida: 'Pagamento confirmado',
 };
 
 export const avatarClass =
