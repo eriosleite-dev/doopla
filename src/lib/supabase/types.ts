@@ -21,6 +21,7 @@ export type ArtistProfile = {
   profile_id: string;
   stage_name: string | null;
   bio: string | null;
+  category: string | null;
   genres: string[];
   base_fee_cents: number | null;
   // campos de onboarding (migrados do fluxo original do site)
@@ -101,7 +102,7 @@ export type Invite = {
   id: string;
   inviter_profile_id: string;
   invitee_name: string;
-  invitee_contact: string;
+  invitee_contact: string | null;
   invitee_profile_id: string | null;
   status: InviteStatus;
   token: string;
@@ -186,8 +187,7 @@ export type Database = {
       };
       invites: {
         Row: Invite;
-        Insert: Partial<Invite> &
-          Pick<Invite, 'inviter_profile_id' | 'invitee_name' | 'invitee_contact'>;
+        Insert: Partial<Invite> & Pick<Invite, 'inviter_profile_id' | 'invitee_name'>;
         Update: Partial<Invite>;
         Relationships: [];
       };

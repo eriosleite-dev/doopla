@@ -55,6 +55,9 @@ type ArtistDetails = {
   local: string | null;
   mercados: string | null;
   tem_booker: string | null;
+  stage_name: string | null;
+  category: string | null;
+  bio: string | null;
 };
 
 type BookerDetails = {
@@ -82,7 +85,9 @@ async function getRoleDetails(
   if (role === 'artista') {
     const { data } = await supabase
       .from('artist_profiles')
-      .select('intencao, pontual_detalhe, funcao, local, mercados, tem_booker')
+      .select(
+        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio'
+      )
       .eq('profile_id', userId)
       .single<ArtistDetails>();
     return data;
@@ -116,7 +121,7 @@ function RoleDetails({
 
   if (role === 'artista') {
     const artist = details as ArtistDetails;
-    const isPontual = artist.intencao === 'Ajuda pontual num caso específico';
+    const isPontual = artist.intencao === 'Preciso de ajuda pontual';
     return (
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-[var(--ink)]/55">O que busca</dt>
@@ -128,6 +133,12 @@ function RoleDetails({
           </>
         ) : (
           <>
+            <dt className="text-[var(--ink)]/55">Nome artístico</dt>
+            <dd>{artist.stage_name || '—'}</dd>
+            <dt className="text-[var(--ink)]/55">Categoria</dt>
+            <dd>{artist.category || '—'}</dd>
+            <dt className="text-[var(--ink)]/55">Bio</dt>
+            <dd>{artist.bio || '—'}</dd>
             <dt className="text-[var(--ink)]/55">O que faz</dt>
             <dd>{artist.funcao || '—'}</dd>
             <dt className="text-[var(--ink)]/55">Onde atua</dt>

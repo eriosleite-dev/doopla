@@ -35,13 +35,13 @@ const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
 // As mesmas perguntas do fluxo original do site (doopla-site.html),
 // por tipo de conta — só o backend por trás mudou.
 // 'chip-multi': pode marcar mais de uma opção, sempre com "Outro" + texto livre.
-// 'invites': lista repetível de nome + contato (convite pra quem já
-// trabalha com o booker fora da doopla).
+// 'invites': lista de nomes de artistas que o booker já trabalha fora da
+// doopla (Enter vira chip; contato fica pro envio de verdade, Bloco 3).
 // 'choice-cards': seleção única entre poucas opções que precisam de
 // uma descrição cada (não cabe num chip simples).
 type WizardStep = {
   formKey: string;
-  kind: 'text' | 'chip' | 'chip-multi' | 'invites' | 'choice-cards';
+  kind: 'text' | 'textarea' | 'chip' | 'chip-multi' | 'invites' | 'choice-cards' | 'plan';
   label: string;
   hint?: string;
   placeholder?: string;
@@ -49,15 +49,29 @@ type WizardStep = {
   choices?: { value: string; label: string; description: string }[];
 };
 
-export type PendingInvite = { name: string; contact: string };
+export type ArtistChip = { name: string; sendNow: boolean };
 
 const OUTRO = 'Outro';
 
+const INTENCAO_BOOKER = 'Quero encontrar um booker';
+const INTENCAO_PONTUAL = 'Preciso de ajuda pontual';
+
 const ARTISTA_INTENCAO_STEP: WizardStep = {
   formKey: 'intencao',
-  kind: 'chip',
+  kind: 'choice-cards',
   label: 'O que você está buscando?',
-  options: ['Representação de carreira', 'Ajuda pontual num caso específico'],
+  choices: [
+    {
+      value: INTENCAO_BOOKER,
+      label: INTENCAO_BOOKER,
+      description: 'Alguém pra me representar e cuidar dos meus trabalhos.',
+    },
+    {
+      value: INTENCAO_PONTUAL,
+      label: INTENCAO_PONTUAL,
+      description: 'Ex: cobrar um cliente, fechar um contrato, negociar um cachê.',
+    },
+  ],
 };
 
 const ARTISTA_PONTUAL_STEPS: WizardStep[] = [
@@ -82,6 +96,28 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     kind: 'text',
     label: 'Como você se chama ou qual é seu nome profissional?',
     placeholder: 'Ex: Bea Duarte',
+  },
+  {
+    formKey: 'categoria',
+    kind: 'chip',
+    label: 'Qual sua categoria principal?',
+    options: [
+      'DJ',
+      'Músico / Banda',
+      'Creator',
+      'Modelo',
+      'Ator',
+      'Fotógrafo',
+      'Palestrante',
+      OUTRO,
+    ],
+  },
+  {
+    formKey: 'bio',
+    kind: 'textarea',
+    label: 'Conte o que você faz, seu estilo e onde costuma trabalhar',
+    hint: 'Isso vai aparecer no seu perfil pra bookers e clientes.',
+    placeholder: 'Ex: DJ house/tech house, toco em clubs e festivais em SP há 5 anos',
   },
   {
     formKey: 'funcao',
@@ -227,6 +263,37 @@ const BOOKER_INVITES_STEP: WizardStep = {
   hint: 'Adicione quem já trabalha com você.',
 };
 
+const ARTISTA_PLANO_STEP: WizardStep = {
+  formKey: 'planoVisto',
+  kind: 'plan',
+  label: 'Seu plano na doopla',
+};
+
+// Só visual por enquanto — sem cobrança de verdade (depende do Bloco 2,
+// integração com o Pagar.me, que ainda não começou).
+function PlanStep() {
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper-dim)] p-6">
+      <div className="flex items-center justify-between">
+        <span className="font-doopla-display text-lg font-semibold">doopla</span>
+        <span className="font-doopla-mono rounded-full bg-[var(--accent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--ink)]">
+          Preço Fundador
+        </span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm text-[var(--ink)]/40 line-through">R$39,90/mês</span>
+        <span className="font-doopla-display text-3xl font-semibold text-[var(--accent-ink)]">
+          R$19,90/mês
+        </span>
+      </div>
+      <p className="text-sm text-[var(--ink)]/70">
+        Entre agora e mantenha seu Preço Fundador de R$19,90/mês enquanto sua
+        assinatura permanecer ativa.
+      </p>
+    </div>
+  );
+}
+
 function getBookerSteps(answers: Record<string, string>): WizardStep[] {
   const steps = [BOOKER_NAME_STEP, BOOKER_PERFIL_STEP];
   if ((answers.perfil ?? '').includes('Agência pequena')) {
@@ -246,10 +313,13 @@ function getQuestionSteps(
 ): WizardStep[] {
   if (role === 'artista') {
     const steps = [ARTISTA_INTENCAO_STEP];
-    if (answers.intencao === 'Ajuda pontual num caso específico') {
+    if (answers.intencao === INTENCAO_PONTUAL) {
       steps.push(...ARTISTA_PONTUAL_STEPS);
-    } else if (answers.intencao === 'Representação de carreira') {
+    } else if (answers.intencao === INTENCAO_BOOKER) {
       steps.push(...ARTISTA_CARREIRA_STEPS);
+    }
+    if (answers.intencao) {
+      steps.push(ARTISTA_PLANO_STEP);
     }
     return steps;
   }
@@ -268,9 +338,8 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
     Record<string, string[]>
   >({});
   const [otherText, setOtherText] = useState<Record<string, string>>({});
-  const [inviteRows, setInviteRows] = useState<PendingInvite[]>([
-    { name: '', contact: '' },
-  ]);
+  const [artistChips, setArtistChips] = useState<ArtistChip[]>([]);
+  const [chipInput, setChipInput] = useState('');
 
   const questionSteps = getQuestionSteps(role, answers);
   const onAccountStep = stepIndex >= questionSteps.length;
@@ -282,6 +351,8 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
     setAnswers({});
     setMultiSelections({});
     setOtherText({});
+    setArtistChips([]);
+    setChipInput('');
     setStepIndex(0);
   }
 
@@ -310,18 +381,21 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
       .join(', ');
   }
 
-  function updateInviteRow(index: number, field: keyof PendingInvite, value: string) {
-    setInviteRows((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+  function addArtistChip() {
+    const name = chipInput.trim();
+    if (!name) return;
+    setArtistChips((prev) => [...prev, { name, sendNow: false }]);
+    setChipInput('');
+  }
+
+  function setChipSendNow(index: number, sendNow: boolean) {
+    setArtistChips((prev) =>
+      prev.map((chip, i) => (i === index ? { ...chip, sendNow } : chip))
     );
   }
 
-  function addInviteRow() {
-    setInviteRows((prev) => [...prev, { name: '', contact: '' }]);
-  }
-
-  function removeInviteRow(index: number) {
-    setInviteRows((prev) => prev.filter((_, i) => i !== index));
+  function removeArtistChip(index: number) {
+    setArtistChips((prev) => prev.filter((_, i) => i !== index));
   }
 
   function goNext() {
@@ -329,12 +403,11 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
       setAnswer(currentStep.formKey, computeMultiValue(currentStep.formKey));
     }
     if (currentStep?.kind === 'invites') {
-      const filled = inviteRows.filter(
-        (row) => row.name.trim() && row.contact.trim()
-      );
       setAnswer(
         currentStep.formKey,
-        filled.length > 0 ? JSON.stringify(filled) : ''
+        artistChips.length > 0
+          ? JSON.stringify(artistChips.map((chip) => ({ name: chip.name })))
+          : ''
       );
     }
     setStepIndex((i) => Math.min(i + 1, questionSteps.length));
@@ -352,7 +425,7 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
     ? (otherText[currentStep.formKey] ?? '')
     : '';
   const canContinue =
-    currentStep?.kind === 'invites'
+    currentStep?.kind === 'invites' || currentStep?.kind === 'plan'
       ? true
       : currentStep?.kind === 'chip-multi'
         ? currentMultiSelected.length > 0 &&
@@ -405,11 +478,15 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
             <span className={eyebrowClass}>
               Pergunta {stepIndex + 1} de {totalSteps}
             </span>
-            <label className={fieldLabelClass}>{currentStep.label}</label>
-            {currentStep.hint && (
-              <p className="text-xs text-[var(--ink)]/60">
-                {currentStep.hint}
-              </p>
+            {currentStep.kind !== 'plan' && (
+              <>
+                <label className={fieldLabelClass}>{currentStep.label}</label>
+                {currentStep.hint && (
+                  <p className="text-xs text-[var(--ink)]/60">
+                    {currentStep.hint}
+                  </p>
+                )}
+              </>
             )}
 
             {currentStep.kind === 'text' && (
@@ -421,6 +498,19 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
                 className={fieldInputClass}
               />
             )}
+
+            {currentStep.kind === 'textarea' && (
+              <textarea
+                autoFocus
+                rows={4}
+                value={currentValue}
+                onChange={(e) => setAnswer(currentStep.formKey, e.target.value)}
+                placeholder={currentStep.placeholder}
+                className={`${fieldInputClass} resize-none`}
+              />
+            )}
+
+            {currentStep.kind === 'plan' && <PlanStep />}
 
             {currentStep.kind === 'chip' && (
               <div className="flex flex-wrap gap-2">
@@ -496,43 +586,74 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
             )}
 
             {currentStep.kind === 'invites' && (
-              <div className="flex flex-col gap-3">
-                {inviteRows.map((row, index) => (
-                  <div key={index} className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      value={row.name}
-                      onChange={(e) =>
-                        updateInviteRow(index, 'name', e.target.value)
+              <div className="flex flex-col gap-4">
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    value={chipInput}
+                    onChange={(e) => setChipInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addArtistChip();
                       }
-                      placeholder="Nome do artista"
-                      className={`${fieldInputClass} sm:flex-1`}
-                    />
-                    <input
-                      value={row.contact}
-                      onChange={(e) =>
-                        updateInviteRow(index, 'contact', e.target.value)
-                      }
-                      placeholder="WhatsApp ou e-mail"
-                      className={`${fieldInputClass} sm:flex-1`}
-                    />
-                    {inviteRows.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeInviteRow(index)}
-                        aria-label="Remover"
-                        className="self-start text-sm text-[var(--ink)]/40 hover:text-[var(--ink)] sm:self-center"
+                    }}
+                    placeholder="Nome do artista, aperte Enter"
+                    className={`${fieldInputClass} flex-1`}
+                  />
+                </div>
+
+                {artistChips.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-medium text-[var(--ink)]/60">
+                      Artistas que você já trabalha
+                    </p>
+                    {artistChips.map((chip, index) => (
+                      <div
+                        key={index}
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--line-light)] bg-[var(--paper-dim)] px-3 py-2"
                       >
-                        ×
-                      </button>
-                    )}
+                        <span className="mr-auto text-sm font-medium text-[var(--ink)]">
+                          {chip.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setChipSendNow(index, true)}
+                          className={chipClass(chip.sendNow)}
+                        >
+                          Convidar agora
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setChipSendNow(index, false)}
+                          className={chipClass(!chip.sendNow)}
+                        >
+                          Convidar depois
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeArtistChip(index)}
+                          aria-label="Remover"
+                          className="text-sm text-[var(--ink)]/40 hover:text-[var(--ink)]"
+                        >
+                          ×
+                        </button>
+                        {chip.sendNow && (
+                          <p className="w-full text-xs text-[var(--accent-ink)]">
+                            Na fila — convite será enviado assim que o artista confirmar.
+                          </p>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+
                 <button
                   type="button"
-                  onClick={addInviteRow}
+                  onClick={addArtistChip}
                   className="self-start text-sm font-medium text-[var(--ink)] underline underline-offset-2"
                 >
-                  + Adicionar outro
+                  + Adicionar outro artista
                 </button>
                 <p className="text-xs text-[var(--ink)]/45">
                   Pode deixar em branco e convidar depois, a qualquer momento.
@@ -559,8 +680,10 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
                 className={primaryButtonClass}
               >
                 {currentStep.kind === 'invites'
-                  ? 'Enviar convites'
-                  : 'Continuar'}
+                  ? 'Próximo'
+                  : currentStep.kind === 'plan'
+                    ? 'Começar teste grátis'
+                    : 'Continuar'}
               </button>
             </div>
           </div>

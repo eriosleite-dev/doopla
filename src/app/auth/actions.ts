@@ -55,6 +55,8 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
   artista: [
     'intencao',
     'pontualDetalhe',
+    'categoria',
+    'bio',
     'funcao',
     'local',
     'mercados',
