@@ -41,6 +41,7 @@ export type BookerProfile = {
   venue_name: string | null;
   position: string | null;
   // campos de onboarding
+  modo_trabalho: string | null;
   perfil: string | null;
   foco: string | null;
   mercados: string | null;

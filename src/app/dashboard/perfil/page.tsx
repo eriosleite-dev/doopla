@@ -61,6 +61,7 @@ type ArtistDetails = {
 };
 
 type BookerDetails = {
+  modo_trabalho: string | null;
   perfil: string | null;
   foco: string | null;
   mercados: string | null;
@@ -95,7 +96,7 @@ async function getRoleDetails(
   if (role === 'booker') {
     const { data } = await supabase
       .from('booker_profiles')
-      .select('perfil, foco, mercados, quem, cidades, ja_representa, roster')
+      .select('modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster')
       .eq('profile_id', userId)
       .single<BookerDetails>();
     return data;
@@ -157,6 +158,8 @@ function RoleDetails({
     const booker = details as BookerDetails;
     return (
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+        <dt className="text-[var(--ink)]/55">Como quer trabalhar</dt>
+        <dd>{booker.modo_trabalho || '—'}</dd>
         <dt className="text-[var(--ink)]/55">Perfil</dt>
         <dd>{booker.perfil || '—'}</dd>
         <dt className="text-[var(--ink)]/55">Foco</dt>

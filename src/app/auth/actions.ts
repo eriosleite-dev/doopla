@@ -63,6 +63,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'temBooker',
   ],
   booker: [
+    'modoTrabalho',
     'perfil',
     'foco',
     'mercados',

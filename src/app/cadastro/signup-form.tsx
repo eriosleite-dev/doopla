@@ -23,12 +23,12 @@ const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
   {
     value: 'artista',
     label: 'Artista',
-    hint: 'Quero ter alguém pra me representar.',
+    hint: 'Quero alguém pra me representar.',
   },
   {
     value: 'booker',
-    label: 'Booker',
-    hint: 'Quero representar artistas.',
+    label: 'Booker / Assistente',
+    hint: 'Quero representar artistas ou ajudá-los na gestão dos seus trabalhos.',
   },
 ];
 
@@ -53,7 +53,7 @@ export type ArtistChip = { name: string; sendNow: boolean };
 
 const OUTRO = 'Outro';
 
-const INTENCAO_BOOKER = 'Quero encontrar um booker';
+const INTENCAO_RECORRENTE = 'Quero um booker / assistente recorrente';
 const INTENCAO_PONTUAL = 'Preciso de ajuda pontual';
 
 const ARTISTA_INTENCAO_STEP: WizardStep = {
@@ -62,14 +62,15 @@ const ARTISTA_INTENCAO_STEP: WizardStep = {
   label: 'O que você está buscando?',
   choices: [
     {
-      value: INTENCAO_BOOKER,
-      label: INTENCAO_BOOKER,
-      description: 'Alguém pra me representar e cuidar dos meus trabalhos.',
+      value: INTENCAO_RECORRENTE,
+      label: INTENCAO_RECORRENTE,
+      description:
+        'Quero alguém para me acompanhar e ajudar nos meus trabalhos de forma recorrente.',
     },
     {
       value: INTENCAO_PONTUAL,
       label: INTENCAO_PONTUAL,
-      description: 'Ex: cobrar um cliente, fechar um contrato, negociar um cachê.',
+      description: 'Ex.: cobrar um cliente, fechar um contrato, negociar um cachê.',
     },
   ],
 };
@@ -167,6 +168,29 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     ],
   },
 ];
+
+const BOOKER_MODO_STEP: WizardStep = {
+  formKey: 'modoTrabalho',
+  kind: 'choice-cards',
+  label: 'Como você quer trabalhar na Doopla?',
+  choices: [
+    {
+      value: 'Quero representar artistas de forma recorrente',
+      label: 'Quero representar artistas de forma recorrente',
+      description: 'Acompanhar artistas e cuidar dos seus trabalhos.',
+    },
+    {
+      value: 'Quero pegar trabalhos pontuais',
+      label: 'Quero pegar trabalhos pontuais',
+      description: 'Ex.: cobranças, contratos, negociação de cachê e outras demandas.',
+    },
+    {
+      value: 'Posso fazer os dois',
+      label: 'Posso fazer os dois',
+      description: 'Estou disponível tanto para acompanhar artistas quanto para trabalhos pontuais.',
+    },
+  ],
+};
 
 const BOOKER_NAME_STEP: WizardStep = {
   formKey: 'fullName',
@@ -295,7 +319,7 @@ function PlanStep() {
 }
 
 function getBookerSteps(answers: Record<string, string>): WizardStep[] {
-  const steps = [BOOKER_NAME_STEP, BOOKER_PERFIL_STEP];
+  const steps = [BOOKER_MODO_STEP, BOOKER_NAME_STEP, BOOKER_PERFIL_STEP];
   if ((answers.perfil ?? '').includes('Agência pequena')) {
     steps.push(BOOKER_ROSTER_STEP);
   }
@@ -315,7 +339,7 @@ function getQuestionSteps(
     const steps = [ARTISTA_INTENCAO_STEP];
     if (answers.intencao === INTENCAO_PONTUAL) {
       steps.push(...ARTISTA_PONTUAL_STEPS);
-    } else if (answers.intencao === INTENCAO_BOOKER) {
+    } else if (answers.intencao === INTENCAO_RECORRENTE) {
       steps.push(...ARTISTA_CARREIRA_STEPS);
     }
     if (answers.intencao) {
