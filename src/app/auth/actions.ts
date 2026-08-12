@@ -57,7 +57,6 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'pontualDetalhe',
     'categoria',
     'bio',
-    'funcao',
     'local',
     'mercados',
     'temBooker',

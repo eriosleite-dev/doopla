@@ -140,8 +140,6 @@ function RoleDetails({
             <dd>{artist.category || '—'}</dd>
             <dt className="text-[var(--ink)]/55">Bio</dt>
             <dd>{artist.bio || '—'}</dd>
-            <dt className="text-[var(--ink)]/55">O que faz</dt>
-            <dd>{artist.funcao || '—'}</dd>
             <dt className="text-[var(--ink)]/55">Onde atua</dt>
             <dd>{artist.local || '—'}</dd>
             <dt className="text-[var(--ink)]/55">Mercados</dt>

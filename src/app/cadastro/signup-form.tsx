@@ -100,8 +100,8 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
   },
   {
     formKey: 'categoria',
-    kind: 'chip',
-    label: 'Qual sua categoria principal?',
+    kind: 'chip-multi',
+    label: 'O que você faz?',
     options: [
       'DJ',
       'Músico / Banda',
@@ -119,21 +119,6 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     label: 'Conte o que você faz, seu estilo e onde costuma trabalhar',
     hint: 'Isso vai aparecer no seu perfil pra bookers e clientes.',
     placeholder: 'Ex: DJ house/tech house, toco em clubs e festivais em SP há 5 anos',
-  },
-  {
-    formKey: 'funcao',
-    kind: 'chip-multi',
-    label: 'O que você faz?',
-    options: [
-      'DJ',
-      'Músico / Banda',
-      'Creator',
-      'Modelo',
-      'Ator',
-      'Fotógrafo',
-      'Palestrante',
-      OUTRO,
-    ],
   },
   {
     formKey: 'local',
