@@ -50,6 +50,16 @@ export const STATUS_LABELS: Record<string, string> = {
   concluida: 'Concluída',
 };
 
+export const EVENT_LABELS: Record<string, string> = {
+  proposta_enviada: 'Proposta enviada',
+  contraproposta: 'Contraproposta',
+  aceita: 'Proposta aceita',
+  recusada: 'Proposta recusada',
+  aguardando_pagamento: 'Marcado como realizado',
+  pagamento_confirmado: 'Pagamento confirmado',
+  concluida: 'Booking concluído',
+};
+
 export const avatarClass =
   'flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[var(--ink)] font-doopla-display text-sm font-semibold text-[var(--accent)]';
 

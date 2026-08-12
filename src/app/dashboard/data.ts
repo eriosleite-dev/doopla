@@ -1,6 +1,13 @@
 import type { createClient } from '@/lib/supabase/server';
 import { formatRelativeDate } from '@/lib/format';
-import type { Booking, BookingStatus, Invite, Profile } from '@/lib/supabase/types';
+import type {
+  Booking,
+  BookingEvent,
+  BookingStatus,
+  Invite,
+  Opportunity,
+  Profile,
+} from '@/lib/supabase/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -49,6 +56,110 @@ export async function getUserBookings(
     .returns<Booking[]>();
 
   return attachOtherPartyNames(data ?? [], role, supabase);
+}
+
+export async function getRepresentedArtists(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<Pick<Profile, 'id' | 'full_name'>[]> {
+  const { data: reps } = await supabase
+    .from('representations')
+    .select('artist_profile_id')
+    .eq('booker_profile_id', bookerId)
+    .returns<{ artist_profile_id: string }[]>();
+
+  const artistIds = (reps ?? []).map((r) => r.artist_profile_id);
+  if (artistIds.length === 0) return [];
+
+  const { data: artists } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', artistIds)
+    .order('full_name', { ascending: true })
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+
+  return artists ?? [];
+}
+
+export type OpportunityWithArtist = Opportunity & { artistName: string };
+
+export async function getOpenOpportunities(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<OpportunityWithArtist[]> {
+  const { data: dismissals } = await supabase
+    .from('opportunity_dismissals')
+    .select('opportunity_id')
+    .eq('booker_profile_id', bookerId)
+    .returns<{ opportunity_id: string }[]>();
+  const dismissedIds = (dismissals ?? []).map((d) => d.opportunity_id);
+
+  let query = supabase
+    .from('opportunities')
+    .select('*')
+    .eq('status', 'aberta')
+    .order('created_at', { ascending: false });
+  if (dismissedIds.length > 0) {
+    query = query.not('id', 'in', `(${dismissedIds.join(',')})`);
+  }
+  const { data: opportunities } = await query.returns<Opportunity[]>();
+  if (!opportunities || opportunities.length === 0) return [];
+
+  const artistIds = [...new Set(opportunities.map((o) => o.artist_profile_id))];
+  const { data: artists } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', artistIds)
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const nameById = new Map((artists ?? []).map((p) => [p.id, p.full_name]));
+
+  return opportunities.map((o) => ({
+    ...o,
+    artistName: nameById.get(o.artist_profile_id) ?? 'Artista',
+  }));
+}
+
+export type BookingDetail = {
+  booking: BookingWithOtherParty;
+  events: BookingEvent[];
+  isProposer: boolean;
+};
+
+export async function getBookingDetail(
+  bookingId: string,
+  userId: string,
+  role: Profile['role'],
+  supabase: SupabaseServerClient
+): Promise<BookingDetail | null> {
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+
+  if (!booking) return null;
+  if (booking.artist_profile_id !== userId && booking.booker_profile_id !== userId) {
+    return null;
+  }
+
+  const [{ data: events }, [withName]] = await Promise.all([
+    supabase
+      .from('booking_events')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .order('created_at', { ascending: true })
+      .returns<BookingEvent[]>(),
+    attachOtherPartyNames([booking], role, supabase),
+  ]);
+
+  const proposerId =
+    booking.proposed_by === 'artista' ? booking.artist_profile_id : booking.booker_profile_id;
+
+  return {
+    booking: withName,
+    events: events ?? [],
+    isProposer: proposerId === userId,
+  };
 }
 
 function isThisMonth(iso: string): boolean {

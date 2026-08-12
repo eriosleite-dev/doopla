@@ -100,18 +100,32 @@ export default async function DashboardLayout({
               </Link>
             </>
           ) : (
-            <Link
-              href={badges.negotiationHref ?? '/dashboard'}
-              className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
-            >
-              Negociação
-              {badges.negotiationCount > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-semibold text-[var(--ink)]">
-                  {badges.negotiationCount}
-                </span>
-              )}
-            </Link>
+            <>
+              <Link
+                href={badges.negotiationHref ?? '/dashboard'}
+                className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
+              >
+                Negociação
+                {badges.negotiationCount > 0 && (
+                  <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-semibold text-[var(--ink)]">
+                    {badges.negotiationCount}
+                  </span>
+                )}
+              </Link>
+              <Link
+                href="/dashboard/publicar-trabalho"
+                className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
+              >
+                Publicar trabalho
+              </Link>
+            </>
           )}
+          <Link
+            href="/dashboard/perfil"
+            className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
+          >
+            Perfil
+          </Link>
           <form action={logoutAction}>
             <button
               type="submit"
