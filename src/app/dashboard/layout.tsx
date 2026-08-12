@@ -77,7 +77,7 @@ export default async function DashboardLayout({
             href="/dashboard"
             className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
           >
-            Painel
+            Seu painel
           </Link>
           {profile.role === 'booker' ? (
             <>

@@ -13,6 +13,30 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type BookingWithOtherParty = Booking & { otherPartyName: string };
 
+export type Checkpoint = { key: string; label: string; done: boolean };
+
+// Os 5 checkpoints do card de trabalho (Cliente/Cachê/Data/Validado/
+// Pagamento). Cliente, Cachê e Pagamento já são deriváveis do que existe;
+// Validado é setado pelo link de validação do cliente (Bloco E — por
+// enquanto sempre pendente, já que esse link ainda não existe).
+export function getBookingCheckpoints(booking: Booking): Checkpoint[] {
+  return [
+    {
+      key: 'cliente',
+      label: 'Cliente',
+      done: booking.status !== 'proposta_enviada' && booking.status !== 'recusada',
+    },
+    { key: 'cache', label: 'Cachê', done: booking.cache_amount_cents != null },
+    { key: 'data', label: 'Data', done: booking.event_date != null },
+    { key: 'validado', label: 'Validado', done: booking.validated_at != null },
+    { key: 'pagamento', label: 'Pagamento', done: booking.status === 'concluida' },
+  ];
+}
+
+export function isDooplaVerified(booking: Booking): boolean {
+  return booking.validated_at != null;
+}
+
 async function attachOtherPartyNames(
   bookings: Booking[],
   role: Profile['role'],

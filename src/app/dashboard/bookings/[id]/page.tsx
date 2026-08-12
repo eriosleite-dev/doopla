@@ -5,12 +5,14 @@ import { notFound } from 'next/navigation';
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
 
 import { markCompletedAction, markPaidAction, respondBookingAction } from '../../actions';
-import { getBookingDetail } from '../../data';
+import { getBookingCheckpoints, getBookingDetail, isDooplaVerified } from '../../data';
 import { getSessionProfile } from '../../session';
 import {
   accentButtonClass,
   avatarClass,
   cardClass,
+  cpDotClass,
+  cpLabelClass,
   eyebrowClass,
   EVENT_LABELS,
   ghostButtonClass,
@@ -18,6 +20,7 @@ import {
   primaryButtonClass,
   STATUS_LABELS,
   statusPillClasses,
+  verifyBadgeClass,
 } from '../../ui';
 import { CounterForm } from './counter-form';
 
@@ -35,6 +38,9 @@ export default async function BookingDetailPage(
   if (!detail) notFound();
 
   const { booking, events, isProposer } = detail;
+  const checkpoints = getBookingCheckpoints(booking);
+  const verified = isDooplaVerified(booking);
+  const hasActiveCheckpoints = booking.status !== 'proposta_enviada' && booking.status !== 'recusada';
 
   return (
     <main className="flex flex-col gap-8">
@@ -63,7 +69,7 @@ export default async function BookingDetailPage(
       </header>
 
       <section className={cardClass}>
-        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className={eyebrowClass}>Comissão proposta</dt>
             <dd className="font-doopla-display mt-1 text-2xl font-semibold">
@@ -79,6 +85,14 @@ export default async function BookingDetailPage(
             </dd>
           </div>
           <div>
+            <dt className={eyebrowClass}>Data do trabalho</dt>
+            <dd className="mt-1 text-2xl font-semibold">
+              {booking.event_date
+                ? new Date(`${booking.event_date}T00:00:00`).toLocaleDateString('pt-BR')
+                : 'A confirmar'}
+            </dd>
+          </div>
+          <div>
             <dt className={eyebrowClass}>Última atualização</dt>
             <dd className="mt-1 text-2xl font-semibold">
               {formatRelativeDate(booking.updated_at)}
@@ -91,6 +105,44 @@ export default async function BookingDetailPage(
           </p>
         )}
       </section>
+
+      {hasActiveCheckpoints && (
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Checkpoints</p>
+          <div className="mt-4 flex gap-2">
+            {checkpoints.map((cp) => (
+              <div key={cp.key} className="flex-1 text-center">
+                <div className={cpDotClass(cp.done)}>{cp.done ? '✓' : '!'}</div>
+                <p className={cpLabelClass(cp.done)}>{cp.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 border-t border-[var(--line-light)] pt-4">
+            <span className={verifyBadgeClass(verified)}>
+              {verified ? '✓ Doopla Verified' : '○ Aguardando validação'}
+            </span>
+            {!verified && profile.role === 'artista' && (
+              <p className="mt-2 text-[12.5px] text-[var(--ink)]/60">
+                Este trabalho ainda não possui Doopla Verified. Fale com {booking.otherPartyName}{' '}
+                para enviar a validação ao cliente.
+              </p>
+            )}
+            {!verified && profile.role === 'booker' && (
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled
+                  className="font-doopla-mono cursor-not-allowed rounded-full border border-[var(--ink)]/15 px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/35"
+                >
+                  Reenviar link de validação
+                </button>
+                <span className="text-[12.5px] text-[var(--ink)]/45">Em breve</span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className={cardClass}>
         <p className={eyebrowClass}>O que fazer agora</p>

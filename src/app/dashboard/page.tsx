@@ -64,7 +64,10 @@ export default async function DashboardPage() {
 
       {attentionItems.length > 0 && (
         <section className={cardClass}>
-          <p className={eyebrowClass}>Precisa da sua atenção</p>
+          <p className={`${eyebrowClass} inline-flex items-center gap-1.5`}>
+            Precisa da sua atenção
+            <span className="h-[7px] w-[7px] rounded-full bg-[var(--alert)]" />
+          </p>
           <ul className="mt-4 flex flex-col gap-3">
             {attentionItems.map((item, i) => (
               <li key={i}>

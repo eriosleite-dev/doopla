@@ -90,6 +90,7 @@ export async function proposeBookingAction(
   );
   const description = String(formData.get('description') ?? '').trim();
   const cacheAmountCents = centsFromReais(formData.get('cacheAmountCents'));
+  const eventDate = String(formData.get('eventDate') ?? '').trim();
 
   if (!artistProfileId) return { error: 'Selecione um artista.' };
   if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
@@ -115,6 +116,7 @@ export async function proposeBookingAction(
       commission_percent: commissionPercent,
       cache_amount_cents: cacheAmountCents,
       description: description || null,
+      event_date: eventDate || null,
     })
     .select('id')
     .single<{ id: string }>();

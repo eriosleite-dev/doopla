@@ -83,6 +83,8 @@ export type Booking = {
   commission_percent: number;
   cache_amount_cents: number | null;
   description: string | null;
+  event_date: string | null;
+  validated_at: string | null;
   created_at: string;
   updated_at: string;
 };

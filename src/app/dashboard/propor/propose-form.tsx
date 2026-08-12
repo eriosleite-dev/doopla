@@ -65,6 +65,15 @@ export function ProposeForm({ artists }: { artists: Artist[] }) {
         </label>
       </div>
 
+      <label className="flex flex-col gap-1.5">
+        <span className={eyebrowClass}>Data do trabalho (opcional)</span>
+        <input
+          type="date"
+          name="eventDate"
+          className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-3 text-sm"
+        />
+      </label>
+
       {state.error && <p className="text-sm text-red-700">{state.error}</p>}
 
       <button type="submit" disabled={pending} className={primaryButtonClass}>

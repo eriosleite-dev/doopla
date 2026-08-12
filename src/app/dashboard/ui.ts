@@ -50,6 +50,20 @@ export const STATUS_LABELS: Record<string, string> = {
   concluida: 'Concluída',
 };
 
+export const cpDotClass = (done: boolean) =>
+  `mx-auto flex h-[22px] w-[22px] items-center justify-center rounded-full font-doopla-mono text-[11px] ${
+    done ? 'bg-[var(--musgo)] text-white' : 'bg-[var(--alert)] text-white'
+  }`;
+export const cpLabelClass = (done: boolean) =>
+  `font-doopla-mono mt-1.5 text-[9.5px] uppercase tracking-[.02em] ${
+    done ? 'text-[var(--ink)]/45' : 'font-semibold text-[var(--alert)]'
+  }`;
+
+export const verifyBadgeClass = (verified: boolean) =>
+  `font-doopla-mono inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10.5px] uppercase tracking-[.03em] ${
+    verified ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]' : 'bg-[var(--alert)]/10 text-[var(--alert)]'
+  }`;
+
 export const EVENT_LABELS: Record<string, string> = {
   proposta_enviada: 'Proposta enviada',
   contraproposta: 'Contraproposta',
