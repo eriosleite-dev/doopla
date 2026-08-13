@@ -7,9 +7,12 @@ import { BookingsPreview } from './bookings-list';
 import {
   computeArtistStats,
   computeBookerStats,
+  getArtistBookers,
   getAttentionItems,
+  getDiscoverBookers,
   getPendingInvites,
   getUserBookings,
+  type BookerCard,
 } from './data';
 import { confirmInviteAction } from './actions';
 import { getSessionProfile } from './session';
@@ -45,6 +48,12 @@ export default async function DashboardPage() {
   const attentionItems = await getAttentionItems(user.id, profile.role, bookings, supabase);
   const pendingInvites =
     profile.role === 'artista' ? await getPendingInvites(user.id, supabase) : [];
+  const myBookers =
+    profile.role === 'artista' ? await getArtistBookers(user.id, supabase) : [];
+  const discoverBookers =
+    profile.role === 'artista'
+      ? await getDiscoverBookers(myBookers.map((b) => b.profileId), supabase, 4)
+      : [];
 
   return (
     <main className="flex flex-col gap-10">
@@ -128,7 +137,66 @@ export default async function DashboardPage() {
           <BookingsPreview bookings={bookings} role={profile.role} />
         </div>
       </section>
+
+      {profile.role === 'artista' && (
+        <>
+          <section>
+            <div className="flex items-center justify-between">
+              <p className={eyebrowClass}>Bookers que você já trabalhou</p>
+              <Link
+                href="/dashboard/bookers"
+                className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+              >
+                Ver todos
+              </Link>
+            </div>
+            <div className="mt-4">
+              <PeopleRow people={myBookers} emptyMessage="Nenhum booker na sua rede ainda." />
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between">
+              <p className={eyebrowClass}>Descubra novos bookers</p>
+              <Link
+                href="/dashboard/bookers#descubra"
+                className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+              >
+                Ver todos
+              </Link>
+            </div>
+            <div className="mt-4">
+              <PeopleRow
+                people={discoverBookers}
+                emptyMessage="Nenhum booker novo pra mostrar ainda."
+              />
+            </div>
+          </section>
+        </>
+      )}
     </main>
+  );
+}
+
+function PeopleRow({ people, emptyMessage }: { people: BookerCard[]; emptyMessage: string }) {
+  if (people.length === 0) {
+    return <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">{emptyMessage}</p>;
+  }
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-1">
+      {people.map((p) => (
+        <div
+          key={p.profileId}
+          className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5"
+        >
+          <span className={avatarClass}>{initialsFromName(p.fullName)}</span>
+          <span className="truncate text-[13px] font-semibold">{p.fullName}</span>
+          <span className="truncate text-[11px] text-[var(--ink)]/55">
+            {[p.city, p.state].filter(Boolean).join(' · ') || p.mercados || 'Booker'}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -106,6 +106,81 @@ export async function getRepresentedArtists(
   return artists ?? [];
 }
 
+export type BookerCard = {
+  profileId: string;
+  fullName: string;
+  city: string | null;
+  state: string | null;
+  perfil: string | null;
+  mercados: string | null;
+  foco: string | null;
+};
+
+async function fetchBookerCards(
+  profileIds: string[],
+  supabase: SupabaseServerClient
+): Promise<BookerCard[]> {
+  if (profileIds.length === 0) return [];
+
+  const [{ data: profiles }, { data: bookerProfiles }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, city, state')
+      .in('id', profileIds)
+      .returns<Pick<Profile, 'id' | 'full_name' | 'city' | 'state'>[]>(),
+    supabase
+      .from('booker_profiles')
+      .select('profile_id, perfil, mercados, foco')
+      .in('profile_id', profileIds)
+      .returns<{ profile_id: string; perfil: string | null; mercados: string | null; foco: string | null }[]>(),
+  ]);
+
+  const bookerByProfileId = new Map((bookerProfiles ?? []).map((b) => [b.profile_id, b]));
+  return (profiles ?? []).map((p) => {
+    const b = bookerByProfileId.get(p.id);
+    return {
+      profileId: p.id,
+      fullName: p.full_name,
+      city: p.city,
+      state: p.state,
+      perfil: b?.perfil ?? null,
+      mercados: b?.mercados ?? null,
+      foco: b?.foco ?? null,
+    };
+  });
+}
+
+export async function getArtistBookers(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<BookerCard[]> {
+  const { data: reps } = await supabase
+    .from('representations')
+    .select('booker_profile_id')
+    .eq('artist_profile_id', artistId)
+    .returns<{ booker_profile_id: string }[]>();
+
+  const bookerIds = (reps ?? []).map((r) => r.booker_profile_id);
+  return fetchBookerCards(bookerIds, supabase);
+}
+
+export async function getDiscoverBookers(
+  excludeIds: string[],
+  supabase: SupabaseServerClient,
+  limit = 12
+): Promise<BookerCard[]> {
+  let query = supabase
+    .from('booker_profiles')
+    .select('profile_id')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (excludeIds.length > 0) {
+    query = query.not('profile_id', 'in', `(${excludeIds.join(',')})`);
+  }
+  const { data } = await query.returns<{ profile_id: string }[]>();
+  return fetchBookerCards((data ?? []).map((d) => d.profile_id), supabase);
+}
+
 export type OpportunityWithArtist = Opportunity & { artistName: string };
 
 export async function getOpenOpportunities(
