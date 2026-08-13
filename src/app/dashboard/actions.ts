@@ -411,3 +411,30 @@ export async function markOpportunitiesSeenAction() {
 
   revalidatePath('/dashboard');
 }
+
+export async function addAvailabilityAction(formData: FormData) {
+  const date = String(formData.get('date') ?? '').trim();
+  if (!date) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return;
+
+  await supabase
+    .from('artist_availability')
+    .insert({ artist_profile_id: user.id, available_date: date });
+
+  revalidatePath('/dashboard/agenda');
+}
+
+export async function removeAvailabilityAction(formData: FormData) {
+  const id = String(formData.get('id') ?? '');
+  if (!id) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  await supabase.from('artist_availability').delete().eq('id', id).eq('artist_profile_id', user.id);
+
+  revalidatePath('/dashboard/agenda');
+}

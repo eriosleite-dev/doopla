@@ -1,6 +1,7 @@
 import type { createClient } from '@/lib/supabase/server';
 import { formatRelativeDate } from '@/lib/format';
 import type {
+  ArtistAvailability,
   Booking,
   BookingEvent,
   BookingStatus,
@@ -377,3 +378,52 @@ export const BOOKING_STATUS_FILTERS: { value: BookingStatus | 'todos'; label: st
   { value: 'aceita', label: 'Aceitos' },
   { value: 'concluida', label: 'Concluídos' },
 ];
+
+export type AgendaEvent = {
+  date: string; // yyyy-mm-dd
+  kind: 'confirmado' | 'disponivel';
+  title: string;
+  sub: string;
+  availabilityId?: string;
+};
+
+// Trabalho confirmado = negociação já aceita (não é mais só proposta) e
+// tem data marcada. Disponibilidade é só do artista (marcada manualmente).
+export async function getAgendaEvents(
+  userId: string,
+  role: Profile['role'],
+  bookings: BookingWithOtherParty[],
+  supabase: SupabaseServerClient
+): Promise<AgendaEvent[]> {
+  const events: AgendaEvent[] = bookings
+    .filter(
+      (b) =>
+        b.event_date != null &&
+        (b.status === 'aceita' || b.status === 'aguardando_pagamento' || b.status === 'concluida')
+    )
+    .map((b) => ({
+      date: b.event_date as string,
+      kind: 'confirmado',
+      title: b.description || `Trabalho com ${b.otherPartyName}`,
+      sub: role === 'booker' ? `Artista: ${b.otherPartyName}` : `Booker: ${b.otherPartyName}`,
+    }));
+
+  if (role === 'artista') {
+    const { data: availability } = await supabase
+      .from('artist_availability')
+      .select('*')
+      .eq('artist_profile_id', userId)
+      .returns<ArtistAvailability[]>();
+    for (const a of availability ?? []) {
+      events.push({
+        date: a.available_date,
+        kind: 'disponivel',
+        title: 'Livre para trabalhos',
+        sub: 'Marcado manualmente por você',
+        availabilityId: a.id,
+      });
+    }
+  }
+
+  return events;
+}

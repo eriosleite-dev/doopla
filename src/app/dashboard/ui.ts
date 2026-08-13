@@ -83,3 +83,20 @@ export function initialsFromName(name: string): string {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+export const calendarDayClass = (hasEvent: boolean) =>
+  `relative flex aspect-square items-center justify-center rounded-[10px] text-[13px] ${
+    hasEvent ? 'bg-[var(--paper-dim)] font-semibold' : 'text-[var(--ink)]'
+  }`;
+
+export const calendarDotClass = (kind: 'confirmado' | 'disponivel') =>
+  `absolute bottom-[6px] h-[5px] w-[5px] rounded-full ${
+    kind === 'confirmado' ? 'bg-[var(--musgo)]' : 'bg-[var(--accent)]'
+  }`;
+
+export const agendaTagClass = (kind: 'confirmado' | 'disponivel') =>
+  `font-doopla-mono inline-block rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${
+    kind === 'confirmado'
+      ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]'
+      : 'bg-[var(--accent)]/15 text-[var(--accent-ink)]'
+  }`;
