@@ -438,3 +438,34 @@ export async function removeAvailabilityAction(formData: FormData) {
 
   revalidatePath('/dashboard/agenda');
 }
+
+export async function setContractUrlAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const contractUrl = String(formData.get('contractUrl') ?? '').trim();
+  if (!bookingId || !contractUrl) return { error: 'Cole o link do contrato.' };
+  if (!/^https?:\/\//.test(contractUrl)) {
+    return { error: 'O link precisa começar com http:// ou https://' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('id, artist_profile_id, booker_profile_id')
+    .eq('id', bookingId)
+    .single<{ id: string; artist_profile_id: string; booker_profile_id: string }>();
+  if (!booking || (user.id !== booking.artist_profile_id && user.id !== booking.booker_profile_id)) {
+    return { error: 'Você não faz parte desse booking.' };
+  }
+
+  await supabase.from('bookings').update({ contract_url: contractUrl }).eq('id', bookingId);
+
+  revalidatePath('/dashboard/contratos');
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  return {};
+}

@@ -85,6 +85,7 @@ export type Booking = {
   description: string | null;
   event_date: string | null;
   validated_at: string | null;
+  contract_url: string | null;
   created_at: string;
   updated_at: string;
 };

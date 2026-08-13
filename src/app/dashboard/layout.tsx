@@ -91,6 +91,12 @@ export default async function DashboardLayout({
           >
             Agenda
           </Link>
+          <Link
+            href="/dashboard/contratos"
+            className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
+          >
+            Contratos
+          </Link>
           {profile.role === 'booker' ? (
             <>
               <Link

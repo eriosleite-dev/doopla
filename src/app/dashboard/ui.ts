@@ -50,6 +50,16 @@ export const STATUS_LABELS: Record<string, string> = {
   concluida: 'Concluída',
 };
 
+export const contractStatusPillClasses: Record<string, string> = {
+  anexado: `${STATUS_PILL_BASE} bg-[var(--musgo)]/10 text-[var(--musgo)]`,
+  sem_contrato: `${STATUS_PILL_BASE} bg-[var(--paper-dim)] text-[var(--ink)]/50`,
+};
+
+export const CONTRACT_STATUS_LABELS: Record<string, string> = {
+  anexado: 'Anexado',
+  sem_contrato: 'Sem contrato',
+};
+
 export const cpDotClass = (done: boolean) =>
   `mx-auto flex h-[22px] w-[22px] items-center justify-center rounded-full font-doopla-mono text-[11px] ${
     done ? 'bg-[var(--musgo)] text-white' : 'bg-[var(--alert)] text-white'
