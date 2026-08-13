@@ -4,7 +4,10 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
-import type { Booking, Invite, Opportunity, Profile } from '@/lib/supabase/types';
+import type { Booking, Invite, Opportunity, Profile, Review } from '@/lib/supabase/types';
+import { MAX_REVIEW_ATTRIBUTES } from './review-attributes';
+
+const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export async function confirmInviteAction(formData: FormData) {
   const inviteId = String(formData.get('inviteId') ?? '');
@@ -626,4 +629,99 @@ export async function setContractUrlAction(
   revalidatePath('/dashboard/contratos');
   revalidatePath(`/dashboard/bookings/${bookingId}`);
   return {};
+}
+
+export async function submitReviewAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const reviewId = String(formData.get('reviewId') ?? '');
+  const rating = Number.parseInt(String(formData.get('rating') ?? ''), 10);
+  const attributes = formData.getAll('attributes').map(String).slice(0, MAX_REVIEW_ATTRIBUTES);
+  const comment = String(formData.get('comment') ?? '').trim();
+
+  if (!reviewId) return { error: 'Avaliação não encontrada.' };
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return { error: 'Escolha uma nota de 1 a 5 estrelas.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: review } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('id', reviewId)
+    .single<Review>();
+  if (!review || review.reviewer_profile_id !== user.id) {
+    return { error: 'Você não pode enviar essa avaliação.' };
+  }
+  if (review.status !== 'pendente' && review.status !== 'ativa') {
+    return { error: 'Essa avaliação não está mais disponível pra edição.' };
+  }
+  if (review.submitted_at) {
+    const editableUntil = new Date(review.submitted_at).getTime() + REVIEW_EDIT_WINDOW_MS;
+    if (Date.now() > editableUntil) {
+      return { error: 'A janela de 24h pra editar essa avaliação já encerrou.' };
+    }
+  }
+
+  const now = new Date().toISOString();
+  await supabase
+    .from('reviews')
+    .update({
+      rating,
+      attributes,
+      comment: comment || null,
+      status: 'ativa',
+      submitted_at: review.submitted_at ?? now,
+      edited_at: review.submitted_at ? now : null,
+    })
+    .eq('id', reviewId);
+
+  revalidatePath(`/dashboard/bookings/${review.booking_id}`);
+  revalidatePath('/dashboard');
+  return {};
+}
+
+export async function requestReviewAction(formData: FormData) {
+  const reviewId = String(formData.get('reviewId') ?? '');
+  if (!reviewId) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  const { data: review } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('id', reviewId)
+    .single<Review>();
+  if (!review || review.reviewee_profile_id !== user.id) return;
+  if (review.status !== 'pendente' || review.requested_at) return;
+
+  await supabase.from('reviews').update({ requested_at: new Date().toISOString() }).eq('id', reviewId);
+
+  revalidatePath(`/dashboard/bookings/${review.booking_id}`);
+}
+
+export async function contestReviewAction(formData: FormData) {
+  const reviewId = String(formData.get('reviewId') ?? '');
+  if (!reviewId) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  const { data: review } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('id', reviewId)
+    .single<Review>();
+  if (!review || review.reviewee_profile_id !== user.id || review.status !== 'ativa') return;
+
+  await supabase.from('reviews').update({ contested: true }).eq('id', reviewId);
+
+  revalidatePath(`/dashboard/bookings/${review.booking_id}`);
 }

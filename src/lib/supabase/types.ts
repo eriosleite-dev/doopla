@@ -162,6 +162,24 @@ export type PayoutRequest = {
   created_at: string;
 };
 
+export type ReviewStatus = 'pendente' | 'ativa' | 'removida' | 'invalidada';
+
+export type Review = {
+  id: string;
+  booking_id: string;
+  reviewer_profile_id: string;
+  reviewee_profile_id: string;
+  rating: number | null;
+  attributes: string[];
+  comment: string | null;
+  status: ReviewStatus;
+  contested: boolean;
+  requested_at: string | null;
+  submitted_at: string | null;
+  edited_at: string | null;
+  created_at: string;
+};
+
 // A lib do Supabase exige `Relationships` em cada tabela (usado só pra
 // joins embutidos via .select('foo(*)')). Não usamos essa sintaxe — as
 // junções são feitas com queries separadas — então fica sempre [].
@@ -248,6 +266,13 @@ export type Database = {
         Row: PayoutRequest;
         Insert: Partial<PayoutRequest> & Pick<PayoutRequest, 'profile_id' | 'amount_cents'>;
         Update: Partial<PayoutRequest>;
+        Relationships: [];
+      };
+      reviews: {
+        Row: Review;
+        Insert: Partial<Review> &
+          Pick<Review, 'booking_id' | 'reviewer_profile_id' | 'reviewee_profile_id'>;
+        Update: Partial<Review>;
         Relationships: [];
       };
     };

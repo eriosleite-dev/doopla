@@ -20,7 +20,16 @@ export function BookerRow({ booker }: { booker: BookerCard }) {
           </p>
         </div>
       </div>
-      <p className="text-[11.5px] italic text-[var(--ink)]/45">Novo na doopla</p>
+      {booker.ratingCount > 0 ? (
+        <p className="font-doopla-mono text-[11.5px] text-[var(--accent-ink)]">
+          ★ {booker.ratingAverage?.toFixed(1)} · {booker.ratingCount}{' '}
+          {booker.ratingCount === 1 ? 'avaliação' : 'avaliações'}
+        </p>
+      ) : (
+        <p className="text-[11.5px] italic text-[var(--ink)]/45">
+          Novo na doopla. Ainda construindo o histórico na plataforma.
+        </p>
+      )}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {tags.map((tag) => (

@@ -9,6 +9,7 @@ import type {
   Opportunity,
   PayoutRequest,
   Profile,
+  Review,
 } from '@/lib/supabase/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -115,7 +116,38 @@ export type BookerCard = {
   perfil: string | null;
   mercados: string | null;
   foco: string | null;
+  ratingAverage: number | null;
+  ratingCount: number;
 };
+
+// Nota + total de avaliações de vários profiles de uma vez, calculado só
+// a partir de status='ativa' — mesma regra de getReviewSummary, em lote.
+async function getRatingsFor(
+  profileIds: string[],
+  supabase: SupabaseServerClient
+): Promise<Map<string, { average: number; count: number }>> {
+  if (profileIds.length === 0) return new Map();
+  const { data } = await supabase
+    .from('reviews')
+    .select('reviewee_profile_id, rating')
+    .in('reviewee_profile_id', profileIds)
+    .eq('status', 'ativa')
+    .returns<{ reviewee_profile_id: string; rating: number | null }[]>();
+
+  const byProfile = new Map<string, number[]>();
+  for (const r of data ?? []) {
+    if (r.rating == null) continue;
+    const list = byProfile.get(r.reviewee_profile_id) ?? [];
+    list.push(r.rating);
+    byProfile.set(r.reviewee_profile_id, list);
+  }
+  return new Map(
+    [...byProfile.entries()].map(([id, ratings]) => [
+      id,
+      { average: ratings.reduce((a, b) => a + b, 0) / ratings.length, count: ratings.length },
+    ])
+  );
+}
 
 async function fetchBookerCards(
   profileIds: string[],
@@ -123,7 +155,7 @@ async function fetchBookerCards(
 ): Promise<BookerCard[]> {
   if (profileIds.length === 0) return [];
 
-  const [{ data: profiles }, { data: bookerProfiles }] = await Promise.all([
+  const [{ data: profiles }, { data: bookerProfiles }, ratings] = await Promise.all([
     supabase
       .from('profiles')
       .select('id, full_name, city, state')
@@ -134,11 +166,13 @@ async function fetchBookerCards(
       .select('profile_id, perfil, mercados, foco')
       .in('profile_id', profileIds)
       .returns<{ profile_id: string; perfil: string | null; mercados: string | null; foco: string | null }[]>(),
+    getRatingsFor(profileIds, supabase),
   ]);
 
   const bookerByProfileId = new Map((bookerProfiles ?? []).map((b) => [b.profile_id, b]));
   return (profiles ?? []).map((p) => {
     const b = bookerByProfileId.get(p.id);
+    const rating = ratings.get(p.id);
     return {
       profileId: p.id,
       fullName: p.full_name,
@@ -147,6 +181,8 @@ async function fetchBookerCards(
       perfil: b?.perfil ?? null,
       mercados: b?.mercados ?? null,
       foco: b?.foco ?? null,
+      ratingAverage: rating?.average ?? null,
+      ratingCount: rating?.count ?? 0,
     };
   });
 }
@@ -263,6 +299,81 @@ export async function getBookingDetail(
   };
 }
 
+export async function getPendingReviewsToWrite(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<Review[]> {
+  const { data } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('reviewer_profile_id', userId)
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: false })
+    .returns<Review[]>();
+  return data ?? [];
+}
+
+// As duas linhas de avaliação de um booking: a que eu escrevo sobre a
+// contraparte (myReview) e a que a contraparte escreve sobre mim
+// (reviewOfMe) — nasceram juntas quando o booking concluiu (ver migration
+// 0017, trigger create_pending_reviews).
+export async function getBookingReviews(
+  bookingId: string,
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<{ myReview: Review | null; reviewOfMe: Review | null }> {
+  const { data } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('booking_id', bookingId)
+    .returns<Review[]>();
+  const rows = data ?? [];
+  return {
+    myReview: rows.find((r) => r.reviewer_profile_id === userId) ?? null,
+    reviewOfMe: rows.find((r) => r.reviewee_profile_id === userId) ?? null,
+  };
+}
+
+export type ReviewSummary = {
+  average: number | null;
+  count: number;
+  attributeCounts: { key: string; count: number }[];
+};
+
+// Média, contagem e atributos-com-contador de um profile, calculados só a
+// partir de avaliações status='ativa' (nunca inclui pendente/removida/
+// invalidada). Nenhum desses números é editável pelo usuário.
+export async function getReviewSummary(
+  profileId: string,
+  supabase: SupabaseServerClient
+): Promise<ReviewSummary> {
+  const { data } = await supabase
+    .from('reviews')
+    .select('rating, attributes')
+    .eq('reviewee_profile_id', profileId)
+    .eq('status', 'ativa')
+    .returns<{ rating: number | null; attributes: string[] }[]>();
+
+  const rated = (data ?? []).filter((r): r is { rating: number; attributes: string[] } => r.rating != null);
+  const count = rated.length;
+  const average = count > 0 ? rated.reduce((sum, r) => sum + r.rating, 0) / count : null;
+
+  const attributeCounts = new Map<string, number>();
+  for (const r of rated) {
+    for (const key of r.attributes ?? []) {
+      attributeCounts.set(key, (attributeCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  return {
+    average,
+    count,
+    attributeCounts: [...attributeCounts.entries()]
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count),
+  };
+}
+
 function isThisMonth(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
@@ -371,6 +482,17 @@ export async function getAttentionItems(
   supabase: SupabaseServerClient
 ): Promise<AttentionItem[]> {
   const items: AttentionItem[] = [];
+
+  const pendingReviews = await getPendingReviewsToWrite(userId, supabase);
+  const bookingById = new Map(bookings.map((b) => [b.id, b]));
+  for (const review of pendingReviews) {
+    const booking = bookingById.get(review.booking_id);
+    if (!booking) continue;
+    items.push({
+      text: `Como foi trabalhar com ${booking.otherPartyName}? Avalie e ajude a construir a reputação da Doopla`,
+      href: `/dashboard/bookings/${booking.id}#avaliacao`,
+    });
+  }
 
   if (role === 'booker') {
     const { data: bookerProfile } = await supabase

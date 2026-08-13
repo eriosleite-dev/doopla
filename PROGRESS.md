@@ -65,22 +65,38 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 ## 5. Perfis, avaliações e reputação (`doopla-perfis-avaliacoes.md`)
 
 Documento chegou sem nenhuma trava — spec fechada, pode implementar
-por inteiro. **Começando agora.**
+por inteiro.
 
-- ❌ Tabela de avaliações (`booking_id`, quem avaliou, quem recebeu,
-  nota, atributos, comentário, moderação).
-- ❌ Atributos com contador (ex: "⚡ 103 · Responde rápido").
-- ❌ Avaliação automática pendente quando o booking conclui + botão
-  "Pedir avaliação" com mensagem sempre padronizada pela Doopla.
-- ❌ Moderação: janela de edição de 24h, contestação, remoção só do
-  agregado público em caso de fraude confirmada.
-- ❌ Card padronizado (artista e booker) com nota + avaliações +
-  bookings concluídos, reusado em toda tela que mostra uma pessoa.
+- ✅ Tabela `reviews` (migration `0017_reviews.sql`): `booking_id`,
+  quem avaliou, quem recebeu, nota, atributos, comentário, status
+  (`pendente/ativa/removida/invalidada`), `contested`. RLS: cada um vê
+  as próprias linhas; avaliação `ativa` é pública (pro agregado do
+  perfil); autor edita a própria, avaliado só marca pedido/contestação.
+- ✅ As duas avaliações de um booking nascem sozinhas quando ele vira
+  `concluida` (trigger no banco), como pendentes — nenhuma UI cria
+  avaliação na mão.
+- ✅ Atributos com contador — dois vocabulários (o do artista avaliando
+  booker é literal do documento; o do booker avaliando artista é um
+  rascunho meu no mesmo tom, porque o documento só dá um exemplo —
+  ainda precisa da sua confirmação palavra por palavra).
+- ✅ Fluxo completo na tela do booking (`/dashboard/bookings/[id]`):
+  formulário de estrelas + até 3 atributos + comentário opcional,
+  edição por 24h depois de enviar, "Pedir avaliação" (uma vez só) e
+  "Contestar avaliação" pro lado que recebeu.
+- ✅ Pendência de avaliação aparece em "Precisa da sua atenção" no
+  painel, sem precisar procurar o booking.
+- ✅ Nota + total de avaliações real no card de booker
+  (`/dashboard/bookers`) e no perfil público do artista (`/[slug]`),
+  com "Novo na doopla" honesto quando ainda não há avaliação nenhuma.
+- ❌ Moderação de verdade (remoção por fraude, revisão de contestação)
+  — os estados existem no banco, mas não existe painel administrativo
+  nenhum ainda pra Doopla agir sobre isso. Fica manual por enquanto.
 - ❌ Perfil completo do booker (hoje só o do artista existe, em
-  `/[slug]`, e sem nota porque ainda não existe avaliação nenhuma).
+  `/[slug]`) e descoberta de artista padronizada pro booker — é o
+  próximo passo, fecha o #47.
 - Separação declarado vs. calculado: já é o padrão que uso em todo o
-  banco (`profiles`/`artist_profiles` = declarado, tudo de reputação
-  vai ser sempre calculado, nunca campo editável pelo usuário).
+  banco (`profiles`/`artist_profiles` = declarado, nota/contadores/
+  histórico = sempre calculado, nunca campo editável pelo usuário).
 
 ## 6. Segurança financeira, Pix, split (`doopla-seguranca-financeira-split.md`)
 

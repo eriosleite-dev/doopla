@@ -5,7 +5,7 @@ import { notFound } from 'next/navigation';
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
 
 import { markCompletedAction, markPaidAction, respondBookingAction } from '../../actions';
-import { getBookingCheckpoints, getBookingDetail, isDooplaVerified } from '../../data';
+import { getBookingCheckpoints, getBookingDetail, getBookingReviews, isDooplaVerified } from '../../data';
 import { getSessionProfile } from '../../session';
 import {
   accentButtonClass,
@@ -23,6 +23,7 @@ import {
   verifyBadgeClass,
 } from '../../ui';
 import { CounterForm } from './counter-form';
+import { ReviewPanel } from './review-panel';
 
 export const metadata: Metadata = {
   title: 'Negociação | Doopla',
@@ -41,6 +42,10 @@ export default async function BookingDetailPage(
   const checkpoints = getBookingCheckpoints(booking);
   const verified = isDooplaVerified(booking);
   const hasActiveCheckpoints = booking.status !== 'proposta_enviada' && booking.status !== 'recusada';
+  const reviews =
+    booking.status === 'concluida'
+      ? await getBookingReviews(booking.id, user.id, supabase)
+      : null;
 
   return (
     <main className="flex flex-col gap-8">
@@ -224,6 +229,20 @@ export default async function BookingDetailPage(
           </p>
         )}
       </section>
+
+      {reviews && (
+        <section id="avaliacao" className={cardClass}>
+          <p className={eyebrowClass}>Avaliação</p>
+          <div className="mt-4">
+            <ReviewPanel
+              myReview={reviews.myReview}
+              reviewOfMe={reviews.reviewOfMe}
+              myRole={profile.role === 'agencia' ? 'booker' : profile.role}
+              otherPartyName={booking.otherPartyName}
+            />
+          </div>
+        </section>
+      )}
 
       <details className="group">
         <summary className={`${eyebrowClass} cursor-pointer select-none list-none`}>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
+import { getReviewSummary } from '@/app/dashboard/data';
 import { createClient } from '@/lib/supabase/server';
 
 type PublicArtist = {
@@ -80,6 +81,9 @@ export default async function PublicArtistPage(props: {
   const artist = await getPublicArtist(slug);
   if (!artist) notFound();
 
+  const supabase = await createClient();
+  const rating = await getReviewSummary(artist.id, supabase);
+
   const name = artist.stage_name || artist.full_name;
   const location = [artist.city, artist.state].filter(Boolean).join(' · ');
   const tags = (artist.mercados ?? '')
@@ -107,6 +111,11 @@ export default async function PublicArtistPage(props: {
           <h1 className="font-doopla-display text-4xl font-semibold">{name}</h1>
           <p className="font-doopla-mono mt-2 text-[12px] uppercase tracking-[.1em] text-[var(--accent-ink)]">
             {[artist.category, location].filter(Boolean).join(' · ')}
+          </p>
+          <p className="font-doopla-mono mt-2 text-[12px] text-[var(--accent-ink)]">
+            {rating.count > 0
+              ? `★ ${rating.average?.toFixed(1)} · ${rating.count} ${rating.count === 1 ? 'avaliação' : 'avaliações'}`
+              : 'Novo na doopla. Ainda construindo o histórico na plataforma.'}
           </p>
         </div>
 
