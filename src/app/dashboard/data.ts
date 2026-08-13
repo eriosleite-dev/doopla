@@ -7,6 +7,7 @@ import type {
   BookingStatus,
   Invite,
   Opportunity,
+  PayoutRequest,
   Profile,
 } from '@/lib/supabase/types';
 
@@ -465,6 +466,34 @@ export const CONTRACT_STATUS_FILTERS: { value: ContractStatus | 'todos'; label: 
   { value: 'anexado', label: 'Anexados' },
   { value: 'sem_contrato', label: 'Sem contrato' },
 ];
+
+export type PayoutBalance = {
+  availableCents: number;
+  requests: PayoutRequest[];
+};
+
+// Disponível pra saque = total já recebido menos o que já foi solicitado
+// (não processado ainda — Bloco 2/Pagar.me faz a transferência de
+// verdade). Sem tabela de "já liquidado" separada, é uma aproximação
+// honesta: nunca deixa pedir mais do que já ganhou.
+export async function getPayoutBalance(
+  userId: string,
+  totalReceivedCents: number,
+  supabase: SupabaseServerClient
+): Promise<PayoutBalance> {
+  const { data: requests } = await supabase
+    .from('payout_requests')
+    .select('*')
+    .eq('profile_id', userId)
+    .order('created_at', { ascending: false })
+    .returns<PayoutRequest[]>();
+
+  const requested = (requests ?? []).reduce((sum, r) => sum + r.amount_cents, 0);
+  return {
+    availableCents: Math.max(totalReceivedCents - requested, 0),
+    requests: requests ?? [],
+  };
+}
 
 export type AgendaEvent = {
   date: string; // yyyy-mm-dd

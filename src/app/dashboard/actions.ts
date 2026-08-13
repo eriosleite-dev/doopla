@@ -439,6 +439,33 @@ export async function removeAvailabilityAction(formData: FormData) {
   revalidatePath('/dashboard/agenda');
 }
 
+export async function requestPayoutAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const amountCents = centsFromReais(formData.get('amount'));
+  if (!amountCents || amountCents <= 0) {
+    return { error: 'Informe um valor válido.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const availableCents = Number(formData.get('availableCents') ?? '0');
+  if (amountCents > availableCents) {
+    return { error: 'O valor solicitado é maior do que o disponível para saque.' };
+  }
+
+  await supabase
+    .from('payout_requests')
+    .insert({ profile_id: user.id, amount_cents: amountCents });
+
+  revalidatePath('/dashboard/dinheiro');
+  revalidatePath('/dashboard');
+  return {};
+}
+
 export async function setContractUrlAction(
   _prevState: { error?: string },
   formData: FormData

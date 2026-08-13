@@ -209,9 +209,15 @@ function BookerStats({ bookings }: { bookings: Parameters<typeof computeBookerSt
       <div className={statCardLeadClass}>
         <p className={statLabelLeadClass}>Comissão total ganha</p>
         <p className={statValueLeadClass}>{formatCentsAsBRL(stats.totalEarnedCents)}</p>
-        <p className="mt-2 text-[12.5px] text-[var(--paper)]/60">
-          Em bookings concluídos
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-[12.5px] text-[var(--paper)]/60">Em bookings concluídos</p>
+          <Link
+            href="/dashboard/dinheiro"
+            className="font-doopla-mono flex-none rounded-full border border-[var(--paper)]/25 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--paper)] hover:bg-[var(--paper)]/10"
+          >
+            Sacar
+          </Link>
+        </div>
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Receita do mês</p>
@@ -250,9 +256,15 @@ function ArtistStats({ bookings }: { bookings: Parameters<typeof computeArtistSt
       <div className={statCardLeadClass}>
         <p className={statLabelLeadClass}>Recebido líquido</p>
         <p className={statValueLeadClass}>{formatCentsAsBRL(stats.netReceivedCents)}</p>
-        <p className="mt-2 text-[12.5px] text-[var(--paper)]/60">
-          Já descontada a comissão do booker
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-[12.5px] text-[var(--paper)]/60">Já descontada a comissão do booker</p>
+          <Link
+            href="/dashboard/dinheiro"
+            className="font-doopla-mono flex-none rounded-full border border-[var(--paper)]/25 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--paper)] hover:bg-[var(--paper)]/10"
+          >
+            Sacar
+          </Link>
+        </div>
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Recebido no mês</p>

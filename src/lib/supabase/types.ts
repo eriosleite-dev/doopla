@@ -148,6 +148,16 @@ export type ArtistAvailability = {
   created_at: string;
 };
 
+export type PayoutRequestStatus = 'solicitado';
+
+export type PayoutRequest = {
+  id: string;
+  profile_id: string;
+  amount_cents: number;
+  status: PayoutRequestStatus;
+  created_at: string;
+};
+
 // A lib do Supabase exige `Relationships` em cada tabela (usado só pra
 // joins embutidos via .select('foo(*)')). Não usamos essa sintaxe — as
 // junções são feitas com queries separadas — então fica sempre [].
@@ -228,6 +238,12 @@ export type Database = {
         Insert: Partial<ArtistAvailability> &
           Pick<ArtistAvailability, 'artist_profile_id' | 'available_date'>;
         Update: Partial<ArtistAvailability>;
+        Relationships: [];
+      };
+      payout_requests: {
+        Row: PayoutRequest;
+        Insert: Partial<PayoutRequest> & Pick<PayoutRequest, 'profile_id' | 'amount_cents'>;
+        Update: Partial<PayoutRequest>;
         Relationships: [];
       };
     };
