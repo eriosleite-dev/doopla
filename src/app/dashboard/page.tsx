@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { formatCentsAsBRL, formatPercent } from '@/lib/format';
 
-import { BookingsList } from './bookings-list';
+import { BookingsPreview } from './bookings-list';
 import {
   computeArtistStats,
   computeBookerStats,
@@ -114,9 +115,17 @@ export default async function DashboardPage() {
       )}
 
       <section>
-        <p className={eyebrowClass}>Seus bookings</p>
+        <div className="flex items-center justify-between">
+          <p className={eyebrowClass}>Seus trabalhos</p>
+          <Link
+            href="/dashboard/trabalhos"
+            className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+          >
+            Ver todos
+          </Link>
+        </div>
         <div className="mt-4">
-          <BookingsList bookings={bookings} role={profile.role} />
+          <BookingsPreview bookings={bookings} role={profile.role} />
         </div>
       </section>
     </main>
