@@ -466,6 +466,137 @@ export async function requestPayoutAction(
   return {};
 }
 
+export async function uploadAvatarAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const file = formData.get('avatar');
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: 'Selecione uma foto.' };
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    return { error: 'A foto precisa ter até 4MB.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const path = `${user.id}/avatar.jpg`;
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(path, file, { upsert: true, contentType: 'image/jpeg' });
+  if (uploadError) return { error: 'Não foi possível salvar a foto.' };
+
+  const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(path);
+  const avatarUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
+
+  await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard');
+  return {};
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+// Nunca gerar um slug igual a uma rota real do site.
+const RESERVED_SLUGS = new Set([
+  'ajuda',
+  'auth',
+  'cadastro',
+  'dashboard',
+  'login',
+  'precos',
+  'privacidade',
+  'seguranca',
+  'sobre',
+  'termos',
+  'api',
+]);
+
+export async function enablePublicProfileAction() {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return;
+
+  if (!profile.slug) {
+    const { data: artist } = await supabase
+      .from('artist_profiles')
+      .select('stage_name')
+      .eq('profile_id', user.id)
+      .single<{ stage_name: string | null }>();
+
+    let base = slugify(artist?.stage_name || profile.full_name || 'artista') || 'artista';
+    if (RESERVED_SLUGS.has(base)) base = `${base}-artista`;
+    let slug = base;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const { data: existing } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('slug', slug)
+        .maybeSingle<{ id: string }>();
+      if (!existing && !RESERVED_SLUGS.has(slug)) break;
+      slug = `${base}-${Math.floor(Math.random() * 10000)}`;
+    }
+    await supabase.from('profiles').update({ slug }).eq('id', user.id);
+  }
+
+  await supabase
+    .from('artist_profiles')
+    .update({ public_enabled: true })
+    .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+}
+
+export async function disablePublicProfileAction() {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return;
+
+  await supabase
+    .from('artist_profiles')
+    .update({ public_enabled: false })
+    .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+}
+
+export async function updatePublicLinksAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const instagramUrl = String(formData.get('instagramUrl') ?? '').trim();
+  const portfolioUrl = String(formData.get('portfolioUrl') ?? '').trim();
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Só artistas têm perfil público.' };
+
+  await supabase
+    .from('artist_profiles')
+    .update({
+      instagram_url: instagramUrl || null,
+      portfolio_url: portfolioUrl || null,
+    })
+    .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+  return {};
+}
+
 export async function setContractUrlAction(
   _prevState: { error?: string },
   formData: FormData

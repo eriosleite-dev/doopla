@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 
+import { siteOrigin } from '@/lib/site-url';
+
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
+import { AvatarUploader } from './avatar-uploader';
+import { PublicProfileCard } from './public-profile-card';
 
 export const metadata: Metadata = {
   title: 'Perfil | Doopla',
@@ -16,6 +20,7 @@ const ROLE_LABELS: Record<'artista' | 'booker' | 'agencia', string> = {
 export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
   const details = await getRoleDetails(profile.role, user.id, supabase);
+  const origin = await siteOrigin();
 
   return (
     <main className="flex max-w-xl flex-col gap-8">
@@ -25,6 +30,13 @@ export default async function PerfilPage() {
           {profile.full_name || user.email}
         </h1>
       </header>
+
+      <section className={cardClass}>
+        <p className={eyebrowClass}>Foto</p>
+        <div className="mt-4">
+          <AvatarUploader currentUrl={profile.avatar_url} fallbackName={profile.full_name} />
+        </div>
+      </section>
 
       <section className={cardClass}>
         <p className={eyebrowClass}>Conta</p>
@@ -42,6 +54,16 @@ export default async function PerfilPage() {
           <RoleDetails role={profile.role} details={details} />
         </div>
       </section>
+
+      {profile.role === 'artista' && (
+        <PublicProfileCard
+          slug={profile.slug}
+          publicEnabled={(details as ArtistDetails | null)?.public_enabled ?? false}
+          instagramUrl={(details as ArtistDetails | null)?.instagram_url ?? null}
+          portfolioUrl={(details as ArtistDetails | null)?.portfolio_url ?? null}
+          siteUrl={origin}
+        />
+      )}
     </main>
   );
 }
@@ -58,6 +80,9 @@ type ArtistDetails = {
   stage_name: string | null;
   category: string | null;
   bio: string | null;
+  public_enabled: boolean;
+  instagram_url: string | null;
+  portfolio_url: string | null;
 };
 
 type BookerDetails = {
@@ -87,7 +112,7 @@ async function getRoleDetails(
     const { data } = await supabase
       .from('artist_profiles')
       .select(
-        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio'
+        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio, public_enabled, instagram_url, portfolio_url'
       )
       .eq('profile_id', userId)
       .single<ArtistDetails>();

@@ -13,6 +13,7 @@ export type Profile = {
   city: string | null;
   state: string | null;
   avatar_url: string | null;
+  slug: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -24,6 +25,9 @@ export type ArtistProfile = {
   category: string | null;
   genres: string[];
   base_fee_cents: number | null;
+  public_enabled: boolean;
+  instagram_url: string | null;
+  portfolio_url: string | null;
   // campos de onboarding (migrados do fluxo original do site)
   intencao: string | null;
   pontual_detalhe: string | null;

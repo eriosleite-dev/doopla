@@ -1,9 +1,9 @@
 'use server';
 
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
+import { siteOrigin } from '@/lib/site-url';
 import type { UserRole } from '@/lib/supabase/types';
 
 export interface AuthFormState {
@@ -15,13 +15,6 @@ export interface AuthFormState {
 // existindo no enum do banco (dado legado / uso futuro), mas o cadastro
 // não aceita mais esse valor.
 const ROLES: UserRole[] = ['artista', 'booker'];
-
-async function siteOrigin() {
-  const h = await headers();
-  const host = h.get('host');
-  const protocol = host?.startsWith('localhost') ? 'http' : 'https';
-  return process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`;
-}
 
 export async function loginAction(
   _prevState: AuthFormState,
