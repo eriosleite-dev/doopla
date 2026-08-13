@@ -110,3 +110,8 @@ export const agendaTagClass = (kind: 'confirmado' | 'disponivel') =>
       ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]'
       : 'bg-[var(--accent)]/15 text-[var(--accent-ink)]'
   }`;
+
+export const officialChipClass = (done: boolean) =>
+  `font-doopla-mono inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[.03em] ${
+    done ? 'bg-[var(--musgo)]/35 text-[#a8c49a]' : 'bg-white/8 text-[var(--paper)]/45'
+  }`;

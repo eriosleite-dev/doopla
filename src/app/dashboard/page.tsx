@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { formatCentsAsBRL, formatPercent } from '@/lib/format';
 
+import { BookerOficialCard } from './booker-oficial-card';
 import { BookingsPreview } from './bookings-list';
 import {
   computeArtistStats,
@@ -10,6 +11,7 @@ import {
   getArtistBookers,
   getAttentionItems,
   getDiscoverBookers,
+  getOfficialBookerProgress,
   getPendingInvites,
   getUserBookings,
   type BookerCard,
@@ -54,6 +56,8 @@ export default async function DashboardPage() {
     profile.role === 'artista'
       ? await getDiscoverBookers(myBookers.map((b) => b.profileId), supabase, 4)
       : [];
+  const officialProgress =
+    profile.role === 'booker' ? await getOfficialBookerProgress(user.id, bookings, supabase) : null;
 
   return (
     <main className="flex flex-col gap-10">
@@ -71,6 +75,8 @@ export default async function DashboardPage() {
       ) : (
         <ArtistStats bookings={bookings} />
       )}
+
+      {officialProgress && <BookerOficialCard progress={officialProgress} />}
 
       {attentionItems.length > 0 && (
         <section className={cardClass}>

@@ -495,6 +495,58 @@ export async function getPayoutBalance(
   };
 }
 
+export type OfficialCriterion = { key: string; label: string; done: boolean };
+
+export type OfficialBookerProgress = {
+  criteria: OfficialCriterion[];
+  doneCount: number;
+  total: number;
+};
+
+// Critérios de verdade, calculados do que já existe. "Booker Pro" e
+// "Identidade verificada" ainda não têm nenhum sistema por trás (sem
+// tiers pagos, sem KYC) — ficam sempre pendentes, honestamente, em vez
+// de fingir que existem. Sem valor em R$ calculado em lugar nenhum
+// (trava do Bloco F: bônus financeiro espera validação jurídica).
+export async function getOfficialBookerProgress(
+  userId: string,
+  bookings: Booking[],
+  supabase: SupabaseServerClient
+): Promise<OfficialBookerProgress> {
+  const [{ data: profile }, { data: bookerProfile }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', userId)
+      .single<{ avatar_url: string | null }>(),
+    supabase
+      .from('booker_profiles')
+      .select('perfil, foco, mercados')
+      .eq('profile_id', userId)
+      .single<{ perfil: string | null; foco: string | null; mercados: string | null }>(),
+  ]);
+
+  const profileComplete = Boolean(
+    profile?.avatar_url && bookerProfile?.perfil && bookerProfile?.foco && bookerProfile?.mercados
+  );
+  const validatedCount = bookings.filter((b) => b.validated_at != null).length;
+  const concludedCount = bookings.filter((b) => b.status === 'concluida').length;
+
+  const criteria: OfficialCriterion[] = [
+    { key: 'pro', label: 'Booker Pro ativo', done: false },
+    { key: 'perfil', label: 'Perfil completo', done: profileComplete },
+    { key: 'identidade', label: 'Identidade verificada', done: false },
+    { key: 'validados', label: 'Primeiros bookings validados', done: validatedCount >= 1 },
+    { key: 'historico', label: 'Histórico inicial de atendimento', done: concludedCount >= 3 },
+  ];
+
+  return {
+    criteria,
+    doneCount: criteria.filter((c) => c.done).length,
+    total: criteria.length,
+  };
+}
+
 export type AgendaEvent = {
   date: string; // yyyy-mm-dd
   kind: 'confirmado' | 'disponivel';
