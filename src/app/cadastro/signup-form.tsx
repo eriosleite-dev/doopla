@@ -335,7 +335,13 @@ function getQuestionSteps(
   return getBookerSteps(answers);
 }
 
-export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
+export function SignupForm({
+  defaultRole,
+  referralCode,
+}: {
+  defaultRole: SignupRole;
+  referralCode?: string;
+}) {
   const [state, formAction, pending] = useActionState(
     signupAction,
     initialState
@@ -478,6 +484,7 @@ export function SignupForm({ defaultRole }: { defaultRole: SignupRole }) {
 
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="role" value={role} />
+        {referralCode && <input type="hidden" name="referralCode" value={referralCode} />}
         {Object.entries(answers).map(([key, value]) => (
           <input key={key} type="hidden" name={key} value={value} />
         ))}

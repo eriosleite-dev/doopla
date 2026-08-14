@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { formatCentsAsBRL, formatPercent } from '@/lib/format';
+import { siteOrigin } from '@/lib/site-url';
 
 import { BookerOficialCard } from './booker-oficial-card';
 import { BookingsPreview } from './bookings-list';
@@ -13,10 +14,12 @@ import {
   getDiscoverBookers,
   getOfficialBookerProgress,
   getPendingInvites,
+  getReferralSummary,
   getUserBookings,
   type BookerCard,
 } from './data';
 import { confirmInviteAction } from './actions';
+import { ReferralCard } from './referral-card';
 import { getSessionProfile } from './session';
 import {
   accentButtonClass,
@@ -58,6 +61,9 @@ export default async function DashboardPage() {
       : [];
   const officialProgress =
     profile.role === 'booker' ? await getOfficialBookerProgress(user.id, bookings, supabase) : null;
+  const referralSummary =
+    profile.role === 'artista' ? await getReferralSummary(user.id, profile.referral_code, supabase) : null;
+  const referralUrl = referralSummary ? `${await siteOrigin()}/cadastro?ref=${referralSummary.referralCode}` : null;
 
   return (
     <main className="flex flex-col gap-10">
@@ -77,6 +83,15 @@ export default async function DashboardPage() {
       )}
 
       {officialProgress && <BookerOficialCard progress={officialProgress} />}
+
+      {referralSummary && referralUrl && (
+        <ReferralCard
+          referralUrl={referralUrl}
+          referralCount={referralSummary.referrals.length}
+          pendingCount={referralSummary.pendingCount}
+          qualifiedTotalCents={referralSummary.qualifiedTotalCents}
+        />
+      )}
 
       {attentionItems.length > 0 && (
         <section className={cardClass}>

@@ -21,7 +21,7 @@ function isSignupRole(value: string | undefined): value is SignupRole {
 export default async function CadastroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ role?: string }>;
+  searchParams: Promise<{ role?: string; ref?: string }>;
 }) {
   const params = await searchParams;
   const defaultRole = isSignupRole(params.role) ? params.role : 'artista';
@@ -44,7 +44,7 @@ export default async function CadastroPage({
           </p>
         </div>
 
-        <SignupForm defaultRole={defaultRole} />
+        <SignupForm defaultRole={defaultRole} referralCode={params.ref} />
       </div>
     </main>
   );

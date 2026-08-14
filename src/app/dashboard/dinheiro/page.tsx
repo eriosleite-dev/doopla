@@ -6,6 +6,7 @@ import {
   computeArtistStats,
   computeBookerStats,
   getPayoutBalance,
+  getReferralSummary,
   getUserBookings,
 } from '../data';
 import { getSessionProfile } from '../session';
@@ -20,10 +21,15 @@ export default async function DinheiroPage() {
   const { supabase, user, profile } = await getSessionProfile();
   const bookings = await getUserBookings(user.id, profile.role, supabase);
 
+  const referralSummary =
+    profile.role === 'artista'
+      ? await getReferralSummary(user.id, profile.referral_code, supabase)
+      : null;
+
   const totalReceivedCents =
     profile.role === 'booker'
       ? computeBookerStats(bookings).totalEarnedCents
-      : computeArtistStats(bookings).netReceivedCents;
+      : computeArtistStats(bookings).netReceivedCents + (referralSummary?.qualifiedTotalCents ?? 0);
 
   const { availableCents, requests } = await getPayoutBalance(
     user.id,
@@ -85,6 +91,44 @@ export default async function DinheiroPage() {
           </ul>
         )}
       </section>
+
+      {referralSummary && referralSummary.referrals.length > 0 && (
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Créditos de indicação</p>
+          <p className="mt-1 text-[12px] text-[var(--ink)]/50">
+            Cada indicação só vira crédito depois de validada — nunca no clique do link ou no
+            cadastro.
+          </p>
+          <ul className="mt-4 flex flex-col gap-2">
+            {referralSummary.referrals.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center justify-between border-t border-[var(--line-light)] py-3 first:border-t-0 first:pt-0"
+              >
+                <div>
+                  <p className="text-sm font-medium">{r.referredName}</p>
+                  <p className="text-[12px] text-[var(--ink)]/55">
+                    {formatCentsAsBRL(r.bonus_cents)} · {formatRelativeDate(r.created_at)}
+                  </p>
+                </div>
+                <span
+                  className={`font-doopla-mono rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${
+                    r.status === 'qualificada'
+                      ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]'
+                      : r.status === 'invalida'
+                        ? 'bg-[var(--alert)]/10 text-[var(--alert)]'
+                        : 'bg-[var(--accent)]/15 text-[var(--accent-ink)]'
+                  }`}
+                >
+                  {r.status === 'qualificada' && 'Qualificado ✓'}
+                  {r.status === 'pendente' && 'Em análise'}
+                  {r.status === 'invalida' && 'Inválido'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   );
 }

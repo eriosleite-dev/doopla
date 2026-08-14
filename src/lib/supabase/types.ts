@@ -15,6 +15,7 @@ export type Profile = {
   avatar_url: string | null;
   slug: string | null;
   is_admin: boolean;
+  referral_code: string;
   created_at: string;
   updated_at: string;
 };
@@ -254,6 +255,23 @@ export type PayoutRequest = {
   created_at: string;
 };
 
+// "Indique. Ganhe R$5." — status fica em 'pendente' até existir sistema de
+// assinatura real pra checar 45-60 dias de assinatura ativa do indicado.
+// Nenhum caminho automático pra 'qualificada' existe ainda (ver migration
+// 0020). 'invalida' reservado pra moderação futura (fraude/abuso).
+export type ReferralStatus = 'pendente' | 'qualificada' | 'invalida';
+
+export type Referral = {
+  id: string;
+  referrer_profile_id: string;
+  referred_profile_id: string;
+  code: string;
+  status: ReferralStatus;
+  bonus_cents: number;
+  qualified_at: string | null;
+  created_at: string;
+};
+
 export type ReviewStatus = 'pendente' | 'ativa' | 'removida' | 'invalidada';
 
 export type Review = {
@@ -404,6 +422,13 @@ export type Database = {
         Insert: Partial<Review> &
           Pick<Review, 'booking_id' | 'reviewer_profile_id' | 'reviewee_profile_id'>;
         Update: Partial<Review>;
+        Relationships: [];
+      };
+      referrals: {
+        Row: Referral;
+        Insert: Partial<Referral> &
+          Pick<Referral, 'referrer_profile_id' | 'referred_profile_id' | 'code'>;
+        Update: Partial<Referral>;
         Relationships: [];
       };
     };

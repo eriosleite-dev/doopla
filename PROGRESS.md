@@ -35,6 +35,29 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
   universal/nichado, convites, plano Preço Fundador, bifurcações,
   seleção múltipla nas perguntas certas).
 
+## 2.1. Indique. Ganhe R$5. (#49)
+
+- ✅ Link de indicação (`doopla.com/cadastro?ref=CODIGO`, código gerado
+  automaticamente pra todo profile), card no painel do artista, e
+  histórico com origem completa (quem foi indicado, quando, status) na
+  tela Dinheiro.
+- ⚠️ **Decidido junto com você**: o critério real de qualificação
+  (45-60 dias de assinatura ativa) depende de um sistema de assinatura
+  que não existe no código ainda (Preço Fundador hoje é só uma tela
+  informativa no cadastro, sem PSP nem cobrança recorrente). Por isso
+  toda indicação nasce e fica em `pendente` pra sempre — não existe
+  nenhum caminho automático pra `qualificada`, em nenhuma migration.
+  R$5 nunca é creditado de verdade enquanto isso não mudar. Quando o
+  sistema de assinatura existir, falta só plugar a checagem real (uma
+  migration nova, sem redesenhar nada do que já está construído).
+  Deliberadamente não travei "45" ou "60" dias em lugar nenhum do
+  schema — isso é decisão de produto ainda não tomada, não algo pra
+  eu pré-decidir tecnicamente.
+- ✅ Quando algo qualificar de verdade, já soma automaticamente ao
+  saldo disponível pra saque (mesmo saldo/Sacar que já existe, sem
+  sistema novo) — só que hoje essa soma é sempre R$0 porque nada
+  qualifica ainda.
+
 ## 3. Painel do artista
 
 - ✅ Trabalhos, Agenda (calendário + disponibilidade), Contratos

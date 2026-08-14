@@ -13,6 +13,7 @@ import type {
   OpportunityInvitationStatus,
   PayoutRequest,
   Profile,
+  Referral,
   RepresentationRequest,
   RepresentationRequestStatus,
   Review,
@@ -907,6 +908,49 @@ export async function getPayoutBalance(
   return {
     availableCents: Math.max(totalReceivedCents - requested, 0),
     requests: requests ?? [],
+  };
+}
+
+export type ReferralWithName = Referral & { referredName: string };
+
+export type ReferralSummary = {
+  referralCode: string;
+  referrals: ReferralWithName[];
+  qualifiedTotalCents: number;
+  pendingCount: number;
+};
+
+// "Indique. Ganhe R$5." — qualifiedTotalCents só soma linhas já
+// 'qualificada'. Hoje isso é sempre 0: não existe nenhum caminho
+// automático pra qualificar uma indicação (ver migration 0020) até o
+// sistema de assinatura existir de verdade. Nada aqui inventa valor.
+export async function getReferralSummary(
+  userId: string,
+  referralCode: string,
+  supabase: SupabaseServerClient
+): Promise<ReferralSummary> {
+  const { data: referrals } = await supabase
+    .from('referrals')
+    .select('*')
+    .eq('referrer_profile_id', userId)
+    .order('created_at', { ascending: false })
+    .returns<Referral[]>();
+
+  const rows = referrals ?? [];
+  const { data: referred } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', rows.length > 0 ? rows.map((r) => r.referred_profile_id) : ['00000000-0000-0000-0000-000000000000'])
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const nameById = new Map((referred ?? []).map((p) => [p.id, p.full_name]));
+
+  return {
+    referralCode,
+    referrals: rows.map((r) => ({ ...r, referredName: nameById.get(r.referred_profile_id) ?? 'Alguém' })),
+    qualifiedTotalCents: rows
+      .filter((r) => r.status === 'qualificada')
+      .reduce((sum, r) => sum + r.bonus_cents, 0),
+    pendingCount: rows.filter((r) => r.status === 'pendente').length,
   };
 }
 

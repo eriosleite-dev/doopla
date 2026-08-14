@@ -98,6 +98,8 @@ export async function signupAction(
       metadata[key] = value.trim();
     }
   }
+  const referralCode = String(formData.get('referralCode') ?? '').trim();
+  if (referralCode) metadata.referralCode = referralCode;
 
   const supabase = await createClient();
   const origin = await siteOrigin();
