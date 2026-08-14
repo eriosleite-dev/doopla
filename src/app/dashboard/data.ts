@@ -9,6 +9,8 @@ import type {
   Opportunity,
   PayoutRequest,
   Profile,
+  RepresentationRequest,
+  RepresentationRequestStatus,
   Review,
 } from '@/lib/supabase/types';
 
@@ -216,6 +218,169 @@ export async function getDiscoverBookers(
   }
   const { data } = await query.returns<{ profile_id: string }[]>();
   return fetchBookerCards((data ?? []).map((d) => d.profile_id), supabase);
+}
+
+export type ArtistCard = {
+  profileId: string;
+  fullName: string;
+  city: string | null;
+  state: string | null;
+  stageName: string | null;
+  category: string | null;
+  mercados: string | null;
+  ratingAverage: number | null;
+  ratingCount: number;
+};
+
+async function fetchArtistCards(
+  profileIds: string[],
+  supabase: SupabaseServerClient
+): Promise<ArtistCard[]> {
+  if (profileIds.length === 0) return [];
+
+  const [{ data: profiles }, { data: artistProfiles }, ratings] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, city, state')
+      .in('id', profileIds)
+      .returns<Pick<Profile, 'id' | 'full_name' | 'city' | 'state'>[]>(),
+    supabase
+      .from('artist_profiles')
+      .select('profile_id, stage_name, category, mercados')
+      .in('profile_id', profileIds)
+      .returns<{ profile_id: string; stage_name: string | null; category: string | null; mercados: string | null }[]>(),
+    getRatingsFor(profileIds, supabase),
+  ]);
+
+  const artistByProfileId = new Map((artistProfiles ?? []).map((a) => [a.profile_id, a]));
+  return (profiles ?? []).map((p) => {
+    const a = artistByProfileId.get(p.id);
+    const rating = ratings.get(p.id);
+    return {
+      profileId: p.id,
+      fullName: p.full_name,
+      city: p.city,
+      state: p.state,
+      stageName: a?.stage_name ?? null,
+      category: a?.category ?? null,
+      mercados: a?.mercados ?? null,
+      ratingAverage: rating?.average ?? null,
+      ratingCount: rating?.count ?? 0,
+    };
+  });
+}
+
+export async function getRepresentedArtistCards(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<ArtistCard[]> {
+  const { data: reps } = await supabase
+    .from('representations')
+    .select('artist_profile_id')
+    .eq('booker_profile_id', bookerId)
+    .returns<{ artist_profile_id: string }[]>();
+
+  return fetchArtistCards((reps ?? []).map((r) => r.artist_profile_id), supabase);
+}
+
+export async function getDiscoverArtists(
+  excludeIds: string[],
+  supabase: SupabaseServerClient,
+  limit = 12
+): Promise<ArtistCard[]> {
+  let query = supabase
+    .from('artist_profiles')
+    .select('profile_id')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (excludeIds.length > 0) {
+    query = query.not('profile_id', 'in', `(${excludeIds.join(',')})`);
+  }
+  const { data } = await query.returns<{ profile_id: string }[]>();
+  return fetchArtistCards((data ?? []).map((d) => d.profile_id), supabase);
+}
+
+// Bloco 4.5 — booker pede pra representar artista novo. `status` de
+// pendentes vencidas só reflete a realidade depois de rodar o sweep
+// (expire_stale_representation_requests) — chamamos antes de listar,
+// exatamente como o contrato semântico documentado na auditoria pede.
+export async function getRepresentationRequestStatus(
+  bookerId: string,
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<RepresentationRequest | null> {
+  await supabase.rpc('expire_stale_representation_requests');
+  const { data } = await supabase
+    .from('representation_requests')
+    .select('*')
+    .eq('booker_profile_id', bookerId)
+    .eq('artist_profile_id', artistId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<RepresentationRequest>();
+  return data;
+}
+
+export async function getRepresentationRequestStatusesFor(
+  bookerId: string,
+  artistIds: string[],
+  supabase: SupabaseServerClient
+): Promise<Map<string, RepresentationRequestStatus>> {
+  if (artistIds.length === 0) return new Map();
+  await supabase.rpc('expire_stale_representation_requests');
+  const { data } = await supabase
+    .from('representation_requests')
+    .select('artist_profile_id, status, created_at')
+    .eq('booker_profile_id', bookerId)
+    .in('artist_profile_id', artistIds)
+    .order('created_at', { ascending: false })
+    .returns<{ artist_profile_id: string; status: RepresentationRequestStatus; created_at: string }[]>();
+
+  const byArtist = new Map<string, RepresentationRequestStatus>();
+  for (const r of data ?? []) {
+    if (!byArtist.has(r.artist_profile_id)) byArtist.set(r.artist_profile_id, r.status);
+  }
+  return byArtist;
+}
+
+export type IncomingRepresentationRequest = RepresentationRequest & { bookerName: string };
+
+export async function getIncomingRepresentationRequests(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<IncomingRepresentationRequest[]> {
+  await supabase.rpc('expire_stale_representation_requests');
+  const { data: requests } = await supabase
+    .from('representation_requests')
+    .select('*')
+    .eq('artist_profile_id', artistId)
+    .eq('status', 'pendente')
+    .order('created_at', { ascending: false })
+    .returns<RepresentationRequest[]>();
+
+  if (!requests || requests.length === 0) return [];
+
+  const { data: bookers } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', requests.map((r) => r.booker_profile_id))
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const nameById = new Map((bookers ?? []).map((b) => [b.id, b.full_name]));
+
+  return requests.map((r) => ({ ...r, bookerName: nameById.get(r.booker_profile_id) ?? 'Alguém' }));
+}
+
+export async function getOutgoingPendingRequestCount(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<number> {
+  await supabase.rpc('expire_stale_representation_requests');
+  const { count } = await supabase
+    .from('representation_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('booker_profile_id', bookerId)
+    .eq('status', 'pendente');
+  return count ?? 0;
 }
 
 export type OpportunityWithArtist = Opportunity & { artistName: string };
@@ -492,6 +657,16 @@ export async function getAttentionItems(
       text: `Como foi trabalhar com ${booking.otherPartyName}? Avalie e ajude a construir a reputação da Doopla`,
       href: `/dashboard/bookings/${booking.id}#avaliacao`,
     });
+  }
+
+  if (role === 'artista') {
+    const incomingRequests = await getIncomingRepresentationRequests(userId, supabase);
+    for (const req of incomingRequests) {
+      items.push({
+        text: `${req.bookerName} pediu pra te representar`,
+        href: '/dashboard/bookers#solicitacoes',
+      });
+    }
   }
 
   if (role === 'booker') {

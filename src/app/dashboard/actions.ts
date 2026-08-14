@@ -646,6 +646,66 @@ export async function setContractUrlAction(
   return {};
 }
 
+export async function requestRepresentationAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const artistProfileId = String(formData.get('artistProfileId') ?? '');
+  const message = String(formData.get('message') ?? '').trim();
+  if (!artistProfileId) return { error: 'Artista não encontrado.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return { error: 'Só bookers podem pedir pra representar um artista.' };
+
+  const { error } = await supabase.from('representation_requests').insert({
+    booker_profile_id: user.id,
+    artist_profile_id: artistProfileId,
+    message: message || null,
+  });
+
+  if (error) {
+    if (error.message.includes('representation_request_limit_reached')) {
+      return {
+        error: 'Você atingiu o limite de solicitações pendentes. Espere alguma ser respondida.',
+      };
+    }
+    if (error.code === '23505') {
+      return { error: 'Você já tem uma solicitação pendente pra esse artista.' };
+    }
+    return { error: 'Não foi possível enviar a solicitação.' };
+  }
+
+  revalidatePath('/dashboard/artistas');
+  return {};
+}
+
+export async function respondRepresentationRequestAction(formData: FormData) {
+  const requestId = String(formData.get('requestId') ?? '');
+  const decision = String(formData.get('decision') ?? '');
+  if (!requestId || (decision !== 'aceitar' && decision !== 'recusar')) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  const { data: request } = await supabase
+    .from('representation_requests')
+    .select('*')
+    .eq('id', requestId)
+    .single<{ artist_profile_id: string; status: string }>();
+  if (!request || request.artist_profile_id !== user.id || request.status !== 'pendente') return;
+
+  await supabase
+    .from('representation_requests')
+    .update({ status: decision === 'aceitar' ? 'aceita' : 'recusada' })
+    .eq('id', requestId);
+
+  revalidatePath('/dashboard/bookers');
+  revalidatePath('/dashboard');
+}
+
 export async function submitReviewAction(
   _prevState: { error?: string },
   formData: FormData

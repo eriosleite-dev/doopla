@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import type { BookerCard } from '../data';
 import { avatarClass, initialsFromName } from '../ui';
 
@@ -11,7 +13,7 @@ export function BookerRow({ booker }: { booker: BookerCard }) {
 
   return (
     <div className="flex flex-col gap-3 rounded-[18px] bg-white p-5">
-      <div className="flex items-center gap-3">
+      <Link href={`/dashboard/bookers/${booker.profileId}`} className="flex items-center gap-3">
         <span className={avatarClass}>{initialsFromName(booker.fullName)}</span>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{booker.fullName}</p>
@@ -19,7 +21,7 @@ export function BookerRow({ booker }: { booker: BookerCard }) {
             {location || booker.perfil || 'Booker na doopla'}
           </p>
         </div>
-      </div>
+      </Link>
       {booker.ratingCount > 0 ? (
         <p className="font-doopla-mono text-[11.5px] text-[var(--accent-ink)]">
           ★ {booker.ratingAverage?.toFixed(1)} · {booker.ratingCount}{' '}

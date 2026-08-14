@@ -56,11 +56,20 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
   nesta sessão. Sem número em R$ e sem cálculo automático de bônus,
   como você pediu — isso é trava consciente, não esquecimento (bônus
   financeiro depende de validação jurídica que ainda não existe).
-- ❌ Descoberta de artistas com paginação real + perfil padronizado do
-  booker pro artista ver (#47). Estava travado esperando o documento
-  de perfis/avaliações — **agora que chegou, entra na fila em seguida**
-  (depende do item 5 abaixo, porque o card/perfil precisa mostrar nota
-  real).
+- ✅ Descoberta de artistas com paginação real (`/dashboard/artistas`,
+  mesmo padrão de "meus artistas" + "descubra novos" + busca/filtro do
+  `/dashboard/bookers`), fecha o #47. Booker pede pra representar um
+  artista (`representation_requests`, limite de 5 pendentes reforçado
+  no banco), artista vê e responde em "Bookers que querem te
+  representar" (`/dashboard/bookers#solicitacoes`).
+- ✅ Perfil completo interno dos dois lados: `/dashboard/artistas/[id]`
+  (booker vendo artista) e `/dashboard/bookers/[id]` (artista vendo
+  booker) — nota real, atributos com contador, bio/mercados/links,
+  CTA conforme a relação (pedir representação / já representa / já
+  trabalha com você). O perfil de booker não tem CTA de "artista pede
+  pro booker" porque isso não existe no schema ainda (representation_requests
+  é só booker→artista) — mostro só o estado, não invento uma ação que
+  não existe de verdade.
 
 ## 5. Perfis, avaliações e reputação (`doopla-perfis-avaliacoes.md`)
 

@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
-import { getArtistBookers, getDiscoverBookers } from '../data';
+import { getArtistBookers, getDiscoverBookers, getIncomingRepresentationRequests } from '../data';
 import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { eyebrowClass } from '../ui';
 import { BookerRow } from './booker-row';
 import { DiscoverBookers } from './discover-bookers';
+import { IncomingRequests } from './incoming-requests';
 
 export const metadata: Metadata = {
   title: 'Bookers | Doopla',
@@ -19,7 +20,10 @@ export default async function BookersPage(props: {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
-  const myBookers = await getArtistBookers(user.id, supabase);
+  const [myBookers, incomingRequests] = await Promise.all([
+    getArtistBookers(user.id, supabase),
+    getIncomingRepresentationRequests(user.id, supabase),
+  ]);
 
   const limit = Math.min(Math.max(Number(discoverLimit) || 12, 12), 96);
   const discoverBookers = await getDiscoverBookers(
@@ -38,6 +42,8 @@ export default async function BookersPage(props: {
           Bookers que você já trabalhou
         </h1>
       </header>
+
+      <IncomingRequests requests={incomingRequests} />
 
       {myBookers.length === 0 ? (
         <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
