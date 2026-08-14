@@ -161,6 +161,40 @@ se perder:
 
 ---
 
+## 10. Bloco 4.5 — oportunidades, convites e matching (integração entre sessões)
+
+Havia uma segunda sessão do Claude Code trabalhando em paralelo, num
+branch separado (`claude/doopla-bloco-4-5-opportunities-5f15n6`), que
+tinha construído só a camada de banco desse bloco (schema, RLS, função
+`select_booker_for_opportunity`). Trouxe esse schema pra este branch
+(migration `0018`).
+
+- ✅ Auditoria de risco feita antes de escrever qualquer Server Action
+  em cima (ver `AUDITORIA_BLOCO_4_5.md`): matriz de RLS por tabela/
+  papel/operação, confirmação de atomicidade da seleção de booker,
+  contrato de nomes/semântica. Achados corrigidos na migration `0019`:
+  usuário conseguia se auto-promover a admin, booker conseguia se
+  auto-selecionar numa oportunidade pulando o artista, evento de
+  oportunidade podia ser fabricado sem vínculo real, convite de
+  oportunidade não respeitava o modo de distribuição, e duas policies
+  de update (`representation_requests` e `reviews`, essa última um
+  problema meu mesmo, achado ao aplicar o mesmo critério) deixavam
+  reescrever coluna que devia ser só leitura pra quem estava
+  respondendo.
+- ⚠️ Efeito colateral esperado: a RLS nova só deixa o **artista**
+  preencher `opportunities.selected_booker_id` (via função, nunca
+  update direto). O botão "aceitar oportunidade" antigo do mural
+  (`/dashboard/oportunidades`), que deixava o booker se auto-assumir
+  direto, parou de funcionar — falha com uma mensagem clara em vez de
+  criar um booking fantasma. Ele será substituído pelo fluxo novo
+  (convite/interesse + escolha do artista) no próximo passo.
+- ❌ Nenhuma Server Action ou tela desse bloco existe ainda (nem aqui,
+  nem no branch de origem) — só a camada de banco, agora auditada e
+  corrigida. Próximo passo: convidar booker pra oportunidade, registrar
+  interesse, tela de oportunidades reconstruída com os novos status.
+- A outra sessão pode ser encerrada — o schema dela já está absorvido
+  aqui, com correções que ela ainda não tinha.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

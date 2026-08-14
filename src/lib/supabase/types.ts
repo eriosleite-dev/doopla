@@ -14,6 +14,7 @@ export type Profile = {
   state: string | null;
   avatar_url: string | null;
   slug: string | null;
+  is_admin: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -54,6 +55,7 @@ export type BookerProfile = {
   ja_representa: string | null;
   roster: string | null;
   opportunities_seen_at: string;
+  representation_request_limit: number;
   created_at: string;
   updated_at: string;
 };
@@ -123,10 +125,21 @@ export type Representation = {
   artist_profile_id: string;
   booker_profile_id: string;
   created_via_invite_id: string | null;
+  created_via_representation_request_id: string | null;
   created_at: string;
 };
 
-export type OpportunityStatus = 'aberta' | 'preenchida' | 'cancelada';
+// Bloco 4.5 — jornada de publicação da oportunidade (nunca o andamento do
+// trabalho, isso é BookingStatus). 'rascunho' reservado, nada usa ainda.
+export type OpportunityStatus =
+  | 'rascunho'
+  | 'aberta'
+  | 'em_distribuicao'
+  | 'interesse_recebido'
+  | 'booker_selecionado'
+  | 'cancelada';
+
+export type OpportunityDistributionMode = 'meus_bookers' | 'novos_bookers' | 'ambos';
 
 export type Opportunity = {
   id: string;
@@ -135,6 +148,18 @@ export type Opportunity = {
   cache_amount_cents: number | null;
   commission_percent: number;
   status: OpportunityStatus;
+  distribution_mode: OpportunityDistributionMode;
+  work_type: string | null;
+  category: string | null;
+  location: string | null;
+  event_date: string | null;
+  cache_min_cents: number | null;
+  cache_max_cents: number | null;
+  selected_booker_id: string | null;
+  selected_at: string | null;
+  ai_tags_status: 'pendente' | 'concluido' | 'falhou';
+  ai_tags_content_hash: string | null;
+  ai_tags_processed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -142,6 +167,73 @@ export type Opportunity = {
 export type OpportunityDismissal = {
   opportunity_id: string;
   booker_profile_id: string;
+  created_at: string;
+};
+
+// Bloco 4.5 — booker pede pra representar um artista novo (distinto de
+// Invite, que é pra relação que já existe fora da doopla).
+export type RepresentationRequestStatus = 'pendente' | 'aceita' | 'recusada' | 'expirada';
+
+export type RepresentationRequest = {
+  id: string;
+  booker_profile_id: string;
+  artist_profile_id: string;
+  message: string | null;
+  status: RepresentationRequestStatus;
+  expires_at: string;
+  responded_at: string | null;
+  created_at: string;
+};
+
+export type OpportunityInvitationStatus = 'pendente' | 'aceita' | 'recusada' | 'encerrada';
+
+export type OpportunityInvitation = {
+  id: string;
+  opportunity_id: string;
+  booker_profile_id: string;
+  status: OpportunityInvitationStatus;
+  created_at: string;
+  responded_at: string | null;
+};
+
+export type OpportunityInterestStatus = 'pendente' | 'selecionado' | 'encerrado';
+
+export type OpportunityInterest = {
+  id: string;
+  opportunity_id: string;
+  booker_profile_id: string;
+  status: OpportunityInterestStatus;
+  created_at: string;
+};
+
+export type OpportunityEvent = {
+  id: string;
+  opportunity_id: string;
+  booker_profile_id: string | null;
+  event_type: string;
+  source: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type OpportunityTagSource = 'explicit' | 'ai';
+
+export type OpportunityTag = {
+  id: string;
+  opportunity_id: string;
+  tag: string;
+  source: OpportunityTagSource;
+  created_at: string;
+};
+
+export type AiUsageEvent = {
+  id: string;
+  profile_id: string | null;
+  opportunity_id: string | null;
+  feature: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_cents_estimate: number | null;
   created_at: string;
 };
 
@@ -253,6 +345,45 @@ export type Database = {
         Insert: Partial<OpportunityDismissal> &
           Pick<OpportunityDismissal, 'opportunity_id' | 'booker_profile_id'>;
         Update: Partial<OpportunityDismissal>;
+        Relationships: [];
+      };
+      representation_requests: {
+        Row: RepresentationRequest;
+        Insert: Partial<RepresentationRequest> &
+          Pick<RepresentationRequest, 'booker_profile_id' | 'artist_profile_id'>;
+        Update: Partial<RepresentationRequest>;
+        Relationships: [];
+      };
+      opportunity_invitations: {
+        Row: OpportunityInvitation;
+        Insert: Partial<OpportunityInvitation> &
+          Pick<OpportunityInvitation, 'opportunity_id' | 'booker_profile_id'>;
+        Update: Partial<OpportunityInvitation>;
+        Relationships: [];
+      };
+      opportunity_interests: {
+        Row: OpportunityInterest;
+        Insert: Partial<OpportunityInterest> &
+          Pick<OpportunityInterest, 'opportunity_id' | 'booker_profile_id'>;
+        Update: Partial<OpportunityInterest>;
+        Relationships: [];
+      };
+      opportunity_events: {
+        Row: OpportunityEvent;
+        Insert: Partial<OpportunityEvent> & Pick<OpportunityEvent, 'opportunity_id'>;
+        Update: Partial<OpportunityEvent>;
+        Relationships: [];
+      };
+      opportunity_tags: {
+        Row: OpportunityTag;
+        Insert: Partial<OpportunityTag> & Pick<OpportunityTag, 'opportunity_id' | 'tag' | 'source'>;
+        Update: Partial<OpportunityTag>;
+        Relationships: [];
+      };
+      ai_usage_events: {
+        Row: AiUsageEvent;
+        Insert: Partial<AiUsageEvent> & Pick<AiUsageEvent, 'feature'>;
+        Update: Partial<AiUsageEvent>;
         Relationships: [];
       };
       artist_availability: {

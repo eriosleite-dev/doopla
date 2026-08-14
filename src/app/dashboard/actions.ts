@@ -328,12 +328,27 @@ async function claimOpportunity(
     return { error: 'Essa oportunidade não está mais disponível.' };
   }
 
-  const { error: updateError } = await supabase
+  // A migration 0018 (Bloco 4.5) mudou a policy de update de `opportunities`
+  // pra só o artista dono poder mexer — seleção de booker passou a ser só
+  // via select_booker_for_opportunity(), chamada pelo artista, nunca pelo
+  // próprio booker direto (ver AUDITORIA_BLOCO_4_5.md, item 2). Esse fluxo
+  // de "aceitar direto do mural" fica temporariamente indisponível — falha
+  // aqui de forma clara em vez de criar um booking fantasma sem o
+  // `.select()` conseguir confirmar que a oportunidade foi mesmo assumida.
+  // Reconstrução completa (convite/interesse + escolha do artista) é o #57.
+  const { data: claimed } = await supabase
     .from('opportunities')
-    .update({ status: 'preenchida' })
+    .update({ status: 'booker_selecionado' })
     .eq('id', opportunityId)
-    .eq('status', 'aberta');
-  if (updateError) return { error: 'Não foi possível assumir essa oportunidade.' };
+    .eq('status', 'aberta')
+    .select('id')
+    .maybeSingle<{ id: string }>();
+  if (!claimed) {
+    return {
+      error:
+        'Esse jeito de aceitar oportunidade está temporariamente fora do ar enquanto o novo fluxo de convite/interesse é construído.',
+    };
+  }
 
   const { data: booking, error } = await supabase
     .from('bookings')
