@@ -277,6 +277,8 @@ export async function markPaidAction(formData: FormData) {
   revalidatePath('/dashboard');
 }
 
+const DISTRIBUTION_MODES = ['meus_bookers', 'novos_bookers', 'ambos'] as const;
+
 export async function publishOpportunityAction(
   _prevState: { error?: string },
   formData: FormData
@@ -291,113 +293,156 @@ export async function publishOpportunityAction(
     String(formData.get('commissionPercent') ?? '').replace(',', '.')
   );
   const cacheAmountCents = centsFromReais(formData.get('cacheAmountCents'));
+  const distributionMode = String(formData.get('distributionMode') ?? 'ambos');
+  const category = String(formData.get('category') ?? '').trim();
+  const location = String(formData.get('location') ?? '').trim();
+  const eventDate = String(formData.get('eventDate') ?? '').trim();
 
   if (!description) return { error: 'Descreva o trabalho.' };
   if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
     return { error: 'Informe uma comissão válida (0 a 100%).' };
   }
+  if (!DISTRIBUTION_MODES.includes(distributionMode as (typeof DISTRIBUTION_MODES)[number])) {
+    return { error: 'Escolha pra quem essa oportunidade vai.' };
+  }
 
-  const { error } = await supabase.from('opportunities').insert({
-    artist_profile_id: user.id,
-    description,
-    commission_percent: commissionPercent,
-    cache_amount_cents: cacheAmountCents,
-  });
-  if (error) return { error: 'Não foi possível publicar o trabalho.' };
+  const { data: opportunity, error } = await supabase
+    .from('opportunities')
+    .insert({
+      artist_profile_id: user.id,
+      description,
+      commission_percent: commissionPercent,
+      cache_amount_cents: cacheAmountCents,
+      distribution_mode: distributionMode as Opportunity['distribution_mode'],
+      category: category || null,
+      location: location || null,
+      event_date: eventDate || null,
+    })
+    .select('id')
+    .single<{ id: string }>();
+  if (error || !opportunity) return { error: 'Não foi possível publicar o trabalho.' };
 
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/oportunidades');
-  redirect('/dashboard');
+  redirect(`/dashboard/oportunidades/${opportunity.id}`);
 }
 
-async function claimOpportunity(
-  opportunityId: string,
-  commissionPercent: number | null
+export async function expressInterestAction(formData: FormData) {
+  const opportunityId = String(formData.get('opportunityId') ?? '');
+  if (!opportunityId) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return;
+
+  await supabase
+    .from('opportunity_interests')
+    .insert({ opportunity_id: opportunityId, booker_profile_id: user.id });
+
+  revalidatePath('/dashboard/oportunidades');
+}
+
+export async function withdrawInterestAction(formData: FormData) {
+  const opportunityId = String(formData.get('opportunityId') ?? '');
+  if (!opportunityId) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  await supabase
+    .from('opportunity_interests')
+    .delete()
+    .eq('opportunity_id', opportunityId)
+    .eq('booker_profile_id', user.id);
+
+  revalidatePath('/dashboard/oportunidades');
+}
+
+export async function declineInvitationAction(formData: FormData) {
+  const opportunityId = String(formData.get('opportunityId') ?? '');
+  if (!opportunityId) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  await supabase
+    .from('opportunity_invitations')
+    .update({ status: 'recusada' })
+    .eq('opportunity_id', opportunityId)
+    .eq('booker_profile_id', user.id)
+    .eq('status', 'pendente');
+
+  revalidatePath('/dashboard/oportunidades');
+}
+
+export async function inviteBookerToOpportunityAction(formData: FormData) {
+  const opportunityId = String(formData.get('opportunityId') ?? '');
+  const bookerProfileId = String(formData.get('bookerProfileId') ?? '');
+  if (!opportunityId || !bookerProfileId) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, profile } = ctx;
+  if (profile.role !== 'artista') return;
+
+  await supabase
+    .from('opportunity_invitations')
+    .insert({ opportunity_id: opportunityId, booker_profile_id: bookerProfileId });
+
+  revalidatePath(`/dashboard/oportunidades/${opportunityId}`);
+}
+
+export async function selectBookerForOpportunityAction(
+  _prevState: { error?: string },
+  formData: FormData
 ): Promise<{ error?: string }> {
+  const opportunityId = String(formData.get('opportunityId') ?? '');
+  const bookerProfileId = String(formData.get('bookerProfileId') ?? '');
+  if (!opportunityId || !bookerProfileId) return { error: 'Dados inválidos.' };
+
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
   const { supabase, user, profile } = ctx;
-  if (profile.role !== 'booker') return { error: 'Só bookers podem responder oportunidades.' };
+  if (profile.role !== 'artista') return { error: 'Só o artista dono pode escolher um booker.' };
 
-  const { data: opportunity } = await supabase
-    .from('opportunities')
-    .select('*')
-    .eq('id', opportunityId)
-    .single<Opportunity>();
-  if (!opportunity || opportunity.status !== 'aberta') {
-    return { error: 'Essa oportunidade não está mais disponível.' };
+  const { data: selected, error: rpcError } = await supabase.rpc('select_booker_for_opportunity', {
+    p_opportunity_id: opportunityId,
+    p_booker_profile_id: bookerProfileId,
+  });
+
+  if (rpcError || !selected) {
+    if (rpcError?.message.includes('opportunity_already_filled')) {
+      return { error: 'Essa oportunidade já foi encerrada com outro booker.' };
+    }
+    return { error: 'Não foi possível escolher esse booker agora.' };
   }
 
-  // A migration 0018 (Bloco 4.5) mudou a policy de update de `opportunities`
-  // pra só o artista dono poder mexer — seleção de booker passou a ser só
-  // via select_booker_for_opportunity(), chamada pelo artista, nunca pelo
-  // próprio booker direto (ver AUDITORIA_BLOCO_4_5.md, item 2). Esse fluxo
-  // de "aceitar direto do mural" fica temporariamente indisponível — falha
-  // aqui de forma clara em vez de criar um booking fantasma sem o
-  // `.select()` conseguir confirmar que a oportunidade foi mesmo assumida.
-  // Reconstrução completa (convite/interesse + escolha do artista) é o #57.
-  const { data: claimed } = await supabase
-    .from('opportunities')
-    .update({ status: 'booker_selecionado' })
-    .eq('id', opportunityId)
-    .eq('status', 'aberta')
-    .select('id')
-    .maybeSingle<{ id: string }>();
-  if (!claimed) {
-    return {
-      error:
-        'Esse jeito de aceitar oportunidade está temporariamente fora do ar enquanto o novo fluxo de convite/interesse é construído.',
-    };
-  }
+  const opportunity = selected as Opportunity;
 
-  const { data: booking, error } = await supabase
+  const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .insert({
-      artist_profile_id: opportunity.artist_profile_id,
-      booker_profile_id: user.id,
-      proposed_by: 'booker',
-      commission_percent: commissionPercent ?? opportunity.commission_percent,
+      artist_profile_id: user.id,
+      booker_profile_id: bookerProfileId,
+      proposed_by: 'artista',
+      commission_percent: opportunity.commission_percent,
       cache_amount_cents: opportunity.cache_amount_cents,
       description: opportunity.description,
     })
     .select('id')
     .single<{ id: string }>();
-
-  if (error || !booking) return { error: 'Não foi possível criar o booking.' };
+  if (bookingError || !booking) return { error: 'Booker escolhido, mas não foi possível criar o booking.' };
 
   await supabase.from('booking_events').insert({
     booking_id: booking.id,
     actor_profile_id: user.id,
     event_type: 'proposta_enviada',
-    commission_percent: commissionPercent ?? opportunity.commission_percent,
-    note: 'A partir de uma oportunidade do mural.',
+    commission_percent: opportunity.commission_percent,
+    note: 'A partir de uma oportunidade publicada.',
   });
 
   revalidatePath('/dashboard/oportunidades');
   revalidatePath('/dashboard');
-  return {};
-}
-
-export async function acceptOpportunityAction(formData: FormData) {
-  const opportunityId = String(formData.get('opportunityId') ?? '');
-  if (!opportunityId) return;
-  const result = await claimOpportunity(opportunityId, null);
-  if (!result.error) redirect('/dashboard');
-}
-
-export async function counterOpportunityAction(
-  _prevState: { error?: string },
-  formData: FormData
-): Promise<{ error?: string }> {
-  const opportunityId = String(formData.get('opportunityId') ?? '');
-  const commissionPercent = Number.parseFloat(
-    String(formData.get('commissionPercent') ?? '').replace(',', '.')
-  );
-  if (!opportunityId) return { error: 'Oportunidade inválida.' };
-  if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
-    return { error: 'Informe uma comissão válida (0 a 100%).' };
-  }
-  return claimOpportunity(opportunityId, commissionPercent);
+  redirect(`/dashboard/bookings/${booking.id}`);
 }
 
 export async function dismissOpportunityAction(formData: FormData) {

@@ -197,12 +197,19 @@ tinha construído só a camada de banco desse bloco (schema, RLS, função
   direto, parou de funcionar — falha com uma mensagem clara em vez de
   criar um booking fantasma. Ele será substituído pelo fluxo novo
   (convite/interesse + escolha do artista) no próximo passo.
-- ❌ Nenhuma Server Action ou tela desse bloco existe ainda (nem aqui,
-  nem no branch de origem) — só a camada de banco, agora auditada e
-  corrigida. Próximo passo: convidar booker pra oportunidade, registrar
-  interesse, tela de oportunidades reconstruída com os novos status.
+- ✅ Ciclo completo construído em cima do schema auditado: publicar
+  (com "pra quem" — meus bookers / novos bookers / ambos), booker
+  demonstra interesse (modo aberto) ou responde convite (modo direto),
+  artista vê os dois em `/dashboard/oportunidades/[id]` e escolhe um
+  via `select_booker_for_opportunity` (a função atômica da auditoria,
+  agora com uma tela de verdade puxando ela) — isso cria o booking e
+  segue o fluxo de negociação que já existia.
+- ❌ Ainda fora do escopo (não é o que o roteiro do beta pede agora):
+  curadoria admin manual, distribuição automática por regra de
+  categoria, worker de tags por IA, `ai_usage_events` real.
 - A outra sessão pode ser encerrada — o schema dela já está absorvido
-  aqui, com correções que ela ainda não tinha.
+  aqui, com correções que ela ainda não tinha, e agora com a camada de
+  aplicação por cima também.
 
 ## Como usar isso
 

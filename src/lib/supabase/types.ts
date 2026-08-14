@@ -408,6 +408,15 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      select_booker_for_opportunity: {
+        Args: { p_opportunity_id: string; p_booker_profile_id: string };
+        Returns: Opportunity;
+      };
+      expire_stale_representation_requests: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+    };
   };
 };

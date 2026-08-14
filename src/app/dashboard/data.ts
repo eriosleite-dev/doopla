@@ -7,6 +7,10 @@ import type {
   BookingStatus,
   Invite,
   Opportunity,
+  OpportunityInterest,
+  OpportunityInterestStatus,
+  OpportunityInvitation,
+  OpportunityInvitationStatus,
   PayoutRequest,
   Profile,
   RepresentationRequest,
@@ -383,8 +387,17 @@ export async function getOutgoingPendingRequestCount(
   return count ?? 0;
 }
 
-export type OpportunityWithArtist = Opportunity & { artistName: string };
+export type OpportunityWithArtist = Opportunity & {
+  artistName: string;
+  myInterestStatus: OpportunityInterestStatus | null;
+  myInvitationStatus: OpportunityInvitationStatus | null;
+};
 
+// Mural do booker: RLS de `opportunities` já resolve o que é visível (aberta
+// com distribution_mode aberto, ou onde o booker foi convidado) — aqui só
+// filtramos as descartadas e anexamos o status pessoal do booker em cada uma
+// (interesse registrado / convite recebido), pra a tela saber qual ação
+// mostrar sem o booker precisar adivinhar.
 export async function getOpenOpportunities(
   bookerId: string,
   supabase: SupabaseServerClient
@@ -399,7 +412,7 @@ export async function getOpenOpportunities(
   let query = supabase
     .from('opportunities')
     .select('*')
-    .eq('status', 'aberta')
+    .in('status', ['aberta', 'em_distribuicao', 'interesse_recebido'])
     .order('created_at', { ascending: false });
   if (dismissedIds.length > 0) {
     query = query.not('id', 'in', `(${dismissedIds.join(',')})`);
@@ -407,18 +420,123 @@ export async function getOpenOpportunities(
   const { data: opportunities } = await query.returns<Opportunity[]>();
   if (!opportunities || opportunities.length === 0) return [];
 
+  const opportunityIds = opportunities.map((o) => o.id);
   const artistIds = [...new Set(opportunities.map((o) => o.artist_profile_id))];
-  const { data: artists } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .in('id', artistIds)
-    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const [{ data: artists }, { data: myInterests }, { data: myInvitations }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', artistIds)
+      .returns<Pick<Profile, 'id' | 'full_name'>[]>(),
+    supabase
+      .from('opportunity_interests')
+      .select('opportunity_id, status')
+      .eq('booker_profile_id', bookerId)
+      .in('opportunity_id', opportunityIds)
+      .returns<{ opportunity_id: string; status: OpportunityInterestStatus }[]>(),
+    supabase
+      .from('opportunity_invitations')
+      .select('opportunity_id, status')
+      .eq('booker_profile_id', bookerId)
+      .in('opportunity_id', opportunityIds)
+      .returns<{ opportunity_id: string; status: OpportunityInvitationStatus }[]>(),
+  ]);
+
   const nameById = new Map((artists ?? []).map((p) => [p.id, p.full_name]));
+  const interestByOpp = new Map((myInterests ?? []).map((i) => [i.opportunity_id, i.status]));
+  const invitationByOpp = new Map((myInvitations ?? []).map((i) => [i.opportunity_id, i.status]));
 
   return opportunities.map((o) => ({
     ...o,
     artistName: nameById.get(o.artist_profile_id) ?? 'Artista',
+    myInterestStatus: interestByOpp.get(o.id) ?? null,
+    myInvitationStatus: invitationByOpp.get(o.id) ?? null,
   }));
+}
+
+export async function getMyOpportunities(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<Opportunity[]> {
+  const { data } = await supabase
+    .from('opportunities')
+    .select('*')
+    .eq('artist_profile_id', artistId)
+    .order('created_at', { ascending: false })
+    .returns<Opportunity[]>();
+  return data ?? [];
+}
+
+export type OpportunityManageDetail = {
+  opportunity: Opportunity;
+  interests: (OpportunityInterest & { bookerName: string; ratingAverage: number | null; ratingCount: number })[];
+  invitations: (OpportunityInvitation & { bookerName: string })[];
+  invitableBookers: BookerCard[];
+};
+
+// Tela de gestão do artista dono da oportunidade: quem se interessou (modo
+// aberto), quem foi convidado e como respondeu, e quem dos bookers que ele
+// já representa ainda pode ser convidado (só faz sentido convidar de novo
+// quem ainda não tem convite/interesse registrado).
+export async function getOpportunityManageDetail(
+  opportunityId: string,
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<OpportunityManageDetail | null> {
+  const { data: opportunity } = await supabase
+    .from('opportunities')
+    .select('*')
+    .eq('id', opportunityId)
+    .eq('artist_profile_id', artistId)
+    .maybeSingle<Opportunity>();
+  if (!opportunity) return null;
+
+  const [{ data: interests }, { data: invitations }, myBookers] = await Promise.all([
+    supabase
+      .from('opportunity_interests')
+      .select('*')
+      .eq('opportunity_id', opportunityId)
+      .eq('status', 'pendente')
+      .returns<OpportunityInterest[]>(),
+    supabase
+      .from('opportunity_invitations')
+      .select('*')
+      .eq('opportunity_id', opportunityId)
+      .order('created_at', { ascending: false })
+      .returns<OpportunityInvitation[]>(),
+    getArtistBookers(artistId, supabase),
+  ]);
+
+  const involvedIds = new Set([
+    ...(interests ?? []).map((i) => i.booker_profile_id),
+    ...(invitations ?? []).map((i) => i.booker_profile_id),
+  ]);
+  const ratings = await getRatingsFor((interests ?? []).map((i) => i.booker_profile_id), supabase);
+
+  const bookerIds = [
+    ...new Set([...(interests ?? []).map((i) => i.booker_profile_id), ...(invitations ?? []).map((i) => i.booker_profile_id)]),
+  ];
+  const { data: bookerProfiles } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', bookerIds.length > 0 ? bookerIds : ['00000000-0000-0000-0000-000000000000'])
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const nameById = new Map((bookerProfiles ?? []).map((p) => [p.id, p.full_name]));
+
+  return {
+    opportunity,
+    interests: (interests ?? []).map((i) => ({
+      ...i,
+      bookerName: nameById.get(i.booker_profile_id) ?? 'Booker',
+      ratingAverage: ratings.get(i.booker_profile_id)?.average ?? null,
+      ratingCount: ratings.get(i.booker_profile_id)?.count ?? 0,
+    })),
+    invitations: (invitations ?? []).map((i) => ({
+      ...i,
+      bookerName: nameById.get(i.booker_profile_id) ?? 'Booker',
+    })),
+    invitableBookers: myBookers.filter((b) => !involvedIds.has(b.profileId)),
+  };
 }
 
 export type BookingDetail = {

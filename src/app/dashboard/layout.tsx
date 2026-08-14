@@ -149,6 +149,12 @@ export default async function DashboardLayout({
                 Publicar trabalho
               </Link>
               <Link
+                href="/dashboard/oportunidades"
+                className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
+              >
+                Oportunidades
+              </Link>
+              <Link
                 href="/dashboard/bookers"
                 className="font-doopla-mono rounded-full px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/70 hover:bg-[var(--paper-dim)] hover:text-[var(--ink)]"
               >
