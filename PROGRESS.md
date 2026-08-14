@@ -13,6 +13,21 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## 0. Layout do painel (menu lateral)
+
+- ✅ Trocado o menu horizontal do topo por sidebar fixa à esquerda,
+  seguindo `doopla-painel-FINALhtml_5.html` (logo, foto/nome/papel,
+  navegação vertical com item ativo destacado, CTA de atalho embaixo,
+  Sair). Todos os links e badges que já existiam continuam — a
+  sidebar tem mais itens que o mockup estático porque o produto real
+  já tem mais telas (Oportunidades, Nova proposta) do que aquele
+  print mostrava. Em mobile a navegação vira uma barra horizontal
+  com scroll, não um menu escondido atrás de hambúrguer (mockup não
+  define esse comportamento, então usei o padrão mais simples).
+- ⚠️ Validado com build de produção limpo. Não consegui tirar
+  print logado de verdade sem criar uma conta de teste no seu
+  Supabase real — prefiro você conferir no preview.
+
 ## 1. Site institucional / marketing
 
 - ✅ Home, Sobre, Termos, Privacidade, Preços — conteúdo real, não stub.
