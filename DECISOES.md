@@ -43,3 +43,16 @@ Referral hoje é só rastreamento, não é crédito financeiro liberado.
 **Motivo**: evitar dívida técnica de um gatilho provisório e evitar
 criar "dinheiro fictício" no sistema antes de existir o evento
 financeiro real por trás.
+
+---
+
+## Bloco 4.5 — itens adiados, não descartados — 14/08/2026
+
+Curadoria administrativa manual, distribuição automática de
+oportunidade por regra de categoria, e worker de tags por IA (com
+gravação real em `ai_usage_events`) ficam fora do escopo do beta.
+A estrutura de banco pra todos os três já existe (migration `0018`:
+`profiles.is_admin`, `opportunity_events.source`, `ai_usage_events`),
+só não tem interface/lógica em cima ainda. Mesmo critério já usado pro
+Matching V2: volta pra fila quando a base de usuários justificar,
+não é decisão de "nunca construir".
