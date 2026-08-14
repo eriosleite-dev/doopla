@@ -178,15 +178,20 @@ confirmado pelo PSP (não existe mais retenção até o evento acontecer).
 
 ## 8. Gerador de contrato (`doopla-gerador-contrato.md`)
 
-- ⏳ Módulos de escopo/partes/evento (dados do booking, sem tocar
-  pagamento/cancelamento) — liberado pra construir, ainda não comecei.
-- 🔒 Módulos de forma de pagamento e política de cancelamento dentro
-  do contrato — dependem do item 6/7 fecharem de verdade primeiro
-  (o próprio documento pede isso, pra não gerar cláusula que depois
-  precise mudar de estrutura).
-- ✅ Já existe hoje: os 3 caminhos básicos no booking (gerar/anexar/
-  sem contrato) via `booking_contract_url`, mas só o caminho "anexar
-  link manual" está funcional — "gerar com a Doopla" ainda não existe.
+- ✅ Os 3 caminhos existem e funcionam: "gerar com a doopla" (puxa os
+  dados do booking + contratante/local/data informados, monta um
+  documento em `/dashboard/contratos/documento/[id]`, imprimível/
+  salvável em PDF pelo navegador), "anexar link próprio" (já existia),
+  "sem contrato formal" (não fazer nada).
+- ✅ Snapshot imutável: o conteúdo gerado (`booking_contracts.content`)
+  nunca muda depois, mesmo que o texto padrão dos módulos mude —
+  documento não tem policy de update/delete de propósito.
+- ✅ Módulos liberados: escopo, partes (artista/booker/contratante),
+  evento (data/local). O documento mostra explicitamente, numa seção
+  separada, que pagamento e cancelamento ainda não estão cobertos —
+  nunca finge cobrir o que não cobre.
+- 🔒 Módulos de forma de pagamento e política de cancelamento —
+  seguem travados até a validação jurídica/Pagar.me fechar.
 
 ## 9. Selo Doopla Verified — status exato (pergunta que você fez)
 

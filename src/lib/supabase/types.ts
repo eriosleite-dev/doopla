@@ -93,6 +93,9 @@ export type Booking = {
   event_date: string | null;
   validated_at: string | null;
   contract_url: string | null;
+  client_name: string | null;
+  client_document: string | null;
+  event_location: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -272,6 +275,26 @@ export type Referral = {
   created_at: string;
 };
 
+// Gerador de contrato — snapshot imutável. `content` é o texto final das
+// cláusulas liberadas (escopo/partes/evento) no momento da geração;
+// `pendente` lista os módulos ainda não cobertos (pagamento, cancelamento),
+// travados até a validação Pagar.me/jurídica.
+export type ContractContent = {
+  escopo: string;
+  partes: string;
+  evento: string;
+  pendente: string[];
+};
+
+export type BookingContract = {
+  id: string;
+  booking_id: string;
+  template_version: string;
+  generated_by_profile_id: string;
+  content: ContractContent;
+  created_at: string;
+};
+
 export type ReviewStatus = 'pendente' | 'ativa' | 'removida' | 'invalidada';
 
 export type Review = {
@@ -429,6 +452,13 @@ export type Database = {
         Insert: Partial<Referral> &
           Pick<Referral, 'referrer_profile_id' | 'referred_profile_id' | 'code'>;
         Update: Partial<Referral>;
+        Relationships: [];
+      };
+      booking_contracts: {
+        Row: BookingContract;
+        Insert: Partial<BookingContract> &
+          Pick<BookingContract, 'booking_id' | 'template_version' | 'generated_by_profile_id' | 'content'>;
+        Update: Partial<BookingContract>;
         Relationships: [];
       };
     };

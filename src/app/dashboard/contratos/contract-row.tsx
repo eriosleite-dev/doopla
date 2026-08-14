@@ -13,11 +13,15 @@ import {
   contractStatusPillClasses,
   initialsFromName,
 } from '../ui';
+import { GenerateContractForm } from './generate-contract-form';
+
+type Mode = 'closed' | 'gerar' | 'anexar';
 
 export function ContractRow({ booking }: { booking: BookingWithOtherParty }) {
   const status = contractStatus(booking);
-  const [editing, setEditing] = useState(false);
+  const [mode, setMode] = useState<Mode>('closed');
   const [state, formAction, pending] = useActionState(setContractUrlAction, {});
+  const generatedByDoopla = booking.contract_url?.startsWith('/dashboard/contratos/documento/');
 
   return (
     <div className="flex flex-col gap-3 rounded-[18px] bg-white p-4 sm:p-5">
@@ -35,25 +39,38 @@ export function ContractRow({ booking }: { booking: BookingWithOtherParty }) {
       {status === 'anexado' && booking.contract_url && (
         <a
           href={booking.contract_url}
-          target="_blank"
-          rel="noopener noreferrer"
+          target={generatedByDoopla ? undefined : '_blank'}
+          rel={generatedByDoopla ? undefined : 'noopener noreferrer'}
           className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--accent-ink)] underline"
         >
-          Ver contrato
+          {generatedByDoopla ? 'Ver contrato gerado pela doopla' : 'Ver contrato'}
         </a>
       )}
 
-      {!editing && (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 underline hover:text-[var(--ink)]"
-        >
-          {status === 'anexado' ? 'Trocar link' : 'Anexar contrato'}
-        </button>
+      {mode === 'closed' && (
+        <div className="flex flex-wrap gap-4">
+          <button
+            type="button"
+            onClick={() => setMode('gerar')}
+            className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 underline hover:text-[var(--ink)]"
+          >
+            Gerar contrato com a doopla
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('anexar')}
+            className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 underline hover:text-[var(--ink)]"
+          >
+            {status === 'anexado' ? 'Trocar link' : 'Anexar contrato próprio'}
+          </button>
+        </div>
       )}
 
-      {editing && (
+      {mode === 'gerar' && (
+        <GenerateContractForm booking={booking} onCancel={() => setMode('closed')} />
+      )}
+
+      {mode === 'anexar' && (
         <form action={formAction} className="flex flex-wrap items-center gap-2">
           <input type="hidden" name="bookingId" value={booking.id} />
           <input
@@ -68,7 +85,7 @@ export function ContractRow({ booking }: { booking: BookingWithOtherParty }) {
           </button>
           <button
             type="button"
-            onClick={() => setEditing(false)}
+            onClick={() => setMode('closed')}
             className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50"
           >
             Cancelar

@@ -3,6 +3,7 @@ import { formatRelativeDate } from '@/lib/format';
 import type {
   ArtistAvailability,
   Booking,
+  BookingContract,
   BookingEvent,
   BookingStatus,
   Invite,
@@ -882,6 +883,37 @@ export const CONTRACT_STATUS_FILTERS: { value: ContractStatus | 'todos'; label: 
   { value: 'anexado', label: 'Anexados' },
   { value: 'sem_contrato', label: 'Sem contrato' },
 ];
+
+export type BookingContractDetail = {
+  contract: BookingContract;
+  booking: BookingWithOtherParty;
+};
+
+export async function getBookingContract(
+  contractId: string,
+  userId: string,
+  role: Profile['role'],
+  supabase: SupabaseServerClient
+): Promise<BookingContractDetail | null> {
+  const { data: contract } = await supabase
+    .from('booking_contracts')
+    .select('*')
+    .eq('id', contractId)
+    .maybeSingle<BookingContract>();
+  if (!contract) return null;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', contract.booking_id)
+    .maybeSingle<Booking>();
+  if (!booking || (userId !== booking.artist_profile_id && userId !== booking.booker_profile_id)) {
+    return null;
+  }
+
+  const [withName] = await attachOtherPartyNames([booking], role, supabase);
+  return { contract, booking: withName };
+}
 
 export type PayoutBalance = {
   availableCents: number;

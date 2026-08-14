@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import type { Booking, Invite, Opportunity, Profile, Review } from '@/lib/supabase/types';
 import { MAX_REVIEW_ATTRIBUTES } from './review-attributes';
+import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -689,6 +690,82 @@ export async function setContractUrlAction(
   revalidatePath('/dashboard/contratos');
   revalidatePath(`/dashboard/bookings/${bookingId}`);
   return {};
+}
+
+export async function generateContractAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const clientName = String(formData.get('clientName') ?? '').trim();
+  const clientDocument = String(formData.get('clientDocument') ?? '').trim();
+  const eventLocation = String(formData.get('eventLocation') ?? '').trim();
+  const eventDate = String(formData.get('eventDate') ?? '').trim();
+
+  if (!bookingId) return { error: 'Booking inválido.' };
+  if (!clientName) return { error: 'Informe o nome do contratante.' };
+  if (!eventDate) return { error: 'Informe a data do evento.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || (user.id !== booking.artist_profile_id && user.id !== booking.booker_profile_id)) {
+    return { error: 'Você não faz parte desse booking.' };
+  }
+
+  const { data: updatedBooking, error: updateError } = await supabase
+    .from('bookings')
+    .update({
+      client_name: clientName,
+      client_document: clientDocument || null,
+      event_location: eventLocation || null,
+      event_date: eventDate,
+    })
+    .eq('id', bookingId)
+    .select('*')
+    .single<Booking>();
+  if (updateError || !updatedBooking) return { error: 'Não foi possível salvar os dados do evento.' };
+
+  const [{ data: artist }, { data: booker }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', updatedBooking.artist_profile_id)
+      .single<Pick<Profile, 'full_name'>>(),
+    supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', updatedBooking.booker_profile_id)
+      .single<Pick<Profile, 'full_name'>>(),
+  ]);
+  if (!artist || !booker) return { error: 'Não foi possível montar o contrato.' };
+
+  const content = buildContractContent(updatedBooking, artist, booker);
+
+  const { data: contract, error: contractError } = await supabase
+    .from('booking_contracts')
+    .insert({
+      booking_id: bookingId,
+      template_version: CONTRACT_TEMPLATE_VERSION,
+      generated_by_profile_id: user.id,
+      content,
+    })
+    .select('id')
+    .single<{ id: string }>();
+  if (contractError || !contract) return { error: 'Não foi possível gerar o contrato.' };
+
+  const contractUrl = `/dashboard/contratos/documento/${contract.id}`;
+  await supabase.from('bookings').update({ contract_url: contractUrl }).eq('id', bookingId);
+
+  revalidatePath('/dashboard/contratos');
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  redirect(contractUrl);
 }
 
 export async function requestRepresentationAction(
