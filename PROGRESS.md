@@ -9,7 +9,7 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-13.
+Última atualização: 2026-08-14.
 
 ---
 
@@ -211,43 +211,42 @@ se perder:
 ## 10. Bloco 4.5 — oportunidades, convites e matching (integração entre sessões)
 
 Havia uma segunda sessão do Claude Code trabalhando em paralelo, num
-branch separado (`claude/doopla-bloco-4-5-opportunities-5f15n6`), que
-tinha construído só a camada de banco desse bloco (schema, RLS, função
-`select_booker_for_opportunity`). Trouxe esse schema pra este branch
-(migration `0018`).
+branch separado (`claude/doopla-bloco-4-5-opportunities-5f15n6`, PR #2),
+que tinha construído só a camada de banco desse bloco (schema, RLS,
+função `select_booker_for_opportunity`). Trouxe esse schema pra este
+branch (migration `0018`).
 
-- ✅ Auditoria de risco feita antes de escrever qualquer Server Action
-  em cima (ver `AUDITORIA_BLOCO_4_5.md`): matriz de RLS por tabela/
-  papel/operação, confirmação de atomicidade da seleção de booker,
-  contrato de nomes/semântica. Achados corrigidos na migration `0019`:
-  usuário conseguia se auto-promover a admin, booker conseguia se
-  auto-selecionar numa oportunidade pulando o artista, evento de
-  oportunidade podia ser fabricado sem vínculo real, convite de
-  oportunidade não respeitava o modo de distribuição, e duas policies
-  de update (`representation_requests` e `reviews`, essa última um
-  problema meu mesmo, achado ao aplicar o mesmo critério) deixavam
-  reescrever coluna que devia ser só leitura pra quem estava
-  respondendo.
-- ⚠️ Efeito colateral esperado: a RLS nova só deixa o **artista**
-  preencher `opportunities.selected_booker_id` (via função, nunca
-  update direto). O botão "aceitar oportunidade" antigo do mural
-  (`/dashboard/oportunidades`), que deixava o booker se auto-assumir
-  direto, parou de funcionar — falha com uma mensagem clara em vez de
-  criar um booking fantasma. Ele será substituído pelo fluxo novo
-  (convite/interesse + escolha do artista) no próximo passo.
-- ✅ Ciclo completo construído em cima do schema auditado: publicar
-  (com "pra quem" — meus bookers / novos bookers / ambos), booker
-  demonstra interesse (modo aberto) ou responde convite (modo direto),
-  artista vê os dois em `/dashboard/oportunidades/[id]` e escolhe um
-  via `select_booker_for_opportunity` (a função atômica da auditoria,
-  agora com uma tela de verdade puxando ela) — isso cria o booking e
-  segue o fluxo de negociação que já existia.
+- ✅ Duas auditorias de risco rodaram em paralelo, cada uma sem ver a
+  outra: uma aqui (migration `0019`) e outra no PR #2. Nenhuma das duas
+  cobria os 3 pontos por completo sozinha — a mais grave: uma recursão
+  de RLS entre `opportunities`/`opportunity_invitations` que quebraria
+  qualquer select/update real de oportunidade não apareceu em nenhuma
+  das duas, porque as duas testaram como superusuário (que ignora RLS).
+  Consolidado na migration `0021`, verificado de ponta a ponta com uma
+  role `authenticated` real (sem bypass) — ver `AUDITORIA_BLOCO_4_5.md`
+  (reescrito pra refletir o estado final, não mais o de cada auditoria
+  isolada).
+- ✅ Reconciliada a única divergência real de comportamento entre as
+  duas: `select_booker_for_opportunity` agora deixa o artista selecionar
+  qualquer booker, **e** deixa o próprio booker aceitar o próprio convite
+  direto pendente (é assim que o roteiro define esse caminho) — sem
+  reabrir o buraco de um booker se autoselecionar sem convite nenhum. A
+  tela nova (abaixo) só usa o caminho do artista hoje; o de booker fica
+  disponível pra quando um botão de "aceitar convite" for construído do
+  lado do booker.
+- ✅ Ciclo completo construído em cima do schema auditado (chegou nesse
+  branch entre minha auditoria e a consolidação — reconciliei os dois):
+  publicar (com "pra quem" — meus bookers / novos bookers / ambos),
+  booker demonstra interesse (modo aberto) ou recusa convite (modo
+  direto — aceitar ainda é só o artista escolhendo, ver acima), artista
+  vê os dois em `/dashboard/oportunidades/[id]` e escolhe um via
+  `select_booker_for_opportunity` — isso cria o booking e segue o fluxo
+  de negociação que já existia.
 - ❌ Ainda fora do escopo (não é o que o roteiro do beta pede agora):
   curadoria admin manual, distribuição automática por regra de
   categoria, worker de tags por IA, `ai_usage_events` real.
-- A outra sessão pode ser encerrada — o schema dela já está absorvido
-  aqui, com correções que ela ainda não tinha, e agora com a camada de
-  aplicação por cima também.
+- PR #2 fechado como redundante — o schema dele (e os achados que só
+  existiam lá) já estão absorvidos aqui.
 
 ## Como usar isso
 
