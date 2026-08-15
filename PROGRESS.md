@@ -44,6 +44,14 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
   no perfil público (ver item 4). Faz parte do "Bloco E" que você mesma
   identificou como pendente.
 
+## 1.1. Direcionamento do link /orçamento (Bloco C)
+
+- ❌ Não comecei. Spec que você mandou bem no início da sessão (3 modos
+  — Eu / Meu booker / Eu+meu booker —, tabela `artist_link_routing`,
+  regra de elegibilidade, snapshot de `assigned_to`, casos de borda,
+  multi-booker futuro). Ficou de fora enquanto o resto da fila corria.
+  Sem trava externa conhecida — dá pra construir quando você priorizar.
+
 ## 2. Cadastro / onboarding
 
 - ✅ Completo pros dois papéis (artista recorrente/pontual, booker
@@ -81,8 +89,7 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
   Negociação, Publicar trabalho, checkpoints do booking (Cliente,
   Cachê, Data, Validado, Pagamento) + badge Doopla Verified na tela do
   booking.
-- ❌ Card "Indique. Ganhe R$5." no painel (#49, item do Bloco G que
-  você mencionou — ainda não comecei).
+- ✅ Card "Indique. Ganhe R$5." (#49) — ver seção 2.1.
 
 ## 4. Painel do booker
 
@@ -138,9 +145,9 @@ por inteiro.
 - ❌ Moderação de verdade (remoção por fraude, revisão de contestação)
   — os estados existem no banco, mas não existe painel administrativo
   nenhum ainda pra Doopla agir sobre isso. Fica manual por enquanto.
-- ❌ Perfil completo do booker (hoje só o do artista existe, em
-  `/[slug]`) e descoberta de artista padronizada pro booker — é o
-  próximo passo, fecha o #47.
+- ✅ Perfil completo do booker (`/dashboard/bookers/[id]`) e descoberta
+  de artista padronizada pro booker (`/dashboard/artistas`) — ver
+  seção 4, fecha o #47.
 - Separação declarado vs. calculado: já é o padrão que uso em todo o
   banco (`profiles`/`artist_profiles` = declarado, nota/contadores/
   histórico = sempre calculado, nunca campo editável pelo usuário).
