@@ -878,12 +878,6 @@ export function contractStatus(booking: Booking): ContractStatus {
   return booking.contract_url ? 'anexado' : 'sem_contrato';
 }
 
-export const CONTRACT_STATUS_FILTERS: { value: ContractStatus | 'todos'; label: string }[] = [
-  { value: 'todos', label: 'Todos' },
-  { value: 'anexado', label: 'Anexados' },
-  { value: 'sem_contrato', label: 'Sem contrato' },
-];
-
 export type BookingContractDetail = {
   contract: BookingContract;
   booking: BookingWithOtherParty;

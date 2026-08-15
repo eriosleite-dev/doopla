@@ -2,50 +2,34 @@
 
 import { useActionState, useState } from 'react';
 
-import { formatRelativeDate } from '@/lib/format';
-
-import { setContractUrlAction } from '../actions';
-import { contractStatus, type BookingWithOtherParty } from '../data';
-import {
-  accentButtonClass,
-  avatarClass,
-  CONTRACT_STATUS_LABELS,
-  contractStatusPillClasses,
-  initialsFromName,
-} from '../ui';
-import { GenerateContractForm } from './generate-contract-form';
+import { setContractUrlAction } from '../../actions';
+import { GenerateContractForm } from '../../contratos/generate-contract-form';
+import { contractStatus, type BookingWithOtherParty } from '../../data';
+import { accentButtonClass, CONTRACT_STATUS_LABELS, contractStatusPillClasses } from '../../ui';
 
 type Mode = 'closed' | 'gerar' | 'anexar';
 
-export function ContractRow({ booking }: { booking: BookingWithOtherParty }) {
+export function ContractSection({ booking }: { booking: BookingWithOtherParty }) {
   const status = contractStatus(booking);
   const [mode, setMode] = useState<Mode>('closed');
   const [state, formAction, pending] = useActionState(setContractUrlAction, {});
   const generatedByDoopla = booking.contract_url?.startsWith('/dashboard/contratos/documento/');
 
   return (
-    <div className="flex flex-col gap-3 rounded-[18px] bg-white p-4 sm:p-5">
-      <div className="flex items-center gap-4">
-        <span className={avatarClass}>{initialsFromName(booking.otherPartyName)}</span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{booking.otherPartyName}</p>
-          <p className="truncate text-[12.5px] text-[var(--ink)]/55">
-            {booking.description || 'Sem descrição'} · {formatRelativeDate(booking.updated_at)}
-          </p>
-        </div>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
         <span className={contractStatusPillClasses[status]}>{CONTRACT_STATUS_LABELS[status]}</span>
+        {status === 'anexado' && booking.contract_url && (
+          <a
+            href={booking.contract_url}
+            target={generatedByDoopla ? undefined : '_blank'}
+            rel={generatedByDoopla ? undefined : 'noopener noreferrer'}
+            className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--accent-ink)] underline"
+          >
+            {generatedByDoopla ? 'Ver contrato gerado pela doopla' : 'Ver contrato'}
+          </a>
+        )}
       </div>
-
-      {status === 'anexado' && booking.contract_url && (
-        <a
-          href={booking.contract_url}
-          target={generatedByDoopla ? undefined : '_blank'}
-          rel={generatedByDoopla ? undefined : 'noopener noreferrer'}
-          className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--accent-ink)] underline"
-        >
-          {generatedByDoopla ? 'Ver contrato gerado pela doopla' : 'Ver contrato'}
-        </a>
-      )}
 
       {mode === 'closed' && (
         <div className="flex flex-wrap gap-4">

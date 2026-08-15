@@ -4,61 +4,41 @@ import { logoutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/supabase/types';
 
+import { HelpPicker } from './help-picker';
 import { getSessionProfile } from './session';
-import { type SidebarLink, SidebarNav } from './sidebar-nav';
+import { type SidebarGroup, SidebarNav } from './sidebar-nav';
 import { avatarClass, initialsFromName } from './ui';
 
-type NavBadges = {
-  opportunitiesCount: number;
-  negotiationCount: number;
-  negotiationHref: string | null;
-};
-
-async function getNavBadges(
+async function getOpportunitiesBadgeCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   role: Profile['role']
-): Promise<NavBadges> {
-  if (role === 'booker') {
-    const { data: bookerProfile } = await supabase
-      .from('booker_profiles')
-      .select('opportunities_seen_at')
-      .eq('profile_id', userId)
-      .single<{ opportunities_seen_at: string }>();
+): Promise<number> {
+  if (role !== 'booker') return 0;
 
-    const { data: dismissals } = await supabase
-      .from('opportunity_dismissals')
-      .select('opportunity_id')
-      .eq('booker_profile_id', userId)
-      .returns<{ opportunity_id: string }[]>();
-    const dismissedIds = (dismissals ?? []).map((d) => d.opportunity_id);
+  const { data: bookerProfile } = await supabase
+    .from('booker_profiles')
+    .select('opportunities_seen_at')
+    .eq('profile_id', userId)
+    .single<{ opportunities_seen_at: string }>();
 
-    let query = supabase
-      .from('opportunities')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'aberta')
-      .gt('created_at', bookerProfile?.opportunities_seen_at ?? '1970-01-01');
-    if (dismissedIds.length > 0) {
-      query = query.not('id', 'in', `(${dismissedIds.join(',')})`);
-    }
-    const { count } = await query;
-    return { opportunitiesCount: count ?? 0, negotiationCount: 0, negotiationHref: null };
+  const { data: dismissals } = await supabase
+    .from('opportunity_dismissals')
+    .select('opportunity_id')
+    .eq('booker_profile_id', userId)
+    .returns<{ opportunity_id: string }[]>();
+  const dismissedIds = (dismissals ?? []).map((d) => d.opportunity_id);
+
+  let query = supabase
+    .from('opportunities')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'aberta')
+    .gt('created_at', bookerProfile?.opportunities_seen_at ?? '1970-01-01');
+  if (dismissedIds.length > 0) {
+    query = query.not('id', 'in', `(${dismissedIds.join(',')})`);
   }
-
-  const { data: pending } = await supabase
-    .from('bookings')
-    .select('id, created_at')
-    .eq('artist_profile_id', userId)
-    .eq('status', 'proposta_enviada')
-    .neq('proposed_by', 'artista')
-    .order('created_at', { ascending: true })
-    .returns<{ id: string; created_at: string }[]>();
-
-  return {
-    opportunitiesCount: 0,
-    negotiationCount: pending?.length ?? 0,
-    negotiationHref: pending && pending.length > 0 ? `/dashboard/bookings/${pending[0].id}` : null,
-  };
+  const { count } = await query;
+  return count ?? 0;
 }
 
 export default async function DashboardLayout({
@@ -66,44 +46,68 @@ export default async function DashboardLayout({
 }: LayoutProps<'/dashboard'>) {
   const { supabase, user, profile } = await getSessionProfile();
 
-  const badges = await getNavBadges(supabase, user.id, profile.role);
+  const opportunitiesBadge = await getOpportunitiesBadgeCount(supabase, user.id, profile.role);
 
-  const links: SidebarLink[] =
+  const groups: SidebarGroup[] =
     profile.role === 'booker'
       ? [
-          { href: '/dashboard', label: 'Seu painel' },
-          { href: '/dashboard/trabalhos', label: 'Trabalhos' },
-          { href: '/dashboard/agenda', label: 'Agenda' },
-          { href: '/dashboard/artistas', label: 'Artistas' },
-          { href: '/dashboard/oportunidades', label: 'Oportunidades', badge: badges.opportunitiesCount },
-          { href: '/dashboard/propor', label: 'Nova proposta' },
-          { href: '/dashboard/contratos', label: 'Contratos' },
-          { href: '/dashboard/dinheiro', label: 'Meus ganhos' },
-          { href: '/dashboard/perfil', label: 'Perfil' },
+          {
+            label: 'Início',
+            links: [
+              { href: '/dashboard', label: 'Visão geral' },
+              { href: '/dashboard/agenda', label: 'Agenda' },
+            ],
+          },
+          {
+            label: 'Trabalho',
+            links: [
+              { href: '/dashboard/trabalhos', label: 'Trabalhos' },
+              { href: '/dashboard/oportunidades', label: 'Oportunidades', badge: opportunitiesBadge },
+            ],
+          },
+          {
+            label: 'Minha rede',
+            links: [
+              { href: '/dashboard/artistas', label: 'Artistas' },
+              { href: '/dashboard/perfil', label: 'Meu perfil' },
+            ],
+          },
+          {
+            label: 'Financeiro',
+            links: [{ href: '/dashboard/dinheiro', label: 'Ganhos' }],
+          },
         ]
       : [
-          { href: '/dashboard', label: 'Seu painel' },
-          { href: '/dashboard/trabalhos', label: 'Trabalhos' },
-          { href: '/dashboard/agenda', label: 'Agenda' },
           {
-            href: badges.negotiationHref ?? '/dashboard',
-            label: 'Negociação',
-            badge: badges.negotiationCount,
+            label: 'Início',
+            links: [
+              { href: '/dashboard', label: 'Visão geral' },
+              { href: '/dashboard/agenda', label: 'Agenda' },
+            ],
           },
-          { href: '/dashboard/publicar-trabalho', label: 'Publicar trabalho' },
-          { href: '/dashboard/oportunidades', label: 'Oportunidades' },
-          { href: '/dashboard/contratos', label: 'Contratos' },
-          { href: '/dashboard/dinheiro', label: 'Dinheiro' },
-          { href: '/dashboard/bookers', label: 'Bookers' },
-          { href: '/dashboard/perfil', label: 'Perfil' },
+          {
+            label: 'Trabalho',
+            links: [
+              { href: '/dashboard/trabalhos', label: 'Trabalhos' },
+              { href: '/dashboard/oportunidades', label: 'Oportunidades' },
+            ],
+          },
+          {
+            label: 'Minha rede',
+            links: [
+              { href: '/dashboard/bookers', label: 'Bookers' },
+              { href: '/dashboard/perfil', label: 'Meu perfil' },
+            ],
+          },
+          {
+            label: 'Financeiro',
+            links: [{ href: '/dashboard/dinheiro', label: 'Pagamentos' }],
+          },
         ];
-
-  const ctaHref = profile.role === 'booker' ? '/dashboard/propor' : '/dashboard/publicar-trabalho';
-  const ctaLabel = profile.role === 'booker' ? '+ Tenho um trabalho' : '+ Novo trabalho';
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--paper)] font-doopla-sans text-[var(--ink)] md:flex-row">
-      <aside className="flex flex-col gap-5 bg-[var(--sidebar)] px-5 py-6 text-[var(--paper)] md:sticky md:top-0 md:h-screen md:w-[272px] md:flex-none md:gap-7 md:overflow-y-auto md:px-5 md:py-7">
+      <aside className="flex flex-col gap-5 bg-[var(--sidebar)] px-5 py-6 text-[var(--paper)] md:sticky md:top-0 md:h-screen md:w-[272px] md:flex-none md:gap-6 md:overflow-y-auto md:px-5 md:py-7">
         <div className="flex items-center justify-between md:block">
           <Link href="/dashboard" className="font-doopla-display text-xl font-semibold">
             doopla
@@ -136,15 +140,19 @@ export default async function DashboardLayout({
           </div>
         </Link>
 
-        <SidebarNav links={links} />
+        <SidebarNav groups={groups} />
 
         <div className="flex flex-col gap-3 md:mt-auto">
-          <Link
-            href={ctaHref}
-            className="font-doopla-mono rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)]"
-          >
-            {ctaLabel}
-          </Link>
+          {profile.role === 'booker' ? (
+            <Link
+              href="/dashboard/propor"
+              className="font-doopla-mono rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)]"
+            >
+              + Tenho um trabalho
+            </Link>
+          ) : (
+            <HelpPicker />
+          )}
           <form action={logoutAction} className="hidden md:block">
             <button
               type="submit"

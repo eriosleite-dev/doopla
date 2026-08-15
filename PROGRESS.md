@@ -13,6 +13,37 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## 0.1. Bloco C — Especificação completa final (painéis/navegação/perfil/orçamento)
+
+Documento novo, substitui os fragmentos anteriores e a sidebar que eu
+tinha acabado de construir. Prioridade confirmada: 1) `/orçamento`
+(este documento inteiro), 2) cancelamento/reembolso estrutural,
+3) Segurança da Home. Construindo por fases, na ordem do próprio
+documento (seção 49).
+
+- ✅ **Fase 1 (parcial) — navegação**: sidebar reagrupada (Início/
+  Trabalho/Minha rede/Financeiro), "Seu painel"→"Visão geral",
+  "Dinheiro"→"Pagamentos", "Meus ganhos"→"Ganhos", CTA "+ Preciso de
+  ajuda" (artista, dropdown real levando pras telas existentes) e
+  "+ Tenho um trabalho" (booker). Removidos como itens de nav
+  standalone: Contratos (contrato agora vive dentro do booking), 
+  Negociação (a urgência já aparecia em "Precisa da sua atenção"),
+  Publicar trabalho (vira opção dentro de "+ Preciso de ajuda").
+- ✅ Contrato movido pra dentro da tela do booking
+  (`/dashboard/bookings/[id]`) — gerar/anexar direto ali, lista
+  standalone `/dashboard/contratos` removida.
+- ✅ "Solicitar saque" — decisão fechada (6.1): botão sempre
+  desabilitado até o Bloco 2/Pagar.me existir de verdade, nunca mais
+  um formulário funcional de saque (antes disso registrava um pedido
+  real em `payout_requests`; isso foi revertido de propósito).
+- ⏳ Faltam: reorganização de Bookers/Artistas em sub-abas (Meus/
+  Favoritos/Descobrir — "Favoritos" é conceito novo, precisa de
+  schema), Perfil completo, `/orçamento` de verdade (link público,
+  roteamento, tabela `artist_link_routing`), reordenação do dashboard
+  + "Precisa da sua atenção" redesenhado, agenda (conflitos/
+  alterações), booker's "+ Tenho um trabalho" com busca/favorito/
+  convite de artista.
+
 ## 0. Layout do painel (menu lateral)
 
 - ✅ Trocado o menu horizontal do topo por sidebar fixa à esquerda,

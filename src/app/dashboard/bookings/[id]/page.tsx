@@ -22,6 +22,7 @@ import {
   statusPillClasses,
   verifyBadgeClass,
 } from '../../ui';
+import { ContractSection } from './contract-section';
 import { CounterForm } from './counter-form';
 import { ReviewPanel } from './review-panel';
 
@@ -229,6 +230,15 @@ export default async function BookingDetailPage(
           </p>
         )}
       </section>
+
+      {hasActiveCheckpoints && (
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Contrato</p>
+          <div className="mt-4">
+            <ContractSection booking={booking} />
+          </div>
+        </section>
+      )}
 
       {reviews && (
         <section id="avaliacao" className={cardClass}>

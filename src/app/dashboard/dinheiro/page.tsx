@@ -14,7 +14,7 @@ import { cardClass, eyebrowClass } from '../ui';
 import { PayoutForm } from './payout-form';
 
 export const metadata: Metadata = {
-  title: 'Dinheiro | Doopla',
+  title: 'Pagamentos | Doopla',
 };
 
 export default async function DinheiroPage() {
@@ -40,15 +40,15 @@ export default async function DinheiroPage() {
   return (
     <main className="flex flex-col gap-8">
       <header>
-        <p className={eyebrowClass}>Dinheiro</p>
+        <p className={eyebrowClass}>{profile.role === 'booker' ? 'Ganhos' : 'Pagamentos'}</p>
         <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
-          {profile.role === 'booker' ? 'Meus ganhos' : 'Dinheiro'}
+          {profile.role === 'booker' ? 'Ganhos' : 'Pagamentos'}
         </h1>
       </header>
 
       <section className="rounded-[18px] bg-[var(--ink)] p-6 text-[var(--paper)]">
         <p className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--accent)]/85">
-          Disponível para saque
+          A receber / disponível
         </p>
         <p className="font-doopla-display mt-2.5 text-[40px] font-semibold">
           {formatCentsAsBRL(availableCents)}
@@ -59,11 +59,8 @@ export default async function DinheiroPage() {
             : 'Recebido líquido, descontado o que já foi solicitado'}
         </p>
         <div className="mt-5">
-          <PayoutForm availableCents={availableCents} />
+          <PayoutForm />
         </div>
-        <p className="mt-3 text-[11px] text-[var(--paper)]/45">
-          A transferência de verdade ainda não está disponível — isso só registra seu pedido.
-        </p>
       </section>
 
       <section className={cardClass}>
