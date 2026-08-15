@@ -56,3 +56,34 @@ A estrutura de banco pra todos os três já existe (migration `0018`:
 só não tem interface/lógica em cima ainda. Mesmo critério já usado pro
 Matching V2: volta pra fila quando a base de usuários justificar,
 não é decisão de "nunca construir".
+
+---
+
+## Bloco C — /orçamento e Perfil completo — 15/08/2026
+
+- Documento consolidado (`doopla-especificacaocompletafinal.md`)
+  substitui todos os fragmentos anteriores de painel/perfil/orçamento
+  mandados antes, exceto o trecho de reorganização de "Bookers"
+  (favoritos/já trabalhou/descoberta), que segue valendo. Prioridade
+  confirmada: 1) `/orçamento`, 2) cancelamento/reembolso estrutural
+  (exceto os 4 pontos travados até Pagar.me/jurídico), 3) Segurança
+  da Home + FAQ.
+- Escrita pública do formulário de orçamento usa uma função
+  `SECURITY DEFINER` (`submit_orcamento_request`), mesmo padrão já
+  usado pro trigger de referral — o cliente que pede orçamento nunca
+  tem `auth.uid()`, então não dá pra depender de RLS de usuário
+  autenticado nem abrir INSERT público direto em `opportunities`.
+- `assigned_to` da oportunidade é decidido e gravado no momento da
+  criação, a partir do `artist_link_routing` vigente naquele
+  instante — nunca recalculado depois. Isso segue a regra geral de
+  snapshot já usada em outras decisões de roteamento/comissão nesta
+  sessão: mudar a configuração no Perfil só afeta pedidos novos.
+- `opportunities.commission_percent` virou opcional: pedidos que
+  chegam pelo link de orçamento ainda não têm uma comissão combinada
+  entre artista e booker (isso é negociado depois, separado do cachê
+  do cliente). O booker informa a comissão só na hora de aceitar a
+  oportunidade, se ainda não houver uma definida.
+- Card de oportunidade no painel do booker mostra sempre a origem
+  ("Recebida pelo seu link de orçamento" vs mural) e trata cachê do
+  artista como um dado diferente da comissão do booker — nunca o
+  mesmo número, mesmo quando um dos dois ainda não foi definido.

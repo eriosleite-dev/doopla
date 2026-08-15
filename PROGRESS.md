@@ -9,7 +9,7 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-14.
+Última atualização: 2026-08-15.
 
 ---
 
@@ -36,13 +36,48 @@ documento (seção 49).
   desabilitado até o Bloco 2/Pagar.me existir de verdade, nunca mais
   um formulário funcional de saque (antes disso registrava um pedido
   real em `payout_requests`; isso foi revertido de propósito).
+- ✅ **Perfil completo (artista e booker)** — página `/dashboard/perfil`
+  reorganizada em "Conta" (e-mail, tipo) e "Perfil público" (foto,
+  formulário editável: nome artístico/categoria/subcategoria/bio/
+  gêneros/mercados/site/outros links + checkboxes viaja/atende fora
+  da cidade/aceita trabalho fora, pra artista; nome profissional/bio/
+  mercados/especialidades/experiência/instagram, pra booker). Campos
+  de onboarding que não viraram edição direta (intenção, "já tem
+  booker", modo de trabalho etc.) ficam num card "Respostas do
+  cadastro" só-leitura, sem duplicar os que agora são editáveis.
+  Migration `0023_perfil_completo_e_orcamento.sql` adiciona as
+  colunas novas em `artist_profiles`/`booker_profiles` — **ainda
+  não rodada por você, SQL completo no fim deste arquivo/próxima
+  mensagem**.
+- ✅ **`/orçamento` de verdade** — link público `doopla.co/orcamento/
+  [slug]`, formulário sem login (nome, contato, descrição, data,
+  local, valor que o cliente pode oferecer), grava via função
+  `submit_orcamento_request` (SECURITY DEFINER, mesmo padrão usado
+  pro trigger de referral — cliente não tem `auth.uid()`, então a
+  escrita não pode depender de RLS de usuário autenticado). A
+  oportunidade nasce com `source='artist_link'`, e `assigned_to`
+  (artista/booker/os dois) é decidido na hora a partir da tabela
+  `artist_link_routing` — depois de criada, mudar o roteamento no
+  Perfil não afeta pedidos antigos (snapshot, regra geral do
+  documento). Tela de configuração do roteamento fica dentro do
+  Perfil (card "Quem recebe seus pedidos de orçamento": Só eu / Meu
+  booker / Eu e meu booker — desabilitado com aviso se o artista
+  ainda não tem nenhum booker na rede) e mostra o link com botão de
+  copiar, igual ao link do perfil público.
+- ✅ **3 casos de negociação no card de oportunidade (painel do
+  booker)**: "Cachê do artista" separado de "Sua comissão", origem
+  sempre visível ("Recebida pelo seu link de orçamento" vs mural),
+  e os três estados (já negociado / cliente ofereceu um valor / sem
+  valor nenhum ainda) com copy própria pra cada um. Isso também
+  obrigou tornar `commission_percent` opcional no banco (pedidos que
+  chegam pelo link ainda não têm comissão combinada) — todos os
+  lugares que liam esse campo foram revisados (`tsc --noEmit` limpo).
 - ⏳ Faltam: reorganização de Bookers/Artistas em sub-abas (Meus/
   Favoritos/Descobrir — "Favoritos" é conceito novo, precisa de
-  schema), Perfil completo, `/orçamento` de verdade (link público,
-  roteamento, tabela `artist_link_routing`), reordenação do dashboard
-  + "Precisa da sua atenção" redesenhado, agenda (conflitos/
-  alterações), booker's "+ Tenho um trabalho" com busca/favorito/
-  convite de artista.
+  schema), reordenação do dashboard + "Precisa da sua atenção"
+  redesenhado, agenda (conflitos/alterações), booker's "+ Tenho um
+  trabalho" com busca/favorito/convite de artista (hoje o CTA só
+  linka pra tela existente de propor trabalho).
 
 ## 0. Layout do painel (menu lateral)
 
@@ -77,11 +112,9 @@ documento (seção 49).
 
 ## 1.1. Direcionamento do link /orçamento (Bloco C)
 
-- ❌ Não comecei. Spec que você mandou bem no início da sessão (3 modos
-  — Eu / Meu booker / Eu+meu booker —, tabela `artist_link_routing`,
-  regra de elegibilidade, snapshot de `assigned_to`, casos de borda,
-  multi-booker futuro). Ficou de fora enquanto o resto da fila corria.
-  Sem trava externa conhecida — dá pra construir quando você priorizar.
+- ✅ Feito — ver detalhe completo na seção 0.1 acima (esta seção
+  ficou duplicada depois da especificação consolidada; mantida só
+  pra não quebrar referência caso você tenha procurado por ela).
 
 ## 2. Cadastro / onboarding
 

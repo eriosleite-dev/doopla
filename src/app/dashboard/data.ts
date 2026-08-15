@@ -2,6 +2,7 @@ import type { createClient } from '@/lib/supabase/server';
 import { formatRelativeDate } from '@/lib/format';
 import type {
   ArtistAvailability,
+  ArtistLinkRouting,
   Booking,
   BookingContract,
   BookingEvent,
@@ -207,6 +208,18 @@ export async function getArtistBookers(
 
   const bookerIds = (reps ?? []).map((r) => r.booker_profile_id);
   return fetchBookerCards(bookerIds, supabase);
+}
+
+export async function getArtistLinkRouting(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<ArtistLinkRouting | null> {
+  const { data } = await supabase
+    .from('artist_link_routing')
+    .select('*')
+    .eq('artist_id', artistId)
+    .maybeSingle<ArtistLinkRouting>();
+  return data;
 }
 
 export async function getDiscoverBookers(

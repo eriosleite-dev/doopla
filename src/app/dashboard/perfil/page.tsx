@@ -1,10 +1,15 @@
 import type { Metadata } from 'next';
 
 import { siteOrigin } from '@/lib/site-url';
+import type { LinkRoutingMode } from '@/lib/supabase/types';
 
+import { getArtistBookers, getArtistLinkRouting } from '../data';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
+import { ArtistProfileForm } from './artist-profile-form';
 import { AvatarUploader } from './avatar-uploader';
+import { BookerProfileForm } from './booker-profile-form';
+import { LinkRoutingCard } from './link-routing-card';
 import { PublicProfileCard } from './public-profile-card';
 
 export const metadata: Metadata = {
@@ -22,6 +27,17 @@ export default async function PerfilPage() {
   const details = await getRoleDetails(profile.role, user.id, supabase);
   const origin = await siteOrigin();
 
+  const artistDetails = profile.role === 'artista' ? (details as ArtistDetails | null) : null;
+  const bookerDetails = profile.role === 'booker' ? (details as BookerDetails | null) : null;
+
+  const [bookers, routing] =
+    profile.role === 'artista'
+      ? await Promise.all([
+          getArtistBookers(user.id, supabase),
+          getArtistLinkRouting(user.id, supabase),
+        ])
+      : [[], null];
+
   return (
     <main className="flex max-w-xl flex-col gap-8">
       <header>
@@ -30,13 +46,6 @@ export default async function PerfilPage() {
           {profile.full_name || user.email}
         </h1>
       </header>
-
-      <section className={cardClass}>
-        <p className={eyebrowClass}>Foto</p>
-        <div className="mt-4">
-          <AvatarUploader currentUrl={profile.avatar_url} fallbackName={profile.full_name} />
-        </div>
-      </section>
 
       <section className={cardClass}>
         <p className={eyebrowClass}>Conta</p>
@@ -48,21 +57,78 @@ export default async function PerfilPage() {
         </dl>
       </section>
 
-      <section className={cardClass}>
-        <p className={eyebrowClass}>Perfil de {ROLE_LABELS[profile.role].toLowerCase()}</p>
-        <div className="mt-4">
-          <RoleDetails role={profile.role} details={details} />
+      <div className="flex flex-col gap-4">
+        <div>
+          <p className={eyebrowClass}>Perfil público</p>
+          <p className="mt-1 text-sm text-[var(--ink)]/55">
+            O que aparece pra clientes e bookers quando alguém vê seu link ou perfil.
+          </p>
         </div>
-      </section>
+
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Foto</p>
+          <div className="mt-4">
+            <AvatarUploader currentUrl={profile.avatar_url} fallbackName={profile.full_name} />
+          </div>
+        </section>
+
+        <section className={cardClass}>
+          {profile.role === 'artista' ? (
+            <ArtistProfileForm
+              stageName={artistDetails?.stage_name ?? null}
+              category={artistDetails?.category ?? null}
+              subcategory={artistDetails?.subcategory ?? null}
+              bio={artistDetails?.bio ?? null}
+              genres={artistDetails?.genres ?? []}
+              mercados={artistDetails?.mercados ?? null}
+              websiteUrl={artistDetails?.website_url ?? null}
+              otherLinks={artistDetails?.other_links ?? null}
+              otherPreferences={artistDetails?.other_preferences ?? null}
+              travels={artistDetails?.travels ?? false}
+              servesOtherLocations={artistDetails?.serves_other_locations ?? false}
+              acceptsOutOfCityWork={artistDetails?.accepts_out_of_city_work ?? false}
+            />
+          ) : profile.role === 'booker' ? (
+            <BookerProfileForm
+              professionalName={bookerDetails?.professional_name ?? null}
+              bio={bookerDetails?.bio ?? null}
+              mercados={bookerDetails?.mercados ?? null}
+              specialties={bookerDetails?.specialties ?? null}
+              experience={bookerDetails?.experience ?? null}
+              instagramUrl={bookerDetails?.instagram_url ?? null}
+            />
+          ) : (
+            <RoleDetails role={profile.role} details={details} />
+          )}
+        </section>
+
+        {profile.role === 'artista' && (
+          <PublicProfileCard
+            slug={profile.slug}
+            publicEnabled={artistDetails?.public_enabled ?? false}
+            instagramUrl={artistDetails?.instagram_url ?? null}
+            portfolioUrl={artistDetails?.portfolio_url ?? null}
+            siteUrl={origin}
+          />
+        )}
+      </div>
 
       {profile.role === 'artista' && (
-        <PublicProfileCard
-          slug={profile.slug}
-          publicEnabled={(details as ArtistDetails | null)?.public_enabled ?? false}
-          instagramUrl={(details as ArtistDetails | null)?.instagram_url ?? null}
-          portfolioUrl={(details as ArtistDetails | null)?.portfolio_url ?? null}
-          siteUrl={origin}
+        <LinkRoutingCard
+          bookers={bookers.map((b) => ({ profileId: b.profileId, fullName: b.fullName }))}
+          currentMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
+          currentBookerId={routing?.booker_id ?? null}
+          orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
         />
+      )}
+
+      {(profile.role === 'artista' || profile.role === 'booker') && (
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Respostas do cadastro</p>
+          <div className="mt-4">
+            <RoleDetails role={profile.role} details={details} />
+          </div>
+        </section>
       )}
     </main>
   );
@@ -83,6 +149,14 @@ type ArtistDetails = {
   public_enabled: boolean;
   instagram_url: string | null;
   portfolio_url: string | null;
+  subcategory: string | null;
+  genres: string[];
+  website_url: string | null;
+  other_links: string | null;
+  other_preferences: string | null;
+  travels: boolean;
+  serves_other_locations: boolean;
+  accepts_out_of_city_work: boolean;
 };
 
 type BookerDetails = {
@@ -94,6 +168,11 @@ type BookerDetails = {
   cidades: string | null;
   ja_representa: string | null;
   roster: string | null;
+  professional_name: string | null;
+  bio: string | null;
+  specialties: string | null;
+  experience: string | null;
+  instagram_url: string | null;
 };
 
 type AgencyDetails = {
@@ -112,7 +191,7 @@ async function getRoleDetails(
     const { data } = await supabase
       .from('artist_profiles')
       .select(
-        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio, public_enabled, instagram_url, portfolio_url'
+        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio, public_enabled, instagram_url, portfolio_url, subcategory, genres, website_url, other_links, other_preferences, travels, serves_other_locations, accepts_out_of_city_work'
       )
       .eq('profile_id', userId)
       .single<ArtistDetails>();
@@ -121,7 +200,9 @@ async function getRoleDetails(
   if (role === 'booker') {
     const { data } = await supabase
       .from('booker_profiles')
-      .select('modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster')
+      .select(
+        'modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster, professional_name, bio, specialties, experience, instagram_url'
+      )
       .eq('profile_id', userId)
       .single<BookerDetails>();
     return data;
@@ -159,16 +240,8 @@ function RoleDetails({
           </>
         ) : (
           <>
-            <dt className="text-[var(--ink)]/55">Nome artístico</dt>
-            <dd>{artist.stage_name || '—'}</dd>
-            <dt className="text-[var(--ink)]/55">Categoria</dt>
-            <dd>{artist.category || '—'}</dd>
-            <dt className="text-[var(--ink)]/55">Bio</dt>
-            <dd>{artist.bio || '—'}</dd>
             <dt className="text-[var(--ink)]/55">Onde atua</dt>
             <dd>{artist.local || '—'}</dd>
-            <dt className="text-[var(--ink)]/55">Mercados</dt>
-            <dd>{artist.mercados || '—'}</dd>
             <dt className="text-[var(--ink)]/55">Já tem booker</dt>
             <dd>{artist.tem_booker || '—'}</dd>
           </>
@@ -187,8 +260,6 @@ function RoleDetails({
         <dd>{booker.perfil || '—'}</dd>
         <dt className="text-[var(--ink)]/55">Foco</dt>
         <dd>{booker.foco || '—'}</dd>
-        <dt className="text-[var(--ink)]/55">Mercados</dt>
-        <dd>{booker.mercados || '—'}</dd>
         <dt className="text-[var(--ink)]/55">Quem quer representar</dt>
         <dd>{booker.quem || '—'}</dd>
         <dt className="text-[var(--ink)]/55">Cidades da rede</dt>

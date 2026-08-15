@@ -405,6 +405,23 @@ export async function selectBookerForOpportunityAction(
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return { error: 'Só o artista dono pode escolher um booker.' };
 
+  const { data: current } = await supabase
+    .from('opportunities')
+    .select('commission_percent')
+    .eq('id', opportunityId)
+    .single<{ commission_percent: number | null }>();
+
+  let commissionPercent = current?.commission_percent ?? null;
+  if (commissionPercent == null) {
+    const submitted = Number.parseFloat(
+      String(formData.get('commissionPercent') ?? '').replace(',', '.')
+    );
+    if (!Number.isFinite(submitted) || submitted < 0 || submitted > 100) {
+      return { error: 'Essa oportunidade ainda não tem comissão negociada. Informe uma comissão (0 a 100%).' };
+    }
+    commissionPercent = submitted;
+  }
+
   const { data: selected, error: rpcError } = await supabase.rpc('select_booker_for_opportunity', {
     p_opportunity_id: opportunityId,
     p_booker_profile_id: bookerProfileId,
@@ -425,7 +442,7 @@ export async function selectBookerForOpportunityAction(
       artist_profile_id: user.id,
       booker_profile_id: bookerProfileId,
       proposed_by: 'artista',
-      commission_percent: opportunity.commission_percent,
+      commission_percent: commissionPercent,
       cache_amount_cents: opportunity.cache_amount_cents,
       description: opportunity.description,
     })
@@ -437,7 +454,7 @@ export async function selectBookerForOpportunityAction(
     booking_id: booking.id,
     actor_profile_id: user.id,
     event_type: 'proposta_enviada',
-    commission_percent: opportunity.commission_percent,
+    commission_percent: commissionPercent,
     note: 'A partir de uma oportunidade publicada.',
   });
 
@@ -656,6 +673,129 @@ export async function updatePublicLinksAction(
       portfolio_url: portfolioUrl || null,
     })
     .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+  return {};
+}
+
+export async function updateArtistProfileAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Só artistas têm esse perfil.' };
+
+  const stageName = String(formData.get('stageName') ?? '').trim();
+  const category = String(formData.get('category') ?? '').trim();
+  const subcategory = String(formData.get('subcategory') ?? '').trim();
+  const bio = String(formData.get('bio') ?? '').trim();
+  const genresRaw = String(formData.get('genres') ?? '').trim();
+  const mercados = String(formData.get('mercados') ?? '').trim();
+  const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
+  const otherLinks = String(formData.get('otherLinks') ?? '').trim();
+  const otherPreferences = String(formData.get('otherPreferences') ?? '').trim();
+  const travels = formData.get('travels') === 'on';
+  const servesOtherLocations = formData.get('servesOtherLocations') === 'on';
+  const acceptsOutOfCityWork = formData.get('acceptsOutOfCityWork') === 'on';
+
+  const genres = genresRaw
+    ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
+    : [];
+
+  await supabase
+    .from('artist_profiles')
+    .update({
+      stage_name: stageName || null,
+      category: category || null,
+      subcategory: subcategory || null,
+      bio: bio || null,
+      genres,
+      mercados: mercados || null,
+      website_url: websiteUrl || null,
+      other_links: otherLinks || null,
+      other_preferences: otherPreferences || null,
+      travels,
+      serves_other_locations: servesOtherLocations,
+      accepts_out_of_city_work: acceptsOutOfCityWork,
+    })
+    .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard');
+  return {};
+}
+
+export async function updateBookerProfileAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return { error: 'Só bookers têm esse perfil.' };
+
+  const professionalName = String(formData.get('professionalName') ?? '').trim();
+  const bio = String(formData.get('bio') ?? '').trim();
+  const mercados = String(formData.get('mercados') ?? '').trim();
+  const specialties = String(formData.get('specialties') ?? '').trim();
+  const experience = String(formData.get('experience') ?? '').trim();
+  const instagramUrl = String(formData.get('instagramUrl') ?? '').trim();
+
+  await supabase
+    .from('booker_profiles')
+    .update({
+      professional_name: professionalName || null,
+      bio: bio || null,
+      mercados: mercados || null,
+      specialties: specialties || null,
+      experience: experience || null,
+      instagram_url: instagramUrl || null,
+    })
+    .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard');
+  return {};
+}
+
+export async function updateLinkRoutingAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const mode = String(formData.get('mode') ?? 'eu');
+  const bookerId = String(formData.get('bookerId') ?? '').trim() || null;
+
+  if (!['eu', 'meu_booker', 'eu_e_meu_booker'].includes(mode)) {
+    return { error: 'Opção inválida.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Só artistas configuram o link de orçamento.' };
+
+  if (mode !== 'eu') {
+    if (!bookerId) return { error: 'Escolha um booker da sua rede.' };
+    const { data: rep } = await supabase
+      .from('representations')
+      .select('id')
+      .eq('artist_profile_id', user.id)
+      .eq('booker_profile_id', bookerId)
+      .maybeSingle<{ id: string }>();
+    if (!rep) return { error: 'Você só pode escolher um booker que já representa você.' };
+  }
+
+  const { error } = await supabase.from('artist_link_routing').upsert(
+    {
+      artist_id: user.id,
+      mode: mode as 'eu' | 'meu_booker' | 'eu_e_meu_booker',
+      booker_id: mode === 'eu' ? null : bookerId,
+    },
+    { onConflict: 'artist_id' }
+  );
+  if (error) return { error: 'Não foi possível salvar o roteamento.' };
 
   revalidatePath('/dashboard/perfil');
   return {};

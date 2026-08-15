@@ -58,7 +58,11 @@ export default async function OportunidadesPage() {
                         ? formatCentsAsBRL(o.cache_amount_cents)
                         : 'Cachê ainda não fechado'}
                     </span>
-                    <span>{formatPercent(o.commission_percent)} de comissão</span>
+                    <span>
+                      {o.commission_percent != null
+                        ? `${formatPercent(o.commission_percent)} de comissão`
+                        : 'Comissão ainda não negociada'}
+                    </span>
                     <span>{formatRelativeDate(o.created_at)}</span>
                   </div>
                 </Link>

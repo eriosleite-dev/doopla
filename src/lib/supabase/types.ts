@@ -37,6 +37,14 @@ export type ArtistProfile = {
   local: string | null;
   mercados: string | null;
   tem_booker: string | null;
+  // Perfil completo (Bloco C, migration 0023)
+  subcategory: string | null;
+  website_url: string | null;
+  other_links: string | null;
+  travels: boolean;
+  serves_other_locations: boolean;
+  accepts_out_of_city_work: boolean;
+  other_preferences: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -57,6 +65,12 @@ export type BookerProfile = {
   roster: string | null;
   opportunities_seen_at: string;
   representation_request_limit: number;
+  // Perfil completo (Bloco C, migration 0023)
+  professional_name: string | null;
+  bio: string | null;
+  specialties: string | null;
+  experience: string | null;
+  instagram_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -145,12 +159,15 @@ export type OpportunityStatus =
 
 export type OpportunityDistributionMode = 'meus_bookers' | 'novos_bookers' | 'ambos';
 
+export type OpportunitySource = 'mural' | 'artist_link';
+export type OpportunityAssignedTo = 'artist' | 'booker' | 'shared';
+
 export type Opportunity = {
   id: string;
   artist_profile_id: string;
   description: string;
   cache_amount_cents: number | null;
-  commission_percent: number;
+  commission_percent: number | null;
   status: OpportunityStatus;
   distribution_mode: OpportunityDistributionMode;
   work_type: string | null;
@@ -164,6 +181,12 @@ export type Opportunity = {
   ai_tags_status: 'pendente' | 'concluido' | 'falhou';
   ai_tags_content_hash: string | null;
   ai_tags_processed_at: string | null;
+  // Bloco C — /orçamento (migration 0023)
+  source: OpportunitySource;
+  assigned_to: OpportunityAssignedTo | null;
+  client_name: string | null;
+  client_contact: string | null;
+  client_offered_cents: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -256,6 +279,16 @@ export type PayoutRequest = {
   amount_cents: number;
   status: PayoutRequestStatus;
   created_at: string;
+};
+
+export type LinkRoutingMode = 'eu' | 'meu_booker' | 'eu_e_meu_booker';
+
+export type ArtistLinkRouting = {
+  id: string;
+  artist_id: string;
+  mode: LinkRoutingMode;
+  booker_id: string | null;
+  updated_at: string;
 };
 
 // "Indique. Ganhe R$5." — status fica em 'pendente' até existir sistema de
@@ -461,6 +494,12 @@ export type Database = {
         Update: Partial<BookingContract>;
         Relationships: [];
       };
+      artist_link_routing: {
+        Row: ArtistLinkRouting;
+        Insert: Partial<ArtistLinkRouting> & Pick<ArtistLinkRouting, 'artist_id'>;
+        Update: Partial<ArtistLinkRouting>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -471,6 +510,18 @@ export type Database = {
       expire_stale_representation_requests: {
         Args: Record<string, never>;
         Returns: undefined;
+      };
+      submit_orcamento_request: {
+        Args: {
+          p_artist_slug: string;
+          p_description: string;
+          p_client_name: string;
+          p_client_contact: string;
+          p_event_date: string | null;
+          p_location: string | null;
+          p_offered_cents: number | null;
+        };
+        Returns: string;
       };
     };
   };
