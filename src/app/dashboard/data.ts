@@ -784,7 +784,8 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
   };
 }
 
-export type AttentionItem = { text: string; href: string };
+export type AttentionItemKind = 'urgente' | 'info';
+export type AttentionItem = { text: string; href: string; kind: AttentionItemKind };
 
 export async function getAttentionItems(
   userId: string,
@@ -802,6 +803,7 @@ export async function getAttentionItems(
     items.push({
       text: `Como foi trabalhar com ${booking.otherPartyName}? Avalie e ajude a construir a reputação da Doopla`,
       href: `/dashboard/bookings/${booking.id}#avaliacao`,
+      kind: 'info',
     });
   }
 
@@ -811,6 +813,7 @@ export async function getAttentionItems(
       items.push({
         text: `${req.bookerName} pediu pra te representar`,
         href: '/dashboard/bookers#solicitacoes',
+        kind: 'info',
       });
     }
   }
@@ -830,6 +833,7 @@ export async function getAttentionItems(
       items.push({
         text: `${newOppsCount} ${newOppsCount === 1 ? 'oportunidade nova combina' : 'oportunidades novas combinam'} com o seu nicho, ainda não vistas`,
         href: '/dashboard/oportunidades',
+        kind: 'info',
       });
     }
 
@@ -837,6 +841,7 @@ export async function getAttentionItems(
       items.push({
         text: `${b.otherPartyName}, cliente ainda não pagou, booking fechado ${formatRelativeDate(b.updated_at)}`,
         href: `/dashboard/bookings/${b.id}`,
+        kind: 'urgente',
       });
     }
     for (const b of bookings.filter(
@@ -845,6 +850,7 @@ export async function getAttentionItems(
       items.push({
         text: `Sua proposta de ${b.commission_percent}% pra ${b.otherPartyName} está aguardando resposta`,
         href: `/dashboard/bookings/${b.id}`,
+        kind: 'info',
       });
     }
   } else {
@@ -854,6 +860,7 @@ export async function getAttentionItems(
       items.push({
         text: `${b.otherPartyName} propôs ${b.commission_percent}% de comissão`,
         href: `/dashboard/bookings/${b.id}`,
+        kind: 'urgente',
       });
     }
   }

@@ -82,31 +82,24 @@ export default async function DashboardPage() {
         <ArtistStats bookings={bookings} />
       )}
 
-      {officialProgress && <BookerOficialCard progress={officialProgress} />}
-
-      {referralSummary && referralUrl && (
-        <ReferralCard
-          referralUrl={referralUrl}
-          referralCount={referralSummary.referrals.length}
-          pendingCount={referralSummary.pendingCount}
-          qualifiedTotalCents={referralSummary.qualifiedTotalCents}
-        />
-      )}
-
       {attentionItems.length > 0 && (
         <section className={cardClass}>
-          <p className={`${eyebrowClass} inline-flex items-center gap-1.5`}>
-            Precisa da sua atenção
-            <span className="h-[7px] w-[7px] rounded-full bg-[var(--alert)]" />
-          </p>
+          <p className={eyebrowClass}>Precisa da sua atenção</p>
           <ul className="mt-4 flex flex-col gap-3">
             {attentionItems.map((item, i) => (
               <li key={i}>
                 <a
                   href={item.href}
-                  className="block text-sm text-[var(--ink)] underline decoration-[var(--accent)] decoration-2 underline-offset-4 hover:text-[var(--accent-ink)]"
+                  className="flex items-start gap-2.5 text-sm text-[var(--ink)] hover:text-[var(--accent-ink)]"
                 >
-                  {item.text}
+                  <span
+                    className={`mt-[7px] h-[7px] w-[7px] flex-none rounded-full ${
+                      item.kind === 'urgente' ? 'bg-[var(--alert)]' : 'bg-[var(--accent)]'
+                    }`}
+                  />
+                  <span className="underline decoration-[var(--accent)] decoration-2 underline-offset-4">
+                    {item.text}
+                  </span>
                 </a>
               </li>
             ))}
@@ -143,6 +136,8 @@ export default async function DashboardPage() {
           </ul>
         </section>
       )}
+
+      {officialProgress && <BookerOficialCard progress={officialProgress} />}
 
       <section>
         <div className="flex items-center justify-between">
@@ -194,6 +189,14 @@ export default async function DashboardPage() {
             </div>
           </section>
         </>
+      )}
+
+      {referralSummary && referralUrl && (
+        <ReferralCard
+          referralUrl={referralUrl}
+          referralCount={referralSummary.referrals.length}
+          qualifiedTotalCents={referralSummary.qualifiedTotalCents}
+        />
       )}
     </main>
   );

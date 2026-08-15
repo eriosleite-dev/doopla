@@ -82,10 +82,27 @@ documento (seção 49).
   tabela do convite que já existia no cadastro, só que agora também
   dá pra mandar de dentro do painel) e lista o histórico com status
   (aguardando/confirmado).
+- ✅ **Dashboard: reordenação + "Precisa da sua atenção" redesenhado +
+  referral reduzido**. Nova ordem: stats → Precisa da sua atenção →
+  convites pendentes → progresso Booker Oficial → seus trabalhos →
+  (artista) bookers → indicação, no fim. "Precisa da sua atenção"
+  ganhou distinção visual por item (bolinha vermelha pra urgente —
+  pagamento em aberto, comissão proposta esperando decisão do artista
+  — vs. accent pra informativo — avaliação pendente, nova
+  oportunidade, pedido de representação), em vez de um único
+  indicador genérico no título do card. "Indique. Ganhe R$5." saiu de
+  card cheio (parágrafo + link grande + 3 métricas) pra uma faixa
+  fina de uma linha só, movida pro fim da página — continua
+  funcional (copiar link), só não compete mais com o que precisa de
+  ação de verdade.
 - ⏳ Faltam: reorganização de Bookers/Artistas em sub-abas (Meus/
   Favoritos/Descobrir — "Favoritos" é conceito novo, precisa de
-  schema), reordenação do dashboard + "Precisa da sua atenção"
-  redesenhado, agenda (conflitos/alterações).
+  schema), agenda (conflitos/alterações).
+
+**Bloco C fechado nos itens priorizados** (`/orçamento`, Perfil
+completo, "+ Preciso de ajuda"/"+ Tenho um trabalho", dashboard).
+Os itens ⏳ acima ficam pra quando você priorizar de novo — não têm
+trava externa, só não empilhei mais escopo na fila desta rodada.
 
 ## 0. Layout do painel (menu lateral)
 
