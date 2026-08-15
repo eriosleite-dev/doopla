@@ -5,12 +5,14 @@ import {
   getRepresentationRequestStatusesFor,
   getRepresentedArtistCards,
   getDiscoverArtists,
+  getSentInvites,
 } from '../data';
 import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { eyebrowClass } from '../ui';
 import { ArtistRow } from './artist-row';
 import { DiscoverArtists } from './discover-artists';
+import { InviteArtistCard } from './invite-artist-card';
 
 export const metadata: Metadata = {
   title: 'Artistas | Doopla',
@@ -39,6 +41,7 @@ export default async function ArtistasPage(props: {
     supabase
   );
   const requestStatusRecord = Object.fromEntries(requestStatuses);
+  const sentInvites = await getSentInvites(user.id, supabase);
 
   return (
     <main className="flex flex-col gap-8">
@@ -79,6 +82,8 @@ export default async function ArtistasPage(props: {
         limit={limit}
         hasMore={hasMore}
       />
+
+      <InviteArtistCard invites={sentInvites} />
     </main>
   );
 }

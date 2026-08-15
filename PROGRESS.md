@@ -72,12 +72,20 @@ documento (seção 49).
   obrigou tornar `commission_percent` opcional no banco (pedidos que
   chegam pelo link ainda não têm comissão combinada) — todos os
   lugares que liam esse campo foram revisados (`tsc --noEmit` limpo).
+- ✅ **"+ Tenho um trabalho" (booker)** — deixou de ser um link direto
+  pra `/dashboard/propor` e virou um seletor (mesmo padrão do "+
+  Preciso de ajuda" do artista) com 3 caminhos: já represento o
+  artista → proposta direta; buscar um artista na doopla → aba
+  Artistas, seção Descubra; artista ainda não está na doopla →
+  convite. O convite é novo: card "Convidar quem ainda não está na
+  doopla" na aba Artistas (`#convites`), grava em `invites` (mesma
+  tabela do convite que já existia no cadastro, só que agora também
+  dá pra mandar de dentro do painel) e lista o histórico com status
+  (aguardando/confirmado).
 - ⏳ Faltam: reorganização de Bookers/Artistas em sub-abas (Meus/
   Favoritos/Descobrir — "Favoritos" é conceito novo, precisa de
   schema), reordenação do dashboard + "Precisa da sua atenção"
-  redesenhado, agenda (conflitos/alterações), booker's "+ Tenho um
-  trabalho" com busca/favorito/convite de artista (hoje o CTA só
-  linka pra tela existente de propor trabalho).
+  redesenhado, agenda (conflitos/alterações).
 
 ## 0. Layout do painel (menu lateral)
 

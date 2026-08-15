@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/supabase/types';
 
 import { HelpPicker } from './help-picker';
+import { JobPicker } from './job-picker';
 import { getSessionProfile } from './session';
 import { type SidebarGroup, SidebarNav } from './sidebar-nav';
 import { avatarClass, initialsFromName } from './ui';
@@ -143,16 +144,7 @@ export default async function DashboardLayout({
         <SidebarNav groups={groups} />
 
         <div className="flex flex-col gap-3 md:mt-auto">
-          {profile.role === 'booker' ? (
-            <Link
-              href="/dashboard/propor"
-              className="font-doopla-mono rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)]"
-            >
-              + Tenho um trabalho
-            </Link>
-          ) : (
-            <HelpPicker />
-          )}
+          {profile.role === 'booker' ? <JobPicker /> : <HelpPicker />}
           <form action={logoutAction} className="hidden md:block">
             <button
               type="submit"

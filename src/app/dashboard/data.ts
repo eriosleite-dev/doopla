@@ -210,6 +210,19 @@ export async function getArtistBookers(
   return fetchBookerCards(bookerIds, supabase);
 }
 
+export async function getSentInvites(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<Invite[]> {
+  const { data } = await supabase
+    .from('invites')
+    .select('*')
+    .eq('inviter_profile_id', bookerId)
+    .order('created_at', { ascending: false })
+    .returns<Invite[]>();
+  return data ?? [];
+}
+
 export async function getArtistLinkRouting(
   artistId: string,
   supabase: SupabaseServerClient

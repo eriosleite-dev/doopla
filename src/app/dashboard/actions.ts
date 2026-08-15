@@ -801,6 +801,30 @@ export async function updateLinkRoutingAction(
   return {};
 }
 
+export async function inviteArtistAction(
+  _prevState: { error?: string; success?: boolean },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const name = String(formData.get('name') ?? '').trim();
+  const contact = String(formData.get('contact') ?? '').trim();
+  if (!name) return { error: 'Informe o nome do artista.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return { error: 'Só bookers convidam artistas.' };
+
+  const { error } = await supabase.from('invites').insert({
+    inviter_profile_id: user.id,
+    invitee_name: name,
+    invitee_contact: contact || null,
+  });
+  if (error) return { error: 'Não foi possível enviar o convite agora.' };
+
+  revalidatePath('/dashboard/artistas');
+  return { success: true };
+}
+
 export async function setContractUrlAction(
   _prevState: { error?: string },
   formData: FormData
