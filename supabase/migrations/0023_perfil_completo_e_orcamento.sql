@@ -145,4 +145,4 @@ begin
 end;
 $$;
 
-comment on function public.submit_orcamento_request is 'Único caminho público de criação de oportunidade a partir do link /orçamento. commission_percent nasce em 0 (ainda não negociada) — distinto de client_offered_cents, que é só o valor que o cliente propôs.';
+comment on function public.submit_orcamento_request is 'Único caminho público de criação de oportunidade a partir do link /orçamento. commission_percent nasce nulo (ainda não negociada) — distinto de client_offered_cents, que é só o valor que o cliente propôs.';
