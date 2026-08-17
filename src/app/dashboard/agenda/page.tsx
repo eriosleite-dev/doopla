@@ -124,37 +124,59 @@ export default async function AgendaPage(props: {
             <p className="mt-4 text-sm text-[var(--ink)]/55">Nada marcado neste mês.</p>
           ) : (
             <ul className="mt-4 flex flex-col gap-2">
-              {monthEvents.map((e, i) => (
-                <li
-                  key={i}
-                  className="flex items-center gap-4 rounded-[14px] border border-[var(--line-light)] p-3"
-                >
-                  <span className="font-doopla-mono w-10 flex-none text-center text-lg font-semibold">
-                    {e.day}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium">{e.title}</span>
-                    <span className="block truncate text-[12px] text-[var(--ink)]/55">
-                      {e.sub}
+              {monthEvents.map((e, i) => {
+                const info = (
+                  <>
+                    <span className="font-doopla-mono w-10 flex-none text-center text-lg font-semibold">
+                      {e.day}
                     </span>
-                  </span>
-                  <span className={agendaTagClass(e.kind)}>
-                    {e.kind === 'confirmado' ? 'Confirmado' : 'Disponível'}
-                  </span>
-                  {e.availabilityId && (
-                    <form action={removeAvailabilityAction}>
-                      <input type="hidden" name="id" value={e.availabilityId} />
-                      <button
-                        type="submit"
-                        aria-label="Remover disponibilidade"
-                        className="text-sm text-[var(--ink)]/40 hover:text-[var(--ink)]"
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{e.title}</span>
+                      <span className="block truncate text-[12px] text-[var(--ink)]/55">
+                        {e.sub}
+                      </span>
+                    </span>
+                  </>
+                );
+                return (
+                  <li
+                    key={i}
+                    className="flex items-center gap-4 rounded-[14px] border border-[var(--line-light)] p-3"
+                  >
+                    {e.bookingId ? (
+                      <Link
+                        href={`/dashboard/bookings/${e.bookingId}`}
+                        className="flex min-w-0 flex-1 items-center gap-4 hover:opacity-70"
                       >
-                        ×
-                      </button>
-                    </form>
-                  )}
-                </li>
-              ))}
+                        {info}
+                        <span
+                          aria-hidden
+                          className="flex-none font-doopla-mono text-[13px] text-[var(--ink)]/30"
+                        >
+                          ›
+                        </span>
+                      </Link>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-4">{info}</div>
+                    )}
+                    <span className={agendaTagClass(e.kind)}>
+                      {e.kind === 'confirmado' ? 'Confirmado' : 'Disponível'}
+                    </span>
+                    {e.availabilityId && (
+                      <form action={removeAvailabilityAction}>
+                        <input type="hidden" name="id" value={e.availabilityId} />
+                        <button
+                          type="submit"
+                          aria-label="Remover disponibilidade"
+                          className="text-sm text-[var(--ink)]/40 hover:text-[var(--ink)]"
+                        >
+                          ×
+                        </button>
+                      </form>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

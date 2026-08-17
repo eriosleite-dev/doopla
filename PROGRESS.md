@@ -311,6 +311,16 @@ contra o checklist item por item, não só reportada como pronta.
   Cachê, Data, Validado, Pagamento) + badge Doopla Verified na tela do
   booking.
 - ✅ Card "Indique. Ganhe R$5." (#49) — ver seção 2.1.
+- ✅ **17/08**: Agenda (booker e artista) — a Agenda em si sempre foi
+  só visualização (não dava, e continua não dando, pra editar a data
+  direto ali). Pra mudar a data de um trabalho o caminho é a
+  remarcação da tela do booking. Mas os eventos confirmados da Agenda
+  não tinham link nenhum pro booking correspondente — corrigido:
+  clique no evento confirmado leva direto pra `/dashboard/bookings/
+  [id]`, com um "›" indicando que é clicável. Disponibilidade (marcada
+  manualmente pelo artista) continua sem link de propósito — não tem
+  detalhe nenhum pra abrir, só o "×" de remover, e agora fica visualmente
+  claro que é uma interação diferente (sem o indicador de clique).
 
 ## 4. Painel do booker
 

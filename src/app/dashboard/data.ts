@@ -1113,6 +1113,7 @@ export type AgendaEvent = {
   title: string;
   sub: string;
   availabilityId?: string;
+  bookingId?: string;
 };
 
 // Trabalho confirmado = negociação já aceita (não é mais só proposta) e
@@ -1131,9 +1132,10 @@ export async function getAgendaEvents(
     )
     .map((b) => ({
       date: b.event_date as string,
-      kind: 'confirmado',
+      kind: 'confirmado' as const,
       title: b.description || `Trabalho com ${b.otherPartyName}`,
       sub: role === 'booker' ? `Artista: ${b.otherPartyName}` : `Booker: ${b.otherPartyName}`,
+      bookingId: b.id,
     }));
 
   if (role === 'artista') {
