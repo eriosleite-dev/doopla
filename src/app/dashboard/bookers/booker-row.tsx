@@ -1,9 +1,14 @@
 import Link from 'next/link';
 
-import type { BookerCard } from '../data';
+import type { BookerCard, BookerRelationshipCard } from '../data';
 import { avatarClass, initialsFromName } from '../ui';
 
-export function BookerRow({ booker }: { booker: BookerCard }) {
+function formatSince(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+}
+
+export function BookerRow({ booker }: { booker: BookerCard | BookerRelationshipCard }) {
+  const relationship = 'relationshipSince' in booker ? booker : null;
   const location = [booker.city, booker.state].filter(Boolean).join(' · ');
   const tags = (booker.mercados ?? '')
     .split(',')
@@ -48,6 +53,22 @@ export function BookerRow({ booker }: { booker: BookerCard }) {
         <span className="font-doopla-mono w-fit rounded-full bg-[var(--accent)]/15 px-2.5 py-1 text-[10px] uppercase tracking-[.03em] text-[var(--accent-ink)]">
           {booker.foco === 'Universal' ? 'Atende qualquer nicho' : booker.foco}
         </span>
+      )}
+      {relationship && (
+        <>
+          <p className="text-[12px] text-[var(--ink)]/55">
+            Juntos desde {formatSince(relationship.relationshipSince)} ·{' '}
+            {relationship.ongoingCount > 0
+              ? `${relationship.ongoingCount} ${relationship.ongoingCount === 1 ? 'trabalho em andamento' : 'trabalhos em andamento'}`
+              : 'nenhum trabalho em andamento agora'}
+          </p>
+          <Link
+            href={`/dashboard/bookers/${booker.profileId}`}
+            className="font-doopla-mono border-t border-[var(--line-light)] pt-3 text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--ink)]"
+          >
+            Gerenciar relação →
+          </Link>
+        </>
       )}
     </div>
   );

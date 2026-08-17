@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import {
-  getArtistBookers,
+  getArtistBookerRelationships,
   getDiscoverBookers,
   getIncomingRepresentationRequests,
   getSentInvites,
@@ -27,7 +27,7 @@ export default async function BookersPage(props: {
   if (profile.role !== 'artista') redirect('/dashboard');
 
   const [myBookers, incomingRequests] = await Promise.all([
-    getArtistBookers(user.id, supabase),
+    getArtistBookerRelationships(user.id, supabase),
     getIncomingRepresentationRequests(user.id, supabase),
   ]);
 
@@ -42,7 +42,7 @@ export default async function BookersPage(props: {
   const sentInvites = await getSentInvites(user.id, supabase);
 
   return (
-    <main className="flex flex-col gap-8">
+    <main className="flex flex-col gap-10">
       <header>
         <p className={eyebrowClass}>Bookers</p>
         <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
@@ -50,24 +50,32 @@ export default async function BookersPage(props: {
         </h1>
       </header>
 
-      <IncomingRequests requests={incomingRequests} />
-
-      {myBookers.length === 0 ? (
-        <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
-          Você ainda não tem nenhum booker confirmado na sua rede. Convide quem já trabalha
-          com você no cadastro, ou espere alguém te representar.
-        </p>
-      ) : (
-        <ListFilter
-          items={myBookers}
-          getKey={(b) => b.profileId}
-          searchPlaceholder="Buscar entre os bookers que trabalham com você..."
-          getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.mercados ?? ''}`}
-          renderItem={(b) => <BookerRow booker={b} />}
-          emptyMessage="Nenhum booker combina com esses filtros."
-          itemLabel={{ singular: 'booker', plural: 'bookers' }}
-        />
+      {incomingRequests.length > 0 && (
+        <section id="solicitacoes" className="flex flex-col gap-3">
+          <p className={eyebrowClass}>Solicitações pendentes recebidas</p>
+          <IncomingRequests requests={incomingRequests} />
+        </section>
       )}
+
+      <section className="flex flex-col gap-3">
+        <p className={eyebrowClass}>Meus bookers</p>
+        {myBookers.length === 0 ? (
+          <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
+            Você ainda não tem nenhum booker confirmado na sua rede. Convide quem já trabalha
+            com você no cadastro, ou espere alguém te representar.
+          </p>
+        ) : (
+          <ListFilter
+            items={myBookers}
+            getKey={(b) => b.profileId}
+            searchPlaceholder="Buscar entre os bookers que trabalham com você..."
+            getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.mercados ?? ''}`}
+            renderItem={(b) => <BookerRow booker={b} />}
+            emptyMessage="Nenhum booker combina com esses filtros."
+            itemLabel={{ singular: 'booker', plural: 'bookers' }}
+          />
+        )}
+      </section>
 
       <div id="descubra" className="flex flex-col gap-2 pt-4">
         <p className={eyebrowClass}>Descubra novos bookers</p>
@@ -78,7 +86,10 @@ export default async function BookersPage(props: {
       </div>
       <DiscoverBookers bookers={visibleDiscover} limit={limit} hasMore={hasMore} />
 
-      <InviteBookerCard invites={sentInvites} />
+      <section className="flex flex-col gap-3">
+        <p className={eyebrowClass}>Convites enviados</p>
+        <InviteBookerCard invites={sentInvites} />
+      </section>
     </main>
   );
 }

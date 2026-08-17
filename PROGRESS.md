@@ -101,7 +101,48 @@ perfis, e o wizard de cadastro foi reescrito pra coletar tudo isso.
   compartilhada entre wizard e Perfil), sempre chip/seleção, nunca
   texto livre solto.
 
-### Prioridades 3–8 — na fila, ainda não começadas
+### Prioridade 3 — Convites opcionais no cadastro + convidar depois pelo perfil ✅
+
+Coberto junto com a prioridade 2 (o passo de convite no cadastro do
+artista e a bidirecionalidade do `confirmInviteAction` já entregam boa
+parte disso). O que faltava:
+
+- ✅ Booker também ganhou, no Perfil, um card "Sua rede" com link direto
+  pra convidar artista que ainda não está na doopla
+  (`/dashboard/artistas#convites`) — espelha o que o artista já tinha
+  pro convite de booker.
+
+### Prioridade 4 — Meus Bookers / Meus Artistas / notificações ✅
+
+- ✅ **Auditoria do "alguém"**: chequei todo ponto do painel que usa
+  "Alguém" como fallback de nome (`getAttentionItems`,
+  `getIncomingRepresentationRequests`, `getPendingInvites`, indicações).
+  Em todos os casos já era um fallback de último recurso genuíno (nome
+  realmente não encontrado), não o bug relatado — o sintoma concreto que
+  você viu ("booker não aparece em lugar nenhum depois do aceite") já
+  tinha sido resolvido pela correção de cache da prioridade 1.
+- ✅ **Card completo do booker na tela de solicitação**: antes a tela de
+  "Bookers que querem te representar" mostrava só nome + mensagem. Agora
+  mostra foto (ou iniciais), bio, cidade, especialidades, categorias,
+  avaliação, selo "Booker Doopla Oficial" (quando aplicável — hoje nunca
+  aplicável de verdade, porque os critérios de Booker Oficial têm dois
+  itens sempre falsos ainda; deixei honesto em vez de fingir) e link pro
+  perfil completo.
+- ✅ **Meus Bookers / Meus Artistas reorganizados em 3 estados sempre
+  separados, nunca misturados**: "Solicitações pendentes recebidas" (ou
+  "enviadas", do lado do booker) → "Meus Bookers"/"Meus Artistas"
+  (relação ativa) → "Convites enviados", cada um com seu próprio
+  cabeçalho de seção.
+- ✅ **Relação ativa ficou mais rica**: cada card de booker/artista ativo
+  agora mostra "Juntos desde [mês/ano]" e quantos trabalhos estão em
+  andamento agora (ou "nenhum trabalho em andamento"), com link
+  "Gerenciar relação" pro perfil completo.
+- ✅ **Novo**: booker agora também vê a lista de solicitações de
+  representação que ele mesmo enviou e ainda estão pendentes
+  ("Solicitações enviadas" em `/dashboard/artistas`) — antes só existia
+  como badge solto nos cards de descoberta, sem lugar centralizado.
+
+### Prioridades 5–8 — na fila, ainda não começadas
 
 ## 0.2. Cancelamento/reembolso, parte estrutural (prioridade 2 do bloco anterior)
 

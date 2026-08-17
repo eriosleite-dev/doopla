@@ -1,17 +1,22 @@
 import Link from 'next/link';
 
-import type { ArtistCard } from '../data';
+import type { ArtistCard, ArtistRelationshipCard } from '../data';
 import { avatarClass, initialsFromName } from '../ui';
 import { RequestRepresentationButton } from './request-button';
 import type { RepresentationRequestStatus } from '@/lib/supabase/types';
+
+function formatSince(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+}
 
 export function ArtistRow({
   artist,
   requestStatus,
 }: {
-  artist: ArtistCard;
+  artist: ArtistCard | ArtistRelationshipCard;
   requestStatus?: RepresentationRequestStatus | null;
 }) {
+  const relationship = 'relationshipSince' in artist ? artist : null;
   const name = artist.stageName || artist.fullName;
   const location = [artist.city, artist.state].filter(Boolean).join(' · ');
   const tags = (artist.mercados ?? '')
@@ -53,12 +58,20 @@ export function ArtistRow({
           ))}
         </div>
       )}
+      {relationship && (
+        <p className="text-[12px] text-[var(--ink)]/55">
+          Juntos desde {formatSince(relationship.relationshipSince)} ·{' '}
+          {relationship.ongoingCount > 0
+            ? `${relationship.ongoingCount} ${relationship.ongoingCount === 1 ? 'trabalho em andamento' : 'trabalhos em andamento'}`
+            : 'nenhum trabalho em andamento agora'}
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2 border-t border-[var(--line-light)] pt-3">
         <Link
           href={`/dashboard/artistas/${artist.profileId}`}
           className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--ink)]"
         >
-          Ver perfil →
+          {relationship ? 'Gerenciar relação →' : 'Ver perfil →'}
         </Link>
         {requestStatus !== undefined && (
           <RequestRepresentationButton artistProfileId={artist.profileId} status={requestStatus} />
