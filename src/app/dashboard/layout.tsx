@@ -4,6 +4,7 @@ import { logoutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/supabase/types';
 
+import { getAttentionItems, getUserBookings } from './data';
 import { HelpPicker } from './help-picker';
 import { JobPicker } from './job-picker';
 import { getSessionProfile } from './session';
@@ -48,6 +49,10 @@ export default async function DashboardLayout({
   const { supabase, user, profile } = await getSessionProfile();
 
   const opportunitiesBadge = await getOpportunitiesBadgeCount(supabase, user.id, profile.role);
+  const bookingsForAttention = await getUserBookings(user.id, profile.role, supabase);
+  const attentionCount = (
+    await getAttentionItems(user.id, profile.role, bookingsForAttention, supabase)
+  ).length;
 
   const groups: SidebarGroup[] =
     profile.role === 'booker'
@@ -109,18 +114,48 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen flex-col bg-[var(--paper)] font-doopla-sans text-[var(--ink)] md:flex-row">
       <aside className="flex flex-col gap-5 bg-[var(--sidebar)] px-5 py-6 text-[var(--paper)] md:sticky md:top-0 md:h-screen md:w-[272px] md:flex-none md:gap-6 md:overflow-y-auto md:px-5 md:py-7">
-        <div className="flex items-center justify-between md:block">
+        <div className="flex items-center justify-between">
           <Link href="/dashboard" className="font-doopla-display text-xl font-semibold">
             doopla
           </Link>
-          <form action={logoutAction} className="md:hidden">
-            <button
-              type="submit"
-              className="font-doopla-mono rounded-full border border-[var(--sidebar-line)] px-3 py-1.5 text-[10px] uppercase tracking-[.06em] text-[var(--paper)]/70"
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard#atencao"
+              aria-label={
+                attentionCount > 0
+                  ? `${attentionCount} itens precisam da sua atenção`
+                  : 'Nenhuma pendência no momento'
+              }
+              className="relative flex h-8 w-8 items-center justify-center rounded-full text-[var(--paper)]/70 hover:bg-white/[0.06] hover:text-[var(--paper)]"
             >
-              Sair
-            </button>
-          </form>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+              </svg>
+              {attentionCount > 0 && (
+                <span className="font-doopla-mono absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--alert)] px-1 text-[9px] text-white">
+                  {attentionCount > 9 ? '9+' : attentionCount}
+                </span>
+              )}
+            </Link>
+            <form action={logoutAction} className="md:hidden">
+              <button
+                type="submit"
+                className="font-doopla-mono rounded-full border border-[var(--sidebar-line)] px-3 py-1.5 text-[10px] uppercase tracking-[.06em] text-[var(--paper)]/70"
+              >
+                Sair
+              </button>
+            </form>
+          </div>
         </div>
 
         <Link

@@ -704,7 +704,9 @@ function commissionCents(booking: Booking): number {
 }
 
 export type BookerStats = {
+  totalNegotiatedCents: number;
   totalEarnedCents: number;
+  availableToWithdrawCents: number;
   monthEarnedCents: number;
   monthEarnedPrevCents: number;
   activeCount: number;
@@ -715,6 +717,14 @@ export type BookerStats = {
 };
 
 export function computeBookerStats(bookings: Booking[]): BookerStats {
+  const confirmed = bookings.filter((b) =>
+    ['aceita', 'aguardando_pagamento', 'concluida'].includes(b.status)
+  );
+  const totalNegotiatedCents = confirmed.reduce(
+    (sum, b) => sum + (b.cache_amount_cents ?? 0),
+    0
+  );
+
   const concluded = bookings.filter((b) => b.status === 'concluida');
   const totalEarnedCents = concluded.reduce((sum, b) => sum + commissionCents(b), 0);
   const monthEarnedCents = concluded
@@ -739,7 +749,13 @@ export function computeBookerStats(bookings: Booking[]): BookerStats {
   ).length;
 
   return {
+    totalNegotiatedCents,
     totalEarnedCents,
+    // Igual a totalEarnedCents por enquanto: sem Bloco 2/PSP não existe
+    // histórico de saque nem retenção parcial, então "ganho" e
+    // "disponível" ainda são o mesmo número. Ficam campos separados de
+    // propósito — vão divergir assim que saques parciais existirem.
+    availableToWithdrawCents: totalEarnedCents,
     monthEarnedCents,
     monthEarnedPrevCents,
     activeCount,

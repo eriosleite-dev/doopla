@@ -4,7 +4,7 @@ import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/forma
 import type { Profile } from '@/lib/supabase/types';
 
 import type { BookingWithOtherParty } from './data';
-import { avatarClass, initialsFromName, STATUS_LABELS, statusPillClasses } from './ui';
+import { avatarClass, ghostButtonClass, initialsFromName, STATUS_LABELS, statusPillClasses } from './ui';
 
 export function bookingLine(
   booking: BookingWithOtherParty,
@@ -55,6 +55,24 @@ export function BookingRow({
   );
 }
 
+const EMPTY_STATE_CTAS: Record<Profile['role'], { label: string; href: string }[]> = {
+  booker: [
+    { label: 'Encontrar artistas', href: '/dashboard/artistas#descubra' },
+    { label: 'Nova proposta', href: '/dashboard/propor' },
+    { label: 'Convidar artista', href: '/dashboard/artistas#convites' },
+  ],
+  agencia: [
+    { label: 'Encontrar artistas', href: '/dashboard/artistas#descubra' },
+    { label: 'Nova proposta', href: '/dashboard/propor' },
+    { label: 'Convidar artista', href: '/dashboard/artistas#convites' },
+  ],
+  artista: [
+    { label: 'Publicar um trabalho', href: '/dashboard/publicar-trabalho' },
+    { label: 'Ver oportunidades', href: '/dashboard/oportunidades' },
+    { label: 'Encontrar um booker', href: '/dashboard/bookers#descubra' },
+  ],
+};
+
 // Prévia da Home: só os mais recentes, sem busca/filtro — a tela cheia
 // (com busca+filtro+ordenação) mora em /dashboard/trabalhos.
 export function BookingsPreview({
@@ -70,9 +88,16 @@ export function BookingsPreview({
 
   if (preview.length === 0) {
     return (
-      <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
-        Nenhum booking por aqui ainda.
-      </p>
+      <div className="flex flex-col items-center gap-4 rounded-[18px] bg-white p-8 text-center">
+        <p className="text-sm text-[var(--ink)]/70">Você ainda não tem bookings.</p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {EMPTY_STATE_CTAS[role].map((cta) => (
+            <Link key={cta.href} href={cta.href} className={ghostButtonClass}>
+              {cta.label}
+            </Link>
+          ))}
+        </div>
+      </div>
     );
   }
 

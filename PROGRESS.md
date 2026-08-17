@@ -147,10 +147,63 @@ documento (seção 49).
   Favoritos/Descobrir — "Favoritos" é conceito novo, precisa de
   schema), agenda (conflitos/alterações).
 
-**Bloco C fechado nos itens priorizados** (`/orçamento`, Perfil
-completo, "+ Preciso de ajuda"/"+ Tenho um trabalho", dashboard).
-Os itens ⏳ acima ficam pra quando você priorizar de novo — não têm
-trava externa, só não empilhei mais escopo na fila desta rodada.
+### Checagem real da Fase 1 — 17/08/2026
+
+Eu tinha marcado a Fase 1 como fechada acima ("Bloco C fechado nos
+itens priorizados"). Não estava — um print real do painel do booker
+mostrou vários itens da seção 42 (fundação) que não batiam com o que
+eu tinha dito. Fica registrado item por item, com o que eu encontrei
+de verdade e o que foi corrigido nesta rodada, pra não repetir o erro
+de marcar como pronto sem checar contra a tela real:
+
+- ✅ **Sidebar Booker** — grupos batem (Início/Trabalho/Minha rede/
+  Financeiro). "Nova proposta" e "Convide um artista" não são itens
+  próprios de sidebar de propósito — ficam dentro do seletor "+ Tenho
+  um trabalho" (decisão já reconciliada entre os três documentos
+  antigos, registrada em DECISOES.md).
+- ✅ **Sidebar Artista** — mesma estrutura, confirmado.
+- 🔧→✅ **Métricas financeiras do booker** — estava errado: mostrava
+  Comissão total ganha / Receita do mês / Bookings ativos / Taxa de
+  aceite. Corrigido pra bater com a seção 4.1: Valor total negociado
+  (bruto, soma do cachê em bookings confirmados) / Comissão total
+  ganha / Disponível para sacar / Bookings ativos.
+- 🔧→✅ **"Precisa da sua atenção" ausente no print** — no código
+  atual ela existe e fica logo depois das métricas (isso já tinha
+  sido feito antes deste print, na reordenação documentada acima). Se
+  o print mostrou ausente, ou foi tirado antes desse deploy, ou a
+  conta usada não tinha nenhum item pendente no momento (a seção some
+  quando a lista está vazia, isso é intencional, não bug). Adicionei
+  `id="atencao"` pra virar destino de link direto (usado agora pelo
+  sino de notificação).
+- ❌→✅ **Notificações (sino com badge)** — não existia. Construído:
+  ícone de sino no topo da sidebar (visível em toda página do painel),
+  com contagem real de itens de "Precisa da sua atenção" (mesma fonte
+  de dados, sem inventar sistema novo), link pra `/dashboard#atencao`.
+- ❌→✅ **Empty states genéricos** — "Nenhum booking por aqui ainda"
+  virou "Você ainda não tem bookings" + CTAs reais por papel (booker:
+  Encontrar artistas / Nova proposta / Convidar artista; artista:
+  Publicar um trabalho / Ver oportunidades / Encontrar um booker).
+- ⚠️→✅ **Botão "Sacar" nos cards** — não era funcional (nunca
+  processou saque de verdade, sempre foi só um link pra
+  `/dashboard/dinheiro`, onde o "Solicitar saque" real já estava
+  desabilitado desde antes). Mas visualmente parecia um botão ativo
+  de saque dentro do card de dinheiro — troquei o rótulo pra "Ver
+  detalhes" nos dois papéis, e no booker o link agora mora junto do
+  novo card "Disponível para sacar" (mais coerente) em vez de junto
+  de "Comissão total ganha".
+- 🔧→✅ **Card Booker Oficial acima de Trabalhos** — a seção 8 diz que
+  ele nunca pode ficar acima de dinheiro/pendências/bookings. Estava
+  entre "Convites pendentes" e "Seus trabalhos" — movido pra depois
+  de "Seus trabalhos".
+
+**Nota sobre métricas do artista**: a mensagem da usuária só citou a
+seção 4.1 (métricas do booker). Não toquei nas 4 métricas do painel
+do artista (Recebido líquido/Recebido no mês/Bookings fechados/
+Comissão média paga) por não ter a citação da seção equivalente —
+avisar se elas também precisam mudar.
+
+Com isso, a Fase 1 (seção 42) está fechada de verdade, validada
+contra o checklist item por item, não só reportada como pronta.
 
 ## 0. Layout do painel (menu lateral)
 

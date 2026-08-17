@@ -32,7 +32,6 @@ import {
   statLabelClass,
   statLabelLeadClass,
   statSubClass,
-  statSubUpClass,
   statValueClass,
   statValueLeadClass,
 } from './ui';
@@ -40,11 +39,6 @@ import {
 export const metadata: Metadata = {
   title: 'Painel | Doopla',
 };
-
-function pctChange(current: number, prev: number): number | null {
-  if (prev === 0) return null;
-  return Math.round(((current - prev) / prev) * 100);
-}
 
 export default async function DashboardPage() {
   const { supabase, user, profile } = await getSessionProfile();
@@ -83,7 +77,7 @@ export default async function DashboardPage() {
       )}
 
       {attentionItems.length > 0 && (
-        <section className={cardClass}>
+        <section id="atencao" className={cardClass}>
           <p className={eyebrowClass}>Precisa da sua atenção</p>
           <ul className="mt-4 flex flex-col gap-3">
             {attentionItems.map((item, i) => (
@@ -137,8 +131,6 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      {officialProgress && <BookerOficialCard progress={officialProgress} />}
-
       <section>
         <div className="flex items-center justify-between">
           <p className={eyebrowClass}>Seus trabalhos</p>
@@ -153,6 +145,10 @@ export default async function DashboardPage() {
           <BookingsPreview bookings={bookings} role={profile.role} />
         </div>
       </section>
+
+      {/* Secundário de propósito (spec: nunca acima de dinheiro, pendências
+          ou bookings) — por isso vem depois de tudo isso, não antes. */}
+      {officialProgress && <BookerOficialCard progress={officialProgress} />}
 
       {profile.role === 'artista' && (
         <>
@@ -226,29 +222,31 @@ function PeopleRow({ people, emptyMessage }: { people: BookerCard[]; emptyMessag
 
 function BookerStats({ bookings }: { bookings: Parameters<typeof computeBookerStats>[0] }) {
   const stats = computeBookerStats(bookings);
-  const change = pctChange(stats.monthEarnedCents, stats.monthEarnedPrevCents);
 
   return (
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={statCardClass}>
+        <p className={statLabelClass}>Valor total negociado</p>
+        <p className={statValueClass}>{formatCentsAsBRL(stats.totalNegotiatedCents)}</p>
+        <p className={statSubClass}>Bruto, em bookings confirmados</p>
+      </div>
       <div className={statCardLeadClass}>
         <p className={statLabelLeadClass}>Comissão total ganha</p>
         <p className={statValueLeadClass}>{formatCentsAsBRL(stats.totalEarnedCents)}</p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-[12.5px] text-[var(--paper)]/60">Em bookings concluídos</p>
-          <Link
-            href="/dashboard/dinheiro"
-            className="font-doopla-mono flex-none rounded-full border border-[var(--paper)]/25 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--paper)] hover:bg-[var(--paper)]/10"
-          >
-            Sacar
-          </Link>
-        </div>
+        <p className="mt-2 text-[12.5px] text-[var(--paper)]/60">Em bookings concluídos</p>
       </div>
       <div className={statCardClass}>
-        <p className={statLabelClass}>Receita do mês</p>
-        <p className={statValueClass}>{formatCentsAsBRL(stats.monthEarnedCents)}</p>
-        <p className={change !== null && change >= 0 ? statSubUpClass : statSubClass}>
-          {change === null ? 'Sem comparação ainda' : `${change >= 0 ? '+' : ''}${change}% vs. mês anterior`}
-        </p>
+        <p className={statLabelClass}>Disponível para sacar</p>
+        <p className={statValueClass}>{formatCentsAsBRL(stats.availableToWithdrawCents)}</p>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className={statSubClass}>Saque via Bloco 2, em breve</p>
+          <Link
+            href="/dashboard/dinheiro"
+            className="font-doopla-mono flex-none rounded-full border border-[var(--ink)]/20 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--ink)]/60 hover:border-[var(--ink)]/40"
+          >
+            Ver detalhes
+          </Link>
+        </div>
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Bookings ativos</p>
@@ -257,15 +255,6 @@ function BookerStats({ bookings }: { bookings: Parameters<typeof computeBookerSt
           {stats.awaitingPaymentCount > 0
             ? `${stats.awaitingPaymentCount} aguardando pagamento`
             : 'Em andamento'}
-        </p>
-      </div>
-      <div className={statCardClass}>
-        <p className={statLabelClass}>Taxa de aceite</p>
-        <p className={statValueClass}>{formatPercent(stats.acceptanceRatePercent)}</p>
-        <p className={statSubClass}>
-          {stats.decidedCount > 0
-            ? `${stats.acceptedCount} de ${stats.decidedCount} propostas`
-            : 'Ainda sem propostas decididas'}
         </p>
       </div>
     </section>
@@ -286,7 +275,7 @@ function ArtistStats({ bookings }: { bookings: Parameters<typeof computeArtistSt
             href="/dashboard/dinheiro"
             className="font-doopla-mono flex-none rounded-full border border-[var(--paper)]/25 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--paper)] hover:bg-[var(--paper)]/10"
           >
-            Sacar
+            Ver detalhes
           </Link>
         </div>
       </div>

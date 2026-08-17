@@ -127,3 +127,31 @@ sinalização sempre separada de cancelamento, sem execução financeira.
 evento real de pagamento confirmado pelo PSP (split, repasse, saldo
 devedor de verdade). Fica para quando a integração com Pagar.me
 existir.
+
+---
+
+## Checagem real da Fase 1 (painéis) — 17/08/2026
+
+A usuária mandou um print real do painel do booker mostrando que a
+Fase 1, que eu tinha marcado como fechada no PROGRESS.md, não batia
+com a especificação em vários pontos: métricas financeiras erradas
+(cards trocados), "Precisa da sua atenção" aparentemente ausente,
+sino de notificações nunca construído, empty states genéricos
+(exatamente o padrão que a seção 36 do documento pede pra nunca
+fazer), e o card Booker Oficial acima da seção de Trabalhos (a seção
+8 é explícita que ele nunca pode ficar acima de dinheiro/pendências/
+bookings).
+
+Pedido dela: não seguir pra Fase 2 sem fechar isso, com confirmação
+item por item, sem assumir nada como pronto. Auditei o código real
+(não a memória da conversa) contra cada item, corrigi os 5 gaps reais
+encontrados, e documentei o resultado granular no PROGRESS.md (seção
+"Checagem real da Fase 1"), em vez de só marcar "feito" genérico.
+
+**Lição registrada**: marcar um bloco como "fechado" no PROGRESS.md
+só deveria acontecer depois de validar contra a tela real (print ou
+preview), não só contra a lista de tarefas internas. A partir de
+agora, ao fechar uma fase inteira (não um item isolado), vale reler o
+resultado renderizado antes de declarar pronto — nem que seja só
+descrevendo a árvore de componentes renderizada, já que não há acesso
+a navegador neste ambiente de execução.
