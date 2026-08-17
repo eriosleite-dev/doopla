@@ -2,8 +2,19 @@
 
 import { useActionState } from 'react';
 
+import {
+  ARTIST_CATEGORY_OPTIONS,
+  CAPACITY_OPTIONS,
+  CLIENT_TYPE_OPTIONS,
+  FEE_RANGE_OPTIONS,
+  LANGUAGE_OPTIONS,
+  REGION_OPTIONS,
+  SPECIALTY_AREA_OPTIONS,
+} from '@/lib/matching-options';
+
 import { updateBookerProfileAction } from '../actions';
 import { eyebrowClass, ghostButtonClass } from '../ui';
+import { ChipCheckboxGroup } from './chip-checkbox-group';
 
 const inputClass =
   'rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm';
@@ -15,16 +26,30 @@ export function BookerProfileForm({
   professionalName,
   bio,
   mercados,
-  specialties,
   experience,
   instagramUrl,
+  websiteUrl,
+  capacity,
+  feeRange,
+  artistCategories,
+  clientTypes,
+  regions,
+  languages,
+  specialtyAreas,
 }: {
   professionalName: string | null;
   bio: string | null;
   mercados: string | null;
-  specialties: string | null;
   experience: string | null;
   instagramUrl: string | null;
+  websiteUrl: string | null;
+  capacity: string | null;
+  feeRange: string | null;
+  artistCategories: string[];
+  clientTypes: string[];
+  regions: string[];
+  languages: string[];
+  specialtyAreas: string[];
 }) {
   const [state, formAction, pending] = useActionState(updateBookerProfileAction, {});
 
@@ -60,17 +85,91 @@ export function BookerProfileForm({
             className={inputClass}
           />
         </label>
+        <label className={labelClass}>
+          <span className={eyebrowClass}>Site</span>
+          <input
+            type="url"
+            name="websiteUrl"
+            defaultValue={websiteUrl ?? ''}
+            placeholder="https://..."
+            className={inputClass}
+          />
+        </label>
       </div>
-
-      <label className={labelClass}>
-        <span className={eyebrowClass}>Especialidades</span>
-        <input type="text" name="specialties" defaultValue={specialties ?? ''} className={inputClass} />
-      </label>
 
       <label className={labelClass}>
         <span className={eyebrowClass}>Experiência</span>
         <textarea name="experience" rows={2} defaultValue={experience ?? ''} className={textareaClass} />
       </label>
+
+      <div className="flex flex-col gap-4 border-t border-[var(--ink)]/10 pt-4">
+        <p className="text-[12.5px] text-[var(--ink)]/55">
+          Os campos abaixo alimentam o matching com artistas — usados pra te encontrar em buscas
+          e sugestões, não aparecem soltos no seu perfil.
+        </p>
+        <ChipCheckboxGroup
+          name="specialtyAreas"
+          label="Suas especialidades"
+          options={SPECIALTY_AREA_OPTIONS}
+          defaultValues={specialtyAreas}
+        />
+        <ChipCheckboxGroup
+          name="artistCategories"
+          label="Categorias de artista com quem você trabalha"
+          options={ARTIST_CATEGORY_OPTIONS}
+          defaultValues={artistCategories}
+        />
+        <ChipCheckboxGroup
+          name="clientTypes"
+          label="Tipos de trabalho/cliente que você domina"
+          options={CLIENT_TYPE_OPTIONS}
+          defaultValues={clientTypes}
+        />
+        <ChipCheckboxGroup
+          name="regions"
+          label="Regiões onde você atua"
+          options={REGION_OPTIONS}
+          defaultValues={regions}
+        />
+        <ChipCheckboxGroup
+          name="languages"
+          label="Idiomas"
+          options={LANGUAGE_OPTIONS}
+          defaultValues={languages}
+        />
+
+        <label className={labelClass}>
+          <span className={eyebrowClass}>Quantos artistas você consegue atender agora</span>
+          <select
+            name="capacity"
+            defaultValue={capacity ?? ''}
+            className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+          >
+            <option value="">Prefiro não dizer</option>
+            {CAPACITY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.value}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={labelClass}>
+          <span className={eyebrowClass}>Faixa de cachê dos artistas com quem trabalha</span>
+          <select
+            name="feeRange"
+            defaultValue={feeRange ?? ''}
+            className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+          >
+            <option value="">Prefiro não dizer</option>
+            {FEE_RANGE_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className={ghostButtonClass}>

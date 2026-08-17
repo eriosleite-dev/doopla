@@ -45,6 +45,14 @@ export type ArtistProfile = {
   serves_other_locations: boolean;
   accepts_out_of_city_work: boolean;
   other_preferences: string | null;
+  // Cadastro/matching estruturado (migration 0026)
+  work_types: string[];
+  client_types: string[];
+  regions: string[];
+  languages: string[];
+  career_stage: string | null;
+  help_areas: string[];
+  fee_range: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -68,9 +76,20 @@ export type BookerProfile = {
   // Perfil completo (Bloco C, migration 0023)
   professional_name: string | null;
   bio: string | null;
-  specialties: string | null;
   experience: string | null;
   instagram_url: string | null;
+  // Cadastro/matching estruturado (migration 0026) — specialty_areas
+  // substitui `specialties` (texto livre) como fonte usada pelo cadastro
+  // e pelo Perfil; a coluna antiga `specialties` continua no banco por
+  // compatibilidade, mas não é mais lida nem escrita pelo app.
+  artist_categories: string[];
+  client_types: string[];
+  regions: string[];
+  languages: string[];
+  specialty_areas: string[];
+  capacity: string | null;
+  fee_range: string | null;
+  website_url: string | null;
   created_at: string;
   updated_at: string;
 };

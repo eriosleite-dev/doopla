@@ -57,7 +57,49 @@ no banco.
   "vista/não vista" como a de representation_requests. Avisar se quer
   isso na mesma prioridade 1 ou se pode esperar a 4.
 
-### Prioridade 2 — Refazer onboarding (artista e booker) — próximo
+### Prioridade 2 — Refazer onboarding (artista e booker) ✅
+
+Cadastro antigo perguntava basicamente nome e "recorrente ou pontual" —
+não gerava dado suficiente pro matching. Migration 0026 adiciona campos
+estruturados (arrays de verdade — `text[]`, nunca texto livre) nos dois
+perfis, e o wizard de cadastro foi reescrito pra coletar tudo isso.
+
+- ✅ **Bug real corrigido no meio do caminho** (você pegou testando):
+  "ajuda pontual" tinha um caminho de 2 perguntas, bem mais raso que
+  "recorrente". Unificado — agora `recorrente`/`pontual`/`ambos`
+  passam todos pelo mesmo conjunto completo de perguntas. O booker já
+  estava correto nesse ponto (as 3 opções de `modoTrabalho` nunca
+  tiveram caminhos diferentes) — só o artista tinha o bug.
+- ✅ **Artista, campos novos**: nome artístico separado de nome
+  completo, tipos de trabalho, tipos de cliente/evento, regiões onde
+  atua (separado de `mercados`, que virou só nicho/vertical), idiomas,
+  estágio de carreira/volume, faixa de cachê (banda pré-definida, não
+  valor exato), em quais atividades precisa de ajuda (negociação,
+  prospecção, cobrança, contratos, organização, atendimento,
+  fechamento, outra).
+- ✅ **Booker, campos novos**: categorias de artista com quem trabalha,
+  tipos de trabalho/cliente que domina, regiões, idiomas,
+  especialidades estruturadas (substituindo o campo `specialties` de
+  texto livre — a coluna antiga continua no banco, só não é mais lida
+  nem escrita pelo app), quantos artistas consegue atender agora,
+  faixa de cachê dos artistas com quem trabalha.
+- ✅ **"Traga sua dupla pra doopla"**: quando o artista responde que já
+  tem um booker ("Sim, quero trazer essa pessoa pra doopla"), aparece
+  um passo novo pra convidar essa pessoa (nome + contato opcional),
+  exatamente como o booker já convida artistas no cadastro dele.
+  Nunca bloqueia — sempre dá pra clicar Próximo sem preencher.
+- ✅ **Convite ficou bidirecional**: antes só existia booker convidando
+  artista. `confirmInviteAction` agora olha o papel de quem convidou
+  pra decidir a direção da `representations` — funciona nos dois
+  sentidos, e continua disponível depois do cadastro em Meus Bookers
+  (`/dashboard/bookers#convites`, card novo) e no Perfil (link direto
+  quando não há booker configurado ainda pro roteamento do
+  `/orçamento`).
+- ✅ **Perfil editável com os mesmos campos**: todo campo novo também
+  virou editável depois, em `/dashboard/perfil` — mesma lista de
+  opções do cadastro (`src/lib/matching-options.ts`, fonte única
+  compartilhada entre wizard e Perfil), sempre chip/seleção, nunca
+  texto livre solto.
 
 ### Prioridades 3–8 — na fila, ainda não começadas
 

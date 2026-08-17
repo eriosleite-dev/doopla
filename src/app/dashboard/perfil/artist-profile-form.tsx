@@ -2,8 +2,19 @@
 
 import { useActionState } from 'react';
 
+import {
+  CAREER_STAGE_OPTIONS,
+  CLIENT_TYPE_OPTIONS,
+  FEE_RANGE_OPTIONS,
+  HELP_AREA_OPTIONS,
+  LANGUAGE_OPTIONS,
+  REGION_OPTIONS,
+  WORK_TYPE_OPTIONS,
+} from '@/lib/matching-options';
+
 import { updateArtistProfileAction } from '../actions';
 import { eyebrowClass, ghostButtonClass } from '../ui';
+import { ChipCheckboxGroup } from './chip-checkbox-group';
 
 const inputClass =
   'rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm';
@@ -24,6 +35,13 @@ export function ArtistProfileForm({
   travels,
   servesOtherLocations,
   acceptsOutOfCityWork,
+  careerStage,
+  feeRange,
+  workTypes,
+  clientTypes,
+  regions,
+  languages,
+  helpAreas,
 }: {
   stageName: string | null;
   category: string | null;
@@ -37,6 +55,13 @@ export function ArtistProfileForm({
   travels: boolean;
   servesOtherLocations: boolean;
   acceptsOutOfCityWork: boolean;
+  careerStage: string | null;
+  feeRange: string | null;
+  workTypes: string[];
+  clientTypes: string[];
+  regions: string[];
+  languages: string[];
+  helpAreas: string[];
 }) {
   const [state, formAction, pending] = useActionState(updateArtistProfileAction, {});
 
@@ -128,6 +153,75 @@ export function ArtistProfileForm({
           className={textareaClass}
         />
       </label>
+
+      <div className="flex flex-col gap-4 border-t border-[var(--ink)]/10 pt-4">
+        <p className="text-[12.5px] text-[var(--ink)]/55">
+          Os campos abaixo alimentam o matching com bookers — usados pra te encontrar em buscas e
+          sugestões, não aparecem soltos no seu perfil público.
+        </p>
+        <ChipCheckboxGroup
+          name="workTypes"
+          label="Tipos de trabalho que você costuma fazer"
+          options={WORK_TYPE_OPTIONS}
+          defaultValues={workTypes}
+        />
+        <ChipCheckboxGroup
+          name="clientTypes"
+          label="Tipos de cliente ou evento que você atende"
+          options={CLIENT_TYPE_OPTIONS}
+          defaultValues={clientTypes}
+        />
+        <ChipCheckboxGroup
+          name="regions"
+          label="Regiões onde você atua"
+          options={REGION_OPTIONS}
+          defaultValues={regions}
+        />
+        <ChipCheckboxGroup
+          name="languages"
+          label="Idiomas"
+          options={LANGUAGE_OPTIONS}
+          defaultValues={languages}
+        />
+        <ChipCheckboxGroup
+          name="helpAreas"
+          label="Em quais atividades você precisa de ajuda"
+          options={HELP_AREA_OPTIONS}
+          defaultValues={helpAreas}
+        />
+
+        <label className={labelClass}>
+          <span className={eyebrowClass}>Estágio de carreira / volume de trabalhos</span>
+          <select
+            name="careerStage"
+            defaultValue={careerStage ?? ''}
+            className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+          >
+            <option value="">Prefiro não dizer</option>
+            {CAREER_STAGE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.value}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={labelClass}>
+          <span className={eyebrowClass}>Faixa de cachê ou ticket médio</span>
+          <select
+            name="feeRange"
+            defaultValue={feeRange ?? ''}
+            className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+          >
+            <option value="">Prefiro não dizer</option>
+            {FEE_RANGE_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className={ghostButtonClass}>

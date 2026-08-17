@@ -87,15 +87,29 @@ export default async function PerfilPage() {
               travels={artistDetails?.travels ?? false}
               servesOtherLocations={artistDetails?.serves_other_locations ?? false}
               acceptsOutOfCityWork={artistDetails?.accepts_out_of_city_work ?? false}
+              careerStage={artistDetails?.career_stage ?? null}
+              feeRange={artistDetails?.fee_range ?? null}
+              workTypes={artistDetails?.work_types ?? []}
+              clientTypes={artistDetails?.client_types ?? []}
+              regions={artistDetails?.regions ?? []}
+              languages={artistDetails?.languages ?? []}
+              helpAreas={artistDetails?.help_areas ?? []}
             />
           ) : profile.role === 'booker' ? (
             <BookerProfileForm
               professionalName={bookerDetails?.professional_name ?? null}
               bio={bookerDetails?.bio ?? null}
               mercados={bookerDetails?.mercados ?? null}
-              specialties={bookerDetails?.specialties ?? null}
               experience={bookerDetails?.experience ?? null}
               instagramUrl={bookerDetails?.instagram_url ?? null}
+              websiteUrl={bookerDetails?.website_url ?? null}
+              capacity={bookerDetails?.capacity ?? null}
+              feeRange={bookerDetails?.fee_range ?? null}
+              artistCategories={bookerDetails?.artist_categories ?? []}
+              clientTypes={bookerDetails?.client_types ?? []}
+              regions={bookerDetails?.regions ?? []}
+              languages={bookerDetails?.languages ?? []}
+              specialtyAreas={bookerDetails?.specialty_areas ?? []}
             />
           ) : (
             <RoleDetails role={profile.role} details={details} />
@@ -157,6 +171,13 @@ type ArtistDetails = {
   travels: boolean;
   serves_other_locations: boolean;
   accepts_out_of_city_work: boolean;
+  work_types: string[];
+  client_types: string[];
+  regions: string[];
+  languages: string[];
+  career_stage: string | null;
+  help_areas: string[];
+  fee_range: string | null;
 };
 
 type BookerDetails = {
@@ -170,9 +191,16 @@ type BookerDetails = {
   roster: string | null;
   professional_name: string | null;
   bio: string | null;
-  specialties: string | null;
   experience: string | null;
   instagram_url: string | null;
+  artist_categories: string[];
+  client_types: string[];
+  regions: string[];
+  languages: string[];
+  specialty_areas: string[];
+  capacity: string | null;
+  fee_range: string | null;
+  website_url: string | null;
 };
 
 type AgencyDetails = {
@@ -191,7 +219,7 @@ async function getRoleDetails(
     const { data } = await supabase
       .from('artist_profiles')
       .select(
-        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio, public_enabled, instagram_url, portfolio_url, subcategory, genres, website_url, other_links, other_preferences, travels, serves_other_locations, accepts_out_of_city_work'
+        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio, public_enabled, instagram_url, portfolio_url, subcategory, genres, website_url, other_links, other_preferences, travels, serves_other_locations, accepts_out_of_city_work, work_types, client_types, regions, languages, career_stage, help_areas, fee_range'
       )
       .eq('profile_id', userId)
       .single<ArtistDetails>();
@@ -201,7 +229,7 @@ async function getRoleDetails(
     const { data } = await supabase
       .from('booker_profiles')
       .select(
-        'modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster, professional_name, bio, specialties, experience, instagram_url'
+        'modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster, professional_name, bio, experience, instagram_url, artist_categories, client_types, regions, languages, specialty_areas, capacity, fee_range, website_url'
       )
       .eq('profile_id', userId)
       .single<BookerDetails>();
@@ -228,24 +256,20 @@ function RoleDetails({
 
   if (role === 'artista') {
     const artist = details as ArtistDetails;
-    const isPontual = artist.intencao === 'Preciso de ajuda pontual';
     return (
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-[var(--ink)]/55">O que busca</dt>
         <dd>{artist.intencao || '—'}</dd>
-        {isPontual ? (
+        {artist.pontual_detalhe && (
           <>
-            <dt className="text-[var(--ink)]/55">Ajuda pedida</dt>
-            <dd>{artist.pontual_detalhe || '—'}</dd>
-          </>
-        ) : (
-          <>
-            <dt className="text-[var(--ink)]/55">Onde atua</dt>
-            <dd>{artist.local || '—'}</dd>
-            <dt className="text-[var(--ink)]/55">Já tem booker</dt>
-            <dd>{artist.tem_booker || '—'}</dd>
+            <dt className="text-[var(--ink)]/55">Ajuda pontual pedida</dt>
+            <dd>{artist.pontual_detalhe}</dd>
           </>
         )}
+        <dt className="text-[var(--ink)]/55">Onde atua</dt>
+        <dd>{artist.local || '—'}</dd>
+        <dt className="text-[var(--ink)]/55">Já tem booker</dt>
+        <dd>{artist.tem_booker || '—'}</dd>
       </dl>
     );
   }

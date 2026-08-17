@@ -51,9 +51,35 @@ export async function confirmInviteAction(formData: FormData) {
     return;
   }
 
+  // Convite é bidirecional: booker convidando artista (fluxo original) ou
+  // artista convidando booker ("Traga sua dupla pra doopla"). A direção
+  // da representations nasce do papel de quem convidou, não é fixa.
+  const [{ data: inviterProfile }, { data: confirmingProfile }] = await Promise.all([
+    supabase.from('profiles').select('role').eq('id', invite.inviter_profile_id).single<{ role: string }>(),
+    supabase.from('profiles').select('role').eq('id', user.id).single<{ role: string }>(),
+  ]);
+  if (!inviterProfile || !confirmingProfile) return;
+
+  let artistProfileId: string;
+  let bookerProfileId: string;
+  if (inviterProfile.role === 'booker' && confirmingProfile.role === 'artista') {
+    artistProfileId = user.id;
+    bookerProfileId = invite.inviter_profile_id;
+  } else if (
+    inviterProfile.role === 'artista' &&
+    (confirmingProfile.role === 'booker' || confirmingProfile.role === 'agencia')
+  ) {
+    artistProfileId = invite.inviter_profile_id;
+    bookerProfileId = user.id;
+  } else {
+    // Combinação de papéis que não faz sentido pra virar representação
+    // (ex.: dois artistas). Convite fica pendente, não confirma sozinho.
+    return;
+  }
+
   const { error: repError } = await supabase.from('representations').insert({
-    artist_profile_id: user.id,
-    booker_profile_id: invite.inviter_profile_id,
+    artist_profile_id: artistProfileId,
+    booker_profile_id: bookerProfileId,
     created_via_invite_id: invite.id,
   });
 
@@ -68,7 +94,7 @@ export async function confirmInviteAction(formData: FormData) {
     .update({ status: 'confirmado', confirmed_at: new Date().toISOString() })
     .eq('id', inviteId);
 
-  revalidateRelationshipPaths(user.id, invite.inviter_profile_id);
+  revalidateRelationshipPaths(artistProfileId, bookerProfileId);
 }
 
 function centsFromReais(raw: FormDataEntryValue | null): number | null {
@@ -1009,6 +1035,13 @@ export async function updateArtistProfileAction(
   const travels = formData.get('travels') === 'on';
   const servesOtherLocations = formData.get('servesOtherLocations') === 'on';
   const acceptsOutOfCityWork = formData.get('acceptsOutOfCityWork') === 'on';
+  const careerStage = String(formData.get('careerStage') ?? '').trim();
+  const feeRange = String(formData.get('feeRange') ?? '').trim();
+  const workTypes = formData.getAll('workTypes').map(String).filter(Boolean);
+  const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
+  const regions = formData.getAll('regions').map(String).filter(Boolean);
+  const languages = formData.getAll('languages').map(String).filter(Boolean);
+  const helpAreas = formData.getAll('helpAreas').map(String).filter(Boolean);
 
   const genres = genresRaw
     ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
@@ -1029,6 +1062,13 @@ export async function updateArtistProfileAction(
       travels,
       serves_other_locations: servesOtherLocations,
       accepts_out_of_city_work: acceptsOutOfCityWork,
+      career_stage: careerStage || null,
+      fee_range: feeRange || null,
+      work_types: workTypes,
+      client_types: clientTypes,
+      regions,
+      languages,
+      help_areas: helpAreas,
     })
     .eq('profile_id', user.id);
 
@@ -1049,9 +1089,16 @@ export async function updateBookerProfileAction(
   const professionalName = String(formData.get('professionalName') ?? '').trim();
   const bio = String(formData.get('bio') ?? '').trim();
   const mercados = String(formData.get('mercados') ?? '').trim();
-  const specialties = String(formData.get('specialties') ?? '').trim();
   const experience = String(formData.get('experience') ?? '').trim();
   const instagramUrl = String(formData.get('instagramUrl') ?? '').trim();
+  const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
+  const capacity = String(formData.get('capacity') ?? '').trim();
+  const feeRange = String(formData.get('feeRange') ?? '').trim();
+  const artistCategories = formData.getAll('artistCategories').map(String).filter(Boolean);
+  const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
+  const regions = formData.getAll('regions').map(String).filter(Boolean);
+  const languages = formData.getAll('languages').map(String).filter(Boolean);
+  const specialtyAreas = formData.getAll('specialtyAreas').map(String).filter(Boolean);
 
   await supabase
     .from('booker_profiles')
@@ -1059,9 +1106,16 @@ export async function updateBookerProfileAction(
       professional_name: professionalName || null,
       bio: bio || null,
       mercados: mercados || null,
-      specialties: specialties || null,
       experience: experience || null,
       instagram_url: instagramUrl || null,
+      website_url: websiteUrl || null,
+      capacity: capacity || null,
+      fee_range: feeRange || null,
+      artist_categories: artistCategories,
+      client_types: clientTypes,
+      regions,
+      languages,
+      specialty_areas: specialtyAreas,
     })
     .eq('profile_id', user.id);
 
@@ -1132,6 +1186,30 @@ export async function inviteArtistAction(
   if (error) return { error: 'Não foi possível enviar o convite agora.' };
 
   revalidatePath('/dashboard/artistas');
+  return { success: true };
+}
+
+export async function inviteBookerAction(
+  _prevState: { error?: string; success?: boolean },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const name = String(formData.get('name') ?? '').trim();
+  const contact = String(formData.get('contact') ?? '').trim();
+  if (!name) return { error: 'Informe o nome do booker.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Só artistas convidam bookers.' };
+
+  const { error } = await supabase.from('invites').insert({
+    inviter_profile_id: user.id,
+    invitee_name: name,
+    invitee_contact: contact || null,
+  });
+  if (error) return { error: 'Não foi possível enviar o convite agora.' };
+
+  revalidatePath('/dashboard/bookers');
   return { success: true };
 }
 

@@ -218,3 +218,43 @@ não ganhou a mesma notificação "vista/não vista" — só a invalidação de
 cache foi corrigida ali. Fica pra prioridade 4 (Meus Bookers/Meus
 Artistas/notificações), que é onde a usuária agrupou esse tipo de
 ajuste fino de notificação.
+
+---
+
+## Onboarding reescrito: campos estruturados + convite bidirecional — 17/08/2026
+
+Migration 0026 + reescrita completa do wizard de cadastro (`signup-
+form.tsx`). Decisões que valem registrar:
+
+- **Nunca texto livre pra campo que alimenta matching.** Todo campo
+  novo (tipos de trabalho, tipos de cliente, regiões, idiomas,
+  especialidades, categorias) é `text[]` de verdade no banco, coletado
+  via chip multi-seleção no cadastro e no Perfil — nunca um input de
+  texto que a pessoa preenche do jeito que quiser. Onde já existia
+  campo livre servindo esse papel (`booker_profiles.specialties`,
+  `quem`, `cidades`), a coluna ficou no banco por compatibilidade mas
+  parou de ser lida/escrita pelo app — substituída pela versão
+  estruturada equivalente.
+- **Faixa de cachê é rótulo, não valor exato.** `fee_range` é uma
+  banda pré-definida ("R$2.000 – R$5.000"), não dois campos de
+  centavos. Ninguém precisa fazer conta na hora do cadastro, e pro
+  matching uma banda já basta.
+- **Um pequeno helper SQL só pra parsear array com segurança**
+  (`jsonb_text_array`): campo de seleção múltipla chega como JSON
+  array (não string separada por vírgula) e vira `text[]` de verdade.
+  Envolvido em exception handler — um campo opcional malformado nunca
+  pode derrubar o cadastro inteiro.
+- **Bug pego durante a implementação, não no pedido original**: a
+  usuária testou o cadastro e viu que "ajuda pontual" tinha um
+  caminho de perguntas mais curto que "recorrente" — o produto tinha
+  ficado raso justamente na intenção que mais precisa de matching bom
+  (quem pede ajuda pontual também precisa ser encontrado). Corrigido:
+  todo mundo responde o mesmo conjunto completo, independente da
+  intenção declarada.
+- **Convite vira bidirecional**, reaproveitando a MESMA tabela
+  `invites` que já existia (não criei uma tabela nova pro sentido
+  artista→booker) — `confirmInviteAction` agora resolve a direção da
+  `representations` pelo papel de quem convidou vs. quem confirma, em
+  vez de assumir sempre "booker convida artista". Segue o mesmo
+  princípio da prioridade 1 (fonte única de verdade, sem duplicar
+  lógica por caminho).

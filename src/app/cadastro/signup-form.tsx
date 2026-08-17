@@ -12,11 +12,23 @@ import {
   primaryButtonClass,
   textLinkClass,
 } from '@/app/auth/ui';
+import {
+  ARTIST_CATEGORY_OPTIONS,
+  CAPACITY_OPTIONS,
+  CAREER_STAGE_OPTIONS,
+  CLIENT_TYPE_OPTIONS,
+  FEE_RANGE_OPTIONS,
+  HELP_AREA_OPTIONS,
+  LANGUAGE_OPTIONS,
+  REGION_OPTIONS,
+  SPECIALTY_AREA_OPTIONS,
+  WORK_TYPE_OPTIONS,
+} from '@/lib/matching-options';
 
 const initialState: AuthFormState = {};
 
 // Agência não é mais um tipo de conta separado: quem representa vários
-// artistas se cadastra como booker e indica isso na pergunta de perfil.
+// artistas se cadastra como booker e indica isso no perfil.
 type SignupRole = 'artista' | 'booker';
 
 const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
@@ -32,21 +44,36 @@ const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
   },
 ];
 
-// As mesmas perguntas do fluxo original do site (doopla-site.html),
-// por tipo de conta — só o backend por trás mudou.
-// 'chip-multi': pode marcar mais de uma opção, sempre com "Outro" + texto livre.
-// 'invites': lista de nomes de artistas que o booker já trabalha fora da
-// doopla (Enter vira chip; contato fica pro envio de verdade, Bloco 3).
-// 'choice-cards': seleção única entre poucas opções que precisam de
-// uma descrição cada (não cabe num chip simples).
+// As mesmas perguntas pra todo mundo, independente do que a pessoa
+// respondeu na primeira pergunta (o que busca / como quer trabalhar) —
+// intenção diferente não significa perfil mais raso. Isso já foi um bug:
+// "ajuda pontual" tinha um caminho curto de 2 perguntas, bem mais fraco
+// que "recorrente". Corrigido: todo mundo responde o mesmo conjunto
+// completo, o suficiente pro matching funcionar de verdade.
+// 'chip-multi': mais de uma opção, sempre com "Outro" + texto livre.
+//   `arrayOutput: true` manda a resposta como JSON array (vira text[] no
+//   banco) em vez de string separada por vírgula — usado nos campos
+//   novos de matching, que não podem ser texto livre.
+// 'invites'/'single-invite': coleta de convite opcional (nunca bloqueia
+//   o cadastro) — múltiplos artistas (booker) ou um único booker (artista).
+// 'choice-cards': seleção única com descrição por opção.
 type WizardStep = {
   formKey: string;
-  kind: 'text' | 'textarea' | 'chip' | 'chip-multi' | 'invites' | 'choice-cards' | 'plan';
+  kind:
+    | 'text'
+    | 'textarea'
+    | 'chip'
+    | 'chip-multi'
+    | 'invites'
+    | 'single-invite'
+    | 'choice-cards'
+    | 'plan';
   label: string;
   hint?: string;
   placeholder?: string;
   options?: string[];
   choices?: { value: string; label: string; description: string }[];
+  arrayOutput?: boolean;
 };
 
 export type ArtistChip = { name: string; sendNow: boolean };
@@ -55,6 +82,7 @@ const OUTRO = 'Outro';
 
 const INTENCAO_RECORRENTE = 'Quero um booker / assistente recorrente';
 const INTENCAO_PONTUAL = 'Preciso de ajuda pontual';
+const INTENCAO_AMBOS = 'Booker recorrente e ajuda pontual, dependendo do caso';
 
 const ARTISTA_INTENCAO_STEP: WizardStep = {
   formKey: 'intencao',
@@ -72,46 +100,51 @@ const ARTISTA_INTENCAO_STEP: WizardStep = {
       label: INTENCAO_PONTUAL,
       description: 'Ex.: cobrar um cliente, fechar um contrato, negociar um cachê.',
     },
+    {
+      value: INTENCAO_AMBOS,
+      label: INTENCAO_AMBOS,
+      description: 'Quero um booker recorrente, mas também topo ajuda pontual quando surgir.',
+    },
   ],
 };
 
-const ARTISTA_PONTUAL_STEPS: WizardStep[] = [
-  {
-    formKey: 'pontualDetalhe',
-    kind: 'text',
-    label: 'O que você precisa de ajuda agora?',
-    hint: 'Descreva em poucas palavras',
-    placeholder: 'Ex: Preciso cobrar um cliente que não pagou',
-  },
-  {
-    formKey: 'fullName',
-    kind: 'text',
-    label: 'Como você se chama ou qual é seu nome profissional?',
-    placeholder: 'Ex: Bea Duarte',
-  },
-];
+function choiceCardsFrom(options: { value: string; description: string }[]): {
+  value: string;
+  label: string;
+  description: string;
+}[] {
+  return options.map((o) => ({ value: o.value, label: o.value, description: o.description }));
+}
 
+const ARTISTA_PONTUAL_DETALHE_STEP: WizardStep = {
+  formKey: 'pontualDetalhe',
+  kind: 'text',
+  label: 'O que você precisa de ajuda agora?',
+  hint: 'Descreva em poucas palavras — vamos te pedir o resto do perfil completo em seguida.',
+  placeholder: 'Ex: Preciso cobrar um cliente que não pagou',
+};
+
+// Todo mundo (recorrente, pontual ou ambos) passa por este mesmo conjunto
+// completo — é o que dá dado suficiente pro matching, independente da
+// intenção declarada.
 const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
   {
+    formKey: 'stageName',
+    kind: 'text',
+    label: 'Qual é seu nome artístico?',
+    placeholder: 'Ex: Bea Duarte',
+  },
+  {
     formKey: 'fullName',
     kind: 'text',
-    label: 'Como você se chama ou qual é seu nome profissional?',
-    placeholder: 'Ex: Bea Duarte',
+    label: 'E seu nome completo?',
+    placeholder: 'Ex: Beatriz Duarte Souza',
   },
   {
     formKey: 'categoria',
     kind: 'chip-multi',
     label: 'O que você faz?',
-    options: [
-      'DJ',
-      'Músico / Banda',
-      'Creator',
-      'Modelo',
-      'Ator',
-      'Fotógrafo',
-      'Palestrante',
-      OUTRO,
-    ],
+    options: ARTIST_CATEGORY_OPTIONS,
   },
   {
     formKey: 'bio',
@@ -123,29 +156,67 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
   {
     formKey: 'local',
     kind: 'text',
-    label: 'Onde você atua hoje?',
-    hint: 'Cidade / país',
-    placeholder: 'Ex: São Paulo, Brasil',
+    label: 'Em qual cidade e estado você está baseado?',
+    hint: 'Cidade, estado',
+    placeholder: 'Ex: São Paulo, SP',
+  },
+  {
+    formKey: 'workTypes',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Que tipos de trabalho você costuma fazer?',
+    options: WORK_TYPE_OPTIONS,
+  },
+  {
+    formKey: 'clientTypes',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Que tipos de cliente ou evento você costuma atender?',
+    options: CLIENT_TYPE_OPTIONS,
   },
   {
     formKey: 'mercados',
     kind: 'chip-multi',
-    label: 'Em quais mercados você gostaria de ser mais representado?',
-    options: [
-      'Minha cidade',
-      'Brasil',
-      'Internacional',
-      'Marcas',
-      'Eventos',
-      'Festivais',
-      'Corporativo',
-      OUTRO,
-    ],
+    label: 'Em quais nichos você gostaria de ser mais representado?',
+    options: ['Marcas', 'Eventos sociais', 'Festivais', 'Corporativo', 'Fashion', OUTRO],
+  },
+  {
+    formKey: 'regions',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Em quais regiões você topa atuar?',
+    options: REGION_OPTIONS,
+  },
+  {
+    formKey: 'languages',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Quais idiomas você fala?',
+    options: LANGUAGE_OPTIONS,
+  },
+  {
+    formKey: 'careerStage',
+    kind: 'choice-cards',
+    label: 'Como está o volume de trabalhos hoje?',
+    choices: choiceCardsFrom(CAREER_STAGE_OPTIONS),
+  },
+  {
+    formKey: 'feeRange',
+    kind: 'chip',
+    label: 'Qual sua faixa de cachê ou ticket médio?',
+    options: FEE_RANGE_OPTIONS,
+  },
+  {
+    formKey: 'helpAreas',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Em quais atividades você precisa de ajuda?',
+    options: HELP_AREA_OPTIONS,
   },
   {
     formKey: 'temBooker',
     kind: 'chip',
-    label: 'Você já tem alguém ajudando nos seus bookings?',
+    label: 'Já tem um booker ou alguém que te representa?',
     options: [
       'Sim, quero trazer essa pessoa pra doopla',
       'Não, quero encontrar bookers',
@@ -153,6 +224,13 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     ],
   },
 ];
+
+const ARTISTA_BOOKER_INVITE_STEP: WizardStep = {
+  formKey: 'pendingBookerInvite',
+  kind: 'single-invite',
+  label: 'Traga sua dupla para a Doopla',
+  hint: 'Convide agora seu booker para se conectar com você na plataforma.',
+};
 
 const BOOKER_MODO_STEP: WizardStep = {
   formKey: 'modoTrabalho',
@@ -228,7 +306,16 @@ const BOOKER_FOCO_STEP: WizardStep = {
   ],
 };
 
+// Mesmo conjunto completo pras 3 opções de modoTrabalho — nenhuma delas
+// leva a um caminho mais curto que as outras.
 const BOOKER_REMAINING_STEPS: WizardStep[] = [
+  {
+    formKey: 'bio',
+    kind: 'textarea',
+    label: 'Conte sua experiência com representação/booking',
+    hint: 'Isso vai aparecer no seu perfil pra artistas.',
+    placeholder: 'Ex: Booker há 3 anos, foco em música eletrônica e eventos corporativos',
+  },
   {
     formKey: 'mercados',
     kind: 'chip-multi',
@@ -246,16 +333,51 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     ],
   },
   {
-    formKey: 'quem',
-    kind: 'text',
-    label: 'Que tipo de profissionais você gostaria de representar?',
-    placeholder: 'Ex: DJs de música eletrônica',
+    formKey: 'artistCategories',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Com quais categorias de artista você trabalha?',
+    options: ARTIST_CATEGORY_OPTIONS,
   },
   {
-    formKey: 'cidades',
-    kind: 'text',
-    label: 'Em quais cidades ou países sua rede é mais forte?',
-    placeholder: 'Ex: São Paulo e Lisboa',
+    formKey: 'clientTypes',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Que tipos de trabalho/cliente você domina?',
+    options: CLIENT_TYPE_OPTIONS,
+  },
+  {
+    formKey: 'specialtyAreas',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Quais são suas especialidades?',
+    options: SPECIALTY_AREA_OPTIONS,
+  },
+  {
+    formKey: 'regions',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Em quais cidades, estados ou países sua rede é mais forte?',
+    options: REGION_OPTIONS,
+  },
+  {
+    formKey: 'languages',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Quais idiomas você fala?',
+    options: LANGUAGE_OPTIONS,
+  },
+  {
+    formKey: 'capacity',
+    kind: 'choice-cards',
+    label: 'Quantos artistas você consegue atender agora?',
+    choices: choiceCardsFrom(CAPACITY_OPTIONS),
+  },
+  {
+    formKey: 'feeRange',
+    kind: 'chip',
+    label: 'Com qual faixa de cachê você costuma trabalhar?',
+    options: FEE_RANGE_OPTIONS,
   },
   {
     formKey: 'jaRepresenta',
@@ -323,11 +445,13 @@ function getQuestionSteps(
   if (role === 'artista') {
     const steps = [ARTISTA_INTENCAO_STEP];
     if (answers.intencao === INTENCAO_PONTUAL) {
-      steps.push(...ARTISTA_PONTUAL_STEPS);
-    } else if (answers.intencao === INTENCAO_RECORRENTE) {
-      steps.push(...ARTISTA_CARREIRA_STEPS);
+      steps.push(ARTISTA_PONTUAL_DETALHE_STEP);
     }
     if (answers.intencao) {
+      steps.push(...ARTISTA_CARREIRA_STEPS);
+      if (answers.temBooker === 'Sim, quero trazer essa pessoa pra doopla') {
+        steps.push(ARTISTA_BOOKER_INVITE_STEP);
+      }
       steps.push(ARTISTA_PLANO_STEP);
     }
     return steps;
@@ -355,6 +479,8 @@ export function SignupForm({
   const [otherText, setOtherText] = useState<Record<string, string>>({});
   const [artistChips, setArtistChips] = useState<ArtistChip[]>([]);
   const [chipInput, setChipInput] = useState('');
+  const [bookerInviteName, setBookerInviteName] = useState('');
+  const [bookerInviteContact, setBookerInviteContact] = useState('');
 
   const questionSteps = getQuestionSteps(role, answers);
   const onAccountStep = stepIndex >= questionSteps.length;
@@ -368,6 +494,8 @@ export function SignupForm({
     setOtherText({});
     setArtistChips([]);
     setChipInput('');
+    setBookerInviteName('');
+    setBookerInviteContact('');
     setStepIndex(0);
   }
 
@@ -387,13 +515,13 @@ export function SignupForm({
     });
   }
 
-  function computeMultiValue(key: string): string {
+  function computeMultiValue(key: string, arrayOutput?: boolean): string {
     const selected = multiSelections[key] ?? [];
     const other = otherText[key]?.trim();
-    return selected
+    const values = selected
       .filter((o) => o !== OUTRO)
-      .concat(selected.includes(OUTRO) && other ? [other] : [])
-      .join(', ');
+      .concat(selected.includes(OUTRO) && other ? [other] : []);
+    return arrayOutput ? JSON.stringify(values) : values.join(', ');
   }
 
   function addArtistChip() {
@@ -415,13 +543,21 @@ export function SignupForm({
 
   function goNext() {
     if (currentStep?.kind === 'chip-multi') {
-      setAnswer(currentStep.formKey, computeMultiValue(currentStep.formKey));
+      setAnswer(currentStep.formKey, computeMultiValue(currentStep.formKey, currentStep.arrayOutput));
     }
     if (currentStep?.kind === 'invites') {
       setAnswer(
         currentStep.formKey,
         artistChips.length > 0
           ? JSON.stringify(artistChips.map((chip) => ({ name: chip.name })))
+          : ''
+      );
+    }
+    if (currentStep?.kind === 'single-invite') {
+      setAnswer(
+        currentStep.formKey,
+        bookerInviteName.trim()
+          ? JSON.stringify({ name: bookerInviteName.trim(), contact: bookerInviteContact.trim() })
           : ''
       );
     }
@@ -440,7 +576,9 @@ export function SignupForm({
     ? (otherText[currentStep.formKey] ?? '')
     : '';
   const canContinue =
-    currentStep?.kind === 'invites' || currentStep?.kind === 'plan'
+    currentStep?.kind === 'invites' ||
+    currentStep?.kind === 'single-invite' ||
+    currentStep?.kind === 'plan'
       ? true
       : currentStep?.kind === 'chip-multi'
         ? currentMultiSelected.length > 0 &&
@@ -677,6 +815,30 @@ export function SignupForm({
               </div>
             )}
 
+            {currentStep.kind === 'single-invite' && (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    autoFocus
+                    value={bookerInviteName}
+                    onChange={(e) => setBookerInviteName(e.target.value)}
+                    placeholder="Nome do seu booker"
+                    className={`${fieldInputClass} flex-1`}
+                  />
+                  <input
+                    value={bookerInviteContact}
+                    onChange={(e) => setBookerInviteContact(e.target.value)}
+                    placeholder="E-mail (opcional)"
+                    className={`${fieldInputClass} flex-1`}
+                  />
+                </div>
+                <p className="text-xs text-[var(--ink)]/45">
+                  Prefere fazer isso depois? Você poderá convidar seu booker a qualquer momento
+                  pelo seu perfil.
+                </p>
+              </div>
+            )}
+
             <div className="mt-2 flex items-center justify-between">
               {stepIndex > 0 ? (
                 <button
@@ -695,7 +857,7 @@ export function SignupForm({
                 disabled={!canContinue}
                 className={primaryButtonClass}
               >
-                {currentStep.kind === 'invites'
+                {currentStep.kind === 'invites' || currentStep.kind === 'single-invite'
                   ? 'Próximo'
                   : currentStep.kind === 'plan'
                     ? 'Começar teste grátis'

@@ -1,13 +1,19 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
-import { getArtistBookers, getDiscoverBookers, getIncomingRepresentationRequests } from '../data';
+import {
+  getArtistBookers,
+  getDiscoverBookers,
+  getIncomingRepresentationRequests,
+  getSentInvites,
+} from '../data';
 import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { eyebrowClass } from '../ui';
 import { BookerRow } from './booker-row';
 import { DiscoverBookers } from './discover-bookers';
 import { IncomingRequests } from './incoming-requests';
+import { InviteBookerCard } from './invite-booker-card';
 
 export const metadata: Metadata = {
   title: 'Bookers | Doopla',
@@ -33,6 +39,7 @@ export default async function BookersPage(props: {
   );
   const hasMore = discoverBookers.length > limit;
   const visibleDiscover = discoverBookers.slice(0, limit);
+  const sentInvites = await getSentInvites(user.id, supabase);
 
   return (
     <main className="flex flex-col gap-8">
@@ -70,6 +77,8 @@ export default async function BookersPage(props: {
         </p>
       </div>
       <DiscoverBookers bookers={visibleDiscover} limit={limit} hasMore={hasMore} />
+
+      <InviteBookerCard invites={sentInvites} />
     </main>
   );
 }

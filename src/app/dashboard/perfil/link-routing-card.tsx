@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useActionState, useState } from 'react';
 
 import { updateLinkRoutingAction } from '../actions';
@@ -68,7 +69,14 @@ export function LinkRoutingCard({
 
       {!hasBookers ? (
         <p className="mt-4 text-sm text-[var(--ink)]/60">
-          Você ainda não tem um booker na sua rede. Adicione um booker para liberar esta opção.
+          Você ainda não tem um booker na sua rede.{' '}
+          <Link
+            href="/dashboard/bookers#convites"
+            className="text-[var(--accent-ink)] underline underline-offset-2"
+          >
+            Convide seu booker
+          </Link>{' '}
+          ou encontre um novo pra liberar esta opção.
         </p>
       ) : (
         <form action={formAction} className="mt-4 flex flex-col gap-3">
