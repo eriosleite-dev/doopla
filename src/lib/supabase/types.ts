@@ -239,6 +239,7 @@ export type RepresentationRequest = {
   status: RepresentationRequestStatus;
   expires_at: string;
   responded_at: string | null;
+  booker_seen_at: string | null;
   created_at: string;
 };
 

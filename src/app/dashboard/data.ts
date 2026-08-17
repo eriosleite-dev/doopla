@@ -894,6 +894,34 @@ export async function getAttentionItems(
         kind: 'info',
       });
     }
+
+    const { data: respondedRequests } = await supabase
+      .from('representation_requests')
+      .select('id, artist_profile_id, status')
+      .eq('booker_profile_id', userId)
+      .in('status', ['aceita', 'recusada'])
+      .is('booker_seen_at', null)
+      .returns<{ id: string; artist_profile_id: string; status: string }[]>();
+    if (respondedRequests && respondedRequests.length > 0) {
+      const artistIds = respondedRequests.map((r) => r.artist_profile_id);
+      const { data: artistProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', artistIds)
+        .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+      const artistNameById = new Map((artistProfiles ?? []).map((p) => [p.id, p.full_name]));
+      for (const r of respondedRequests) {
+        const artistName = artistNameById.get(r.artist_profile_id) ?? 'Um artista';
+        items.push({
+          text:
+            r.status === 'aceita'
+              ? `${artistName} aceitou sua solicitação de representação`
+              : `${artistName} recusou sua solicitação de representação`,
+          href: '/dashboard/artistas',
+          kind: 'info',
+        });
+      }
+    }
   } else {
     for (const b of bookings.filter(
       (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'artista'

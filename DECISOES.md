@@ -181,3 +181,40 @@ validação" (Doopla Verified), rótulo "Vencido"/"Em cobrança" no
 booking, avisos de disputa/chargeback. Nenhum desses é clique-e-nada-
 acontece: todos representam um estado que de fato precisa de atenção
 ou ação em algum momento do fluxo.
+
+---
+
+## Vínculo artista↔booker: causa raiz era cache, não dado — 17/08/2026
+
+A usuária mandou uma lista grande de bugs ("aceitei mas sumiu daqui",
+"/orçamento diz que não tenho booker", "booker não sabe que foi
+aceito") com uma instrução explícita: não corrigir tela por tela, achar
+a causa raiz, tratar a relação artista↔booker como entidade central
+com fonte única de verdade.
+
+Investigação (agent read-only) confirmou que a tabela `representations`
+já cumpria esse papel corretamente — trigger no banco insere na hora
+certa, RLS permite os dois lados lerem, todo ponto de leitura filtra
+certo. O bug real era invalidação de cache incompleta: as duas actions
+que criam a relação (`respondRepresentationRequestAction`,
+`confirmInviteAction`) só chamavam `revalidatePath` pra 1-2 rotas,
+deixando as outras ~4 rotas que leem a mesma relação com payload
+desatualizado no Router Cache do Next.
+
+Corrigido com uma função central (`revalidateRelationshipPaths`) em vez
+de espalhar `revalidatePath` solto — qualquer ação futura que crie/
+altere a relação deve chamar essa função, não reinventar a lista de
+rotas. Isso é o equivalente, do lado de invalidação, ao princípio que
+ela pediu do lado de leitura: uma fonte, não N cópias divergentes.
+
+Também fechado: booker nunca era notificado quando um artista
+respondia sua solicitação. Resolvido com `booker_seen_at` em
+`representation_requests` (migration 0025) + item real em "Precisa da
+sua atenção", que some quando o booker visita `/dashboard/artistas`
+(mesmo padrão do `opportunities_seen_at`).
+
+**Deixado pra depois, de propósito**: o caminho de convite (`invites`)
+não ganhou a mesma notificação "vista/não vista" — só a invalidação de
+cache foi corrigida ali. Fica pra prioridade 4 (Meus Bookers/Meus
+Artistas/notificações), que é onde a usuária agrupou esse tipo de
+ajuste fino de notificação.

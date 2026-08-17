@@ -10,6 +10,23 @@ import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/tem
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+// Vínculo artista↔booker: fonte única de verdade é a tabela
+// `representations`. Todo caminho que cria/altera essa relação (aceite de
+// solicitação, confirmação de convite) precisa invalidar TODAS as rotas
+// que leem a relação — nunca só a tela onde a ação aconteceu. É a causa
+// raiz dos bugs "aceitei mas sumiu daqui" / "/orçamento diz que não tenho
+// booker": a ação escrevia certo no banco, só não avisava as outras
+// páginas que o cache delas estava desatualizado.
+function revalidateRelationshipPaths(artistId: string, bookerId: string) {
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/bookers');
+  revalidatePath('/dashboard/artistas');
+  revalidatePath('/dashboard/propor');
+  revalidatePath(`/dashboard/bookers/${bookerId}`);
+  revalidatePath(`/dashboard/artistas/${artistId}`);
+}
+
 export async function confirmInviteAction(formData: FormData) {
   const inviteId = String(formData.get('inviteId') ?? '');
   if (!inviteId) return;
@@ -51,7 +68,7 @@ export async function confirmInviteAction(formData: FormData) {
     .update({ status: 'confirmado', confirmed_at: new Date().toISOString() })
     .eq('id', inviteId);
 
-  revalidatePath('/dashboard');
+  revalidateRelationshipPaths(user.id, invite.inviter_profile_id);
 }
 
 function centsFromReais(raw: FormDataEntryValue | null): number | null {
@@ -770,6 +787,22 @@ export async function markOpportunitiesSeenAction() {
   revalidatePath('/dashboard');
 }
 
+export async function markRepresentationsSeenAction() {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return;
+
+  await supabase
+    .from('representation_requests')
+    .update({ booker_seen_at: new Date().toISOString() })
+    .eq('booker_profile_id', user.id)
+    .in('status', ['aceita', 'recusada'])
+    .is('booker_seen_at', null);
+
+  revalidatePath('/dashboard');
+}
+
 export async function addAvailabilityAction(formData: FormData) {
   const date = String(formData.get('date') ?? '').trim();
   if (!date) return;
@@ -1257,7 +1290,7 @@ export async function respondRepresentationRequestAction(formData: FormData) {
     .from('representation_requests')
     .select('*')
     .eq('id', requestId)
-    .single<{ artist_profile_id: string; status: string }>();
+    .single<{ artist_profile_id: string; booker_profile_id: string; status: string }>();
   if (!request || request.artist_profile_id !== user.id || request.status !== 'pendente') return;
 
   await supabase
@@ -1265,8 +1298,7 @@ export async function respondRepresentationRequestAction(formData: FormData) {
     .update({ status: decision === 'aceitar' ? 'aceita' : 'recusada' })
     .eq('id', requestId);
 
-  revalidatePath('/dashboard/bookers');
-  revalidatePath('/dashboard');
+  revalidateRelationshipPaths(request.artist_profile_id, request.booker_profile_id);
 }
 
 export async function submitReviewAction(

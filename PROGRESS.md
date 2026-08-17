@@ -13,7 +13,55 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
-## 0.2. Cancelamento/reembolso, parte estrutural (prioridade 2)
+## 0.3. Bloco novo — cadastro/matching/relação artista↔booker (8 prioridades)
+
+Você mandou um documento grande com 14 seções e uma ordem de prioridade
+explícita de 8 itens. Trabalhando nessa ordem, um item por vez, cada um
+com sua própria seção aqui.
+
+### Prioridade 1 — Vínculo Artista↔Booker como fonte única de verdade ✅
+
+Investiguei antes de mexer em qualquer coisa (você pediu explicitamente
+pra não corrigir tela por tela sem entender a causa raiz). Resultado: a
+tabela `representations` **já era** a fonte única de verdade — escrita
+por um trigger no banco (`handle_representation_request_response`),
+RLS correta, e todo ponto de leitura (`getArtistBookers`,
+`getRepresentedArtists`, `getRepresentedArtistCards`, roteamento do
+`/orçamento`, etc.) já filtrava na direção certa. Não era um problema de
+dado errado.
+
+**Causa raiz real**: `respondRepresentationRequestAction` e
+`confirmInviteAction` só invalidavam 1-2 das ~6 rotas que dependem dessa
+relação (esqueciam `/dashboard/perfil`, `/dashboard/artistas`,
+`/dashboard/propor`, as páginas de perfil individual). Isso explica
+exatamente os sintomas que você reportou: "aceitei, mas sumiu daqui",
+"/orçamento diz que não tenho booker" mesmo com a relação já existindo
+no banco.
+
+- ✅ Corrigido com uma função central `revalidateRelationshipPaths(
+  artistId, bookerId)`, chamada por toda ação que cria/altera a
+  relação — em vez de espalhar `revalidatePath` solto em cada action
+  (mesmo princípio que você pediu pra entidade: uma fonte, não lógica
+  duplicada por tela).
+- ✅ **Notificação que não existia**: booker nunca sabia quando um
+  artista respondia sua solicitação de representação. Migration 0025
+  adiciona `representation_requests.booker_seen_at`; agora aparece em
+  "Precisa da sua atenção" ("X aceitou/recusou sua solicitação de
+  representação") até o booker visitar `/dashboard/artistas`, quando
+  marca como visto automaticamente (mesmo padrão já usado pras
+  oportunidades novas).
+- ⏳ Não fiz ainda (fica pra prioridade 4, que agrupa Meus Bookers/Meus
+  Artistas/notificações): notificação simétrica do lado do convite
+  (`invites`) quando um artista confirma o convite de um booker — hoje
+  só ganhou a invalidação de cache corrigida, não uma notificação
+  "vista/não vista" como a de representation_requests. Avisar se quer
+  isso na mesma prioridade 1 ou se pode esperar a 4.
+
+### Prioridade 2 — Refazer onboarding (artista e booker) — próximo
+
+### Prioridades 3–8 — na fila, ainda não começadas
+
+## 0.2. Cancelamento/reembolso, parte estrutural (prioridade 2 do bloco anterior)
 
 Documento: `doopla-cancelamento-reembolso-rascunho.md` v2 ("reescrito
 para split + repasse imediato"). Escopo combinado com você: só modelo

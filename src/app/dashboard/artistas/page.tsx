@@ -13,6 +13,7 @@ import { eyebrowClass } from '../ui';
 import { ArtistRow } from './artist-row';
 import { DiscoverArtists } from './discover-artists';
 import { InviteArtistCard } from './invite-artist-card';
+import { MarkRepresentationsSeen } from './mark-seen';
 
 export const metadata: Metadata = {
   title: 'Artistas | Doopla',
@@ -45,6 +46,7 @@ export default async function ArtistasPage(props: {
 
   return (
     <main className="flex flex-col gap-8">
+      <MarkRepresentationsSeen />
       <header>
         <p className={eyebrowClass}>Artistas</p>
         <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
