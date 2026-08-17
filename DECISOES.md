@@ -155,3 +155,29 @@ agora, ao fechar uma fase inteira (não um item isolado), vale reler o
 resultado renderizado antes de declarar pronto — nem que seja só
 descrevendo a árvore de componentes renderizada, já que não há acesso
 a navegador neste ambiente de execução.
+
+---
+
+## Regra de indicadores visuais de atenção — 17/08/2026 (vale pra toda a interface)
+
+Regra permanente, não só pra "Precisa da sua atenção":
+- Bolinha vermelha = existe ação pendente/urgente de verdade.
+- Bolinha amarela = item requer atenção, mas não é urgente.
+- Sem bolinha = só informação, nada exigido do usuário.
+- Vermelho nunca é decoração. Se não representa uma ação real
+  pendente, não é vermelho.
+
+Implementado como `AttentionItemKind = 'urgente' | 'atencao' | 'info'`
+em `data.ts`, usado tanto no card "Precisa da sua atenção" quanto no
+sino de notificação do header (mesma fonte de dados, mesma regra de
+cor). Título da seção só ganha a bolinha vermelha quando existe pelo
+menos um item `'urgente'` de verdade — nunca só porque a lista não
+está vazia.
+
+Outros usos de vermelho (`--alert`) na interface foram auditados e
+mantidos como estavam, por sinalizarem estado real, não decoração:
+pill de status "Cancelada", checkpoints não concluídos, selo "Aguardando
+validação" (Doopla Verified), rótulo "Vencido"/"Em cobrança" no
+booking, avisos de disputa/chargeback. Nenhum desses é clique-e-nada-
+acontece: todos representam um estado que de fato precisa de atenção
+ou ação em algum momento do fluxo.

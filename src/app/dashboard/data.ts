@@ -768,13 +768,22 @@ export function computeBookerStats(bookings: Booking[]): BookerStats {
 }
 
 export type ArtistStats = {
+  totalGrossCents: number;
   netReceivedCents: number;
+  availableToWithdrawCents: number;
   monthNetReceivedCents: number;
   closedCount: number;
+  activeCount: number;
+  awaitingPaymentCount: number;
   avgCommissionPercent: number;
 };
 
 export function computeArtistStats(bookings: Booking[]): ArtistStats {
+  const confirmed = bookings.filter((b) =>
+    ['aceita', 'aguardando_pagamento', 'concluida'].includes(b.status)
+  );
+  const totalGrossCents = confirmed.reduce((sum, b) => sum + (b.cache_amount_cents ?? 0), 0);
+
   const concluded = bookings.filter((b) => b.status === 'concluida');
   const netOf = (b: Booking) =>
     (b.cache_amount_cents ?? 0) - commissionCents(b);
@@ -783,6 +792,13 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
   const monthNetReceivedCents = concluded
     .filter((b) => isThisMonth(b.updated_at))
     .reduce((sum, b) => sum + netOf(b), 0);
+
+  const activeCount = bookings.filter((b) =>
+    ['proposta_enviada', 'aceita', 'aguardando_pagamento'].includes(b.status)
+  ).length;
+  const awaitingPaymentCount = bookings.filter(
+    (b) => b.status === 'aguardando_pagamento'
+  ).length;
 
   const recent = [...concluded]
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
@@ -793,14 +809,23 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
       : 0;
 
   return {
+    totalGrossCents,
     netReceivedCents,
+    // Igual a netReceivedCents por enquanto — mesmo motivo do booker: sem
+    // Bloco 2/PSP não existe saque parcial nem retenção real ainda.
+    availableToWithdrawCents: netReceivedCents,
     monthNetReceivedCents,
     closedCount: concluded.length,
+    activeCount,
+    awaitingPaymentCount,
     avgCommissionPercent,
   };
 }
 
-export type AttentionItemKind = 'urgente' | 'info';
+// vermelha: ação pendente/urgente (algo bloqueado, dinheiro parado).
+// amarela: requer ação, mas não é urgente (decisão a tomar, sem pressa).
+// sem bolinha: informativo — nada exigido do usuário agora.
+export type AttentionItemKind = 'urgente' | 'atencao' | 'info';
 export type AttentionItem = { text: string; href: string; kind: AttentionItemKind };
 
 export async function getAttentionItems(
@@ -819,7 +844,7 @@ export async function getAttentionItems(
     items.push({
       text: `Como foi trabalhar com ${booking.otherPartyName}? Avalie e ajude a construir a reputação da Doopla`,
       href: `/dashboard/bookings/${booking.id}#avaliacao`,
-      kind: 'info',
+      kind: 'atencao',
     });
   }
 
@@ -829,7 +854,7 @@ export async function getAttentionItems(
       items.push({
         text: `${req.bookerName} pediu pra te representar`,
         href: '/dashboard/bookers#solicitacoes',
-        kind: 'info',
+        kind: 'atencao',
       });
     }
   }
@@ -876,7 +901,7 @@ export async function getAttentionItems(
       items.push({
         text: `${b.otherPartyName} propôs ${b.commission_percent}% de comissão`,
         href: `/dashboard/bookings/${b.id}`,
-        kind: 'urgente',
+        kind: 'atencao',
       });
     }
   }

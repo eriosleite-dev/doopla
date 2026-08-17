@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { formatCentsAsBRL, formatPercent } from '@/lib/format';
+import { formatCentsAsBRL } from '@/lib/format';
 import { siteOrigin } from '@/lib/site-url';
 
 import { BookerOficialCard } from './booker-oficial-card';
@@ -78,7 +78,12 @@ export default async function DashboardPage() {
 
       {attentionItems.length > 0 && (
         <section id="atencao" className={cardClass}>
-          <p className={eyebrowClass}>Precisa da sua atenção</p>
+          <p className={`${eyebrowClass} inline-flex items-center gap-1.5`}>
+            Precisa da sua atenção
+            {attentionItems.some((i) => i.kind === 'urgente') && (
+              <span className="h-[7px] w-[7px] rounded-full bg-[var(--alert)]" />
+            )}
+          </p>
           <ul className="mt-4 flex flex-col gap-3">
             {attentionItems.map((item, i) => (
               <li key={i}>
@@ -86,11 +91,10 @@ export default async function DashboardPage() {
                   href={item.href}
                   className="flex items-start gap-2.5 text-sm text-[var(--ink)] hover:text-[var(--accent-ink)]"
                 >
-                  <span
-                    className={`mt-[7px] h-[7px] w-[7px] flex-none rounded-full ${
-                      item.kind === 'urgente' ? 'bg-[var(--alert)]' : 'bg-[var(--accent)]'
-                    }`}
-                  />
+                  <span className="mt-[7px] h-[7px] w-[7px] flex-none rounded-full">
+                    {item.kind === 'urgente' && <span className="block h-full w-full rounded-full bg-[var(--alert)]" />}
+                    {item.kind === 'atencao' && <span className="block h-full w-full rounded-full bg-[var(--accent)]" />}
+                  </span>
                   <span className="underline decoration-[var(--accent)] decoration-2 underline-offset-4">
                     {item.text}
                   </span>
@@ -266,33 +270,37 @@ function ArtistStats({ bookings }: { bookings: Parameters<typeof computeArtistSt
 
   return (
     <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={statCardClass}>
+        <p className={statLabelClass}>Total em trabalhos</p>
+        <p className={statValueClass}>{formatCentsAsBRL(stats.totalGrossCents)}</p>
+        <p className={statSubClass}>Bruto, em bookings confirmados</p>
+      </div>
       <div className={statCardLeadClass}>
-        <p className={statLabelLeadClass}>Recebido líquido</p>
+        <p className={statLabelLeadClass}>Total recebido</p>
         <p className={statValueLeadClass}>{formatCentsAsBRL(stats.netReceivedCents)}</p>
+        <p className="mt-2 text-[12.5px] text-[var(--paper)]/60">Líquido, já descontada a comissão do booker</p>
+      </div>
+      <div className={statCardClass}>
+        <p className={statLabelClass}>Disponível para sacar</p>
+        <p className={statValueClass}>{formatCentsAsBRL(stats.availableToWithdrawCents)}</p>
         <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-[12.5px] text-[var(--paper)]/60">Já descontada a comissão do booker</p>
+          <p className={statSubClass}>Saque via Bloco 2, em breve</p>
           <Link
             href="/dashboard/dinheiro"
-            className="font-doopla-mono flex-none rounded-full border border-[var(--paper)]/25 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--paper)] hover:bg-[var(--paper)]/10"
+            className="font-doopla-mono flex-none rounded-full border border-[var(--ink)]/20 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--ink)]/60 hover:border-[var(--ink)]/40"
           >
             Ver detalhes
           </Link>
         </div>
       </div>
       <div className={statCardClass}>
-        <p className={statLabelClass}>Recebido no mês</p>
-        <p className={statValueClass}>{formatCentsAsBRL(stats.monthNetReceivedCents)}</p>
-        <p className={statSubClass}>Líquido, mês atual</p>
-      </div>
-      <div className={statCardClass}>
-        <p className={statLabelClass}>Bookings fechados</p>
-        <p className={statValueClass}>{stats.closedCount}</p>
-        <p className={statSubClass}>Concluídos até agora</p>
-      </div>
-      <div className={statCardClass}>
-        <p className={statLabelClass}>Comissão média paga</p>
-        <p className={statValueClass}>{formatPercent(stats.avgCommissionPercent)}</p>
-        <p className={statSubClass}>Últimos bookings fechados</p>
+        <p className={statLabelClass}>Bookings ativos</p>
+        <p className={statValueClass}>{stats.activeCount}</p>
+        <p className={statSubClass}>
+          {stats.awaitingPaymentCount > 0
+            ? `${stats.awaitingPaymentCount} aguardando pagamento`
+            : 'Em andamento'}
+        </p>
       </div>
     </section>
   );

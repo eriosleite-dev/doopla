@@ -196,11 +196,26 @@ de marcar como pronto sem checar contra a tela real:
   entre "Convites pendentes" e "Seus trabalhos" — movido pra depois
   de "Seus trabalhos".
 
-**Nota sobre métricas do artista**: a mensagem da usuária só citou a
-seção 4.1 (métricas do booker). Não toquei nas 4 métricas do painel
-do artista (Recebido líquido/Recebido no mês/Bookings fechados/
-Comissão média paga) por não ter a citação da seção equivalente —
-avisar se elas também precisam mudar.
+- ✅ **Métricas financeiras do artista** (seção 22/43, confirmado depois
+  que ela apontou que a mesma correção valia aqui): Recebido líquido/
+  Recebido no mês/Bookings fechados/Comissão média paga viraram Total
+  em trabalhos (bruto)/Total recebido (líquido)/Disponível para
+  sacar/Bookings ativos — mesmo padrão de correção do booker.
+- ✅ **Sistema de 3 estados nos indicadores de atenção** (instrução
+  nova, vale pra toda a interface, não só essa seção): bolinha
+  vermelha = ação pendente/urgente; amarela = requer atenção, mas sem
+  pressa; sem bolinha = só informação. Reclassifiquei cada item real
+  de `getAttentionItems` nessa lógica (ex.: cliente não pagou =
+  vermelha; comissão proposta esperando decisão = amarela; nova
+  oportunidade disponível = sem bolinha). O título "Precisa da sua
+  atenção" só mostra a bolinha vermelha quando existe pelo menos um
+  item de verdade urgente — não aparece só porque a seção tem
+  itens. O sino de notificação no header segue a mesma regra (vermelho
+  só se houver algo urgente; senão, o tom mais discreto). Auditei os
+  outros usos de vermelho na interface (pills de status, checkpoints,
+  selo Doopla Verified, badge de "Oportunidades" no menu) — esses já
+  sinalizavam estado real (cancelado, pendente, não verificado), não
+  decoração, então não precisaram mudar.
 
 Com isso, a Fase 1 (seção 42) está fechada de verdade, validada
 contra o checklist item por item, não só reportada como pronta.
@@ -222,19 +237,35 @@ contra o checklist item por item, não só reportada como pronta.
 
 ## 1. Site institucional / marketing
 
-- ✅ Home, Sobre, Termos, Privacidade, Preços — conteúdo real, não stub.
-- ❌ Seção "Segurança" da home (a que está em
-  `doopla-seguranca-home-faq-validacao.html`: os 3 cards de segurança,
-  o card grande "Pagamento seguro" com checklist, FAQ de 10 perguntas).
-  Hoje `/seguranca` é só um stub ("em breve"). **Isso é trabalho novo,
-  ainda não comecei.**
+- ✅ Home, Sobre, Termos, Privacidade — conteúdo real, não stub.
+- ⚠️ **Correção**: eu tinha esse item marcado como "Preços — conteúdo
+  real" também, e isso estava errado — `/precos` continua sendo um
+  stub ("em breve") até hoje. Corrigindo aqui pra não repetir o erro
+  de marcar algo pronto sem checar contra o código real (mesma lição
+  da checagem de Fase 1 mais abaixo). Não construí `/precos` agora,
+  só corrigi o registro — avisar se quer priorizar.
+- ✅ **Segurança da Home + FAQ** (mockup `doopla-seguranca-home-faq-
+  validacao_final.html`, item 3 da fila priorizada) — seção completa
+  na Home (`#seguranca-home`, entre "Como funciona" e "Planos", com
+  link no menu): 3 cards (Identidade verificada / Doopla Verified /
+  Pagamento seguro) + card spotlight preto sobre pagamento seguro
+  (checklist + aviso "mudou a conta por WhatsApp? desconfie" +
+  tagline) + CTA "Entenda nossa segurança" levando pra `/seguranca`.
+  `/seguranca` deixou de ser stub: pilares recapitulados + FAQ
+  completo de 10 perguntas (accordion nativo `details`/`summary`, sem
+  JS). Cores usam os tokens reais da marca (--ink/--paper/--accent/
+  --alert), não a paleta própria do arquivo de mockup (que era só pra
+  handoff visual). Sem dependência de outro bloco, como você avisou.
 - ❌ Página de validação do cliente (o link que o cliente recebe pra
   confirmar o booking — `/validar/[algumId]`, sem precisar de conta).
-  Não existe nenhuma rota pra isso ainda. Depende de abrir leitura
+  Também estava no mesmo arquivo de mockup, mas **não faz parte do
+  que você pediu no item 3** ("Segurança da Home + FAQ", sem
+  dependência de outro bloco) — essa página depende de abrir leitura
   pública de um booking específico (hoje só os dois lados logados
   conseguem ver), que é justamente o que segura o selo Doopla Verified
   no perfil público (ver item 4). Faz parte do "Bloco E" que você mesma
-  identificou como pendente.
+  identificou como pendente. Não constrói até você priorizar esse
+  bloco especificamente.
 
 ## 1.1. Direcionamento do link /orçamento (Bloco C)
 

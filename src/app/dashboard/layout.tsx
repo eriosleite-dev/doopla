@@ -50,9 +50,18 @@ export default async function DashboardLayout({
 
   const opportunitiesBadge = await getOpportunitiesBadgeCount(supabase, user.id, profile.role);
   const bookingsForAttention = await getUserBookings(user.id, profile.role, supabase);
-  const attentionCount = (
-    await getAttentionItems(user.id, profile.role, bookingsForAttention, supabase)
-  ).length;
+  const attentionItemsForBell = await getAttentionItems(
+    user.id,
+    profile.role,
+    bookingsForAttention,
+    supabase
+  );
+  const attentionCount = attentionItemsForBell.length;
+  // Vermelho é reservado pra quando existe ação urgente de verdade — caso
+  // contrário o sino usa o tom de "requer atenção, mas sem pressa".
+  const bellColorClass = attentionItemsForBell.some((i) => i.kind === 'urgente')
+    ? 'bg-[var(--alert)]'
+    : 'bg-[var(--accent)]';
 
   const groups: SidebarGroup[] =
     profile.role === 'booker'
@@ -142,7 +151,9 @@ export default async function DashboardLayout({
                 <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
               </svg>
               {attentionCount > 0 && (
-                <span className="font-doopla-mono absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--alert)] px-1 text-[9px] text-white">
+                <span
+                  className={`font-doopla-mono absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] text-white ${bellColorClass}`}
+                >
                   {attentionCount > 9 ? '9+' : attentionCount}
                 </span>
               )}
