@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { siteOrigin } from '@/lib/site-url';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
@@ -134,6 +135,22 @@ export default async function PerfilPage() {
           currentBookerId={routing?.booker_id ?? null}
           orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
         />
+      )}
+
+      {profile.role === 'booker' && (
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Sua rede</p>
+          <p className="mt-4 text-sm text-[var(--ink)]/60">
+            Já trabalha com algum artista que ainda não está na doopla?{' '}
+            <Link
+              href="/dashboard/artistas#convites"
+              className="text-[var(--accent-ink)] underline underline-offset-2"
+            >
+              Convide agora
+            </Link>{' '}
+            — pode fazer isso a qualquer momento, aqui ou em Meus Artistas.
+          </p>
+        </section>
       )}
 
       {(profile.role === 'artista' || profile.role === 'booker') && (
