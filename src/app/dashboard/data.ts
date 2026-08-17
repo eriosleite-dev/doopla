@@ -903,6 +903,7 @@ export const BOOKING_STATUS_FILTERS: { value: BookingStatus | 'todos'; label: st
   { value: 'proposta_enviada', label: 'Aguardando' },
   { value: 'aceita', label: 'Aceitos' },
   { value: 'concluida', label: 'Concluídos' },
+  { value: 'cancelada', label: 'Cancelados' },
 ];
 
 export type ContractStatus = 'anexado' | 'sem_contrato';

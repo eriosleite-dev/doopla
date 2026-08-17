@@ -4,7 +4,13 @@ import { notFound } from 'next/navigation';
 
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
 
-import { markCompletedAction, markPaidAction, respondBookingAction } from '../../actions';
+import {
+  markCompletedAction,
+  markDisputeAction,
+  markInCollectionAction,
+  markPaidAction,
+  respondBookingAction,
+} from '../../actions';
 import { getBookingCheckpoints, getBookingDetail, getBookingReviews, isDooplaVerified } from '../../data';
 import { getSessionProfile } from '../../session';
 import {
@@ -22,12 +28,72 @@ import {
   statusPillClasses,
   verifyBadgeClass,
 } from '../../ui';
+import { CancelBookingForm } from './cancel-booking-form';
 import { ContractSection } from './contract-section';
 import { CounterForm } from './counter-form';
+import { RescheduleForm } from './reschedule-form';
 import { ReviewPanel } from './review-panel';
 
 export const metadata: Metadata = {
   title: 'Negociação | Doopla',
+};
+
+function paymentPolicySummary(booking: {
+  payment_mode: string;
+  deposit_percentage: number | null;
+  remaining_due_rule: string | null;
+  client_cancellation_deposit_refundable: boolean;
+  artist_cancellation_deposit_refundable: boolean;
+}): string[] {
+  const lines: string[] = [];
+  if (booking.payment_mode === 'sinal_saldo' && booking.deposit_percentage != null) {
+    lines.push(
+      `Sinal de ${formatPercent(booking.deposit_percentage)}, saldo ${
+        booking.remaining_due_rule ? `vence ${booking.remaining_due_rule}` : 'combinado à parte'
+      }.`
+    );
+  } else {
+    lines.push('100% do pagamento ocorre após o trabalho.');
+  }
+  lines.push(
+    booking.client_cancellation_deposit_refundable
+      ? 'Se o cliente cancelar, o sinal é reembolsável a ele.'
+      : 'Se o cliente cancelar, o sinal não é reembolsável.'
+  );
+  lines.push(
+    booking.artist_cancellation_deposit_refundable
+      ? 'Se o artista cancelar, o cliente tem direito ao sinal de volta.'
+      : 'Se o artista cancelar, o sinal não é devolvido ao cliente.'
+  );
+  return lines;
+}
+
+type PaymentDueState = 'a_vencer' | 'vencido' | 'em_cobranca';
+
+function paymentDueState(booking: {
+  payment_due_at: string | null;
+  payment_collection_started_at: string | null;
+}): PaymentDueState | null {
+  if (!booking.payment_due_at) return null;
+  if (booking.payment_collection_started_at) return 'em_cobranca';
+  return new Date(booking.payment_due_at).getTime() < Date.now() ? 'vencido' : 'a_vencer';
+}
+
+const PAYMENT_DUE_LABELS: Record<PaymentDueState, string> = {
+  a_vencer: 'A vencer',
+  vencido: 'Vencido',
+  em_cobranca: 'Em cobrança',
+};
+
+const PAYMENT_DUE_CLASSES: Record<PaymentDueState, string> = {
+  a_vencer: 'bg-[var(--accent-ink)]/15 text-[var(--accent-ink)]',
+  vencido: 'bg-[var(--alert)]/15 text-[var(--alert)]',
+  em_cobranca: 'bg-[var(--alert)]/25 text-[var(--alert)]',
+};
+
+const DISPUTE_LABELS: Record<string, string> = {
+  em_disputa: 'Em disputa',
+  chargeback: 'Chargeback aberto',
 };
 
 export default async function BookingDetailPage(
@@ -42,7 +108,7 @@ export default async function BookingDetailPage(
   const { booking, events, isProposer } = detail;
   const checkpoints = getBookingCheckpoints(booking);
   const verified = isDooplaVerified(booking);
-  const hasActiveCheckpoints = booking.status !== 'proposta_enviada' && booking.status !== 'recusada';
+  const hasActiveCheckpoints = !['proposta_enviada', 'recusada', 'cancelada'].includes(booking.status);
   const reviews =
     booking.status === 'concluida'
       ? await getBookingReviews(booking.id, user.id, supabase)
@@ -97,6 +163,12 @@ export default async function BookingDetailPage(
                 ? new Date(`${booking.event_date}T00:00:00`).toLocaleDateString('pt-BR')
                 : 'A confirmar'}
             </dd>
+            {booking.original_event_date && booking.original_event_date !== booking.event_date && (
+              <dd className="mt-1 text-[11.5px] text-[var(--ink)]/45">
+                Remarcado — era{' '}
+                {new Date(`${booking.original_event_date}T00:00:00`).toLocaleDateString('pt-BR')}
+              </dd>
+            )}
           </div>
           <div>
             <dt className={eyebrowClass}>Última atualização</dt>
@@ -159,14 +231,29 @@ export default async function BookingDetailPage(
               {booking.otherPartyName} propôs {formatPercent(booking.commission_percent)} de
               comissão. Aceite, recuse ou envie uma contraproposta.
             </p>
+
+            <div className="rounded-[14px] bg-[var(--paper-dim)] p-4 text-[12.5px] text-[var(--ink)]/70">
+              <p className={eyebrowClass}>Condições de cancelamento</p>
+              <ul className="mt-2 flex flex-col gap-1">
+                {paymentPolicySummary(booking).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+
+            <form action={respondBookingAction} className="flex flex-col gap-3">
+              <input type="hidden" name="bookingId" value={booking.id} />
+              <input type="hidden" name="decision" value="aceitar" />
+              <label className="flex items-start gap-2.5 text-[12.5px] text-[var(--ink)]/70">
+                <input type="checkbox" name="cancellationAccepted" required className="mt-0.5 h-4 w-4" />
+                Li e aceito as condições de cancelamento acima.
+              </label>
+              <button type="submit" className={`${primaryButtonClass} self-start`}>
+                Aceitar proposta
+              </button>
+            </form>
+
             <div className="flex flex-wrap items-center gap-3">
-              <form action={respondBookingAction}>
-                <input type="hidden" name="bookingId" value={booking.id} />
-                <input type="hidden" name="decision" value="aceitar" />
-                <button type="submit" className={primaryButtonClass}>
-                  Aceitar proposta
-                </button>
-              </form>
               <CounterForm bookingId={booking.id} />
               <form action={respondBookingAction}>
                 <input type="hidden" name="bookingId" value={booking.id} />
@@ -191,12 +278,32 @@ export default async function BookingDetailPage(
               Proposta aceita. Quando o trabalho acontecer, marque como realizado pra liberar
               o pagamento.
             </p>
-            <form action={markCompletedAction}>
-              <input type="hidden" name="bookingId" value={booking.id} />
-              <button type="submit" className={primaryButtonClass}>
-                Marcar como realizado
-              </button>
-            </form>
+            <div className="flex flex-wrap items-end gap-3">
+              <form action={markCompletedAction} className="flex flex-wrap items-end gap-3">
+                <input type="hidden" name="bookingId" value={booking.id} />
+                <label className="flex flex-col gap-1.5">
+                  <span className={eyebrowClass}>Vencimento do pagamento (opcional)</span>
+                  <input
+                    type="date"
+                    name="paymentDueAt"
+                    className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+                  />
+                </label>
+                <button type="submit" className={primaryButtonClass}>
+                  Marcar como realizado
+                </button>
+              </form>
+              <RescheduleForm
+                bookingId={booking.id}
+                role={profile.role}
+                eventDate={booking.event_date}
+                proposedDate={booking.reschedule_proposed_date}
+                isProposer={user.id === booking.reschedule_proposed_by}
+              />
+              {profile.role === 'artista' && (
+                <CancelBookingForm bookingId={booking.id} policyLines={paymentPolicySummary(booking)} />
+              )}
+            </div>
           </div>
         )}
 
@@ -205,19 +312,109 @@ export default async function BookingDetailPage(
             <p className="text-sm text-[var(--ink)]/70">
               Trabalho realizado. Quando o cliente pagar, marque o booking como concluído.
             </p>
-            <form action={markPaidAction}>
-              <input type="hidden" name="bookingId" value={booking.id} />
-              <button type="submit" className={accentButtonClass}>
-                Marcar como pago
-              </button>
-            </form>
+
+            {(() => {
+              const dueState = paymentDueState(booking);
+              if (!dueState) return null;
+              return (
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`font-doopla-mono inline-block rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[.06em] ${PAYMENT_DUE_CLASSES[dueState]}`}
+                  >
+                    {PAYMENT_DUE_LABELS[dueState]}
+                  </span>
+                  {dueState === 'vencido' && (
+                    <form action={markInCollectionAction}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit" className={ghostButtonClass}>
+                        Marcar em cobrança
+                      </button>
+                    </form>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <form action={markPaidAction}>
+                <input type="hidden" name="bookingId" value={booking.id} />
+                <button type="submit" className={accentButtonClass}>
+                  Marcar como pago
+                </button>
+              </form>
+              <RescheduleForm
+                bookingId={booking.id}
+                role={profile.role}
+                eventDate={booking.event_date}
+                proposedDate={booking.reschedule_proposed_date}
+                isProposer={user.id === booking.reschedule_proposed_by}
+              />
+            </div>
+
+            {booking.dispute_status === 'nenhuma' ? (
+              <details className="group">
+                <summary className="font-doopla-mono cursor-pointer select-none list-none text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/45 hover:text-[var(--ink)]">
+                  Problema com o pagamento? Marcar disputa/chargeback
+                </summary>
+                <form action={markDisputeAction} className="mt-3 flex flex-wrap items-center gap-3">
+                  <input type="hidden" name="bookingId" value={booking.id} />
+                  <select
+                    name="disputeStatus"
+                    defaultValue="em_disputa"
+                    className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2 text-sm"
+                  >
+                    <option value="em_disputa">Cliente abriu disputa</option>
+                    <option value="chargeback">Chargeback no cartão</option>
+                  </select>
+                  <button type="submit" className={ghostButtonClass}>
+                    Registrar
+                  </button>
+                </form>
+              </details>
+            ) : (
+              <p className="text-sm text-[var(--alert)]">
+                {DISPUTE_LABELS[booking.dispute_status]}
+                {booking.dispute_opened_at && ` — ${formatRelativeDate(booking.dispute_opened_at)}`}.
+                Sempre separado de cancelamento; execução financeira ainda depende do contrato
+                de credenciamento.
+              </p>
+            )}
           </div>
         )}
 
         {booking.status === 'aguardando_pagamento' && profile.role === 'artista' && (
-          <p className="mt-4 text-sm text-[var(--ink)]/70">
-            Trabalho realizado. Aguardando confirmação de pagamento por {booking.otherPartyName}.
-          </p>
+          <div className="mt-4 flex flex-col gap-4">
+            <p className="text-sm text-[var(--ink)]/70">
+              Trabalho realizado. Aguardando confirmação de pagamento por {booking.otherPartyName}.
+            </p>
+            {(() => {
+              const dueState = paymentDueState(booking);
+              if (!dueState) return null;
+              return (
+                <span
+                  className={`font-doopla-mono inline-block w-fit rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[.06em] ${PAYMENT_DUE_CLASSES[dueState]}`}
+                >
+                  {PAYMENT_DUE_LABELS[dueState]}
+                </span>
+              );
+            })()}
+            {booking.dispute_status !== 'nenhuma' && (
+              <p className="text-sm text-[var(--alert)]">
+                {DISPUTE_LABELS[booking.dispute_status]}
+                {booking.dispute_opened_at && ` — ${formatRelativeDate(booking.dispute_opened_at)}`}.
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <RescheduleForm
+                bookingId={booking.id}
+                role={profile.role}
+                eventDate={booking.event_date}
+                proposedDate={booking.reschedule_proposed_date}
+                isProposer={user.id === booking.reschedule_proposed_by}
+              />
+              <CancelBookingForm bookingId={booking.id} policyLines={paymentPolicySummary(booking)} />
+            </div>
+          </div>
         )}
 
         {booking.status === 'recusada' && (
@@ -228,6 +425,29 @@ export default async function BookingDetailPage(
           <p className="mt-4 text-sm text-[var(--ink)]/70">
             Booking concluído. Nada pendente por aqui.
           </p>
+        )}
+
+        {booking.status === 'cancelada' && (
+          <div className="mt-4 flex flex-col gap-3">
+            <p className="text-sm text-[var(--ink)]/70">
+              Cancelado {booking.cancelled_at ? formatRelativeDate(booking.cancelled_at) : ''}
+              {booking.cancellation_initiator === 'cliente'
+                ? ' — o cliente desistiu.'
+                : ' — pelo artista.'}
+              {booking.cancellation_reason && ` Motivo: ${booking.cancellation_reason}`}
+            </p>
+            <div className="rounded-[14px] bg-[var(--paper-dim)] p-4 text-[12.5px] text-[var(--ink)]/70">
+              <p className={eyebrowClass}>O que a política dizia</p>
+              <ul className="mt-2 flex flex-col gap-1">
+                {paymentPolicySummary(booking).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[var(--ink)]/50">
+                Execução de eventual reembolso ainda depende da integração real de pagamento.
+              </p>
+            </div>
+          </div>
         )}
       </section>
 

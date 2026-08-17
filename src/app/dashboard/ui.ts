@@ -40,6 +40,7 @@ export const statusPillClasses: Record<string, string> = {
   recusada: `${STATUS_PILL_BASE} border border-[var(--line-light)] text-[var(--ink)]/40`,
   aguardando_pagamento: `${STATUS_PILL_BASE} bg-[var(--accent-ink)]/15 text-[var(--accent-ink)]`,
   concluida: `${STATUS_PILL_BASE} bg-[var(--ink)] text-[var(--paper)]`,
+  cancelada: `${STATUS_PILL_BASE} bg-[var(--alert)]/15 text-[var(--alert)]`,
 };
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -48,6 +49,7 @@ export const STATUS_LABELS: Record<string, string> = {
   recusada: 'Recusada',
   aguardando_pagamento: 'Aguardando pagamento',
   concluida: 'Concluída',
+  cancelada: 'Cancelada',
 };
 
 export const contractStatusPillClasses: Record<string, string> = {
@@ -82,6 +84,13 @@ export const EVENT_LABELS: Record<string, string> = {
   aguardando_pagamento: 'Marcado como realizado',
   pagamento_confirmado: 'Pagamento confirmado',
   concluida: 'Booking concluído',
+  cancelada: 'Booking cancelado',
+  remarcacao_proposta: 'Remarcação proposta',
+  remarcacao_aceita: 'Remarcação aceita',
+  remarcacao_recusada: 'Remarcação recusada',
+  em_cobranca: 'Marcado como em cobrança',
+  disputa_aberta: 'Disputa aberta',
+  chargeback_aberto: 'Chargeback aberto',
 };
 
 export const avatarClass =

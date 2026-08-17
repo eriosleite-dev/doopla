@@ -87,3 +87,43 @@ não é decisão de "nunca construir".
   ("Recebida pelo seu link de orçamento" vs mural) e trata cachê do
   artista como um dado diferente da comissão do booker — nunca o
   mesmo número, mesmo quando um dos dois ainda não foi definido.
+
+---
+
+## Cancelamento/reembolso — escopo reduzido — 17/08/2026
+
+O documento `doopla-cancelamento-reembolso-rascunho.md` chegou numa
+versão v2 ("reescrita para split + repasse imediato") que contradizia
+a instrução original dada por texto no chat. A instrução original
+dizia "implemente tudo, exceto 4 pontos travados". O próprio
+documento, na seção final ("Faseamento"), diz algo mais restritivo:
+que o módulo inteiro "fica como rascunho de produto até fechar os
+pontos em aberto com jurídico/PSP" — e a lista dos 4 pontos travados
+também mudou de conteúdo entre o que foi dito no chat e o que está no
+fim do documento.
+
+Perguntei e ela decidiu (via pergunta estruturada):
+- Escopo: só estrutura de dados/snapshot + linguagem no painel — sem
+  simular repasse real de PSP. Justificativa de fundo: o produto
+  ainda não tem integração real com Pagar.me (pagamento continua
+  "marcar como pago" manual), então fingir que existe split/repasse
+  automático seria o mesmo tipo de funcionalidade falsa que já foi
+  evitada em outras partes do produto (ex.: botão de Sacar
+  desabilitado até o Bloco 2 existir).
+- Os 4 pontos travados usados são os do fim do documento (não os do
+  chat original): mecanismo de divisão da dívida entre artista e
+  booker, janela de segurança antes do repasse, MDR retido em
+  chargeback, UI de saldo devedor.
+
+**Implementado dentro desse escopo**: forma de pagamento + política
+de cancelamento snapshotadas na proposta; consentimento explícito no
+aceite; cancelar booking (só o artista, nunca o booker unilateralmente
+— regra explícita do documento); remarcação consensual (só o artista
+aceita, autoridade final); inadimplência leve (rótulo A vencer/
+Vencido/Em cobrança, sem cobrança automática); disputa/chargeback como
+sinalização sempre separada de cancelamento, sem execução financeira.
+
+**Não implementado, de propósito**: qualquer coisa que dependa de um
+evento real de pagamento confirmado pelo PSP (split, repasse, saldo
+devedor de verdade). Fica para quando a integração com Pagar.me
+existir.

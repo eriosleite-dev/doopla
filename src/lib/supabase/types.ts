@@ -93,7 +93,12 @@ export type BookingStatus =
   | 'aceita'
   | 'recusada'
   | 'aguardando_pagamento'
-  | 'concluida';
+  | 'concluida'
+  | 'cancelada';
+
+export type PaymentMode = 'integral_apos_trabalho' | 'sinal_saldo';
+export type CancellationInitiator = 'cliente' | 'artista';
+export type DisputeStatus = 'nenhuma' | 'em_disputa' | 'chargeback';
 
 export type Booking = {
   id: string;
@@ -112,6 +117,31 @@ export type Booking = {
   event_location: string | null;
   created_at: string;
   updated_at: string;
+  // Cancelamento/reembolso estrutural (Bloco C prioridade 2, migration 0024)
+  payment_mode: PaymentMode;
+  deposit_percentage: number | null;
+  deposit_due_at: string | null;
+  remaining_percentage: number | null;
+  remaining_due_rule: string | null;
+  client_cancellation_deposit_refundable: boolean;
+  artist_cancellation_deposit_refundable: boolean;
+  cancellation_policy_version: string;
+  cancellation_terms_accepted_at: string | null;
+  cancellation_terms_accepted_by: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_initiator: CancellationInitiator | null;
+  cancellation_reason: string | null;
+  original_event_date: string | null;
+  rescheduled_event_date: string | null;
+  rescheduled_at: string | null;
+  reschedule_accepted_by: string | null;
+  reschedule_proposed_date: string | null;
+  reschedule_proposed_by: string | null;
+  payment_due_at: string | null;
+  payment_collection_started_at: string | null;
+  dispute_status: DisputeStatus;
+  dispute_opened_at: string | null;
 };
 
 export type BookingEvent = {

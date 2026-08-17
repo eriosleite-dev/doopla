@@ -9,9 +9,57 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-15.
+Última atualização: 2026-08-17.
 
 ---
+
+## 0.2. Cancelamento/reembolso, parte estrutural (prioridade 2)
+
+Documento: `doopla-cancelamento-reembolso-rascunho.md` v2 ("reescrito
+para split + repasse imediato"). Escopo combinado com você: só modelo
+de dados/snapshot e linguagem no painel — nada aqui simula repasse
+real de PSP, porque a doopla ainda não tem integração de verdade com
+o Pagar.me ("Marcar como pago" continua um registro manual, como já
+era). Os 4 pontos travados usados foram os do fim do próprio
+documento: mecanismo de divisão da dívida entre artista/booker,
+janela de segurança antes do repasse, MDR retido em chargeback, UI de
+saldo devedor. Nenhum dos quatro foi implementado.
+
+- ✅ **Forma de pagamento + política de cancelamento, snapshotadas na
+  proposta**: ao propor um booking, o booker define 100% após o
+  trabalho ou sinal+saldo (com % do sinal e regra de vencimento do
+  saldo em texto livre), e se o sinal é reembolsável em cada caso de
+  cancelamento (cliente desiste / artista cancela). Fica gravado no
+  booking no momento da proposta, nunca uma referência viva a uma
+  política que pode mudar depois.
+- ✅ **Consentimento explícito**: no momento de aceitar a proposta, a
+  outra parte vê um resumo das condições de cancelamento e precisa
+  marcar um checkbox obrigatório antes de aceitar. Não existe uma
+  "tela de pagamento do sinal" de verdade ainda (sem PSP real) — a
+  captura acontece no touchpoint real mais próximo disso.
+  `cancellation_terms_accepted_at/by` fica registrado.
+- ✅ **Cancelar booking**: só o artista cancela (o documento é
+  explícito que o booker não cancela unilateralmente um booking já
+  confirmado). Registra quem decidiu (cliente desistiu vs. artista
+  cancelou), motivo opcional, e mostra a cópia da política aplicável
+  — sem executar nenhum reembolso de verdade, só informativo (deixei
+  isso escrito na própria tela). Novo status `cancelada` no booking.
+- ✅ **Remarcação consensual**: distinta de cancelamento, o booking
+  continua. Qualquer parte propõe uma nova data; só o artista aceita
+  (autoridade final, regra do documento) — se o próprio artista
+  propõe, já vale na hora, sem precisar de auto-aprovação. Guarda a
+  data original pra sempre mostrar "remarcado, era X".
+- ✅ **Inadimplência leve + disputa/chargeback como flag separado**: ao
+  marcar um trabalho como realizado, dá pra informar (opcional) o
+  vencimento do pagamento restante — isso alimenta um rótulo A
+  vencer/Vencido/Em cobrança no painel do booker, sem nenhuma régua de
+  cobrança automática por trás (continua manual). Disputa/chargeback
+  vira uma sinalização separada de cancelamento (nunca a mesma coisa
+  no produto), também sem execução financeira.
+- 🔒 Travado, aguardando jurídico/PSP (lista do documento): mecanismo
+  de divisão da dívida entre artista e booker, janela de segurança
+  antes do repasse de fato, MDR retido em chargeback, UI de saldo
+  devedor. Fora disso, o documento está fechado.
 
 ## 0.1. Bloco C — Especificação completa final (painéis/navegação/perfil/orçamento)
 

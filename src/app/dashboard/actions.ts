@@ -96,9 +96,26 @@ export async function proposeBookingAction(
   const cacheAmountCents = centsFromReais(formData.get('cacheAmountCents'));
   const eventDate = String(formData.get('eventDate') ?? '').trim();
 
+  const paymentMode = String(formData.get('paymentMode') ?? 'integral_apos_trabalho');
+  const depositPercentage = Number.parseFloat(
+    String(formData.get('depositPercentage') ?? '').replace(',', '.')
+  );
+  const remainingDueRule = String(formData.get('remainingDueRule') ?? '').trim();
+  const clientCancellationDepositRefundable = formData.get('clientCancellationDepositRefundable') === 'on';
+  const artistCancellationDepositRefundable = formData.get('artistCancellationDepositRefundable') === 'on';
+
   if (!artistProfileId) return { error: 'Selecione um artista.' };
   if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
     return { error: 'Informe uma comissão válida (0 a 100%).' };
+  }
+  if (paymentMode !== 'integral_apos_trabalho' && paymentMode !== 'sinal_saldo') {
+    return { error: 'Forma de pagamento inválida.' };
+  }
+  if (
+    paymentMode === 'sinal_saldo' &&
+    (!Number.isFinite(depositPercentage) || depositPercentage <= 0 || depositPercentage >= 100)
+  ) {
+    return { error: 'Informe um percentual de sinal válido (entre 0 e 100).' };
   }
 
   const { data: representation } = await supabase
@@ -121,6 +138,12 @@ export async function proposeBookingAction(
       cache_amount_cents: cacheAmountCents,
       description: description || null,
       event_date: eventDate || null,
+      payment_mode: paymentMode as 'integral_apos_trabalho' | 'sinal_saldo',
+      deposit_percentage: paymentMode === 'sinal_saldo' ? depositPercentage : null,
+      remaining_percentage: paymentMode === 'sinal_saldo' ? 100 - depositPercentage : null,
+      remaining_due_rule: paymentMode === 'sinal_saldo' ? remainingDueRule || null : null,
+      client_cancellation_deposit_refundable: clientCancellationDepositRefundable,
+      artist_cancellation_deposit_refundable: artistCancellationDepositRefundable,
     })
     .select('id')
     .single<{ id: string }>();
@@ -162,8 +185,21 @@ export async function respondBookingAction(formData: FormData) {
   if (user.id !== booking.artist_profile_id && user.id !== booking.booker_profile_id) return;
   if (user.id === proposerProfileId(booking)) return; // quem propôs não responde a si mesmo
 
+  if (decision === 'aceitar' && formData.get('cancellationAccepted') !== 'on') return;
+
   const newStatus = decision === 'aceitar' ? 'aceita' : 'recusada';
-  await supabase.from('bookings').update({ status: newStatus }).eq('id', bookingId);
+  await supabase
+    .from('bookings')
+    .update(
+      decision === 'aceitar'
+        ? {
+            status: newStatus,
+            cancellation_terms_accepted_at: new Date().toISOString(),
+            cancellation_terms_accepted_by: user.id,
+          }
+        : { status: newStatus }
+    )
+    .eq('id', bookingId);
   await supabase.from('booking_events').insert({
     booking_id: bookingId,
     actor_profile_id: user.id,
@@ -225,6 +261,7 @@ export async function counterBookingAction(
 export async function markCompletedAction(formData: FormData) {
   const bookingId = String(formData.get('bookingId') ?? '');
   if (!bookingId) return;
+  const paymentDueAt = String(formData.get('paymentDueAt') ?? '').trim();
   const ctx = await requireUserAndProfile();
   if (!ctx) return;
   const { supabase, user } = ctx;
@@ -239,7 +276,10 @@ export async function markCompletedAction(formData: FormData) {
 
   await supabase
     .from('bookings')
-    .update({ status: 'aguardando_pagamento' })
+    .update({
+      status: 'aguardando_pagamento',
+      payment_due_at: paymentDueAt ? new Date(paymentDueAt).toISOString() : null,
+    })
     .eq('id', bookingId);
   await supabase.from('booking_events').insert({
     booking_id: bookingId,
@@ -272,6 +312,243 @@ export async function markPaidAction(formData: FormData) {
     booking_id: bookingId,
     actor_profile_id: user.id,
     event_type: 'pagamento_confirmado',
+  });
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  revalidatePath('/dashboard');
+}
+
+const CANCELLABLE_STATUSES: Booking['status'][] = ['aceita', 'aguardando_pagamento'];
+
+export async function cancelBookingAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const initiator = String(formData.get('initiator') ?? '');
+  const reason = String(formData.get('reason') ?? '').trim();
+  if (!bookingId) return { error: 'Booking inválido.' };
+  if (initiator !== 'cliente' && initiator !== 'artista') {
+    return { error: 'Informe quem está cancelando.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') {
+    return { error: 'Só o artista pode cancelar um booking confirmado.' };
+  }
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || !CANCELLABLE_STATUSES.includes(booking.status)) {
+    return { error: 'Esse booking não pode mais ser cancelado por aqui.' };
+  }
+  if (user.id !== booking.artist_profile_id) {
+    return { error: 'Você não faz parte desse booking.' };
+  }
+
+  await supabase
+    .from('bookings')
+    .update({
+      status: 'cancelada',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: user.id,
+      cancellation_initiator: initiator as 'cliente' | 'artista',
+      cancellation_reason: reason || null,
+    })
+    .eq('id', bookingId);
+  await supabase.from('booking_events').insert({
+    booking_id: bookingId,
+    actor_profile_id: user.id,
+    event_type: 'cancelada',
+    note: reason || null,
+  });
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  revalidatePath('/dashboard');
+  return {};
+}
+
+const RESCHEDULABLE_STATUSES: Booking['status'][] = ['aceita', 'aguardando_pagamento'];
+
+function applyReschedule(booking: Booking, newDate: string, acceptedBy: string) {
+  return {
+    original_event_date: booking.original_event_date ?? booking.event_date,
+    event_date: newDate,
+    rescheduled_event_date: newDate,
+    rescheduled_at: new Date().toISOString(),
+    reschedule_accepted_by: acceptedBy,
+    reschedule_proposed_date: null,
+    reschedule_proposed_by: null,
+  };
+}
+
+export async function proposeRescheduleAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const newDate = String(formData.get('newDate') ?? '').trim();
+  if (!bookingId || !newDate) return { error: 'Informe a nova data.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || !RESCHEDULABLE_STATUSES.includes(booking.status)) {
+    return { error: 'Esse booking não pode ser remarcado agora.' };
+  }
+  if (user.id !== booking.artist_profile_id && user.id !== booking.booker_profile_id) {
+    return { error: 'Você não faz parte desse booking.' };
+  }
+  if (newDate === booking.event_date) return { error: 'Essa já é a data atual.' };
+
+  // Remarcação precisa ser aceita pelo artista (regra do documento). Se
+  // quem propõe já é o artista, a mudança vale na hora — não faz sentido
+  // pedir aprovação da própria pessoa que tem a palavra final.
+  if (profile.role === 'artista') {
+    await supabase
+      .from('bookings')
+      .update(applyReschedule(booking, newDate, user.id))
+      .eq('id', bookingId);
+    await supabase.from('booking_events').insert({
+      booking_id: bookingId,
+      actor_profile_id: user.id,
+      event_type: 'remarcacao_aceita',
+      note: newDate,
+    });
+  } else {
+    await supabase
+      .from('bookings')
+      .update({ reschedule_proposed_date: newDate, reschedule_proposed_by: user.id })
+      .eq('id', bookingId);
+    await supabase.from('booking_events').insert({
+      booking_id: bookingId,
+      actor_profile_id: user.id,
+      event_type: 'remarcacao_proposta',
+      note: newDate,
+    });
+  }
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  revalidatePath('/dashboard');
+  return {};
+}
+
+export async function respondRescheduleAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const decision = String(formData.get('decision') ?? '');
+  if (!bookingId || (decision !== 'aceitar' && decision !== 'recusar')) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return; // só o artista aceita remarcação
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || !booking.reschedule_proposed_date) return;
+  if (user.id !== booking.artist_profile_id) return;
+
+  if (decision === 'aceitar') {
+    await supabase
+      .from('bookings')
+      .update(applyReschedule(booking, booking.reschedule_proposed_date, user.id))
+      .eq('id', bookingId);
+    await supabase.from('booking_events').insert({
+      booking_id: bookingId,
+      actor_profile_id: user.id,
+      event_type: 'remarcacao_aceita',
+      note: booking.reschedule_proposed_date,
+    });
+  } else {
+    await supabase
+      .from('bookings')
+      .update({ reschedule_proposed_date: null, reschedule_proposed_by: null })
+      .eq('id', bookingId);
+    await supabase.from('booking_events').insert({
+      booking_id: bookingId,
+      actor_profile_id: user.id,
+      event_type: 'remarcacao_recusada',
+    });
+  }
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  revalidatePath('/dashboard');
+}
+
+export async function markInCollectionAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (!bookingId) return;
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || booking.status !== 'aguardando_pagamento' || !booking.payment_due_at) return;
+  if (user.id !== booking.booker_profile_id) return;
+  if (new Date(booking.payment_due_at).getTime() > Date.now()) return; // ainda não venceu
+
+  await supabase
+    .from('bookings')
+    .update({ payment_collection_started_at: new Date().toISOString() })
+    .eq('id', bookingId);
+  await supabase.from('booking_events').insert({
+    booking_id: bookingId,
+    actor_profile_id: user.id,
+    event_type: 'em_cobranca',
+  });
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  revalidatePath('/dashboard');
+}
+
+export async function markDisputeAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const disputeStatus = String(formData.get('disputeStatus') ?? '');
+  if (!bookingId || (disputeStatus !== 'em_disputa' && disputeStatus !== 'chargeback')) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || !['aguardando_pagamento', 'concluida'].includes(booking.status)) return;
+  if (user.id !== booking.booker_profile_id) return;
+
+  await supabase
+    .from('bookings')
+    .update({
+      dispute_status: disputeStatus as 'em_disputa' | 'chargeback',
+      dispute_opened_at: new Date().toISOString(),
+    })
+    .eq('id', bookingId);
+  await supabase.from('booking_events').insert({
+    booking_id: bookingId,
+    actor_profile_id: user.id,
+    event_type: disputeStatus === 'em_disputa' ? 'disputa_aberta' : 'chargeback_aberto',
   });
 
   revalidatePath(`/dashboard/bookings/${bookingId}`);
