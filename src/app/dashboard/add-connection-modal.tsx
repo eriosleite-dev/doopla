@@ -21,6 +21,8 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
   const [contact, setContact] = useState('');
   const [result, setResult] = useState<ContactLookupResult | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const targetLabel = TARGET_LABEL[myRole];
 
@@ -30,6 +32,15 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
     setContact('');
     setResult(null);
     setSent(null);
+    setInviteLink(null);
+    setLinkCopied(false);
+  }
+
+  async function copyInviteLink() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   }
 
   function handleLookup() {
@@ -63,6 +74,9 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
       if (outcome.error) {
         setResult({ kind: 'error', error: outcome.error });
       } else {
+        if (outcome.inviteToken) {
+          setInviteLink(`${window.location.origin}/convite/${outcome.inviteToken}`);
+        }
         setSent('invite');
       }
     });
@@ -87,6 +101,24 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
               ? 'Solicitação enviada. Você vê o status em Solicitações e Convites.'
               : 'Convite enviado. Assim que a pessoa se cadastrar, vocês podem conectar.'}
           </p>
+          {inviteLink && (
+            <div className="flex flex-col gap-2 rounded-[12px] bg-[var(--paper-dim)] p-3">
+              <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50">
+                Link do convite
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]">
+                  {inviteLink}
+                </span>
+                <button type="button" onClick={copyInviteLink} className={ghostButtonClass}>
+                  {linkCopied ? 'Copiado!' : 'Copiar link'}
+                </button>
+              </div>
+              <p className="text-[12px] text-[var(--ink)]/55">
+                Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.
+              </p>
+            </div>
+          )}
           <button type="button" onClick={reset} className={`${ghostButtonClass} self-start`}>
             Fechar
           </button>

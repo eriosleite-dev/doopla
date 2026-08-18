@@ -1292,9 +1292,9 @@ export async function updateLinkRoutingAction(
 }
 
 export async function inviteArtistAction(
-  _prevState: { error?: string; success?: boolean },
+  _prevState: { error?: string; success?: boolean; inviteToken?: string },
   formData: FormData
-): Promise<{ error?: string; success?: boolean }> {
+): Promise<{ error?: string; success?: boolean; inviteToken?: string }> {
   const name = String(formData.get('name') ?? '').trim();
   const contact = String(formData.get('contact') ?? '').trim();
   if (!name) return { error: 'Informe o nome do artista.' };
@@ -1304,21 +1304,25 @@ export async function inviteArtistAction(
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'booker') return { error: 'Só bookers convidam artistas.' };
 
-  const { error } = await supabase.from('invites').insert({
-    inviter_profile_id: user.id,
-    invitee_name: name,
-    invitee_contact: contact || null,
-  });
-  if (error) return { error: 'Não foi possível enviar o convite agora.' };
+  const { data: invite, error } = await supabase
+    .from('invites')
+    .insert({
+      inviter_profile_id: user.id,
+      invitee_name: name,
+      invitee_contact: contact || null,
+    })
+    .select('token')
+    .single<{ token: string }>();
+  if (error || !invite) return { error: 'Não foi possível enviar o convite agora.' };
 
   revalidatePath('/dashboard/artistas');
-  return { success: true };
+  return { success: true, inviteToken: invite.token };
 }
 
 export async function inviteBookerAction(
-  _prevState: { error?: string; success?: boolean },
+  _prevState: { error?: string; success?: boolean; inviteToken?: string },
   formData: FormData
-): Promise<{ error?: string; success?: boolean }> {
+): Promise<{ error?: string; success?: boolean; inviteToken?: string }> {
   const name = String(formData.get('name') ?? '').trim();
   const contact = String(formData.get('contact') ?? '').trim();
   if (!name) return { error: 'Informe o nome do booker.' };

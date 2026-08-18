@@ -457,3 +457,67 @@ do usuário; ver seção final).
   comportamento ainda aparecer depois desse fix, preciso do passo a
   passo exato (qual tela, qual ação, o que apareceu) pra investigar
   further — não custa relatar de novo se acontecer.
+
+---
+
+## LOTE 2 Parte 1: Artista agenciado — decisões estruturais — 18/08/2026
+
+Antes de codificar, mapeei o que já existia (pedido explícito do
+próprio LOTE 2). Achado principal: **"agência" já não é um conceito à
+parte no produto — é só um Booker.** `role = 'agencia'` e
+`agency_profiles` são schema legado de uma versão anterior do
+cadastro; hoje `/cadastro` só aceita `artista`/`booker`, e a seção
+"para agências" da Home já manda pra `/cadastro?role=booker`. Isso
+significa que boa parte da Parte 1 (agência = terceiro tipo de conta,
+vínculo artista↔agência, permissões por vínculo, agenda como fonte
+única, plano separado do vínculo) **já estava resolvida por
+construção** antes mesmo desse pedido chegar — `representations` já
+modela exatamente "Booker/Agência representa Artista" sem distinção,
+e `subscriptions` do artista já é 100% independente de qualquer
+vínculo (confirmado relendo `terminate_representation`, que nunca
+toca a assinatura do artista). Não recriei nada disso.
+
+- **O gap real era um só, e concreto**: convite pra alguém sem conta
+  tinha um `token` (desde a migration 0005) que nunca era usado de
+  verdade — o vínculo só acontecia se o e-mail do convite batesse
+  EXATAMENTE com o e-mail do cadastro, checado uma única vez no
+  momento de criar o convite. Se a pessoa se cadastrasse depois (o
+  caso normal), o convite nunca resolvia. Migration 0034 resolve isso:
+  `pendingInviteToken` no cadastro liga direto pelo token, sem
+  depender de contato bater.
+- **Nova rota pública `/convite/[token]`**: lookup via RPC
+  `get_invite_by_token` (SECURITY DEFINER, projeção mínima — nunca
+  vaza o convite inteiro, nunca resolve token já confirmado). CTA leva
+  pro cadastro com o token na URL.
+- **Onboarding reduzido implementado como um branch curto do wizard
+  existente, não um fluxo paralelo**: `getQuestionSteps` já era uma
+  função que decide os passos dinamicamente a partir das respostas —
+  só adicionei mais um branch (`inviteToken` presente → nome artístico
+  + nome completo + plano, pula tudo de matching). Reaproveita
+  literalmente os 2 primeiros itens de `ARTISTA_CARREIRA_STEPS`
+  (slice), não duplica os campos.
+- **Aceite explícito reaproveita a tela que já existia**
+  ("Convites pendentes" no `/dashboard`, com botão Confirmar) em vez
+  de construir uma tela nova só pra esse caminho — já satisfaz
+  "artista precisa aceitar explicitamente", já cria o vínculo
+  automaticamente ao confirmar (mesmo mecanismo de sempre,
+  `confirmInviteAction`), já revalida as duas telas.
+- **Link de convite exposto no fluxo "Adicionar um Artista" já
+  existente** (`add-connection-modal.tsx`, do lote anterior) em vez de
+  criar um formulário de convite separado — `inviteArtistAction` agora
+  retorna o token, o modal mostra o link copiável na hora.
+- **Simplificação assumida**: não construí um campo de "colar código
+  de convite manualmente" na tela de cadastro — quem chegou sem usar o
+  link só vê um texto avisando que a agência tem um link próprio. Não
+  é um input funcional. Se isso for necessário de verdade (alguém
+  perde o link e precisa digitar um código), é um pedido novo, não uma
+  extensão trivial disso aqui.
+- **Não construído (documentado como deliberadamente fora de escopo,
+  não esquecido)**: modelo de permissões granular por vínculo (agenda
+  × bookings × contratos × financeiro, ligar/desligar por relação). O
+  próprio pedido autoriza isso: "mesmo com MVP simples, não codificar
+  de forma que impeça essa separação depois" — e nada do que existe
+  hoje (`representations` como tabela de vínculo simples, sem lógica
+  embutida assumindo acesso total em outro lugar) bloqueia adicionar
+  isso depois. Hoje o acesso continua binário (tem vínculo = acesso
+  completo), do jeito que já era antes desse pedido.

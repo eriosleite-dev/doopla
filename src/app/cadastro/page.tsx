@@ -21,7 +21,7 @@ function isSignupRole(value: string | undefined): value is SignupRole {
 export default async function CadastroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ role?: string; tipo?: string; ref?: string }>;
+  searchParams: Promise<{ role?: string; tipo?: string; ref?: string; invite?: string }>;
 }) {
   const params = await searchParams;
   // `tipo` é o nome pedido pela especificação de preços pros CTAs da
@@ -52,7 +52,14 @@ export default async function CadastroPage({
           </p>
         </div>
 
-        <SignupForm defaultRole={defaultRole} referralCode={params.ref} />
+        <SignupForm defaultRole={defaultRole} referralCode={params.ref} inviteToken={params.invite} />
+
+        {!params.invite && (
+          <p className="text-center text-[12px] text-[var(--ink)]/45">
+            Sua agência já usa a doopla? Peça o link de convite direto pra ela — ele te leva pra
+            um cadastro mais rápido, já te conectando com quem te convidou.
+          </p>
+        )}
       </div>
     </main>
   );

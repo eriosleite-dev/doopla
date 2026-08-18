@@ -543,11 +543,24 @@ function getBookerSteps(answers: Record<string, string>): WizardStep[] {
   return steps;
 }
 
+// Quem chega por link de convite de agência já tem uma relação real —
+// não faz sentido perguntar de novo "tem booker?", nichos, faixa de
+// cachê etc. Só o essencial de identidade (nome artístico + nome
+// completo, já parte de ARTISTA_CARREIRA_STEPS) + plano. O resto do
+// perfil completa depois, no Perfil — onboarding reduzido não é perfil
+// reduzido pra sempre.
+const ARTISTA_INVITED_STEPS: WizardStep[] = [
+  ...ARTISTA_CARREIRA_STEPS.slice(0, 2),
+  ARTISTA_PLANO_STEP,
+];
+
 function getQuestionSteps(
   role: SignupRole,
-  answers: Record<string, string>
+  answers: Record<string, string>,
+  inviteToken?: string
 ): WizardStep[] {
   if (role === 'artista') {
+    if (inviteToken) return ARTISTA_INVITED_STEPS;
     const steps = [ARTISTA_INTENCAO_STEP];
     if (answers.intencao === INTENCAO_PONTUAL) {
       steps.push(ARTISTA_PONTUAL_DETALHE_STEP);
@@ -567,9 +580,11 @@ function getQuestionSteps(
 export function SignupForm({
   defaultRole,
   referralCode,
+  inviteToken,
 }: {
   defaultRole: SignupRole;
   referralCode?: string;
+  inviteToken?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     signupAction,
@@ -587,7 +602,7 @@ export function SignupForm({
   const [bookerInviteName, setBookerInviteName] = useState('');
   const [bookerInviteContact, setBookerInviteContact] = useState('');
 
-  const questionSteps = getQuestionSteps(role, answers);
+  const questionSteps = getQuestionSteps(role, answers, inviteToken);
   const onAccountStep = stepIndex >= questionSteps.length;
   const currentStep = onAccountStep ? null : questionSteps[stepIndex];
   const totalSteps = questionSteps.length + 1;
@@ -701,42 +716,49 @@ export function SignupForm({
 
   return (
     <div className="flex flex-col gap-6">
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-sm font-medium text-[var(--ink)]">
-          Tipo de conta
-        </legend>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {ROLE_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className={`cursor-pointer rounded-lg border px-3 py-2 text-sm transition-colors ${
-                role === option.value
-                  ? 'border-[var(--ink)] bg-[var(--paper-dim)]'
-                  : 'border-[var(--line-light)]'
-              }`}
-            >
-              <input
-                type="radio"
-                name="role-picker"
-                value={option.value}
-                checked={role === option.value}
-                onChange={() => handleRoleChange(option.value)}
-                className="sr-only"
-              />
-              <span className="block font-medium text-[var(--ink)]">
-                {option.label}
-              </span>
-              <span className="block text-xs text-[var(--ink)]/60">
-                {option.hint}
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {inviteToken ? (
+        <p className="rounded-[12px] bg-[var(--paper-dim)] p-3 text-[13px] text-[var(--ink)]/70">
+          Você está criando uma conta de artista pra aceitar um convite. Isso não muda depois.
+        </p>
+      ) : (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-sm font-medium text-[var(--ink)]">
+            Tipo de conta
+          </legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {ROLE_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className={`cursor-pointer rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  role === option.value
+                    ? 'border-[var(--ink)] bg-[var(--paper-dim)]'
+                    : 'border-[var(--line-light)]'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="role-picker"
+                  value={option.value}
+                  checked={role === option.value}
+                  onChange={() => handleRoleChange(option.value)}
+                  className="sr-only"
+                />
+                <span className="block font-medium text-[var(--ink)]">
+                  {option.label}
+                </span>
+                <span className="block text-xs text-[var(--ink)]/60">
+                  {option.hint}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="role" value={role} />
         {referralCode && <input type="hidden" name="referralCode" value={referralCode} />}
+        {inviteToken && <input type="hidden" name="pendingInviteToken" value={inviteToken} />}
         {Object.entries(answers).map(([key, value]) => (
           <input key={key} type="hidden" name={key} value={value} />
         ))}

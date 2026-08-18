@@ -61,6 +61,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'helpAreas',
     'pendingBookerInvite',
     'founderVoucherCode',
+    'pendingInviteToken',
   ],
   booker: [
     'modoTrabalho',

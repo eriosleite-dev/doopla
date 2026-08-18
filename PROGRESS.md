@@ -13,6 +13,30 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## LOTE 2 Parte 1 — Artista já agenciado
+
+- ✅ Achado central: "agência" já é só um Booker no produto (schema
+  legado `role='agencia'`/`agency_profiles` não é mais usado pelo
+  cadastro real) — a maior parte do pedido já estava resolvida por
+  construção. Ver DECISOES.md pro detalhe completo.
+- ✅ Gap real corrigido: convite pra quem ainda não tinha conta nunca
+  virava vínculo se a pessoa se cadastrasse depois de criado o convite
+  (só funcionava se o e-mail já existisse no momento do convite).
+  Migration 0034 + rota pública `/convite/[token]` + token passado no
+  cadastro resolvem isso de vez.
+- ✅ Onboarding reduzido pra quem chega via link de convite: só nome
+  artístico, nome completo e plano — pula todas as perguntas de
+  matching (dá pra completar depois no Perfil).
+- ✅ Aceite explícito continua sendo a tela "Convites pendentes" que
+  já existia no painel — vínculo nasce automático ao confirmar.
+- ✅ Link de convite copiável exposto direto no fluxo "Adicionar um
+  Artista" já existente no painel do booker.
+- ⏳ Não construído (fora de escopo deliberado): permissões granulares
+  por vínculo. Acesso continua binário — tem vínculo, tem acesso
+  completo — do jeito que já era antes.
+
+---
+
 ## LOTE 1 — Painel do Booker: bugs + revisão de UX
 
 - ✅ Causa raiz do bug "solicitação aceita continua como pendência"

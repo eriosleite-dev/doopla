@@ -190,6 +190,14 @@ export type Invite = {
   confirmed_at: string | null;
 };
 
+// Retorno de get_invite_by_token — lookup público e mínimo pra
+// /convite/[token], nunca o convite inteiro.
+export type InviteByToken = {
+  inviter_name: string;
+  inviter_role: UserRole;
+  invitee_name: string;
+};
+
 export type Favorite = {
   user_id: string;
   favorited_user_id: string;
@@ -685,6 +693,10 @@ export type Database = {
       terminate_representation: {
         Args: { p_representation_id: string };
         Returns: undefined;
+      };
+      get_invite_by_token: {
+        Args: { p_token: string };
+        Returns: InviteByToken[];
       };
     };
   };
