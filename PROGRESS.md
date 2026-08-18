@@ -42,8 +42,24 @@ interna do matching.
   coluna `regions`, só troca o que populamos como opção. Perfil usa o
   mesmo valor salvo (`local`/`cidades`) pra montar a mesma lista ao
   editar depois.
-- ⏳ **Cadastro: separar essencial de complementar** + card "Complete
-  suas preferências" no painel: ainda não feito.
+- ✅ **Cadastro: essencial vs. complementar**: perguntas complementares
+  (as mesmas puladas do resumo — regiões além da cidade base, estágio de
+  carreira, faixa de cachê, ajuda necessária pro artista; nichos de
+  oportunidade, especialidades, área de atuação, idiomas, capacidade,
+  faixa de cachê e comissão pro booker) agora podem ser puladas no
+  cadastro ("Pular por agora", com aviso "Opcional — dá pra responder
+  depois no seu perfil"), sem travar o fim do cadastro. Essencial
+  continua obrigatório (nome, categoria, bio, localização, tipos de
+  trabalho/nichos principais).
+- ✅ **Card "Complete suas preferências"** no Dashboard (artista e
+  booker): mostra "X de Y informações preenchidas" + barra de progresso,
+  contando só os campos complementares acima; some sozinho quando tudo
+  já foi preenchido. Botão "Completar" leva direto pro bloco de
+  preferências em Perfil (`#preferencias-matching`).
+
+Com isso o bloco 0.8 (preferências de matching) está fechado —
+cadastro, perfil e painel usam a mesma fonte de dado, sem campo
+duplicado.
 
 ## 0.7. Favoritar bookers/artistas (mútuo, separado de "já trabalhei com")
 

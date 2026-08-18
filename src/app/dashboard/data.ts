@@ -351,6 +351,65 @@ export async function getOrcamentoLinkInfo(
   };
 }
 
+export type MatchingCompletion = { filled: number; total: number };
+
+// Campos complementares (puláveis no cadastro) — os mesmos marcados como
+// `optional` no wizard de signup-form.tsx. Usado só pro card "Complete
+// suas preferências" do painel; não afeta o que já é essencial.
+export async function getArtistMatchingCompletion(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<MatchingCompletion> {
+  const { data } = await supabase
+    .from('artist_profiles')
+    .select('regions, career_stage, fee_range, help_areas')
+    .eq('profile_id', artistId)
+    .maybeSingle<{
+      regions: string[] | null;
+      career_stage: string | null;
+      fee_range: string | null;
+      help_areas: string[] | null;
+    }>();
+
+  const fields = [
+    (data?.regions?.length ?? 0) > 0,
+    Boolean(data?.career_stage),
+    Boolean(data?.fee_range),
+    (data?.help_areas?.length ?? 0) > 0,
+  ];
+  return { filled: fields.filter(Boolean).length, total: fields.length };
+}
+
+export async function getBookerMatchingCompletion(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<MatchingCompletion> {
+  const { data } = await supabase
+    .from('booker_profiles')
+    .select('client_types, specialty_areas, regions, languages, capacity, fee_range, commission_range')
+    .eq('profile_id', bookerId)
+    .maybeSingle<{
+      client_types: string[] | null;
+      specialty_areas: string[] | null;
+      regions: string[] | null;
+      languages: string[] | null;
+      capacity: string | null;
+      fee_range: string[] | null;
+      commission_range: string | null;
+    }>();
+
+  const fields = [
+    (data?.client_types?.length ?? 0) > 0,
+    (data?.specialty_areas?.length ?? 0) > 0,
+    (data?.regions?.length ?? 0) > 0,
+    (data?.languages?.length ?? 0) > 0,
+    Boolean(data?.capacity),
+    (data?.fee_range?.length ?? 0) > 0,
+    Boolean(data?.commission_range),
+  ];
+  return { filled: fields.filter(Boolean).length, total: fields.length };
+}
+
 export async function getDiscoverBookers(
   excludeIds: string[],
   supabase: SupabaseServerClient,

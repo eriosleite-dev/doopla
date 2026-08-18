@@ -180,7 +180,10 @@ export function ArtistProfileForm({
         />
       </label>
 
-      <div className="flex flex-col gap-4 border-t border-[var(--ink)]/10 pt-4">
+      <div
+        id="preferencias-matching"
+        className="flex scroll-mt-6 flex-col gap-4 border-t border-[var(--ink)]/10 pt-4"
+      >
         <div>
           <p className={eyebrowClass}>Preferências de matching</p>
           <p className="mt-1 text-[12.5px] text-[var(--ink)]/55">

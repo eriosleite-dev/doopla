@@ -77,6 +77,10 @@ type WizardStep = {
   options?: string[];
   choices?: { value: string; label: string; description: string }[];
   arrayOutput?: boolean;
+  // Complementar: dá pra pular e preencher depois no Perfil (card
+  // "Complete suas preferências" no painel avisa o que falta). Só marca
+  // como opcional o que não é essencial pro matching inicial funcionar.
+  optional?: boolean;
 };
 
 export type ArtistChip = { name: string; sendNow: boolean };
@@ -176,23 +180,27 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     arrayOutput: true,
     label: 'Em quais regiões você topa atuar?',
     options: REGION_SCOPE_OPTIONS,
+    optional: true,
   },
   {
     formKey: 'careerStage',
     kind: 'choice-cards',
     label: 'Como está o volume de trabalhos hoje?',
     choices: choiceCardsFrom(CAREER_STAGE_OPTIONS),
+    optional: true,
   },
   {
     formKey: 'feeRange',
     kind: 'chip',
     label: 'Qual sua faixa de cachê ou ticket médio?',
     options: FEE_RANGE_OPTIONS,
+    optional: true,
   },
   {
     formKey: 'helpAreas',
     kind: 'chip-multi',
     arrayOutput: true,
+    optional: true,
     label: 'Em quais atividades você precisa de ajuda?',
     options: HELP_AREA_OPTIONS,
   },
@@ -351,6 +359,7 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     formKey: 'clientTypes',
     kind: 'chip-multi',
     arrayOutput: true,
+    optional: true,
     label: 'De quais nichos você gostaria de receber oportunidades?',
     options: CLIENT_TYPE_OPTIONS,
   },
@@ -358,6 +367,7 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     formKey: 'specialtyAreas',
     kind: 'chip-multi',
     arrayOutput: true,
+    optional: true,
     label: 'Quais são suas especialidades?',
     options: SPECIALTY_AREA_OPTIONS,
   },
@@ -365,6 +375,7 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     formKey: 'regions',
     kind: 'chip-multi',
     arrayOutput: true,
+    optional: true,
     label: 'Em quais cidades, estados ou países sua rede é mais forte?',
     options: REGION_SCOPE_OPTIONS,
   },
@@ -372,12 +383,14 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     formKey: 'languages',
     kind: 'chip-multi',
     arrayOutput: true,
+    optional: true,
     label: 'Quais idiomas você fala?',
     options: LANGUAGE_OPTIONS,
   },
   {
     formKey: 'capacity',
     kind: 'chip',
+    optional: true,
     label: 'Quantos artistas você conseguiria atender hoje?',
     hint: 'Com a Doopla, você organiza melhor sua operação e pode aumentar esse número conforme crescer.',
     options: CAPACITY_OPTIONS.map((o) => o.value),
@@ -386,12 +399,14 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     formKey: 'feeRange',
     kind: 'chip-multi',
     arrayOutput: true,
+    optional: true,
     label: 'Com quais faixas de cachê você gostaria de trabalhar?',
     options: FEE_RANGE_OPTIONS,
   },
   {
     formKey: 'commissionRange',
     kind: 'chip',
+    optional: true,
     label: 'Qual faixa de comissão você costuma ou pretende praticar?',
     hint: 'É só indicativo pro seu perfil — a comissão de cada booking continua sendo negociada caso a caso.',
     options: COMMISSION_RANGE_OPTIONS,
@@ -635,6 +650,7 @@ export function SignupForm({
       ? buildRegionOptions(answers.local || answers.cidades)
       : (currentStep?.options ?? []);
   const canContinue =
+    currentStep?.optional ||
     currentStep?.kind === 'invites' ||
     currentStep?.kind === 'single-invite' ||
     currentStep?.kind === 'plan' ||
@@ -700,6 +716,11 @@ export function SignupForm({
                 {currentStep.hint && (
                   <p className="text-xs text-[var(--ink)]/60">
                     {currentStep.hint}
+                  </p>
+                )}
+                {currentStep.optional && (
+                  <p className="text-xs text-[var(--ink)]/45">
+                    Opcional — dá pra responder depois no seu perfil, sem pressa.
                   </p>
                 )}
               </>
@@ -927,7 +948,12 @@ export function SignupForm({
                     ? 'Começar 7 dias grátis'
                     : currentStep.kind === 'plan-booker'
                       ? 'Começar grátis'
-                      : 'Continuar'}
+                      : currentStep.optional &&
+                          (currentStep.kind === 'chip-multi'
+                            ? currentMultiSelected.length === 0
+                            : currentValue.trim().length === 0)
+                        ? 'Pular por agora'
+                        : 'Continuar'}
               </button>
             </div>
             {currentStep.kind === 'plan' && (

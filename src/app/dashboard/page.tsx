@@ -6,11 +6,14 @@ import { siteOrigin } from '@/lib/site-url';
 
 import { BookerOficialCard } from './booker-oficial-card';
 import { BookingsPreview } from './bookings-list';
+import { CompletePreferencesCard } from './complete-preferences-card';
 import {
   computeArtistStats,
   computeBookerStats,
   getArtistBookers,
+  getArtistMatchingCompletion,
   getAttentionItems,
+  getBookerMatchingCompletion,
   getDiscoverBookers,
   getOfficialBookerProgress,
   getOrcamentoLinkInfo,
@@ -61,6 +64,10 @@ export default async function DashboardPage() {
     profile.role === 'artista' ? await getReferralSummary(user.id, profile.referral_code, supabase) : null;
   const orcamentoInfo =
     profile.role === 'artista' ? await getOrcamentoLinkInfo(user.id, supabase) : null;
+  const matchingCompletion =
+    profile.role === 'artista'
+      ? await getArtistMatchingCompletion(user.id, supabase)
+      : await getBookerMatchingCompletion(user.id, supabase);
   const origin = referralSummary || orcamentoInfo ? await siteOrigin() : null;
   const referralUrl = referralSummary ? `${origin}/cadastro?ref=${referralSummary.referralCode}` : null;
   const orcamentoUrl =
@@ -169,6 +176,8 @@ export default async function DashboardPage() {
       {/* Secundário de propósito (spec: nunca acima de dinheiro, pendências
           ou bookings) — por isso vem depois de tudo isso, não antes. */}
       {officialProgress && <BookerOficialCard progress={officialProgress} />}
+
+      <CompletePreferencesCard filled={matchingCompletion.filled} total={matchingCompletion.total} />
 
       {profile.role === 'artista' && (
         <>
