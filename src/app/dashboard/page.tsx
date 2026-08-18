@@ -22,6 +22,7 @@ import {
   getOfficialBookerProgress,
   getOrcamentoLinkInfo,
   getPendingInvites,
+  getRecentActivity,
   getReferralSummary,
   getSubscription,
   getUserBookings,
@@ -58,6 +59,7 @@ export default async function DashboardPage(props: {
 
   const bookings = await getUserBookings(user.id, profile.role, supabase);
   const attentionItems = await getAttentionItems(user.id, profile.role, bookings, supabase);
+  const recentActivity = await getRecentActivity(user.id, profile.role, bookings, supabase);
   const pendingInvites =
     profile.role === 'artista' ? await getPendingInvites(user.id, supabase) : [];
   const myBookers =
@@ -250,6 +252,27 @@ export default async function DashboardPage(props: {
           referralCount={referralSummary.referrals.length}
           qualifiedTotalCents={referralSummary.qualifiedTotalCents}
         />
+      )}
+
+      {recentActivity.length > 0 && (
+        <section className={cardClass}>
+          <p className={eyebrowClass}>Atividade recente</p>
+          <ul className="mt-4 flex flex-col gap-3">
+            {recentActivity.map((item, i) => (
+              <li key={i}>
+                <a
+                  href={item.href}
+                  className="flex items-start gap-2.5 text-sm text-[var(--ink)]/75 hover:text-[var(--accent-ink)]"
+                >
+                  <span className="mt-[1px] flex-none text-[var(--ink)]/40">
+                    {item.tone === 'positivo' ? '✓' : '·'}
+                  </span>
+                  <span>{item.text}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </main>
   );

@@ -417,3 +417,43 @@ Migration 0033 + reescrita de `bookers/page.tsx`, `artistas/page.tsx`,
   ao encerrar vínculo) — só o formulário virou compartilhado entre o
   card do Perfil e o card da Visão Geral, cada um decidindo como
   exibir (fixo vs. toggle).
+
+---
+
+## LOTE 1: bug "solicitação aceita continua como pendência" — causa raiz — 18/08/2026
+
+Achado por auditoria de código (não reproduzido ao vivo criando contas
+de teste no Supabase real — decisão deliberada pra não poluir o banco
+do usuário; ver seção final).
+
+- **Causa raiz real**: `getAttentionItems` misturava dois conceitos
+  num só array com um campo `kind: 'info'` que nunca ganhava seção
+  própria na UI — tudo renderizava dentro de "Precisa da sua atenção"
+  em `dashboard/page.tsx`. Um item como "Ana aceitou sua solicitação"
+  (que é só um aviso, não uma pendência) ficava visualmente idêntico a
+  "Ana pediu pra te representar" (que exige decisão). Daí a sensação
+  de "aceita e continua parecendo pendência".
+- **Fix**: split em duas funções de verdade — `getAttentionItems`
+  (só `urgente`/`atencao`, itens que exigem decisão) e
+  `getRecentActivity` (itens já acontecidos, sem ação pendente),
+  cada uma com sua seção própria em `dashboard/page.tsx`
+  ("Precisa da sua atenção" vs "Atividade recente"). O sino/badge do
+  header (`layout.tsx`) automaticamente ficou preciso também, já que
+  lê do mesmo `getAttentionItems` — não precisou de mudança separada.
+- **Segundo bug real encontrado no caminho, também corrigido**: o
+  perfil de booker (`booker-profile-view.tsx`) filtrava
+  `.eq('role', 'booker')` pra achar a conta — mas
+  `representations.booker_profile_id` pode apontar pra uma conta com
+  `role = 'agencia'` (papel distinto desde o cadastro, ainda presente
+  no schema). Artista com uma agência na rede caía em `notFound()` ao
+  abrir o perfil dela. Isso bate exatamente com "erro ao abrir o
+  perfil do artista" do pedido original — trocado pra
+  `.in('role', ['booker', 'agencia'])`.
+- **Não reproduzi ao vivo**: criar contas de teste reais no Supabase
+  de produção pra reproduzir o fluxo completo (solicitar → aceitar →
+  checar as duas telas) poluiria dados reais do usuário sem
+  autorização prévia — não fiz isso. A correção acima veio de rastrear
+  o código até a causa mecânica exata, não de assumir. Se o
+  comportamento ainda aparecer depois desse fix, preciso do passo a
+  passo exato (qual tela, qual ação, o que apareceu) pra investigar
+  further — não custa relatar de novo se acontecer.

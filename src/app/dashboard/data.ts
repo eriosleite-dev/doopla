@@ -1280,7 +1280,16 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
 // vermelha: ação pendente/urgente (algo bloqueado, dinheiro parado).
 // amarela: requer ação, mas não é urgente (decisão a tomar, sem pressa).
 // sem bolinha: informativo — nada exigido do usuário agora.
-export type AttentionItemKind = 'urgente' | 'atencao' | 'info';
+// "Precisa da sua atenção" e "Atividade recente" são conceitos
+// diferentes e nunca devem se misturar no mesmo array: atenção é só o
+// que exige uma decisão/ação da pessoa (bolinha vermelha real, some
+// quando resolvido); atividade recente é evento que já aconteceu e não
+// precisa de ação nenhuma (ex: "Eduarda aceitou sua solicitação"). Bug
+// anterior: os dois viviam juntos em `getAttentionItems` com um campo
+// `kind: 'info'` que nunca ganhava seção própria — visualmente ficava
+// tudo dentro de "Precisa da sua atenção", então uma solicitação já
+// aceita continuava parecendo pendência.
+export type AttentionItemKind = 'urgente' | 'atencao';
 export type AttentionItem = { text: string; href: string; kind: AttentionItemKind };
 
 export async function getAttentionItems(
@@ -1312,7 +1321,42 @@ export async function getAttentionItems(
         kind: 'atencao',
       });
     }
+    for (const b of bookings.filter(
+      (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'artista'
+    )) {
+      items.push({
+        text: `${b.otherPartyName} propôs ${b.commission_percent}% de comissão`,
+        href: `/dashboard/bookings/${b.id}`,
+        kind: 'atencao',
+      });
+    }
   }
+
+  if (role === 'booker') {
+    for (const b of bookings.filter((x) => x.status === 'aguardando_pagamento')) {
+      items.push({
+        text: `${b.otherPartyName}, cliente ainda não pagou, booking fechado ${formatRelativeDate(b.updated_at)}`,
+        href: `/dashboard/bookings/${b.id}`,
+        kind: 'urgente',
+      });
+    }
+  }
+
+  return items;
+}
+
+export type RecentActivityItem = { text: string; href: string; tone: 'positivo' | 'neutro' };
+
+// Eventos já acontecidos, sem ação pendente pra quem está vendo — só
+// registra o que mudou desde a última visita. "Visto" é rastreado por
+// coluna própria (opportunities_seen_at, booker_seen_at), igual antes.
+export async function getRecentActivity(
+  userId: string,
+  role: Profile['role'],
+  bookings: BookingWithOtherParty[],
+  supabase: SupabaseServerClient
+): Promise<RecentActivityItem[]> {
+  const items: RecentActivityItem[] = [];
 
   if (role === 'booker') {
     const { data: bookerProfile } = await supabase
@@ -1327,26 +1371,19 @@ export async function getAttentionItems(
       .gt('created_at', bookerProfile?.opportunities_seen_at ?? '1970-01-01');
     if (newOppsCount && newOppsCount > 0) {
       items.push({
-        text: `${newOppsCount} ${newOppsCount === 1 ? 'oportunidade nova combina' : 'oportunidades novas combinam'} com o seu nicho, ainda não vistas`,
+        text: `${newOppsCount} ${newOppsCount === 1 ? 'trabalho novo apareceu' : 'trabalhos novos apareceram'} pra você desde sua última visita`,
         href: '/dashboard/oportunidades',
-        kind: 'info',
+        tone: 'neutro',
       });
     }
 
-    for (const b of bookings.filter((x) => x.status === 'aguardando_pagamento')) {
-      items.push({
-        text: `${b.otherPartyName}, cliente ainda não pagou, booking fechado ${formatRelativeDate(b.updated_at)}`,
-        href: `/dashboard/bookings/${b.id}`,
-        kind: 'urgente',
-      });
-    }
     for (const b of bookings.filter(
       (x) => x.status === 'proposta_enviada' && x.proposed_by === 'booker'
     )) {
       items.push({
         text: `Sua proposta de ${b.commission_percent}% pra ${b.otherPartyName} está aguardando resposta`,
         href: `/dashboard/bookings/${b.id}`,
-        kind: 'info',
+        tone: 'neutro',
       });
     }
 
@@ -1373,19 +1410,9 @@ export async function getAttentionItems(
               ? `${artistName} aceitou sua solicitação de representação`
               : `${artistName} recusou sua solicitação de representação`,
           href: '/dashboard/artistas',
-          kind: 'info',
+          tone: r.status === 'aceita' ? 'positivo' : 'neutro',
         });
       }
-    }
-  } else {
-    for (const b of bookings.filter(
-      (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'artista'
-    )) {
-      items.push({
-        text: `${b.otherPartyName} propôs ${b.commission_percent}% de comissão`,
-        href: `/dashboard/bookings/${b.id}`,
-        kind: 'atencao',
-      });
     }
   }
 

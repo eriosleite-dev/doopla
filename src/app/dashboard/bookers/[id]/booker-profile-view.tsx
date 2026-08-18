@@ -16,7 +16,16 @@ export async function BookerProfileView({ id }: { id: string }) {
   if (profile.role !== 'artista') redirect('/dashboard');
 
   const [{ data: bookerAccount }, { data: booker }] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', id).eq('role', 'booker').maybeSingle<Profile>(),
+    // booker_profile_id em representations pode ser um booker OU uma
+    // agência (role distinta desde o cadastro) — filtrar só por
+    // role='booker' derrubava a abertura do perfil de quem tinha uma
+    // agência na rede.
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', id)
+      .in('role', ['booker', 'agencia'])
+      .maybeSingle<Profile>(),
     supabase.from('booker_profiles').select('*').eq('profile_id', id).maybeSingle<BookerProfile>(),
   ]);
   if (!bookerAccount) notFound();
