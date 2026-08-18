@@ -13,6 +13,31 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## 0.8. Preferências de matching: perfil deixa de ser formulário aberto
+
+Pedido: os campos de matching (especialidades, nichos, área de atuação,
+idiomas, disponibilidade, comissão etc.) continuam existindo e
+alimentando busca/recomendação — só não podiam mais ficar sempre
+abertos como parede de chips, pesando o perfil e expondo a estrutura
+interna do matching.
+
+- ✅ **Perfil (booker e artista)**: a seção de matching virou um resumo
+  compacto ("Especialidades: Negociação · Comercial · +2", etc.,
+  formato do documento) + botão "Editar preferências". Editar abre um
+  modal com os mesmos campos de sempre, organizados em blocos
+  (preferências comerciais isoladas num bloco próprio); fechar sem
+  salvar não perde o rascunho porque os campos continuam montados (só
+  escondidos), e salvar fecha o modal sozinho. Nenhum campo novo, nenhum
+  dado duplicado — é só apresentação, mesmo formulário e mesma
+  `updateBookerProfileAction`/`updateArtistProfileAction` de antes.
+  Regra de campo vazio mantida: só aparece no resumo o que já foi
+  respondido.
+- ⏳ **Área de atuação com localidades concretas** (em vez de "minha
+  cidade/meu estado" abstrato): ainda não feito — precisa de migration,
+  é o próximo passo.
+- ⏳ **Cadastro: separar essencial de complementar** + card "Complete
+  suas preferências" no painel: ainda não feito.
+
 ## 0.7. Favoritar bookers/artistas (mútuo, separado de "já trabalhei com")
 
 - 🔒 **Migration 0029 (`favorites`)**: escrita, falta você rodar no
