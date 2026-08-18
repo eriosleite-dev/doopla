@@ -76,6 +76,40 @@ export async function confirmInviteAction(formData: FormData) {
     return;
   }
 
+  // Booker no plano Básico só gerencia 1 artista ativo por vez — checa
+  // antes de tentar criar (a trigger booker_artist_limit_check ainda
+  // garante isso no banco). Só manda pro modal de upgrade quando quem
+  // está confirmando AGORA é o próprio booker — se for o artista
+  // confirmando o convite de um booker que já está no limite, não faz
+  // sentido mostrar "faça upgrade" pra ele: o convite simplesmente não
+  // confirma (mesmo comportamento de qualquer outro erro aqui embaixo).
+  const { data: existingRep } = await supabase
+    .from('representations')
+    .select('id')
+    .eq('artist_profile_id', artistProfileId)
+    .eq('booker_profile_id', bookerProfileId)
+    .maybeSingle<{ id: string }>();
+
+  if (!existingRep) {
+    const { data: bookerSub } = await supabase
+      .from('subscriptions')
+      .select('booker_plan')
+      .eq('profile_id', bookerProfileId)
+      .maybeSingle<{ booker_plan: string }>();
+    if (bookerSub?.booker_plan === 'basic') {
+      const { count } = await supabase
+        .from('representations')
+        .select('id', { count: 'exact', head: true })
+        .eq('booker_profile_id', bookerProfileId);
+      if ((count ?? 0) >= 1) {
+        if (user.id === bookerProfileId) {
+          redirect('/dashboard?limiteBooker=1');
+        }
+        return;
+      }
+    }
+  }
+
   const { error: repError } = await supabase.from('representations').insert({
     artist_profile_id: artistProfileId,
     booker_profile_id: bookerProfileId,
@@ -1396,6 +1430,27 @@ export async function respondRepresentationRequestAction(formData: FormData) {
     .eq('id', requestId)
     .single<{ artist_profile_id: string; booker_profile_id: string; status: string }>();
   if (!request || request.artist_profile_id !== user.id || request.status !== 'pendente') return;
+
+  // Se o booker está no plano Básico e já tem 1 artista ativo, ele não
+  // pode aceitar mais ninguém agora — o artista precisa saber que a
+  // solicitação não pôde ser confirmada. Mensagem neutra (nunca "faça
+  // upgrade"): a decisão de assinar o Pro é do booker, não do artista.
+  if (decision === 'aceitar') {
+    const { data: bookerSub } = await supabase
+      .from('subscriptions')
+      .select('booker_plan')
+      .eq('profile_id', request.booker_profile_id)
+      .maybeSingle<{ booker_plan: string }>();
+    if (bookerSub?.booker_plan === 'basic') {
+      const { count } = await supabase
+        .from('representations')
+        .select('id', { count: 'exact', head: true })
+        .eq('booker_profile_id', request.booker_profile_id);
+      if ((count ?? 0) >= 1) {
+        redirect('/dashboard/bookers?bookerNoLimite=1');
+      }
+    }
+  }
 
   await supabase
     .from('representation_requests')

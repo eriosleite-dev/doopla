@@ -22,9 +22,9 @@ export const metadata: Metadata = {
 };
 
 export default async function BookersPage(props: {
-  searchParams: Promise<{ discoverLimit?: string }>;
+  searchParams: Promise<{ discoverLimit?: string; bookerNoLimite?: string }>;
 }) {
-  const { discoverLimit } = await props.searchParams;
+  const { discoverLimit, bookerNoLimite } = await props.searchParams;
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
@@ -53,6 +53,15 @@ export default async function BookersPage(props: {
           Bookers que você já trabalhou
         </h1>
       </header>
+
+      {bookerNoLimite === '1' && (
+        <section className="rounded-[18px] border border-[var(--line-light)] bg-white p-5">
+          <p className="text-sm text-[var(--ink)]/70">
+            Esse booker atingiu o limite de artistas do plano dele e não pôde confirmar sua
+            solicitação agora. Vale tentar de novo mais tarde, ou combinar diretamente com ele.
+          </p>
+        </section>
+      )}
 
       {incomingRequests.length > 0 && (
         <section id="solicitacoes" className="flex flex-col gap-3">

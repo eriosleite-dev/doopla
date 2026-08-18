@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { formatCentsAsBRL } from '@/lib/format';
 import { siteOrigin } from '@/lib/site-url';
 
+import { ArtistLimitBanner } from './booker-pro/artist-limit-banner';
 import { BookerOficialCard } from './booker-oficial-card';
 import { BookingsPreview } from './bookings-list';
 import { ProUpsellCard } from './booker-pro/pro-upsell-card';
@@ -47,7 +48,10 @@ export const metadata: Metadata = {
   title: 'Painel | Doopla',
 };
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: {
+  searchParams: Promise<{ limiteBooker?: string }>;
+}) {
+  const { limiteBooker } = await props.searchParams;
   const { supabase, user, profile } = await getSessionProfile();
 
   const bookings = await getUserBookings(user.id, profile.role, supabase);
@@ -86,6 +90,8 @@ export default async function DashboardPage() {
           Olá, {profile.full_name || user.email}
         </h1>
       </header>
+
+      {limiteBooker === '1' && <ArtistLimitBanner />}
 
       {profile.role === 'booker' ? (
         <BookerStats bookings={bookings} />
