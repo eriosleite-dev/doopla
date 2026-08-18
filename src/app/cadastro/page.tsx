@@ -21,10 +21,18 @@ function isSignupRole(value: string | undefined): value is SignupRole {
 export default async function CadastroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ role?: string; ref?: string }>;
+  searchParams: Promise<{ role?: string; tipo?: string; ref?: string }>;
 }) {
   const params = await searchParams;
-  const defaultRole = isSignupRole(params.role) ? params.role : 'artista';
+  // `tipo` é o nome pedido pela especificação de preços pros CTAs da
+  // Home (?tipo=artista/?tipo=booker); `role` continua funcionando pros
+  // links já espalhados pelo resto do produto — mesmo parâmetro, dois
+  // nomes aceitos.
+  const defaultRole = isSignupRole(params.tipo)
+    ? params.tipo
+    : isSignupRole(params.role)
+      ? params.role
+      : 'artista';
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">

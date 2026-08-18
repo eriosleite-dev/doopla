@@ -13,6 +13,48 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Preços — Especificação final (artista): Oferta de Lançamento + voucher Founder
+
+Documento novo substitui qualquer orientação anterior de preço do
+artista. "Primeiros 50 artistas = R$19,90/mês pra sempre" descartado.
+
+- ✅ **Migration `subscriptions` + `founder_vouchers`**: assinatura real
+  por perfil (`status`, `price_rule`, `locked_price_cents`,
+  `trial_ends_at`). Sem processador de pagamento integrado ainda (nem
+  Stripe, nada) — "confirmar assinatura" é estado real gravado no
+  banco, sem cobrar cartão de verdade, mesmo estágio do resto do
+  produto hoje. `handle_new_user()` cria a assinatura automaticamente
+  no cadastro: `standard_launch` por padrão, ou `founder_locked` se um
+  código de voucher válido (e ainda não redimido) vier no formulário —
+  validado e reivindicado na própria transação do cadastro.
+  `founder_vouchers` são gerados manualmente por você, direto no
+  Supabase (sem tela de admin por enquanto — combinado assim):
+  ```sql
+  insert into founder_vouchers (code, note) values ('FOUNDER-XXXX', 'pra quem/contexto');
+  ```
+- ✅ **Cadastro do artista**: tela final não fala mais em "Preço
+  Fundador". Mostra "Oferta de lançamento", R$39,90/mês riscado,
+  R$19,90 no 1º mês, 7 dias grátis, e a itemização completa (plano,
+  período grátis, valor do 1º mês, valor recorrente, periodicidade,
+  quando começa a cobrar, cancelamento) antes do botão. Campo opcional
+  "Tenho um código de voucher Founder" — nunca em destaque, só um link
+  discreto pra quem já tem o código.
+- ✅ **Home + FAQ**: bola do artista virou "Oferta de lançamento" (sem
+  "Preço Fundador", sem "Sem comissão"/"Sem exclusividade" embaixo —
+  isso já está nas seções explicativas). Botão redundante da esquerda
+  removido; CTA único "Começar grátis". Seção de planos no rodapé da
+  Home e a pergunta de preço no FAQ também corrigidas pra R$19,90 no
+  1º mês / R$39,90 a partir do 2º.
+- ✅ CTAs de artista na Home agora usam `/cadastro?tipo=artista`
+  (`tipo` aceito como alias de `role` em `/cadastro`, sem quebrar links
+  existentes que ainda usam `role=`).
+
+Próximo: infraestrutura de plano do Booker (Básico/Pro) — enum real,
+`hasProAccess`, modal de upgrade honesto (sem vender recurso que não
+existe), limite de 1 artista ativo no Básico com regra de downgrade.
+
+---
+
 ## Prioridade 6 — Reorganizar nomenclatura do painel do artista
 
 - ✅ Sidebar do artista: "Oportunidades" virou "Pedidos e trabalhos" —

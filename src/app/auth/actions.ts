@@ -60,6 +60,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'feeRange',
     'helpAreas',
     'pendingBookerInvite',
+    'founderVoucherCode',
   ],
   booker: [
     'modoTrabalho',

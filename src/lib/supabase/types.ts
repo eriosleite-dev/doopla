@@ -343,6 +343,34 @@ export type AgendaEntry = {
   created_at: string;
 };
 
+export type SubscriptionStatus = 'trialing' | 'active' | 'canceled';
+export type SubscriptionPriceRule = 'standard_launch' | 'founder_locked';
+export type BookerPlan = 'basic' | 'pro';
+
+export type Subscription = {
+  id: string;
+  profile_id: string;
+  role: UserRole;
+  status: SubscriptionStatus;
+  price_rule: SubscriptionPriceRule | null;
+  locked_price_cents: number | null;
+  founder_voucher_id: string | null;
+  trial_ends_at: string | null;
+  started_at: string;
+  canceled_at: string | null;
+  updated_at: string;
+};
+
+export type FounderVoucher = {
+  id: string;
+  code: string;
+  locked_price_cents: number;
+  note: string | null;
+  redeemed_by_profile_id: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+};
+
 export type PayoutRequestStatus = 'solicitado';
 
 export type PayoutRequest = {
@@ -553,6 +581,18 @@ export type Database = {
             'artist_profile_id' | 'created_by_profile_id' | 'entry_type' | 'start_date' | 'end_date'
           >;
         Update: Partial<AgendaEntry>;
+        Relationships: [];
+      };
+      subscriptions: {
+        Row: Subscription;
+        Insert: Partial<Subscription> & Pick<Subscription, 'profile_id' | 'role'>;
+        Update: Partial<Subscription>;
+        Relationships: [];
+      };
+      founder_vouchers: {
+        Row: FounderVoucher;
+        Insert: Partial<FounderVoucher> & Pick<FounderVoucher, 'code'>;
+        Update: Partial<FounderVoucher>;
         Relationships: [];
       };
       payout_requests: {

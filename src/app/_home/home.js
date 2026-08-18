@@ -42,7 +42,7 @@ const faqData = [
   ["Posso ter mais de um booker?","Sim. Você pode trabalhar com pessoas diferentes por território, mercado ou tipo de oportunidade."],
   ["Preciso dar exclusividade?","Não como regra da doopla. Você decide com quem trabalha e sob quais condições."],
   ["Já tenho booker. Posso usar a doopla?","Sim. Você pode convidar seu booker pra doopla — vocês usam a plataforma juntos pra organizar oportunidades, negociações, contratos, agenda e pagamentos."],
-  ["Quanto custa para o artista?","7 dias grátis. Depois, R$19,90/mês por 3 meses (Preço Fundador) — sem comissão sobre o cachê. Após esse período, passa a valer o preço vigente do plano."],
+  ["Quanto custa para o artista?","7 dias grátis. R$19,90 no 1º mês. A partir do 2º mês, R$39,90/mês — sem comissão sobre o cachê."],
   ["Quanto custa para o booker?","O Booker Básico é R$0/mês, sem mensalidade. Sua comissão é negociada diretamente com o artista em cada booking."],
   ["A doopla fica com uma porcentagem do cachê ou da comissão?","Não. O artista paga a mensalidade do plano, sem desconto sobre o cachê. A comissão negociada entre booker e artista é 100% do booker."],
   ["O que é Doopla Verified?","O selo que um booking recebe depois que o cliente confirma, por um link oficial da doopla, as condições que foram combinadas."],

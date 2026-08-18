@@ -432,27 +432,65 @@ const BOOKER_PLANO_STEP: WizardStep = {
   label: 'Seu plano na doopla',
 };
 
-// Só visual por enquanto — sem cobrança de verdade (depende do Bloco 2,
-// integração com o Pagar.me, que ainda não começou).
+// Sem cobrança de verdade ainda (nenhum processador de pagamento
+// integrado) — "confirmar assinatura" grava estado real no banco
+// (subscriptions, migration 0031), não cobra cartão. Regra pública:
+// 7 dias grátis -> R$19,90 no 1º mês -> R$39,90/mês. O voucher Founder
+// (condição especial, nunca pública) é aplicado no próprio cadastro se
+// um código válido for informado aqui — ver ESPECIFICAÇÃO FINAL DE
+// PREÇOS.
 function PlanStep() {
+  const [showVoucher, setShowVoucher] = useState(false);
+
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper-dim)] p-6">
       <div className="flex items-center justify-between">
         <span className="font-doopla-display text-lg font-semibold">doopla</span>
         <span className="font-doopla-mono rounded-full bg-[var(--accent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--ink)]">
-          Preço Fundador
+          Oferta de lançamento
         </span>
       </div>
       <div className="flex items-baseline gap-2">
         <span className="text-sm text-[var(--ink)]/40 line-through">R$39,90/mês</span>
         <span className="font-doopla-display text-3xl font-semibold text-[var(--accent-ink)]">
-          R$19,90/mês
+          R$19,90
         </span>
+        <span className="text-sm text-[var(--ink)]/60">no 1º mês</span>
       </div>
-      <p className="text-sm text-[var(--ink)]/70">
-        7 dias grátis. Depois, R$19,90/mês por 3 meses. Após esse período, passa a valer o
-        preço vigente do plano.
-      </p>
+
+      <ul className="flex flex-col gap-1.5 text-sm text-[var(--ink)]/75">
+        <li>• Plano: doopla Artista</li>
+        <li>• 7 dias grátis, sem cobrança</li>
+        <li>• 1º mês (após o teste): R$19,90</li>
+        <li>• A partir do 2º mês: R$39,90/mês</li>
+        <li>• Cobrança mensal, recorrente</li>
+        <li>• Começa a valer só depois dos 7 dias grátis</li>
+        <li>• Cancela quando quiser, sem multa — sem cobrança após o cancelamento</li>
+      </ul>
+
+      {showVoucher ? (
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-[var(--ink)]/70">Código do voucher Founder</span>
+          <input
+            type="text"
+            name="founderVoucherCode"
+            placeholder="Ex: FOUNDER-ABC123"
+            className={fieldInputClass}
+          />
+          <span className="text-xs text-[var(--ink)]/50">
+            Se o código for válido, sua assinatura fica em R$19,90/mês enquanto continuar ativa —
+            não vira R$39,90 depois.
+          </span>
+        </label>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowVoucher(true)}
+          className="w-fit text-xs text-[var(--ink)]/50 underline underline-offset-2"
+        >
+          Tenho um código de voucher Founder
+        </button>
+      )}
     </div>
   );
 }
