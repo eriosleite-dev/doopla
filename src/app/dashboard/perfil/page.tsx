@@ -105,7 +105,7 @@ export default async function PerfilPage() {
               instagramUrl={bookerDetails?.instagram_url ?? null}
               websiteUrl={bookerDetails?.website_url ?? null}
               capacity={bookerDetails?.capacity ?? null}
-              feeRange={bookerDetails?.fee_range ?? null}
+              feeRange={bookerDetails?.fee_range ?? []}
               artistCategories={bookerDetails?.artist_categories ?? []}
               clientTypes={bookerDetails?.client_types ?? []}
               regions={bookerDetails?.regions ?? []}
@@ -216,7 +216,7 @@ type BookerDetails = {
   languages: string[];
   specialty_areas: string[];
   capacity: string | null;
-  fee_range: string | null;
+  fee_range: string[];
   website_url: string | null;
 };
 

@@ -9,9 +9,77 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-17.
+Última atualização: 2026-08-18.
 
 ---
+
+## 0.4. Ajustes de cadastro, rodapé dos painéis e revisão da Home
+
+Bloco pontual, fora da fila de 8 prioridades (essa continua na seção 0.3
+logo abaixo — próxima é a Prioridade 5, /orçamento).
+
+- ✅ **Bug relatado (investigado, sem bug de código encontrado)**: link
+  "Artistas" no painel do booker (`/dashboard/artistas`) — rota existe,
+  guarda de role correta, build limpo. Provavelmente cache de deploy
+  anterior à Prioridade 4, que reescreveu essa página.
+- ✅ **Rodapé compacto nos painéis**: componente único
+  `dashboard-footer.tsx`, injetado uma vez em `dashboard/layout.tsx` (some
+  em toda página interna do artista/booker automaticamente). Central de
+  Ajuda, Fale com a Doopla, Termos, Privacidade, Pagamentos e Segurança e
+  Doopla Verified — todos links reais. Âncoras `#verified`/`#pagamento`
+  novas em `/seguranca` pros dois últimos apontarem pro trecho certo.
+- ✅ **Cadastro do artista**: removida a 3ª opção "recorrente e pontual" (só
+  recorrente/pontual); removida a pergunta duplicada de tipos de
+  cliente/evento (`clientTypes` — sobrepunha `workTypes`, tinham opções
+  literalmente repetidas: "Casamentos", "Festas corporativas"); removida a
+  pergunta de idiomas (IA traduz quando precisar); removida a opção "Tenho
+  agência, quero complementar" do "já tem booker".
+- ✅ **Tela final do artista (Preço Fundador)**: agora deixa claro que são
+  15 dias grátis e que o preço promocional (R$19,90/mês) vale só por 3
+  meses, não indefinidamente — removido "enquanto sua assinatura
+  permanecer ativa". CTA "Começar 15 dias grátis" + "Você só começa a
+  pagar após os 15 dias." Sem "Pergunta X de X" nessa tela.
+- ✅ **Cadastro do booker, reescrito**: "já representa artista?"
+  (sim/ainda não + quantos, reaproveitando a pergunta de roster) virou
+  cedo no fluxo, não mais a última pergunta; foco universal/nichado com
+  linguagem menos "venda de renda"; experiência agora é sim/não + campo
+  de texto condicional (só abre se "sim"); as 3 perguntas de nicho
+  ficaram explicitamente diferentes uma da outra (mercados = nichos que
+  quer atuar, artistCategories = categorias de artista que quer
+  representar, clientTypes = tipos de oportunidade que quer receber);
+  capacidade agora em faixas (1 a 3 / 4 a 5 / 6 a 10 / mais de 10) com
+  mensagem de crescimento operacional, sem prometer "mais R$"; faixa de
+  cachê virou seleção múltipla ("gostaria de trabalhar", não "costuma").
+  **Migration 0027**: `booker_profiles.fee_range` de `text` pra `text[]`
+  (só do booker — o do artista continua escalar).
+- ✅ **Tela final do booker (nova)**: antes o cadastro do booker não tinha
+  nenhuma tela de plano. Agora tem — "Booker Básico, R$0/mês, sem
+  mensalidade", explica que a comissão é negociada direto com o artista
+  (a doopla não define uma comissão fixa), CTA "Começar grátis" (nunca
+  "teste grátis", porque não é teste).
+- ✅ **Revisão consolidada da Home** (documento final, que substitui os
+  anteriores): "Marketplace de representação" → "Plataforma de
+  representação" em todo canto (Home, cadastro, metadata do site);
+  bloco novo "Já tem booker? Traga pra doopla" e "Receba oportunidades
+  pelo seu link" na seção do artista; removida a frase incorreta "Você só
+  recebe quando o booking acontece"; reforçado "Sua comissão. Seu
+  acordo." na seção do booker, com ângulo pra quem já é profissional
+  ("Já trabalha com booking?") sem perder o ângulo de quem tá começando
+  (networking → renda extra, sem prometer valor); "Nenhuma negociação
+  oficial acontece sem autorização" trocado por "Você decide quem pode
+  representar você e mantém controle sobre os acordos" (a frase antiga
+  parecia exigir autorização mensagem a mensagem); "Pagamento seguro"
+  renomeado pra "Pagamento Doopla" em toda parte (Home e `/seguranca`) —
+  evita prometer segurança absoluta; corrigido "30 dias" pra "15 dias"
+  (não existia mais nenhuma ocorrência de 30 dias, mas garantido);
+  plano do artista reescrito com preço riscado + framing de 3 meses;
+  **seção de plano do Booker Básico criada do zero na Home** (não
+  existia — só o plano do artista aparecia); rodapé da Home reorganizado
+  em 4 colunas (Produto / Doopla / Segurança / Legal), todos os links
+  reais; FAQ ampliada com as perguntas que faltavam (já tenho booker,
+  quanto custa cada lado, Doopla fica com %, o que é Verified, como
+  funcionam os pagamentos). Não mexi na experiência "Sou Agência" além
+  da mudança global de nomenclatura, como pedido.
 
 ## 0.3. Bloco novo — cadastro/matching/relação artista↔booker (8 prioridades)
 

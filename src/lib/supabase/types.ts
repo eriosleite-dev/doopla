@@ -88,7 +88,7 @@ export type BookerProfile = {
   languages: string[];
   specialty_areas: string[];
   capacity: string | null;
-  fee_range: string | null;
+  fee_range: string[];
   website_url: string | null;
   created_at: string;
   updated_at: string;

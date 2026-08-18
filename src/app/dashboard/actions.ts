@@ -1093,7 +1093,7 @@ export async function updateBookerProfileAction(
   const instagramUrl = String(formData.get('instagramUrl') ?? '').trim();
   const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
   const capacity = String(formData.get('capacity') ?? '').trim();
-  const feeRange = String(formData.get('feeRange') ?? '').trim();
+  const feeRange = formData.getAll('feeRange').map(String).filter(Boolean);
   const artistCategories = formData.getAll('artistCategories').map(String).filter(Boolean);
   const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
   const regions = formData.getAll('regions').map(String).filter(Boolean);
@@ -1110,7 +1110,7 @@ export async function updateBookerProfileAction(
       instagram_url: instagramUrl || null,
       website_url: websiteUrl || null,
       capacity: capacity || null,
-      fee_range: feeRange || null,
+      fee_range: feeRange,
       artist_categories: artistCategories,
       client_types: clientTypes,
       regions,

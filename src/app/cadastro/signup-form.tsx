@@ -67,7 +67,8 @@ type WizardStep = {
     | 'invites'
     | 'single-invite'
     | 'choice-cards'
-    | 'plan';
+    | 'plan'
+    | 'plan-booker';
   label: string;
   hint?: string;
   placeholder?: string;
@@ -80,9 +81,8 @@ export type ArtistChip = { name: string; sendNow: boolean };
 
 const OUTRO = 'Outro';
 
-const INTENCAO_RECORRENTE = 'Quero um booker / assistente recorrente';
+const INTENCAO_RECORRENTE = 'Quero alguém para me representar de forma recorrente';
 const INTENCAO_PONTUAL = 'Preciso de ajuda pontual';
-const INTENCAO_AMBOS = 'Booker recorrente e ajuda pontual, dependendo do caso';
 
 const ARTISTA_INTENCAO_STEP: WizardStep = {
   formKey: 'intencao',
@@ -99,11 +99,6 @@ const ARTISTA_INTENCAO_STEP: WizardStep = {
       value: INTENCAO_PONTUAL,
       label: INTENCAO_PONTUAL,
       description: 'Ex.: cobrar um cliente, fechar um contrato, negociar um cachê.',
-    },
-    {
-      value: INTENCAO_AMBOS,
-      label: INTENCAO_AMBOS,
-      description: 'Quero um booker recorrente, mas também topo ajuda pontual quando surgir.',
     },
   ],
 };
@@ -168,13 +163,6 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     options: WORK_TYPE_OPTIONS,
   },
   {
-    formKey: 'clientTypes',
-    kind: 'chip-multi',
-    arrayOutput: true,
-    label: 'Que tipos de cliente ou evento você costuma atender?',
-    options: CLIENT_TYPE_OPTIONS,
-  },
-  {
     formKey: 'mercados',
     kind: 'chip-multi',
     label: 'Em quais nichos você gostaria de ser mais representado?',
@@ -186,13 +174,6 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     arrayOutput: true,
     label: 'Em quais regiões você topa atuar?',
     options: REGION_OPTIONS,
-  },
-  {
-    formKey: 'languages',
-    kind: 'chip-multi',
-    arrayOutput: true,
-    label: 'Quais idiomas você fala?',
-    options: LANGUAGE_OPTIONS,
   },
   {
     formKey: 'careerStage',
@@ -217,11 +198,7 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     formKey: 'temBooker',
     kind: 'chip',
     label: 'Já tem um booker ou alguém que te representa?',
-    options: [
-      'Sim, quero trazer essa pessoa pra doopla',
-      'Não, quero encontrar bookers',
-      'Tenho agência, quero complementar',
-    ],
+    options: ['Sim, quero trazer essa pessoa pra doopla', 'Não, quero encontrar bookers'],
   },
 ];
 
@@ -278,48 +255,65 @@ const BOOKER_PERFIL_STEP: WizardStep = {
 };
 
 // Agência não é mais um tipo de conta separado — quando a pessoa se
-// descreve como "Agência pequena" no passo acima, pedimos o roster aqui.
+// descreve como "Agência pequena" no passo acima, ou quando responde que
+// já representa artistas, pedimos o roster aqui (mesma pergunta serve
+// pros dois gatilhos, sem duplicar a coleta).
 const BOOKER_ROSTER_STEP: WizardStep = {
   formKey: 'roster',
   kind: 'text',
-  label: 'Número aproximado de artistas que vocês representam',
+  label: 'Quantos artistas você representa atualmente?',
   placeholder: 'Ex: 15',
+};
+
+const BOOKER_JA_REPRESENTA_STEP: WizardStep = {
+  formKey: 'jaRepresenta',
+  kind: 'chip',
+  label: 'Você já representa algum artista?',
+  options: ['Sim', 'Ainda não'],
 };
 
 const BOOKER_FOCO_STEP: WizardStep = {
   formKey: 'foco',
   kind: 'choice-cards',
-  label: 'Você atende qualquer tipo de artista, ou foca num nicho específico?',
+  label: 'Você quer atender qualquer tipo de artista ou prefere focar em um nicho específico?',
   choices: [
     {
       value: 'Universal',
-      label: 'Universal',
+      label: 'Quero atender diferentes tipos de artistas',
       description:
-        'Qualquer artista, qualquer nicho. Maior chance de renda: mais artistas e mercados disponíveis significam mais oportunidades de comissão.',
+        'Qualquer artista, qualquer nicho. Mais artistas e mercados disponíveis significam mais oportunidades.',
     },
     {
       value: 'Nichado',
-      label: 'Nichado',
-      description:
-        'Foco em um nicho específico, onde você já tem rede e experiência.',
+      label: 'Prefiro focar em nichos específicos',
+      description: 'Foco em um nicho específico, onde você já tem rede e experiência.',
     },
   ],
+};
+
+const BOOKER_HAS_EXPERIENCE_STEP: WizardStep = {
+  formKey: 'hasExperience',
+  kind: 'chip',
+  label: 'Você já tem experiência com representação ou booking?',
+  hint: 'Se ainda não tiver, tudo bem — a Doopla também vai te ajudar a começar.',
+  options: ['Sim, já tenho experiência', 'Ainda não'],
+};
+
+const BOOKER_EXPERIENCE_DETAIL_STEP: WizardStep = {
+  formKey: 'bio',
+  kind: 'textarea',
+  label: 'Conte um pouco sobre sua experiência',
+  hint: 'Isso vai aparecer no seu perfil pra artistas.',
+  placeholder: 'Ex: Booker há 3 anos, foco em música eletrônica e eventos corporativos',
 };
 
 // Mesmo conjunto completo pras 3 opções de modoTrabalho — nenhuma delas
 // leva a um caminho mais curto que as outras.
 const BOOKER_REMAINING_STEPS: WizardStep[] = [
   {
-    formKey: 'bio',
-    kind: 'textarea',
-    label: 'Conte sua experiência com representação/booking',
-    hint: 'Isso vai aparecer no seu perfil pra artistas.',
-    placeholder: 'Ex: Booker há 3 anos, foco em música eletrônica e eventos corporativos',
-  },
-  {
     formKey: 'mercados',
     kind: 'chip-multi',
-    label: 'Em quais mercados você tem relacionamento?',
+    label: 'Em quais nichos você gostaria de atuar como representante?',
     options: [
       'Clubs',
       'Festivais',
@@ -336,14 +330,14 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     formKey: 'artistCategories',
     kind: 'chip-multi',
     arrayOutput: true,
-    label: 'Com quais categorias de artista você trabalha?',
+    label: 'Quais categorias de artistas você gostaria de representar?',
     options: ARTIST_CATEGORY_OPTIONS,
   },
   {
     formKey: 'clientTypes',
     kind: 'chip-multi',
     arrayOutput: true,
-    label: 'Que tipos de trabalho/cliente você domina?',
+    label: 'De quais nichos você gostaria de receber oportunidades?',
     options: CLIENT_TYPE_OPTIONS,
   },
   {
@@ -369,21 +363,17 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
   },
   {
     formKey: 'capacity',
-    kind: 'choice-cards',
-    label: 'Quantos artistas você consegue atender agora?',
-    choices: choiceCardsFrom(CAPACITY_OPTIONS),
+    kind: 'chip',
+    label: 'Quantos artistas você conseguiria atender hoje?',
+    hint: 'Com a Doopla, você organiza melhor sua operação e pode aumentar esse número conforme crescer.',
+    options: CAPACITY_OPTIONS.map((o) => o.value),
   },
   {
     formKey: 'feeRange',
-    kind: 'chip',
-    label: 'Com qual faixa de cachê você costuma trabalhar?',
+    kind: 'chip-multi',
+    arrayOutput: true,
+    label: 'Com quais faixas de cachê você gostaria de trabalhar?',
     options: FEE_RANGE_OPTIONS,
-  },
-  {
-    formKey: 'jaRepresenta',
-    kind: 'chip',
-    label: 'Você já representa alguém?',
-    options: ['Sim', 'Ainda não'],
   },
 ];
 
@@ -397,6 +387,12 @@ const BOOKER_INVITES_STEP: WizardStep = {
 const ARTISTA_PLANO_STEP: WizardStep = {
   formKey: 'planoVisto',
   kind: 'plan',
+  label: 'Seu plano na doopla',
+};
+
+const BOOKER_PLANO_STEP: WizardStep = {
+  formKey: 'planoVisto',
+  kind: 'plan-booker',
   label: 'Seu plano na doopla',
 };
 
@@ -418,8 +414,33 @@ function PlanStep() {
         </span>
       </div>
       <p className="text-sm text-[var(--ink)]/70">
-        Entre agora e mantenha seu Preço Fundador de R$19,90/mês enquanto sua
-        assinatura permanecer ativa.
+        15 dias grátis. Depois, R$19,90/mês por 3 meses. Após esse período, passa a valer o
+        preço vigente do plano.
+      </p>
+    </div>
+  );
+}
+
+function BookerPlanStep() {
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper-dim)] p-6">
+      <div className="flex items-center justify-between">
+        <span className="font-doopla-display text-lg font-semibold">doopla</span>
+        <span className="font-doopla-mono rounded-full bg-[var(--musgo)]/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--musgo)]">
+          Booker Básico
+        </span>
+      </div>
+      <span className="font-doopla-display text-3xl font-semibold text-[var(--accent-ink)]">
+        R$0/mês
+      </span>
+      <p className="text-sm text-[var(--ink)]/70">
+        Comece gratuitamente. Receba oportunidades, represente artistas e organize seus
+        trabalhos pela Doopla.
+      </p>
+      <p className="text-sm text-[var(--ink)]/70">
+        Sua comissão é negociada diretamente com o artista em cada trabalho — a Doopla não
+        define uma comissão fixa para o booker. O percentual acordado fica registrado naquele
+        booking.
       </p>
     </div>
   );
@@ -427,14 +448,24 @@ function PlanStep() {
 
 function getBookerSteps(answers: Record<string, string>): WizardStep[] {
   const steps = [BOOKER_MODO_STEP, BOOKER_NAME_STEP, BOOKER_PERFIL_STEP];
-  if ((answers.perfil ?? '').includes('Agência pequena')) {
+  const isAgencia = (answers.perfil ?? '').includes('Agência pequena');
+  if (isAgencia) {
+    steps.push(BOOKER_ROSTER_STEP);
+  }
+  steps.push(BOOKER_JA_REPRESENTA_STEP);
+  if (!isAgencia && answers.jaRepresenta === 'Sim') {
     steps.push(BOOKER_ROSTER_STEP);
   }
   steps.push(BOOKER_FOCO_STEP);
+  steps.push(BOOKER_HAS_EXPERIENCE_STEP);
+  if (answers.hasExperience === 'Sim, já tenho experiência') {
+    steps.push(BOOKER_EXPERIENCE_DETAIL_STEP);
+  }
   steps.push(...BOOKER_REMAINING_STEPS);
   if (answers.jaRepresenta === 'Sim') {
     steps.push(BOOKER_INVITES_STEP);
   }
+  steps.push(BOOKER_PLANO_STEP);
   return steps;
 }
 
@@ -578,7 +609,8 @@ export function SignupForm({
   const canContinue =
     currentStep?.kind === 'invites' ||
     currentStep?.kind === 'single-invite' ||
-    currentStep?.kind === 'plan'
+    currentStep?.kind === 'plan' ||
+    currentStep?.kind === 'plan-booker'
       ? true
       : currentStep?.kind === 'chip-multi'
         ? currentMultiSelected.length > 0 &&
@@ -629,10 +661,12 @@ export function SignupForm({
 
         {currentStep && (
           <div className="flex flex-col gap-3">
-            <span className={eyebrowClass}>
-              Pergunta {stepIndex + 1} de {totalSteps}
-            </span>
-            {currentStep.kind !== 'plan' && (
+            {currentStep.kind !== 'plan' && currentStep.kind !== 'plan-booker' && (
+              <span className={eyebrowClass}>
+                Pergunta {stepIndex + 1} de {totalSteps}
+              </span>
+            )}
+            {currentStep.kind !== 'plan' && currentStep.kind !== 'plan-booker' && (
               <>
                 <label className={fieldLabelClass}>{currentStep.label}</label>
                 {currentStep.hint && (
@@ -665,6 +699,8 @@ export function SignupForm({
             )}
 
             {currentStep.kind === 'plan' && <PlanStep />}
+
+            {currentStep.kind === 'plan-booker' && <BookerPlanStep />}
 
             {currentStep.kind === 'chip' && (
               <div className="flex flex-wrap gap-2">
@@ -860,10 +896,22 @@ export function SignupForm({
                 {currentStep.kind === 'invites' || currentStep.kind === 'single-invite'
                   ? 'Próximo'
                   : currentStep.kind === 'plan'
-                    ? 'Começar teste grátis'
-                    : 'Continuar'}
+                    ? 'Começar 15 dias grátis'
+                    : currentStep.kind === 'plan-booker'
+                      ? 'Começar grátis'
+                      : 'Continuar'}
               </button>
             </div>
+            {currentStep.kind === 'plan' && (
+              <p className="text-center text-xs text-[var(--ink)]/45">
+                Você só começa a pagar após os 15 dias.
+              </p>
+            )}
+            {currentStep.kind === 'plan-booker' && (
+              <p className="text-center text-xs text-[var(--ink)]/45">
+                Sem cartão, sem mensalidade. Você só paga se decidir fazer upgrade no futuro.
+              </p>
+            )}
           </div>
         )}
 

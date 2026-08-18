@@ -44,7 +44,7 @@ export function BookerProfileForm({
   instagramUrl: string | null;
   websiteUrl: string | null;
   capacity: string | null;
-  feeRange: string | null;
+  feeRange: string[];
   artistCategories: string[];
   clientTypes: string[];
   regions: string[];
@@ -121,7 +121,7 @@ export function BookerProfileForm({
         />
         <ChipCheckboxGroup
           name="clientTypes"
-          label="Tipos de trabalho/cliente que você domina"
+          label="Nichos de onde você gostaria de receber oportunidades"
           options={CLIENT_TYPE_OPTIONS}
           defaultValues={clientTypes}
         />
@@ -154,21 +154,12 @@ export function BookerProfileForm({
           </select>
         </label>
 
-        <label className={labelClass}>
-          <span className={eyebrowClass}>Faixa de cachê dos artistas com quem trabalha</span>
-          <select
-            name="feeRange"
-            defaultValue={feeRange ?? ''}
-            className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
-          >
-            <option value="">Prefiro não dizer</option>
-            {FEE_RANGE_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ChipCheckboxGroup
+          name="feeRange"
+          label="Faixas de cachê com as quais você gostaria de trabalhar"
+          options={FEE_RANGE_OPTIONS}
+          defaultValues={feeRange}
+        />
       </div>
 
       <div className="flex items-center gap-3">

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/supabase/types';
 
 import { getAttentionItems, getUserBookings } from './data';
+import { DashboardFooter } from './dashboard-footer';
 import { HelpPicker } from './help-picker';
 import { JobPicker } from './job-picker';
 import { getSessionProfile } from './session';
@@ -202,7 +203,10 @@ export default async function DashboardLayout({
         </div>
       </aside>
 
-      <div className="flex-1 px-6 py-10 sm:px-10 sm:py-12 md:max-w-[1180px]">{children}</div>
+      <div className="flex-1 px-6 py-10 sm:px-10 sm:py-12 md:max-w-[1180px]">
+        {children}
+        <DashboardFooter />
+      </div>
     </div>
   );
 }

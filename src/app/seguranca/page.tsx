@@ -9,16 +9,19 @@ export const metadata: Metadata = {
 
 const PILLARS = [
   {
+    anchor: 'identidade',
     title: 'Identidade verificada',
     desc: 'Artistas e bookers passam por etapas de verificação de identidade, incluindo dados pessoais e validação por foto.',
   },
   {
+    anchor: 'verified',
     title: 'Doopla Verified',
     desc: 'Quando uma negociação é fechada, o cliente recebe um link para conferir e confirmar as condições combinadas. Depois da confirmação, o booking recebe o selo Doopla Verified.',
   },
   {
-    title: 'Pagamento seguro',
-    desc: 'Quando o Pagamento Doopla é utilizado, os dados de pagamento são disponibilizados ao cliente pelo canal seguro vinculado ao booking. Quem já tem relação de confiança também pode optar por manter o processo externo.',
+    anchor: 'pagamento-doopla',
+    title: 'Pagamento Doopla',
+    desc: 'Quando o Pagamento Doopla é utilizado, os dados de pagamento são disponibilizados ao cliente pelo canal oficial vinculado ao booking. Quem já tem relação de confiança também pode optar por manter o processo externo.',
   },
 ];
 
@@ -87,16 +90,16 @@ export default function SegurancaPage() {
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {PILLARS.map((p) => (
-          <div key={p.title} className="rounded-[16px] bg-white p-6">
+          <div key={p.title} id={p.anchor} className="scroll-mt-24 rounded-[16px] bg-white p-6">
             <h3 className="font-doopla-display text-[17px] font-semibold">{p.title}</h3>
             <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--ink)]/70">{p.desc}</p>
           </div>
         ))}
       </section>
 
-      <section className="rounded-[20px] bg-[var(--ink)] p-10 text-center text-[var(--paper)]">
+      <section id="pagamento" className="scroll-mt-24 rounded-[20px] bg-[var(--ink)] p-10 text-center text-[var(--paper)]">
         <p className="font-doopla-mono text-[12px] uppercase tracking-[.16em] text-[var(--accent)]">
-          Pagamento seguro
+          Pagamento Doopla
         </p>
         <h2 className="font-doopla-display mx-auto mt-2 max-w-[22ch] text-[26px] font-semibold">
           Sem troca de conta no meio do caminho.

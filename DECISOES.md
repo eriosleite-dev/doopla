@@ -8,6 +8,26 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Booker Básico ganha tela de plano própria na Home e no cadastro — 18/08/2026
+
+Até aqui só o artista tinha uma tela de "plano" no cadastro e uma seção
+de planos na Home — o booker entrava direto pra criação de conta depois
+das perguntas, sem nenhuma tela dedicada a R$0/mês. Isso deixava o
+"grátis de verdade" do Booker Básico implícito, nunca afirmado com
+destaque. Adicionado `BOOKER_PLANO_STEP`/`BookerPlanStep` no wizard
+(`kind: 'plan-booker'`, distinto de `'plan'` do artista pra não misturar
+CTA/copy) e uma seção `#planos-booker` na Home, gated por `view-booker`,
+espelhando a estrutura da seção do artista.
+
+## `booker_profiles.fee_range` virou array (migration 0027) — 18/08/2026
+
+Pedido explícito: faixa de cachê do booker devia aceitar mais de uma
+opção, porque "com qual faixa você costuma trabalhar" excluía quem tá
+começando. Isso mudou o TIPO da coluna (`text` → `text[]`), diferente do
+artista, que continua escalar (pergunta dele não mudou). Migração usa
+`USING case when ... else array[fee_range] end` pra não perder dado
+histórico na conversão.
+
 ## Referral (#49) — 14/08/2026
 
 Referral hoje é só rastreamento, não é crédito financeiro liberado.

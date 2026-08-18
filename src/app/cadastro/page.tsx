@@ -40,7 +40,7 @@ export default async function CadastroPage({
           <span className={eyebrowClass}>toda carreira merece representação</span>
           <h1 className="font-doopla-display text-3xl">Criar conta</h1>
           <p className="text-sm text-[var(--ink)]/60">
-            Marketplace de representação para artistas independentes.
+            Plataforma de representação para artistas independentes.
           </p>
         </div>
 

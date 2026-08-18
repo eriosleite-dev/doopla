@@ -90,8 +90,8 @@ export const FEE_RANGE_OPTIONS = [
 ];
 
 export const CAPACITY_OPTIONS: { value: string; description: string }[] = [
-  { value: '1-3 artistas', description: 'Atendimento próximo, poucos artistas por vez.' },
-  { value: '4-10 artistas', description: 'Rede em crescimento.' },
+  { value: '1 a 3', description: 'Atendimento próximo, poucos artistas por vez.' },
+  { value: '4 a 5', description: 'Rede em crescimento.' },
+  { value: '6 a 10', description: 'Operação estabelecida.' },
   { value: 'Mais de 10', description: 'Operação maior, roster amplo.' },
-  { value: 'Ainda não sei', description: 'Sem limite definido por enquanto.' },
 ];

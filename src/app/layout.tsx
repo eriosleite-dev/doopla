@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Doopla",
-  description: "Marketplace de representação para artistas independentes.",
+  description: "Plataforma de representação para artistas independentes.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
