@@ -51,7 +51,7 @@ export function LinkRoutingCard({
   }
 
   return (
-    <section className={cardClass}>
+    <section id="roteamento" className={`${cardClass} scroll-mt-6`}>
       <p className={eyebrowClass}>Seu link de orçamento</p>
 
       {orcamentoUrl && (

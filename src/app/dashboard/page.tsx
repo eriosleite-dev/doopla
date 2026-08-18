@@ -13,12 +13,14 @@ import {
   getAttentionItems,
   getDiscoverBookers,
   getOfficialBookerProgress,
+  getOrcamentoLinkInfo,
   getPendingInvites,
   getReferralSummary,
   getUserBookings,
   type BookerCard,
 } from './data';
 import { confirmInviteAction } from './actions';
+import { OrcamentoLinkCard } from './orcamento-link-card';
 import { ReferralCard } from './referral-card';
 import { getSessionProfile } from './session';
 import {
@@ -57,7 +59,12 @@ export default async function DashboardPage() {
     profile.role === 'booker' ? await getOfficialBookerProgress(user.id, bookings, supabase) : null;
   const referralSummary =
     profile.role === 'artista' ? await getReferralSummary(user.id, profile.referral_code, supabase) : null;
-  const referralUrl = referralSummary ? `${await siteOrigin()}/cadastro?ref=${referralSummary.referralCode}` : null;
+  const orcamentoInfo =
+    profile.role === 'artista' ? await getOrcamentoLinkInfo(user.id, supabase) : null;
+  const origin = referralSummary || orcamentoInfo ? await siteOrigin() : null;
+  const referralUrl = referralSummary ? `${origin}/cadastro?ref=${referralSummary.referralCode}` : null;
+  const orcamentoUrl =
+    orcamentoInfo?.publicEnabled && profile.slug ? `${origin}/orcamento/${profile.slug}` : null;
 
   return (
     <main className="flex flex-col gap-10">
@@ -149,6 +156,15 @@ export default async function DashboardPage() {
           <BookingsPreview bookings={bookings} role={profile.role} />
         </div>
       </section>
+
+      {profile.role === 'artista' && orcamentoInfo && (
+        <OrcamentoLinkCard
+          publicEnabled={orcamentoInfo.publicEnabled}
+          orcamentoUrl={orcamentoUrl}
+          routingMode={orcamentoInfo.routingMode}
+          bookerName={orcamentoInfo.bookerName}
+        />
+      )}
 
       {/* Secundário de propósito (spec: nunca acima de dinheiro, pendências
           ou bookings) — por isso vem depois de tudo isso, não antes. */}

@@ -13,6 +13,28 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## 0.6. Home artista (badge de preço) + link de orçamento no Dashboard
+
+- ✅ **Home, jornada do artista**: card do booker no topo trocado por um
+  selo circular de preço (R$19,90/mês em destaque, "Preço Fundador", "7
+  dias grátis", "sem comissão sobre o cachê", "sem exclusividade", CTA
+  "Começar grátis"). Seção completa de planos no rodapé da Home
+  permanece igual. Card "Traga seu booker para a doopla" (elemento
+  diferente) mantido sem alteração.
+- ✅ **Dashboard do artista: "Seu link de orçamento"**: novo card visível
+  direto no painel principal (não mais só dentro de Perfil), logo depois
+  de "Seus trabalhos" e antes do módulo Booker Oficial — segue a
+  hierarquia pedida (atenção → trabalhos em andamento → link de
+  orçamento → resto). Mostra o link, Copiar link (com feedback "Link
+  copiado!"), Compartilhar (Web Share API com fallback pra copiar) e Ver
+  como cliente. Mostra também pra quem as oportunidades estão sendo
+  direcionadas (você / seu booker / os dois), com "Alterar" levando pro
+  card de roteamento em Perfil (que já existe e continua sendo o único
+  lugar de configuração — o card do Dashboard é só uso do dia a dia).
+  Quando o link ainda não está ativo, mostra "Ativar meu link" em vez de
+  inventar um link vazio. Nenhuma métrica de "N pedidos via link" foi
+  inventada — não existe esse dado ainda.
+
 ## 0.5. Perfis como modal + avaliação como modal + comissão praticada
 
 - ✅ **Faixa de comissão praticada (booker)**: migration 0028 adiciona

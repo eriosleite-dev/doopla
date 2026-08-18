@@ -8,6 +8,7 @@ import type {
   BookingEvent,
   BookingStatus,
   Invite,
+  LinkRoutingMode,
   Opportunity,
   OpportunityInterest,
   OpportunityInterestStatus,
@@ -282,6 +283,45 @@ export async function getArtistLinkRouting(
     .eq('artist_id', artistId)
     .maybeSingle<ArtistLinkRouting>();
   return data;
+}
+
+export type OrcamentoLinkInfo = {
+  publicEnabled: boolean;
+  routingMode: LinkRoutingMode;
+  bookerName: string | null;
+};
+
+// Resumo usado no card "Seu link de orçamento" do Dashboard — mesma
+// config de `/dashboard/perfil`, só que já resolvida (nome do booker em
+// vez de id) pra não precisar de outra query no componente.
+export async function getOrcamentoLinkInfo(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<OrcamentoLinkInfo> {
+  const [{ data: artist }, routing] = await Promise.all([
+    supabase
+      .from('artist_profiles')
+      .select('public_enabled')
+      .eq('profile_id', artistId)
+      .maybeSingle<{ public_enabled: boolean }>(),
+    getArtistLinkRouting(artistId, supabase),
+  ]);
+
+  let bookerName: string | null = null;
+  if (routing?.booker_id) {
+    const { data: booker } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', routing.booker_id)
+      .maybeSingle<{ full_name: string }>();
+    bookerName = booker?.full_name ?? null;
+  }
+
+  return {
+    publicEnabled: artist?.public_enabled ?? false,
+    routingMode: (routing?.mode ?? 'eu') as LinkRoutingMode,
+    bookerName,
+  };
 }
 
 export async function getDiscoverBookers(

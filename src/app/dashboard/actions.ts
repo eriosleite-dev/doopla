@@ -973,6 +973,7 @@ export async function enablePublicProfileAction() {
     .eq('profile_id', user.id);
 
   revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard');
 }
 
 export async function disablePublicProfileAction() {
@@ -987,6 +988,7 @@ export async function disablePublicProfileAction() {
     .eq('profile_id', user.id);
 
   revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard');
 }
 
 export async function updatePublicLinksAction(
@@ -1163,6 +1165,7 @@ export async function updateLinkRoutingAction(
   if (error) return { error: 'Não foi possível salvar o roteamento.' };
 
   revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard');
   return {};
 }
 
