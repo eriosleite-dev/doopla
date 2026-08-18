@@ -13,6 +13,48 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Bookers, convites, vínculos e Link de Orçamento — reformulação estrutural
+
+Pedido: separar 4 conceitos que estavam misturados (encontrar, convidar/
+solicitar, vínculo criado, roteamento do Link de Orçamento) e nunca deixar
+um implicar o outro sozinho.
+
+- ✅ **Solicitação vira bidirecional e atômica.** Artista agora pode
+  solicitar um booker já cadastrado (antes só o booker solicitava
+  artista). `request_representation_link()` (RPC) decide sozinha, com
+  lock, entre criar uma solicitação nova ou colapsar numa pendente que
+  a outra parte já tinha aberto — nunca duplica, nunca deixa duas
+  pendentes divergentes pro mesmo par.
+- ✅ **Detecção automática de conta por contato.** Fluxo único
+  "Adicionar um Booker/Artista" (nome + contato): o sistema descobre
+  sozinho se já existe conta (decide solicitação × convite) e se já
+  existe vínculo/solicitação/convite em aberto (nunca duplica).
+- ✅ **Página Bookers/Artistas reorganizada**: Meus Bookers/Artistas ·
+  Solicitações e Convites (unificado — recebidas, enviadas, convites
+  externos, tudo num lugar só) · Meus Favoritos · Encontrar. O botão
+  "Adicionar" substitui o antigo "Convidar" isolado.
+- ✅ **Encerrar vínculo — não existia antes, criado do zero.** Botão
+  "Encerrar vínculo" em cada card de Meus Bookers/Artistas. Cascata:
+  cancela convite direto de oportunidade *pendente* daquele par
+  (preserva o que já virou trabalho em andamento), zera o Link de
+  Orçamento se apontava pra esse booker (com aviso explícito pro
+  artista), libera o slot do Básico se era o artista ativo.
+- ✅ **Link de Orçamento: decisão sempre separada.** Aceitar um vínculo
+  nunca muda o roteamento sozinho — só oferece um atalho pra configurar
+  ("X agora está conectado. Quer que ela receba seus pedidos?").
+  Copy vaga que sugeria o contrário foi removida.
+- ✅ **Publicar um trabalho: dois checkboxes independentes**
+  ("Abrir pra novos bookers" / "Enviar pra meus bookers", pode marcar
+  os dois) substituindo o rádio de 3 vias. Selecionar bookers
+  específicos agora cria os convites diretos na hora de publicar, não
+  só desbloqueia o convite manual depois.
+- ⏳ Simplificações assumidas (ver DECISOES.md pra detalhe e motivo):
+  não pula o modal de seleção quando só existe 1 booker ativo; "Alterar"
+  do Link de Orçamento continua sendo um link pra `/dashboard/perfil`,
+  não um modal direto.
+
+---
+
 ## Booker Básico/Pro — infraestrutura de plano real
 
 Nada de recurso Pro fake vendido — só o mecanismo, pronto pra plugar

@@ -34,7 +34,7 @@ export function RequestRepresentationButton({
   if (open) {
     return (
       <form action={formAction} className="flex flex-col gap-2">
-        <input type="hidden" name="artistProfileId" value={artistProfileId} />
+        <input type="hidden" name="targetProfileId" value={artistProfileId} />
         <textarea
           name="message"
           placeholder="Mensagem opcional pro artista"

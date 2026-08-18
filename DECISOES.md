@@ -348,3 +348,67 @@ form.tsx`). Decisões que valem registrar:
   vez de assumir sempre "booker convida artista". Segue o mesmo
   princípio da prioridade 1 (fonte única de verdade, sem duplicar
   lógica por caminho).
+
+---
+
+## Bookers, convites, vínculos e Link de Orçamento — reformulação estrutural — 18/08/2026
+
+Migration 0033 + reescrita de `bookers/page.tsx`, `artistas/page.tsx`,
+`publish-form.tsx`. Decisões que valem registrar:
+
+- **`representation_requests` vira bidirecional sem trocar de tabela.**
+  Em vez de criar uma tabela nova pro sentido artista→booker, adicionei
+  `requested_by_profile_id` na tabela existente. O índice único
+  `(booker_profile_id, artist_profile_id) where pendente` já garantia
+  1 pendente por par, independente de quem inicia — só faltava
+  rastrear quem foi. Mesmo princípio já aplicado ao convite
+  bidirecional (ver decisão acima).
+- **Colisão de solicitações vira aceite atômico via RPC, não um erro
+  de índice único.** `request_representation_link()` faz
+  `select ... for update` na linha pendente (se existir) antes de
+  decidir entre inserir ou colapsar em aceite — mesmo padrão de lock
+  já usado em `select_booker_for_opportunity`. Client-side insert
+  direto foi revogado (`revoke`/sem policy de insert): esse é o único
+  caminho de criação agora, porque a atomicidade não dá pra garantir
+  numa policy de insert simples.
+- **Encerrar vínculo não existia — criei do zero, com escopo
+  deliberadamente contido.** `terminate_representation()` faz a
+  cascata mínima que evita estado inconsistente: fecha convite direto
+  de oportunidade *pendente* daquele par (nunca um já aceito — isso já
+  virou trabalho em andamento, protegido pela regra de exceção),
+  zera o Link de Orçamento se apontava pra esse booker, libera o slot
+  do Básico se esse era o artista ativo. Não criei uma tabela de
+  histórico de vínculos encerrados — a mensagem de fallback do Link de
+  Orçamento é resolvida checando o `booker_id` antes de chamar a RPC e
+  passando o nome via query param no redirect, não por auditoria
+  persistida. Se algum dia precisar de histórico completo de vínculos
+  (pra mostrar "vocês trabalharam juntos entre X e Y", por exemplo),
+  isso é trabalho novo, não uma extensão trivial dessa RPC.
+- **Detecção de conta por contato é best-effort, não uma busca
+  robusta.** `find_representation_target_by_contact()` casa e-mail
+  (contra `auth.users.email`, exato/case-insensitive) ou telefone
+  (dígitos normalizados). Não tenta variações de formatação de nome,
+  não faz fuzzy match. Suficiente pro caso de uso (evitar convite
+  duplicado quando a pessoa já tem conta), não é uma ferramenta de
+  busca de usuários.
+- **"Publicar um trabalho" virou dois checkboxes na UI, mas o enum
+  `distribution_mode` no banco não mudou.** As 4 combinações possíveis
+  de 2 checkboxes colapsam exatamente nos 3 valores que já existiam
+  (`ambos`/`meus_bookers`/`novos_bookers`) — trocar o enum por duas
+  colunas boolean exigiria reescrever 4 policies de RLS que dependem
+  dele pra nenhum ganho real. O formulário computa o valor certo antes
+  de enviar; o server action recalcula do zero a partir dos ids de
+  booker validados (nunca confia no enum vindo do client).
+- **Selecionar bookers específicos ao publicar passou a criar
+  `opportunity_invitations` na hora**, não só desbloquear o convite
+  manual posterior (que antes só existia na tela de detalhe da
+  oportunidade). Isso é a diferença real que fecha a lacuna do pedido
+  original ("Enviando diretamente para: Ana × João") — sem isso, os
+  checkboxes seriam só cosmético.
+- **Simplificação assumida, não implementada:** "se só existe 1 booker
+  ativo, pular o modal de seleção" (pedido explícito) não foi feito —
+  o formulário sempre mostra a lista de bookers pra marcar, mesmo com
+  1 só. Funcional, só não tem o atalho de UX. Também não construí o
+  "ALTERAR abre modal direto" pro Link de Orçamento — o link pra
+  `/dashboard/perfil#roteamento` (que já tinha o formulário completo)
+  continua sendo a forma de mudar, só a copy vaga foi removida.

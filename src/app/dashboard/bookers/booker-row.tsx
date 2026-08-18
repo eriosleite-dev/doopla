@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import type { BookerCard, BookerRelationshipCard } from '../data';
 import { FavoriteButton } from '../favorite-button';
+import { TerminateRelationshipButton } from '../terminate-relationship-button';
 import { avatarClass, initialsFromName } from '../ui';
 
 function formatSince(iso: string): string {
@@ -79,12 +80,18 @@ export function BookerRow({
               ? `${relationship.ongoingCount} ${relationship.ongoingCount === 1 ? 'trabalho em andamento' : 'trabalhos em andamento'}`
               : 'nenhum trabalho em andamento agora'}
           </p>
-          <Link
-            href={`/dashboard/bookers/${booker.profileId}`}
-            className="font-doopla-mono border-t border-[var(--line-light)] pt-3 text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--ink)]"
-          >
-            Gerenciar relação →
-          </Link>
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--line-light)] pt-3">
+            <Link
+              href={`/dashboard/bookers/${booker.profileId}`}
+              className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--ink)]"
+            >
+              Gerenciar relação →
+            </Link>
+            <TerminateRelationshipButton
+              representationId={relationship.representationId}
+              targetName={booker.fullName}
+            />
+          </div>
         </>
       )}
     </div>

@@ -99,24 +99,11 @@ export async function confirmInviteAction(formData: FormData) {
     .eq('booker_profile_id', bookerProfileId)
     .maybeSingle<{ id: string }>();
 
-  if (!existingRep) {
-    const { data: bookerSub } = await supabase
-      .from('subscriptions')
-      .select('booker_plan')
-      .eq('profile_id', bookerProfileId)
-      .maybeSingle<{ booker_plan: string }>();
-    if (bookerSub?.booker_plan === 'basic') {
-      const { count } = await supabase
-        .from('representations')
-        .select('id', { count: 'exact', head: true })
-        .eq('booker_profile_id', bookerProfileId);
-      if ((count ?? 0) >= 1) {
-        if (user.id === bookerProfileId) {
-          redirect('/dashboard?limiteBooker=1');
-        }
-        return;
-      }
+  if (!existingRep && (await isBookerAtBasicLimit(supabase, bookerProfileId))) {
+    if (user.id === bookerProfileId) {
+      redirect('/dashboard?limiteBooker=1');
     }
+    return;
   }
 
   const { error: repError } = await supabase.from('representations').insert({
@@ -137,6 +124,12 @@ export async function confirmInviteAction(formData: FormData) {
     .eq('id', inviteId);
 
   revalidateRelationshipPaths(artistProfileId, bookerProfileId);
+
+  // Mesma lógica do aceite de solicitação: só nudga o Link de Orçamento
+  // quando é o artista confirmando, e só se o vínculo é novo de fato.
+  if (!existingRep && user.id === artistProfileId) {
+    redirect(`/dashboard/bookers?vinculado=${bookerProfileId}`);
+  }
 }
 
 function centsFromReais(raw: FormDataEntryValue | null): number | null {
@@ -162,6 +155,28 @@ async function requireUserAndProfile() {
   if (!profile) return null;
 
   return { supabase, user, profile };
+}
+
+// Booker no plano Básico só gerencia 1 artista ativo por vez. Usado nos 4
+// pontos onde um novo vínculo pode nascer (convite, solicitação nos dois
+// sentidos, aceite) — a trigger booker_artist_limit_check ainda garante
+// isso no banco, isso aqui é só pra dar a mensagem amigável antes.
+async function isBookerAtBasicLimit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  bookerProfileId: string
+): Promise<boolean> {
+  const { data: bookerSub } = await supabase
+    .from('subscriptions')
+    .select('booker_plan')
+    .eq('profile_id', bookerProfileId)
+    .maybeSingle<{ booker_plan: string }>();
+  if (bookerSub?.booker_plan !== 'basic') return false;
+
+  const { count } = await supabase
+    .from('representations')
+    .select('id', { count: 'exact', head: true })
+    .eq('booker_profile_id', bookerProfileId);
+  return (count ?? 0) >= 1;
 }
 
 export async function proposeBookingAction(
@@ -654,8 +669,6 @@ export async function markDisputeAction(formData: FormData) {
   revalidatePath('/dashboard');
 }
 
-const DISTRIBUTION_MODES = ['meus_bookers', 'novos_bookers', 'ambos'] as const;
-
 export async function publishOpportunityAction(
   _prevState: { error?: string },
   formData: FormData
@@ -670,7 +683,8 @@ export async function publishOpportunityAction(
     String(formData.get('commissionPercent') ?? '').replace(',', '.')
   );
   const cacheAmountCents = centsFromReais(formData.get('cacheAmountCents'));
-  const distributionMode = String(formData.get('distributionMode') ?? 'ambos');
+  const openToNew = formData.get('openToNew') === '1';
+  const directBookerIds = formData.getAll('directBookerIds').map(String).filter(Boolean);
   const category = String(formData.get('category') ?? '').trim();
   const location = String(formData.get('location') ?? '').trim();
   const eventDate = String(formData.get('eventDate') ?? '').trim();
@@ -679,9 +693,29 @@ export async function publishOpportunityAction(
   if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
     return { error: 'Informe uma comissão válida (0 a 100%).' };
   }
-  if (!DISTRIBUTION_MODES.includes(distributionMode as (typeof DISTRIBUTION_MODES)[number])) {
+  if (!openToNew && directBookerIds.length === 0) {
     return { error: 'Escolha pra quem essa oportunidade vai.' };
   }
+
+  // Nunca confia nos ids do form pra saber quem é booker do artista de
+  // verdade — só quem tem representations ativa recebe convite direto.
+  let validDirectBookerIds: string[] = [];
+  if (directBookerIds.length > 0) {
+    const { data: reps } = await supabase
+      .from('representations')
+      .select('booker_profile_id')
+      .eq('artist_profile_id', user.id)
+      .in('booker_profile_id', directBookerIds)
+      .returns<{ booker_profile_id: string }[]>();
+    validDirectBookerIds = (reps ?? []).map((r) => r.booker_profile_id);
+  }
+
+  const distributionMode: Opportunity['distribution_mode'] =
+    openToNew && validDirectBookerIds.length > 0
+      ? 'ambos'
+      : validDirectBookerIds.length > 0
+        ? 'meus_bookers'
+        : 'novos_bookers';
 
   const { data: opportunity, error } = await supabase
     .from('opportunities')
@@ -690,7 +724,7 @@ export async function publishOpportunityAction(
       description,
       commission_percent: commissionPercent,
       cache_amount_cents: cacheAmountCents,
-      distribution_mode: distributionMode as Opportunity['distribution_mode'],
+      distribution_mode: distributionMode,
       category: category || null,
       location: location || null,
       event_date: eventDate || null,
@@ -698,6 +732,15 @@ export async function publishOpportunityAction(
     .select('id')
     .single<{ id: string }>();
   if (error || !opportunity) return { error: 'Não foi possível publicar o trabalho.' };
+
+  if (validDirectBookerIds.length > 0) {
+    await supabase.from('opportunity_invitations').insert(
+      validDirectBookerIds.map((bookerProfileId) => ({
+        opportunity_id: opportunity.id,
+        booker_profile_id: bookerProfileId,
+      }))
+    );
+  }
 
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/oportunidades');
@@ -1403,57 +1446,47 @@ export async function generateContractAction(
   redirect(contractUrl);
 }
 
+// Ponto de solicitação único, nos dois sentidos: booker solicitando um
+// artista novo (fluxo original) ou artista solicitando um booker já
+// cadastrado (novo). A RPC decide sozinha, de forma atômica, entre criar
+// uma solicitação nova ou colapsar numa pendente que a outra parte já
+// tinha aberto — nunca duplica, nunca deixa duas pendentes divergentes.
 export async function requestRepresentationAction(
   _prevState: { error?: string },
   formData: FormData
 ): Promise<{ error?: string }> {
-  const artistProfileId = String(formData.get('artistProfileId') ?? '');
+  const targetProfileId = String(formData.get('targetProfileId') ?? '');
   const message = String(formData.get('message') ?? '').trim();
-  if (!artistProfileId) return { error: 'Artista não encontrado.' };
+  if (!targetProfileId) return { error: 'Perfil não encontrado.' };
 
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user, profile } = ctx;
-  if (profile.role !== 'booker') return { error: 'Só bookers podem pedir pra representar um artista.' };
+  const { supabase } = ctx;
 
-  // Avisa antes de mandar a solicitação, não só quando o artista tentar
-  // aceitar mais tarde — o booker precisa saber logo que está no limite.
-  const { data: bookerSub } = await supabase
-    .from('subscriptions')
-    .select('booker_plan')
-    .eq('profile_id', user.id)
-    .maybeSingle<{ booker_plan: string }>();
-  if (bookerSub?.booker_plan === 'basic') {
-    const { count } = await supabase
-      .from('representations')
-      .select('id', { count: 'exact', head: true })
-      .eq('booker_profile_id', user.id);
-    if ((count ?? 0) >= 1) {
-      return {
-        error:
-          'Seu plano Básico permite gerenciar 1 artista ativo. Faça upgrade pro Pro pra representar mais artistas.',
-      };
-    }
-  }
-
-  const { error } = await supabase.from('representation_requests').insert({
-    booker_profile_id: user.id,
-    artist_profile_id: artistProfileId,
-    message: message || null,
+  const { error } = await supabase.rpc('request_representation_link', {
+    p_target_profile_id: targetProfileId,
+    p_message: message || null,
   });
 
   if (error) {
+    if (error.message.includes('already_connected')) {
+      return { error: 'Vocês já estão conectados.' };
+    }
+    if (error.message.includes('request_already_pending')) {
+      return { error: 'Você já tem uma solicitação pendente com essa pessoa.' };
+    }
     if (error.message.includes('representation_request_limit_reached')) {
       return {
         error: 'Você atingiu o limite de solicitações pendentes. Espere alguma ser respondida.',
       };
     }
-    if (error.code === '23505') {
-      return { error: 'Você já tem uma solicitação pendente pra esse artista.' };
+    if (error.message.includes('booker_basic_artist_limit_reached')) {
+      return { error: 'O plano Básico desse booker permite só 1 artista ativo por vez agora.' };
     }
     return { error: 'Não foi possível enviar a solicitação.' };
   }
 
+  revalidatePath('/dashboard/bookers');
   revalidatePath('/dashboard/artistas');
   return {};
 }
@@ -1471,28 +1504,33 @@ export async function respondRepresentationRequestAction(formData: FormData) {
     .from('representation_requests')
     .select('*')
     .eq('id', requestId)
-    .single<{ artist_profile_id: string; booker_profile_id: string; status: string }>();
-  if (!request || request.artist_profile_id !== user.id || request.status !== 'pendente') return;
+    .single<{
+      artist_profile_id: string;
+      booker_profile_id: string;
+      requested_by_profile_id: string;
+      status: string;
+    }>();
+  // Só quem NÃO solicitou pode responder — nos dois sentidos agora.
+  if (
+    !request ||
+    request.status !== 'pendente' ||
+    user.id === request.requested_by_profile_id ||
+    (user.id !== request.artist_profile_id && user.id !== request.booker_profile_id)
+  ) {
+    return;
+  }
 
   // Se o booker está no plano Básico e já tem 1 artista ativo, ele não
-  // pode aceitar mais ninguém agora — o artista precisa saber que a
-  // solicitação não pôde ser confirmada. Mensagem neutra (nunca "faça
-  // upgrade"): a decisão de assinar o Pro é do booker, não do artista.
-  if (decision === 'aceitar') {
-    const { data: bookerSub } = await supabase
-      .from('subscriptions')
-      .select('booker_plan')
-      .eq('profile_id', request.booker_profile_id)
-      .maybeSingle<{ booker_plan: string }>();
-    if (bookerSub?.booker_plan === 'basic') {
-      const { count } = await supabase
-        .from('representations')
-        .select('id', { count: 'exact', head: true })
-        .eq('booker_profile_id', request.booker_profile_id);
-      if ((count ?? 0) >= 1) {
-        redirect('/dashboard/bookers?bookerNoLimite=1');
-      }
-    }
+  // pode aceitar mais ninguém agora. Quando é o próprio booker respondendo
+  // (solicitação veio do artista), manda pro CTA de upgrade — a decisão é
+  // dele. Quando é o artista respondendo (solicitação veio do booker),
+  // mensagem neutra: ele não pode resolver o plano de outra pessoa.
+  if (decision === 'aceitar' && (await isBookerAtBasicLimit(supabase, request.booker_profile_id))) {
+    redirect(
+      user.id === request.booker_profile_id
+        ? '/dashboard?limiteBooker=1'
+        : '/dashboard/bookers?bookerNoLimite=1'
+    );
   }
 
   await supabase
@@ -1501,6 +1539,120 @@ export async function respondRepresentationRequestAction(formData: FormData) {
     .eq('id', requestId);
 
   revalidateRelationshipPaths(request.artist_profile_id, request.booker_profile_id);
+
+  // Aceitar um vínculo nunca muda o Link de Orçamento sozinho — mas o
+  // artista precisa de um jeito de configurar isso logo, se quiser. Só
+  // faz sentido quando é o próprio artista aceitando (o roteamento é
+  // recurso dele, o booker não decide isso).
+  if (decision === 'aceitar' && user.id === request.artist_profile_id) {
+    redirect(`/dashboard/bookers?vinculado=${request.booker_profile_id}`);
+  }
+}
+
+// Encerrar um vínculo — não existia nenhuma forma de fazer isso antes.
+// A RPC cuida da cascata inteira (fecha convite direto de oportunidade
+// pendente, zera roteamento do Link de Orçamento, libera slot do Básico).
+export async function terminateRepresentationAction(formData: FormData) {
+  const representationId = String(formData.get('representationId') ?? '');
+  if (!representationId) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user } = ctx;
+
+  const { data: rep } = await supabase
+    .from('representations')
+    .select('artist_profile_id, booker_profile_id')
+    .eq('id', representationId)
+    .maybeSingle<{ artist_profile_id: string; booker_profile_id: string }>();
+  if (!rep) return;
+
+  // Se o Link de Orçamento apontava pra esse booker, a RPC já reseta pra
+  // "Você" — captura o nome antes pra avisar o artista explicitamente do
+  // porquê o roteamento mudou sozinho (nunca silencioso).
+  let routingWasReset = false;
+  if (user.id === rep.artist_profile_id) {
+    const { data: routing } = await supabase
+      .from('artist_link_routing')
+      .select('booker_id')
+      .eq('artist_id', rep.artist_profile_id)
+      .maybeSingle<{ booker_id: string | null }>();
+    routingWasReset = routing?.booker_id === rep.booker_profile_id;
+  }
+
+  const { error } = await supabase.rpc('terminate_representation', {
+    p_representation_id: representationId,
+  });
+  if (error) return;
+
+  revalidateRelationshipPaths(rep.artist_profile_id, rep.booker_profile_id);
+
+  if (routingWasReset) {
+    redirect('/dashboard/bookers?roteamentoResetado=1');
+  }
+}
+
+export type ContactLookupResult =
+  | { kind: 'existing_connection'; name: string }
+  | { kind: 'pending_request'; name: string }
+  | { kind: 'pending_invite'; name: string }
+  | { kind: 'match'; profileId: string; name: string }
+  | { kind: 'no_match' }
+  | { kind: 'error'; error: string };
+
+// Fluxo unificado "Adicionar um Booker/Artista": dado um contato, descobre
+// sozinho se já existe conta (pra decidir solicitação x convite) e se já
+// existe vínculo/solicitação/convite em aberto (pra nunca duplicar).
+export async function lookupContactAction(contact: string): Promise<ContactLookupResult> {
+  const trimmed = contact.trim();
+  if (!trimmed) return { kind: 'error', error: 'Informe um contato.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { kind: 'error', error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: matches } = await supabase.rpc('find_representation_target_by_contact', {
+    p_contact: trimmed,
+  });
+  const match = matches?.[0];
+
+  if (match) {
+    const displayName = match.display_name ?? match.full_name;
+
+    const { data: existingRep } = await supabase
+      .from('representations')
+      .select('id')
+      .or(
+        `and(artist_profile_id.eq.${user.id},booker_profile_id.eq.${match.profile_id}),` +
+          `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${user.id})`
+      )
+      .maybeSingle<{ id: string }>();
+    if (existingRep) return { kind: 'existing_connection', name: displayName };
+
+    const { data: pendingRequest } = await supabase
+      .from('representation_requests')
+      .select('id')
+      .or(
+        `and(artist_profile_id.eq.${user.id},booker_profile_id.eq.${match.profile_id}),` +
+          `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${user.id})`
+      )
+      .eq('status', 'pendente')
+      .maybeSingle<{ id: string }>();
+    if (pendingRequest) return { kind: 'pending_request', name: displayName };
+
+    return { kind: 'match', profileId: match.profile_id, name: displayName };
+  }
+
+  const { data: pendingInvite } = await supabase
+    .from('invites')
+    .select('id, invitee_name')
+    .eq('inviter_profile_id', user.id)
+    .eq('status', 'pendente')
+    .ilike('invitee_contact', trimmed)
+    .maybeSingle<{ id: string; invitee_name: string }>();
+  if (pendingInvite) return { kind: 'pending_invite', name: pendingInvite.invitee_name };
+
+  return { kind: 'no_match' };
 }
 
 export async function submitReviewAction(

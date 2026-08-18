@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+import { getArtistBookers } from '../data';
 import { getSessionProfile } from '../session';
 import { eyebrowClass } from '../ui';
 import { PublishForm } from './publish-form';
@@ -10,8 +11,10 @@ export const metadata: Metadata = {
 };
 
 export default async function PublicarTrabalhoPage() {
-  const { profile } = await getSessionProfile();
+  const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
+
+  const myBookers = await getArtistBookers(user.id, supabase);
 
   return (
     <main className="flex max-w-xl flex-col gap-8">
@@ -26,7 +29,7 @@ export default async function PublicarTrabalhoPage() {
           doopla.
         </p>
       </header>
-      <PublishForm />
+      <PublishForm myBookers={myBookers} />
     </main>
   );
 }

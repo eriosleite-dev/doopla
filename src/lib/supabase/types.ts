@@ -263,12 +263,24 @@ export type RepresentationRequest = {
   id: string;
   booker_profile_id: string;
   artist_profile_id: string;
+  requested_by_profile_id: string;
   message: string | null;
   status: RepresentationRequestStatus;
   expires_at: string;
   responded_at: string | null;
   booker_seen_at: string | null;
   created_at: string;
+};
+
+// Retorno de find_representation_target_by_contact — usado pra decidir
+// entre "enviar solicitação" (conta existe) e "enviar convite" (não existe)
+// no fluxo unificado "Adicionar um Booker/Artista".
+export type ContactMatch = {
+  profile_id: string;
+  role: UserRole;
+  full_name: string;
+  display_name: string | null;
+  avatar_url: string | null;
 };
 
 export type OpportunityInvitationStatus = 'pendente' | 'aceita' | 'recusada' | 'encerrada';
@@ -534,7 +546,10 @@ export type Database = {
       representation_requests: {
         Row: RepresentationRequest;
         Insert: Partial<RepresentationRequest> &
-          Pick<RepresentationRequest, 'booker_profile_id' | 'artist_profile_id'>;
+          Pick<
+            RepresentationRequest,
+            'booker_profile_id' | 'artist_profile_id' | 'requested_by_profile_id'
+          >;
         Update: Partial<RepresentationRequest>;
         Relationships: [];
       };
@@ -658,6 +673,18 @@ export type Database = {
           p_offered_cents: number | null;
         };
         Returns: string;
+      };
+      request_representation_link: {
+        Args: { p_target_profile_id: string; p_message: string | null };
+        Returns: 'requested' | 'accepted';
+      };
+      find_representation_target_by_contact: {
+        Args: { p_contact: string };
+        Returns: ContactMatch[];
+      };
+      terminate_representation: {
+        Args: { p_representation_id: string };
+        Returns: undefined;
       };
     };
   };

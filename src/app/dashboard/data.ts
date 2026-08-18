@@ -235,6 +235,7 @@ export async function getArtistBookers(
 // informação faz sentido — os outros usos de getArtistBookers (roteamento
 // do link, atenção) só precisam de nome/id.
 export type BookerRelationshipCard = BookerCard & {
+  representationId: string;
   relationshipSince: string;
   ongoingCount: number;
 };
@@ -247,9 +248,9 @@ export async function getArtistBookerRelationships(
 ): Promise<BookerRelationshipCard[]> {
   const { data: reps } = await supabase
     .from('representations')
-    .select('booker_profile_id, created_at')
+    .select('id, booker_profile_id, created_at')
     .eq('artist_profile_id', artistId)
-    .returns<{ booker_profile_id: string; created_at: string }[]>();
+    .returns<{ id: string; booker_profile_id: string; created_at: string }[]>();
 
   if (!reps || reps.length === 0) return [];
   const bookerIds = reps.map((r) => r.booker_profile_id);
@@ -264,7 +265,7 @@ export async function getArtistBookerRelationships(
       .returns<{ booker_profile_id: string; status: BookingStatus }[]>(),
   ]);
 
-  const sinceById = new Map(reps.map((r) => [r.booker_profile_id, r.created_at]));
+  const repByBookerId = new Map(reps.map((r) => [r.booker_profile_id, r]));
   const ongoingById = new Map<string, number>();
   for (const b of bookings ?? []) {
     if (!ONGOING_BOOKING_STATUSES.includes(b.status)) continue;
@@ -273,7 +274,8 @@ export async function getArtistBookerRelationships(
 
   return cards.map((c) => ({
     ...c,
-    relationshipSince: sinceById.get(c.profileId) ?? '',
+    representationId: repByBookerId.get(c.profileId)?.id ?? '',
+    relationshipSince: repByBookerId.get(c.profileId)?.created_at ?? '',
     ongoingCount: ongoingById.get(c.profileId) ?? 0,
   }));
 }
@@ -511,6 +513,7 @@ export async function getRepresentedArtistCards(
 // Espelha getArtistBookerRelationships — usado na seção "Meus Artistas"
 // (relação ativa) do painel do booker.
 export type ArtistRelationshipCard = ArtistCard & {
+  representationId: string;
   relationshipSince: string;
   ongoingCount: number;
 };
@@ -521,9 +524,9 @@ export async function getBookerArtistRelationships(
 ): Promise<ArtistRelationshipCard[]> {
   const { data: reps } = await supabase
     .from('representations')
-    .select('artist_profile_id, created_at')
+    .select('id, artist_profile_id, created_at')
     .eq('booker_profile_id', bookerId)
-    .returns<{ artist_profile_id: string; created_at: string }[]>();
+    .returns<{ id: string; artist_profile_id: string; created_at: string }[]>();
 
   if (!reps || reps.length === 0) return [];
   const artistIds = reps.map((r) => r.artist_profile_id);
@@ -538,7 +541,7 @@ export async function getBookerArtistRelationships(
       .returns<{ artist_profile_id: string; status: BookingStatus }[]>(),
   ]);
 
-  const sinceById = new Map(reps.map((r) => [r.artist_profile_id, r.created_at]));
+  const repByArtistId = new Map(reps.map((r) => [r.artist_profile_id, r]));
   const ongoingById = new Map<string, number>();
   for (const b of bookings ?? []) {
     if (!ONGOING_BOOKING_STATUSES.includes(b.status)) continue;
@@ -547,7 +550,8 @@ export async function getBookerArtistRelationships(
 
   return cards.map((c) => ({
     ...c,
-    relationshipSince: sinceById.get(c.profileId) ?? '',
+    representationId: repByArtistId.get(c.profileId)?.id ?? '',
+    relationshipSince: repByArtistId.get(c.profileId)?.created_at ?? '',
     ongoingCount: ongoingById.get(c.profileId) ?? 0,
   }));
 }
@@ -646,20 +650,14 @@ export type IncomingRepresentationRequest = RepresentationRequest & {
   booker: RequestBookerCard;
 };
 
-export async function getIncomingRepresentationRequests(
-  artistId: string,
+// Compartilhado entre solicitações recebidas pelo artista (booker pediu) e
+// enviadas pelo artista (artista pediu um booker já cadastrado) — as duas
+// telas mostram o card completo do booker, só muda quem iniciou.
+async function attachBookerCards(
+  requests: RepresentationRequest[],
   supabase: SupabaseServerClient
-): Promise<IncomingRepresentationRequest[]> {
-  await supabase.rpc('expire_stale_representation_requests');
-  const { data: requests } = await supabase
-    .from('representation_requests')
-    .select('*')
-    .eq('artist_profile_id', artistId)
-    .eq('status', 'pendente')
-    .order('created_at', { ascending: false })
-    .returns<RepresentationRequest[]>();
-
-  if (!requests || requests.length === 0) return [];
+): Promise<(RepresentationRequest & { bookerName: string; booker: RequestBookerCard })[]> {
+  if (requests.length === 0) return [];
 
   const bookerIds = requests.map((r) => r.booker_profile_id);
   const [{ data: profiles }, { data: bookerProfiles }, ratings] = await Promise.all([
@@ -710,6 +708,44 @@ export async function getIncomingRepresentationRequests(
   });
 }
 
+// Pedidos pendentes que o booker iniciou em direção a este artista — o
+// artista é quem decide aceitar/recusar.
+export async function getIncomingRepresentationRequests(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<IncomingRepresentationRequest[]> {
+  await supabase.rpc('expire_stale_representation_requests');
+  const { data: requests } = await supabase
+    .from('representation_requests')
+    .select('*')
+    .eq('artist_profile_id', artistId)
+    .eq('status', 'pendente')
+    .neq('requested_by_profile_id', artistId)
+    .order('created_at', { ascending: false })
+    .returns<RepresentationRequest[]>();
+
+  return attachBookerCards(requests ?? [], supabase);
+}
+
+// Pedidos que o próprio artista enviou a bookers já cadastrados — espera
+// resposta do booker.
+export async function getOutgoingRepresentationRequestsForArtist(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<IncomingRepresentationRequest[]> {
+  await supabase.rpc('expire_stale_representation_requests');
+  const { data: requests } = await supabase
+    .from('representation_requests')
+    .select('*')
+    .eq('artist_profile_id', artistId)
+    .eq('status', 'pendente')
+    .eq('requested_by_profile_id', artistId)
+    .order('created_at', { ascending: false })
+    .returns<RepresentationRequest[]>();
+
+  return attachBookerCards(requests ?? [], supabase);
+}
+
 export async function getOutgoingPendingRequestCount(
   bookerId: string,
   supabase: SupabaseServerClient
@@ -719,13 +755,31 @@ export async function getOutgoingPendingRequestCount(
     .from('representation_requests')
     .select('id', { count: 'exact', head: true })
     .eq('booker_profile_id', bookerId)
+    .eq('requested_by_profile_id', bookerId)
     .eq('status', 'pendente');
   return count ?? 0;
 }
 
 // Espelha getIncomingRepresentationRequests — pedidos de representação que
-// este booker enviou e ainda estão pendentes de resposta do artista.
+// este booker enviou (a artistas novos) e ainda estão pendentes.
 export type OutgoingRepresentationRequest = RepresentationRequest & { artist: ArtistCard };
+
+async function attachArtistCards(
+  requests: RepresentationRequest[],
+  supabase: SupabaseServerClient
+): Promise<OutgoingRepresentationRequest[]> {
+  if (requests.length === 0) return [];
+
+  const artistCards = await fetchArtistCards(
+    requests.map((r) => r.artist_profile_id),
+    supabase
+  );
+  const artistById = new Map(artistCards.map((a) => [a.profileId, a]));
+
+  return requests
+    .filter((r) => artistById.has(r.artist_profile_id))
+    .map((r) => ({ ...r, artist: artistById.get(r.artist_profile_id)! }));
+}
 
 export async function getOutgoingRepresentationRequests(
   bookerId: string,
@@ -737,20 +791,30 @@ export async function getOutgoingRepresentationRequests(
     .select('*')
     .eq('booker_profile_id', bookerId)
     .eq('status', 'pendente')
+    .eq('requested_by_profile_id', bookerId)
     .order('created_at', { ascending: false })
     .returns<RepresentationRequest[]>();
 
-  if (!requests || requests.length === 0) return [];
+  return attachArtistCards(requests ?? [], supabase);
+}
 
-  const artistCards = await fetchArtistCards(
-    requests.map((r) => r.artist_profile_id),
-    supabase
-  );
-  const artistById = new Map(artistCards.map((a) => [a.profileId, a]));
+// Pedidos que artistas enviaram diretamente a este booker (já cadastrado)
+// — o booker é quem decide aceitar/recusar.
+export async function getIncomingRepresentationRequestsForBooker(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<OutgoingRepresentationRequest[]> {
+  await supabase.rpc('expire_stale_representation_requests');
+  const { data: requests } = await supabase
+    .from('representation_requests')
+    .select('*')
+    .eq('booker_profile_id', bookerId)
+    .eq('status', 'pendente')
+    .neq('requested_by_profile_id', bookerId)
+    .order('created_at', { ascending: false })
+    .returns<RepresentationRequest[]>();
 
-  return requests
-    .filter((r) => artistById.has(r.artist_profile_id))
-    .map((r) => ({ ...r, artist: artistById.get(r.artist_profile_id)! }));
+  return attachArtistCards(requests ?? [], supabase);
 }
 
 export type OpportunityWithArtist = Opportunity & {

@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import type { ArtistCard, ArtistRelationshipCard } from '../data';
 import { FavoriteButton } from '../favorite-button';
+import { TerminateRelationshipButton } from '../terminate-relationship-button';
 import { avatarClass, initialsFromName } from '../ui';
 import { RequestRepresentationButton } from './request-button';
 import type { RepresentationRequestStatus } from '@/lib/supabase/types';
@@ -88,6 +89,12 @@ export function ArtistRow({
         </Link>
         {requestStatus !== undefined && (
           <RequestRepresentationButton artistProfileId={artist.profileId} status={requestStatus} />
+        )}
+        {relationship && (
+          <TerminateRelationshipButton
+            representationId={relationship.representationId}
+            targetName={name}
+          />
         )}
       </div>
     </div>

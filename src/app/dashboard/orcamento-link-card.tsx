@@ -101,12 +101,6 @@ export function OrcamentoLinkCard({
           Alterar
         </Link>
       </div>
-
-      {routingMode === 'eu' && !bookerName && (
-        <p className="mt-3 text-[12px] text-[var(--ink)]/45">
-          Tem um booker? Convide pela doopla e vocês podem cuidar dessas oportunidades juntos.
-        </p>
-      )}
     </section>
   );
 }

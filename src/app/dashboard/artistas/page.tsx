@@ -1,9 +1,13 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+import { AddConnectionModal } from '../add-connection-modal';
+import { confirmInviteAction } from '../actions';
 import {
   getBookerArtistRelationships,
+  getIncomingRepresentationRequestsForBooker,
   getOutgoingRepresentationRequests,
+  getPendingInvites,
   getRepresentationRequestStatusesFor,
   getDiscoverArtists,
   getFavoriteArtists,
@@ -12,12 +16,12 @@ import {
 } from '../data';
 import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
-import { eyebrowClass } from '../ui';
+import { PendingStatusList } from '../pending-status-list';
+import { accentButtonClass, avatarClass, eyebrowClass, initialsFromName } from '../ui';
 import { ArtistRow } from './artist-row';
 import { DiscoverArtists } from './discover-artists';
-import { InviteArtistCard } from './invite-artist-card';
+import { IncomingArtistRequests } from './incoming-artist-requests';
 import { MarkRepresentationsSeen } from './mark-seen';
-import { OutgoingRequests } from './outgoing-requests';
 
 export const metadata: Metadata = {
   title: 'Artistas | Doopla',
@@ -30,9 +34,20 @@ export default async function ArtistasPage(props: {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'booker') redirect('/dashboard');
 
-  const [myArtists, outgoingRequests, favoriteArtists, favoriteIds] = await Promise.all([
+  const [
+    myArtists,
+    outgoingRequests,
+    incomingRequests,
+    sentInvites,
+    receivedInvites,
+    favoriteArtists,
+    favoriteIds,
+  ] = await Promise.all([
     getBookerArtistRelationships(user.id, supabase),
     getOutgoingRepresentationRequests(user.id, supabase),
+    getIncomingRepresentationRequestsForBooker(user.id, supabase),
+    getSentInvites(user.id, supabase),
+    getPendingInvites(user.id, supabase),
     getFavoriteArtists(user.id, supabase),
     getFavoriteIds(user.id, supabase),
   ]);
@@ -51,31 +66,45 @@ export default async function ArtistasPage(props: {
     supabase
   );
   const requestStatusRecord = Object.fromEntries(requestStatuses);
-  const sentInvites = await getSentInvites(user.id, supabase);
+
+  const pendingInviteRows = sentInvites
+    .filter((i) => i.status === 'pendente')
+    .map((i) => ({
+      key: i.id,
+      name: i.invitee_name,
+      status: 'Convite enviado · Aguardando cadastro',
+    }));
+  const outgoingRequestRows = outgoingRequests.map((r) => ({
+    key: r.id,
+    name: r.artist.stageName || r.artist.fullName,
+    status: 'Solicitação enviada · Aguardando aceite',
+    href: `/dashboard/artistas/${r.artist.profileId}`,
+  }));
+  const hasAnyPending =
+    incomingRequests.length > 0 ||
+    outgoingRequestRows.length > 0 ||
+    pendingInviteRows.length > 0 ||
+    receivedInvites.length > 0;
 
   return (
     <main className="flex flex-col gap-10">
       <MarkRepresentationsSeen />
-      <header>
-        <p className={eyebrowClass}>Artistas</p>
-        <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
-          Artistas que você representa
-        </h1>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className={eyebrowClass}>Artistas</p>
+          <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
+            Artistas que você representa
+          </h1>
+        </div>
+        <AddConnectionModal myRole="booker" />
       </header>
-
-      {outgoingRequests.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <p className={eyebrowClass}>Solicitações enviadas</p>
-          <OutgoingRequests requests={outgoingRequests} />
-        </section>
-      )}
 
       <section className="flex flex-col gap-3">
         <p className={eyebrowClass}>Meus artistas</p>
         {myArtists.length === 0 ? (
           <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
-            Você ainda não representa nenhum artista na doopla. Descubra novos artistas abaixo, ou
-            convide quem já trabalha com você no cadastro.
+            Você ainda não representa nenhum artista na doopla. Use &quot;Adicionar um
+            Artista&quot; acima, descubra novos artistas abaixo, ou espere alguém te procurar.
           </p>
         ) : (
           <ListFilter
@@ -91,6 +120,40 @@ export default async function ArtistasPage(props: {
           />
         )}
       </section>
+
+      {hasAnyPending && (
+        <section className="flex flex-col gap-3">
+          <p className={eyebrowClass}>Solicitações e convites</p>
+
+          {receivedInvites.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {receivedInvites.map((invite) => (
+                <li
+                  key={invite.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-white px-4 py-3"
+                >
+                  <span className="flex items-center gap-3 text-sm">
+                    <span className={avatarClass}>{initialsFromName(invite.inviterName)}</span>
+                    <span>
+                      <strong>{invite.inviterName}</strong> quer se conectar com você na doopla.
+                    </span>
+                  </span>
+                  <form action={confirmInviteAction}>
+                    <input type="hidden" name="inviteId" value={invite.id} />
+                    <button type="submit" className={accentButtonClass}>
+                      Aceitar conexão
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {incomingRequests.length > 0 && <IncomingArtistRequests requests={incomingRequests} />}
+
+          <PendingStatusList rows={[...outgoingRequestRows, ...pendingInviteRows]} />
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <p className={eyebrowClass}>Meus favoritos</p>
@@ -113,7 +176,7 @@ export default async function ArtistasPage(props: {
       </section>
 
       <div id="descubra" className="flex flex-col gap-2 pt-4">
-        <p className={eyebrowClass}>Descubra novos artistas</p>
+        <p className={eyebrowClass}>Encontrar artistas</p>
         <p className="text-[12.5px] text-[var(--ink)]/55">
           Mostrando artistas ativos recentemente na doopla, não por popularidade. Use a busca pra
           ver outros perfis.
@@ -126,11 +189,6 @@ export default async function ArtistasPage(props: {
         hasMore={hasMore}
         favoriteIds={[...favoriteIds]}
       />
-
-      <section className="flex flex-col gap-3">
-        <p className={eyebrowClass}>Convites enviados</p>
-        <InviteArtistCard invites={sentInvites} />
-      </section>
     </main>
   );
 }
