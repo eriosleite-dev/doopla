@@ -1250,9 +1250,9 @@ export async function updateBookerProfileAction(
 }
 
 export async function updateLinkRoutingAction(
-  _prevState: { error?: string },
+  _prevState: { error?: string; success?: boolean },
   formData: FormData
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; success?: boolean }> {
   const mode = String(formData.get('mode') ?? 'eu');
   const bookerId = String(formData.get('bookerId') ?? '').trim() || null;
 
@@ -1288,7 +1288,7 @@ export async function updateLinkRoutingAction(
 
   revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
-  return {};
+  return { success: true };
 }
 
 export async function inviteArtistAction(

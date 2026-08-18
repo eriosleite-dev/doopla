@@ -335,6 +335,7 @@ export async function getArtistLinkRouting(
 export type OrcamentoLinkInfo = {
   publicEnabled: boolean;
   routingMode: LinkRoutingMode;
+  bookerId: string | null;
   bookerName: string | null;
 };
 
@@ -367,6 +368,7 @@ export async function getOrcamentoLinkInfo(
   return {
     publicEnabled: artist?.public_enabled ?? false,
     routingMode: (routing?.mode ?? 'eu') as LinkRoutingMode,
+    bookerId: routing?.booker_id ?? null,
     bookerName,
   };
 }

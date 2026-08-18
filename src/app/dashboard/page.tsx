@@ -193,7 +193,9 @@ export default async function DashboardPage(props: {
           publicEnabled={orcamentoInfo.publicEnabled}
           orcamentoUrl={orcamentoUrl}
           routingMode={orcamentoInfo.routingMode}
+          bookerId={orcamentoInfo.bookerId}
           bookerName={orcamentoInfo.bookerName}
+          bookers={myBookers}
         />
       )}
 

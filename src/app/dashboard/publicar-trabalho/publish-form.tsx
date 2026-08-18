@@ -105,46 +105,57 @@ export function PublishForm({ myBookers }: { myBookers: BookerCard[] }) {
           </span>
         </label>
 
-        <label
-          className={`flex cursor-pointer items-start gap-2.5 rounded-[14px] border px-4 py-3 ${
-            myBookers.length === 0 ? 'opacity-50' : ''
-          } border-[var(--ink)]/15`}
-        >
-          <input
-            type="checkbox"
-            checked={sendToMine}
-            disabled={myBookers.length === 0}
-            onChange={(e) => setSendToMine(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span>
-            <span className="block text-sm font-medium">Enviar para meus bookers</span>
-            <span className="block text-[12px] text-[var(--ink)]/55">
-              {myBookers.length === 0
-                ? 'Você ainda não tem bookers conectados.'
-                : 'Envie diretamente pra um ou mais bookers que já trabalham com você.'}
+        {myBookers.length === 1 && (
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-[14px] border border-[var(--ink)]/15 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={sendToMine}
+              onChange={(e) => setSendToMine(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-sm font-medium">
+              Enviar para meu booker — {myBookers[0].fullName}
             </span>
-          </span>
-        </label>
+          </label>
+        )}
 
-        {sendToMine && myBookers.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-[14px] bg-[var(--paper-dim)] p-4">
-            <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50">
-              Pra quais bookers?
-            </span>
-            <div className="flex flex-col gap-1.5">
-              {myBookers.map((b) => (
-                <label key={b.profileId} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedBookerIds.includes(b.profileId)}
-                    onChange={() => toggleBooker(b.profileId)}
-                  />
-                  {b.fullName}
-                </label>
-              ))}
-            </div>
-          </div>
+        {myBookers.length > 1 && (
+          <>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-[14px] border border-[var(--ink)]/15 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={sendToMine}
+                onChange={(e) => setSendToMine(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-medium">Enviar para meus bookers</span>
+                <span className="block text-[12px] text-[var(--ink)]/55">
+                  Envie diretamente pra um ou mais bookers que já trabalham com você.
+                </span>
+              </span>
+            </label>
+
+            {sendToMine && (
+              <div className="flex flex-col gap-2 rounded-[14px] bg-[var(--paper-dim)] p-4">
+                <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50">
+                  Pra quais bookers?
+                </span>
+                <div className="flex flex-col gap-1.5">
+                  {myBookers.map((b) => (
+                    <label key={b.profileId} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedBookerIds.includes(b.profileId)}
+                        onChange={() => toggleBooker(b.profileId)}
+                      />
+                      {b.fullName}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

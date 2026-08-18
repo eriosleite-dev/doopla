@@ -405,10 +405,15 @@ Migration 0033 + reescrita de `bookers/page.tsx`, `artistas/page.tsx`,
   oportunidade). Isso é a diferença real que fecha a lacuna do pedido
   original ("Enviando diretamente para: Ana × João") — sem isso, os
   checkboxes seriam só cosmético.
-- **Simplificação assumida, não implementada:** "se só existe 1 booker
-  ativo, pular o modal de seleção" (pedido explícito) não foi feito —
-  o formulário sempre mostra a lista de bookers pra marcar, mesmo com
-  1 só. Funcional, só não tem o atalho de UX. Também não construí o
-  "ALTERAR abre modal direto" pro Link de Orçamento — o link pra
-  `/dashboard/perfil#roteamento` (que já tinha o formulário completo)
-  continua sendo a forma de mudar, só a copy vaga foi removida.
+- **Duas simplificações do parágrafo acima foram fechadas em seguida,
+  a pedido explícito — 18/08/2026:** (1) Publicar trabalho: com
+  exatamente 1 booker ativo, mostra direto "Enviar para meu booker —
+  [Nome]" sem lista pra marcar; com 2+, mantém a seleção; com 0, a
+  opção nem aparece. (2) Link de Orçamento: "Alterar" agora abre o
+  formulário de roteamento inline (mesmo componente do Perfil,
+  extraído pra `link-routing-form.tsx` e reaproveitado nos dois
+  lugares) em vez de navegar pra `/dashboard/perfil`. Mesma ação,
+  mesmas regras (elegibilidade só vínculo ativo, fallback automático
+  ao encerrar vínculo) — só o formulário virou compartilhado entre o
+  card do Perfil e o card da Visão Geral, cada um decidindo como
+  exibir (fixo vs. toggle).

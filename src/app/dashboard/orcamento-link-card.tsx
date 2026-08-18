@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 
 import { enablePublicProfileAction } from './actions';
+import { LinkRoutingForm, type BookerOption } from './link-routing-form';
 import { accentButtonClass, cardClass, eyebrowClass, ghostButtonClass } from './ui';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
 
@@ -11,14 +11,19 @@ export function OrcamentoLinkCard({
   publicEnabled,
   orcamentoUrl,
   routingMode,
+  bookerId,
   bookerName,
+  bookers,
 }: {
   publicEnabled: boolean;
   orcamentoUrl: string | null;
   routingMode: LinkRoutingMode;
+  bookerId: string | null;
   bookerName: string | null;
+  bookers: BookerOption[];
 }) {
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   async function copyLink() {
     if (!orcamentoUrl) return;
@@ -94,13 +99,25 @@ export function OrcamentoLinkCard({
           {routingMode === 'meu_booker' && (bookerName ?? 'Seu booker')}
           {routingMode === 'eu_e_meu_booker' && `Você + ${bookerName ?? 'seu booker'}`}
         </span>
-        <Link
-          href="/dashboard/perfil#roteamento"
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
           className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 underline hover:text-[var(--ink)]"
         >
-          Alterar
-        </Link>
+          {editing ? 'Fechar' : 'Alterar'}
+        </button>
       </div>
+
+      {editing && (
+        <div className="mt-4 rounded-[14px] border border-[var(--ink)]/12 p-4">
+          <LinkRoutingForm
+            bookers={bookers}
+            currentMode={routingMode}
+            currentBookerId={bookerId}
+            onSaved={() => setEditing(false)}
+          />
+        </div>
+      )}
     </section>
   );
 }
