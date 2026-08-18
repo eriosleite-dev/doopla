@@ -1,7 +1,8 @@
 import type { createClient } from '@/lib/supabase/server';
 import { formatRelativeDate } from '@/lib/format';
 import type {
-  ArtistAvailability,
+  AgendaEntry,
+  AgendaEntryType,
   ArtistLinkRouting,
   Booking,
   BookingContract,
@@ -1508,15 +1509,53 @@ export async function getOfficialBookerProgress(
 
 export type AgendaEvent = {
   date: string; // yyyy-mm-dd
-  kind: 'confirmado' | 'disponivel';
+  kind: 'confirmado' | AgendaEntryType;
   title: string;
   sub: string;
-  availabilityId?: string;
+  entryId?: string;
   bookingId?: string;
 };
 
+export const AGENDA_ENTRY_LABEL: Record<AgendaEntryType, string> = {
+  disponivel: 'Disponível',
+  indisponivel: 'Indisponível',
+  viagem: 'Viagem',
+  outro: 'Compromisso',
+};
+
+// Um agenda_entries com período (start_date..end_date) vira um AgendaEvent
+// por dia do período — é o que permite o calendário mostrar "20-22 SET"
+// como 3 pontos, sem precisar de lógica de "faixa" na grade.
+function expandAgendaEntry(entry: AgendaEntry, viewerId: string): AgendaEvent[] {
+  const title = entry.note?.trim() || AGENDA_ENTRY_LABEL[entry.entry_type];
+  const sub =
+    entry.created_by_profile_id === viewerId
+      ? entry.note?.trim()
+        ? AGENDA_ENTRY_LABEL[entry.entry_type]
+        : 'Marcado por você'
+      : entry.created_by_profile_id === entry.artist_profile_id
+        ? AGENDA_ENTRY_LABEL[entry.entry_type]
+        : 'Marcado pelo seu booker';
+
+  const events: AgendaEvent[] = [];
+  const start = new Date(`${entry.start_date}T00:00:00`);
+  const end = new Date(`${entry.end_date}T00:00:00`);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    events.push({
+      date: d.toISOString().slice(0, 10),
+      kind: entry.entry_type,
+      title,
+      sub,
+      entryId: entry.id,
+    });
+  }
+  return events;
+}
+
 // Trabalho confirmado = negociação já aceita (não é mais só proposta) e
-// tem data marcada. Disponibilidade é só do artista (marcada manualmente).
+// tem data marcada. Marcações manuais (disponível/indisponível/viagem/
+// outro) vêm de agenda_entries — do próprio artista ou de um booker com
+// representação ativa (RLS garante o acesso).
 export async function getAgendaEvents(
   userId: string,
   role: Profile['role'],
@@ -1538,21 +1577,24 @@ export async function getAgendaEvents(
     }));
 
   if (role === 'artista') {
-    const { data: availability } = await supabase
-      .from('artist_availability')
-      .select('*')
-      .eq('artist_profile_id', userId)
-      .returns<ArtistAvailability[]>();
-    for (const a of availability ?? []) {
-      events.push({
-        date: a.available_date,
-        kind: 'disponivel',
-        title: 'Livre para trabalhos',
-        sub: 'Marcado manualmente por você',
-        availabilityId: a.id,
-      });
+    const entries = await getArtistAgendaEntries(userId, supabase);
+    for (const entry of entries) {
+      events.push(...expandAgendaEntry(entry, userId));
     }
   }
 
   return events;
+}
+
+export async function getArtistAgendaEntries(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<AgendaEntry[]> {
+  const { data } = await supabase
+    .from('agenda_entries')
+    .select('*')
+    .eq('artist_profile_id', artistId)
+    .order('start_date', { ascending: true })
+    .returns<AgendaEntry[]>();
+  return data ?? [];
 }

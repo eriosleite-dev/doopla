@@ -330,6 +330,19 @@ export type ArtistAvailability = {
   created_at: string;
 };
 
+export type AgendaEntryType = 'disponivel' | 'indisponivel' | 'viagem' | 'outro';
+
+export type AgendaEntry = {
+  id: string;
+  artist_profile_id: string;
+  created_by_profile_id: string;
+  entry_type: AgendaEntryType;
+  start_date: string;
+  end_date: string;
+  note: string | null;
+  created_at: string;
+};
+
 export type PayoutRequestStatus = 'solicitado';
 
 export type PayoutRequest = {
@@ -530,6 +543,16 @@ export type Database = {
         Insert: Partial<ArtistAvailability> &
           Pick<ArtistAvailability, 'artist_profile_id' | 'available_date'>;
         Update: Partial<ArtistAvailability>;
+        Relationships: [];
+      };
+      agenda_entries: {
+        Row: AgendaEntry;
+        Insert: Partial<AgendaEntry> &
+          Pick<
+            AgendaEntry,
+            'artist_profile_id' | 'created_by_profile_id' | 'entry_type' | 'start_date' | 'end_date'
+          >;
+        Update: Partial<AgendaEntry>;
         Relationships: [];
       };
       payout_requests: {

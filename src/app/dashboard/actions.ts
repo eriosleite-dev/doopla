@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
-import type { Booking, Invite, Opportunity, Profile, Review } from '@/lib/supabase/types';
+import type { AgendaEntryType, Booking, Invite, Opportunity, Profile, Review } from '@/lib/supabase/types';
 import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -828,29 +828,51 @@ export async function markRepresentationsSeenAction() {
   revalidatePath('/dashboard');
 }
 
-export async function addAvailabilityAction(formData: FormData) {
-  const date = String(formData.get('date') ?? '').trim();
-  if (!date) return;
-  const ctx = await requireUserAndProfile();
-  if (!ctx) return;
-  const { supabase, user, profile } = ctx;
-  if (profile.role !== 'artista') return;
+const AGENDA_ENTRY_TYPES: AgendaEntryType[] = ['disponivel', 'indisponivel', 'viagem', 'outro'];
 
-  await supabase
-    .from('artist_availability')
-    .insert({ artist_profile_id: user.id, available_date: date });
+// Cobre os dois casos: o artista marcando a própria agenda, ou um booker
+// marcando a agenda de um artista que representa (RLS de agenda_entries
+// só deixa passar se `representations` tiver o vínculo ativo).
+export async function addAgendaEntryAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const artistProfileId = String(formData.get('artistProfileId') ?? '').trim();
+  const entryType = String(formData.get('entryType') ?? '').trim();
+  const startDate = String(formData.get('startDate') ?? '').trim();
+  const endDate = String(formData.get('endDate') ?? '').trim() || startDate;
+  const note = String(formData.get('note') ?? '').trim();
+
+  if (!artistProfileId || !startDate) return { error: 'Preencha ao menos o tipo e a data.' };
+  if (!(AGENDA_ENTRY_TYPES as string[]).includes(entryType)) return { error: 'Tipo inválido.' };
+  if (endDate < startDate) return { error: 'A data final não pode ser antes da inicial.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { error } = await supabase.from('agenda_entries').insert({
+    artist_profile_id: artistProfileId,
+    created_by_profile_id: user.id,
+    entry_type: entryType as AgendaEntryType,
+    start_date: startDate,
+    end_date: endDate,
+    note: note || null,
+  });
+  if (error) return { error: 'Não foi possível salvar — confira se você tem acesso a essa agenda.' };
 
   revalidatePath('/dashboard/agenda');
+  return {};
 }
 
-export async function removeAvailabilityAction(formData: FormData) {
+export async function removeAgendaEntryAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   if (!id) return;
   const ctx = await requireUserAndProfile();
   if (!ctx) return;
-  const { supabase, user } = ctx;
+  const { supabase } = ctx;
 
-  await supabase.from('artist_availability').delete().eq('id', id).eq('artist_profile_id', user.id);
+  await supabase.from('agenda_entries').delete().eq('id', id);
 
   revalidatePath('/dashboard/agenda');
 }

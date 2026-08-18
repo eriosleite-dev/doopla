@@ -27,10 +27,35 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
   "Encontre um booker pra negociar, cobrar, fechar contrato ou ajudar
   você neste trabalho" já na tela de destino.
 
-Com isso a Prioridade 6 está fechada. Próxima: Prioridade 7 (Agenda
-editável) — mas boa parte já existe (evento confirmado já é clicável e
-leva pro booking, remarcação já embutida ali); falta confirmar o resto
-do escopo (bloquear período, adicionar/editar manualmente).
+Com isso a Prioridade 6 está fechada.
+
+## Prioridade 7 — Agenda editável (artista e booker)
+
+Antes só existia "marcar disponibilidade" (1 dia, sem tipo, só o
+próprio artista). Virou um calendário operacional de verdade:
+
+- ✅ **Migration `agenda_entries`**: substitui `artist_availability`
+  (que fica no banco sem uso, não foi apagada). Cada marcação tem tipo
+  (Disponível/Indisponível/Viagem/Outro), período (data início + fim,
+  não só um dia), nota livre, e quem criou. RLS: o próprio artista ou
+  um booker com `representations` ativa pro artista — nos dois casos dá
+  pra criar, ver e remover.
+- ✅ **Agenda do artista**: formulário completo (tipo, de/até, nota) no
+  lugar do antigo "+ Marcar disponibilidade" de 1 campo. Qualquer
+  marcação manual pode ser removida (não só disponibilidade). Bookings
+  confirmados continuam entrando automaticamente, sem mudança.
+- ✅ **Agenda do booker**: nova seção "Agenda dos seus artistas" — o
+  booker escolhe um artista que representa (chips com os nomes) e marca
+  disponibilidade/indisponibilidade/viagem/outro na agenda dele, com a
+  mesma UI. Ver `DECISOES.md` (18/08/2026) pro porquê disso ser só as
+  marcações manuais, não o calendário de bookings inteiro do artista.
+- ✅ Todo evento confirmado (artista e booker) já era clicável e levava
+  pro booking, que já tem remarcação embutida — conferido, não precisou
+  de mudança.
+
+Com isso a Prioridade 7 está fechada. Próxima: Prioridade 8 (Home
+diferenciada Sou Artista/Sou Booker — já em boa parte coberta pelas
+revisões de Home já feitas, falta fechar formalmente).
 
 ## 0.8. Preferências de matching: perfil deixa de ser formulário aberto
 

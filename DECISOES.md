@@ -8,6 +8,24 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Agenda editável do booker: só marcações manuais, não o calendário inteiro do artista — 18/08/2026
+
+Prioridade 7 pedia que o booker conseguisse "administrar o trabalho
+relacionado aos artistas que representa" na Agenda. Implementei isso
+como: o booker escolhe um artista que representa e pode adicionar/ver/
+remover as marcações manuais desse artista (disponível, indisponível,
+viagem, outro) — não os bookings confirmados do artista com terceiros.
+
+Motivo: os bookings do artista já têm sua própria regra de visibilidade
+(RLS por `booker_profile_id`/`artist_profile_id` do próprio booking) —
+deixar um booker enxergar TODOS os bookings de um artista, inclusive os
+que esse artista fechou com outros bookers, seria uma mudança de
+privacidade que a Prioridade 7 não pediu explicitamente e que merece
+decisão própria do usuário antes de construir. `agenda_entries` resolve
+o pedido concreto (bloquear datas, marcar viagem) sem essa exposição.
+Se no futuro fizer sentido o booker ver a agenda cheia do artista que
+representa, é uma decisão separada — registrar aqui se vier.
+
 ## Tags de avaliação finalizadas + "Identidade verificada" não vira badge de perfil ainda — 18/08/2026
 
 Você mandou os mockups finais de perfil (booker/artista) e avaliação —

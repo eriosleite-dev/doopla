@@ -108,17 +108,29 @@ export const calendarDayClass = (hasEvent: boolean) =>
     hasEvent ? 'bg-[var(--paper-dim)] font-semibold' : 'text-[var(--ink)]'
   }`;
 
-export const calendarDotClass = (kind: 'confirmado' | 'disponivel') =>
-  `absolute bottom-[6px] h-[5px] w-[5px] rounded-full ${
-    kind === 'confirmado' ? 'bg-[var(--musgo)]' : 'bg-[var(--accent)]'
-  }`;
+export type AgendaEventKind = 'confirmado' | 'disponivel' | 'indisponivel' | 'viagem' | 'outro';
 
-export const agendaTagClass = (kind: 'confirmado' | 'disponivel') =>
-  `font-doopla-mono inline-block rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${
-    kind === 'confirmado'
-      ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]'
-      : 'bg-[var(--accent)]/15 text-[var(--accent-ink)]'
-  }`;
+const AGENDA_DOT_COLOR: Record<AgendaEventKind, string> = {
+  confirmado: 'bg-[var(--musgo)]',
+  disponivel: 'bg-[var(--accent)]',
+  indisponivel: 'bg-[var(--alert)]',
+  viagem: 'bg-[var(--ink)]/50',
+  outro: 'bg-[var(--ink)]/30',
+};
+
+export const calendarDotClass = (kind: AgendaEventKind) =>
+  `absolute bottom-[6px] h-[5px] w-[5px] rounded-full ${AGENDA_DOT_COLOR[kind]}`;
+
+const AGENDA_TAG_COLOR: Record<AgendaEventKind, string> = {
+  confirmado: 'bg-[var(--musgo)]/10 text-[var(--musgo)]',
+  disponivel: 'bg-[var(--accent)]/15 text-[var(--accent-ink)]',
+  indisponivel: 'bg-[var(--alert)]/12 text-[var(--alert)]',
+  viagem: 'bg-[var(--ink)]/8 text-[var(--ink)]/70',
+  outro: 'bg-[var(--ink)]/8 text-[var(--ink)]/70',
+};
+
+export const agendaTagClass = (kind: AgendaEventKind) =>
+  `font-doopla-mono inline-block rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${AGENDA_TAG_COLOR[kind]}`;
 
 export const officialChipClass = (done: boolean) =>
   `font-doopla-mono inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[.03em] ${
