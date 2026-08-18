@@ -3,14 +3,19 @@ import Link from 'next/link';
 
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
 
-import { getMyOpportunities, getOpenOpportunities } from '../data';
+import {
+  getBookerMatchProfile,
+  getFavoriteIds,
+  getMyOpportunities,
+  getOpenOpportunities,
+} from '../data';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
+import { DiscoverWorkDeck } from './discover-work-deck';
 import { MarkOpportunitiesSeen } from './mark-seen';
-import { OpportunityCard } from './opportunity-card';
 
 export const metadata: Metadata = {
-  title: 'Oportunidades | Doopla',
+  title: 'Descobrir trabalhos | Doopla',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -105,32 +110,54 @@ export default async function OportunidadesPage() {
     );
   }
 
-  const opportunities = await getOpenOpportunities(user.id, supabase);
+  const [opportunities, matchProfile, favoriteIds] = await Promise.all([
+    getOpenOpportunities(user.id, supabase),
+    getBookerMatchProfile(user.id, supabase),
+    getFavoriteIds(user.id, supabase),
+  ]);
+
+  const itemsWithMatch = opportunities.map((o) => ({
+    ...o,
+    matchReasons: matchReasonsFor(o, matchProfile),
+  }));
 
   return (
     <main className="flex flex-col gap-8">
       <MarkOpportunitiesSeen />
       <header>
-        <p className={eyebrowClass}>Oportunidades</p>
-        <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
-          Trabalhos em aberto
-        </h1>
+        <p className={eyebrowClass}>Descobrir trabalhos</p>
+        <h1 className="font-doopla-display mt-1 text-3xl font-semibold">Trabalhos para você</h1>
         <p className="mt-2 text-sm text-[var(--ink)]/60">
-          Artistas com um trabalho quase fechado publicam aqui procurando um booker.
+          Encontre trabalhos em que artistas estão procurando ajuda para negociar, fechar ou
+          organizar o booking.
         </p>
       </header>
 
-      {opportunities.length === 0 ? (
-        <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/60">
-          Nenhuma oportunidade em aberto no momento.
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-4">
-          {opportunities.map((opportunity) => (
-            <OpportunityCard key={opportunity.id} opportunity={opportunity} />
-          ))}
-        </ul>
-      )}
+      <DiscoverWorkDeck items={itemsWithMatch} favoriteIds={[...favoriteIds]} />
     </main>
   );
+}
+
+function matchReasonsFor(
+  o: Awaited<ReturnType<typeof getOpenOpportunities>>[number],
+  profile: Awaited<ReturnType<typeof getBookerMatchProfile>>
+): string[] {
+  const reasons: string[] = [];
+  if (
+    o.category &&
+    profile.artistCategories.some((c) => c.toLowerCase() === o.category!.toLowerCase())
+  ) {
+    reasons.push(`categoria: ${o.category}`);
+  }
+  if (
+    o.location &&
+    profile.regions.some(
+      (r) =>
+        r.toLowerCase().includes(o.location!.toLowerCase()) ||
+        o.location!.toLowerCase().includes(r.toLowerCase())
+    )
+  ) {
+    reasons.push(`região: ${o.location}`);
+  }
+  return reasons;
 }

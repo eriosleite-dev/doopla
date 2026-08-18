@@ -13,6 +13,34 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## LOTE 1 — Painel do Booker: bugs + revisão de UX
+
+- ✅ Causa raiz do bug "solicitação aceita continua como pendência"
+  encontrada e corrigida (ver DECISOES.md) — split real de "Precisa
+  da sua atenção" × "Atividade recente".
+- ✅ Segundo bug real encontrado no caminho: perfil de agência
+  quebrava ao abrir (filtro de role incompleto).
+- ✅ "Oportunidades" (booker) renomeado pra "Descobrir trabalhos" no
+  menu, título "Trabalhos para você".
+- ✅ Descobrir trabalhos virou experiência sequencial: 1 card grande
+  por vez, busca discreta, favoritar direto no card, "combina com seu
+  perfil" com critério real (categoria/região do cadastro, nunca
+  percentual inventado), contador, estado vazio com próximo caminho.
+- ✅ "+ Tenho um trabalho" saiu do CTA fixo da sidebar (sem perder a
+  função) — agora é "+ Adicionar trabalho" no topo de Meus trabalhos.
+- ✅ Sidebar do Booker reestruturada: Início / Bookings (Descobrir
+  trabalhos, Meus trabalhos) / Minha rede (Artistas, Favoritos) /
+  Financeiro / Conta.
+- ✅ Visão Geral do Booker: hierarquia corrigida — Atenção → Trabalhos
+  pra você → Seus trabalhos → Seus artistas → Agenda → Atividade
+  recente. Booker Oficial nunca mais antes das funções operacionais.
+- ✅ Artistas (booker) já tinha as 3 seções pedidas (Meus artistas /
+  Descobrir / Favoritos), confirmado sem mudança.
+- ✅ Perfil do artista abrindo em modal, erro de abertura corrigido
+  junto com o bug de role.
+
+---
+
 ## Bookers, convites, vínculos e Link de Orçamento — reformulação estrutural
 
 Pedido: separar 4 conceitos que estavam misturados (encontrar, convidar/

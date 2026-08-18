@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { getPendingReviewsToWrite, getUserBookings } from '../data';
+import { JobPicker } from '../job-picker';
 import { getSessionProfile } from '../session';
 import { eyebrowClass } from '../ui';
 import { TrabalhosList } from './trabalhos-list';
@@ -28,9 +29,12 @@ export default async function TrabalhosPage() {
           ← Voltar pro painel
         </Link>
       </div>
-      <header>
-        <p className={eyebrowClass}>Trabalhos</p>
-        <h1 className="font-doopla-display mt-1 text-3xl font-semibold">Seus trabalhos</h1>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className={eyebrowClass}>{profile.role === 'booker' ? 'Meus trabalhos' : 'Trabalhos'}</p>
+          <h1 className="font-doopla-display mt-1 text-3xl font-semibold">Seus trabalhos</h1>
+        </div>
+        {profile.role === 'booker' && <JobPicker align="down" />}
       </header>
       <TrabalhosList bookings={bookings} role={profile.role} pendingReviewBookingIds={pendingReviewBookingIds} />
     </main>

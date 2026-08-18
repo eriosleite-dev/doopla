@@ -10,7 +10,6 @@ import { ProSidebarBadge } from './booker-pro/pro-sidebar-badge';
 import { getAttentionItems, getSubscription, getUserBookings } from './data';
 import { DashboardFooter } from './dashboard-footer';
 import { HelpPicker } from './help-picker';
-import { JobPicker } from './job-picker';
 import { getSessionProfile } from './session';
 import { type SidebarGroup, SidebarNav } from './sidebar-nav';
 import { avatarClass, initialsFromName } from './ui';
@@ -80,22 +79,30 @@ export default async function DashboardLayout({
             ],
           },
           {
-            label: 'Trabalho',
+            label: 'Bookings',
             links: [
-              { href: '/dashboard/trabalhos', label: 'Trabalhos' },
-              { href: '/dashboard/oportunidades', label: 'Oportunidades', badge: opportunitiesBadge },
+              {
+                href: '/dashboard/oportunidades',
+                label: 'Descobrir trabalhos',
+                badge: opportunitiesBadge,
+              },
+              { href: '/dashboard/trabalhos', label: 'Meus trabalhos' },
             ],
           },
           {
             label: 'Minha rede',
             links: [
               { href: '/dashboard/artistas', label: 'Artistas' },
-              { href: '/dashboard/perfil', label: 'Meu perfil' },
+              { href: '/dashboard/artistas#favoritos', label: 'Favoritos' },
             ],
           },
           {
             label: 'Financeiro',
             links: [{ href: '/dashboard/dinheiro', label: 'Ganhos' }],
+          },
+          {
+            label: 'Conta',
+            links: [{ href: '/dashboard/perfil', label: 'Meu perfil' }],
           },
         ]
       : [
@@ -199,7 +206,7 @@ export default async function DashboardLayout({
         <SidebarNav groups={groups} />
 
         <div className="flex flex-col gap-3 md:mt-auto">
-          {profile.role === 'booker' ? <JobPicker /> : <HelpPicker />}
+          {profile.role === 'artista' && <HelpPicker />}
           <form action={logoutAction} className="hidden md:block">
             <button
               type="submit"

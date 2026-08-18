@@ -825,6 +825,27 @@ export type OpportunityWithArtist = Opportunity & {
   myInvitationStatus: OpportunityInvitationStatus | null;
 };
 
+// Critérios reais de matching do booker (mesmos campos estruturados do
+// cadastro/perfil) — usado só pra mostrar "combina com seu perfil" com
+// motivo de verdade em Descobrir trabalhos, nunca um percentual
+// inventado sem algoritmo por trás.
+export type BookerMatchProfile = { artistCategories: string[]; regions: string[] };
+
+export async function getBookerMatchProfile(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<BookerMatchProfile> {
+  const { data } = await supabase
+    .from('booker_profiles')
+    .select('artist_categories, regions')
+    .eq('profile_id', bookerId)
+    .maybeSingle<{ artist_categories: string[]; regions: string[] }>();
+  return {
+    artistCategories: data?.artist_categories ?? [],
+    regions: data?.regions ?? [],
+  };
+}
+
 // Mural do booker: RLS de `opportunities` já resolve o que é visível (aberta
 // com distribution_mode aberto, ou onde o booker foi convidado) — aqui só
 // filtramos as descartadas e anexamos o status pessoal do booker em cada uma

@@ -6,10 +6,10 @@ import { useEffect, useRef, useState } from 'react';
 const OPTIONS = [
   { label: 'Já represento o artista', href: '/dashboard/propor' },
   { label: 'Buscar um artista na doopla', href: '/dashboard/artistas#descubra' },
-  { label: 'Convidar quem ainda não está na doopla', href: '/dashboard/artistas#convites' },
+  { label: 'Convidar quem ainda não está na doopla', href: '/dashboard/artistas' },
 ];
 
-export function JobPicker() {
+export function JobPicker({ align = 'up' }: { align?: 'up' | 'down' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -24,7 +24,11 @@ export function JobPicker() {
   return (
     <div ref={ref} className="relative">
       {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-full min-w-[240px] rounded-[14px] bg-[var(--paper)] p-2 shadow-lg">
+        <div
+          className={`absolute left-0 w-full min-w-[240px] rounded-[14px] bg-[var(--paper)] p-2 shadow-lg ${
+            align === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}
+        >
           <p className="font-doopla-mono px-2.5 py-1.5 text-[10px] uppercase tracking-[.06em] text-[var(--ink)]/45">
             Quem vai fazer esse trabalho?
           </p>
@@ -45,9 +49,9 @@ export function JobPicker() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="font-doopla-mono w-full rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)]"
+        className="font-doopla-mono w-full rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)] sm:w-auto"
       >
-        + Tenho um trabalho
+        + Adicionar trabalho
       </button>
     </div>
   );

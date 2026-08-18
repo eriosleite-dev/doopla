@@ -13,6 +13,7 @@ import { CompletePreferencesCard } from './complete-preferences-card';
 import {
   computeArtistStats,
   computeBookerStats,
+  getAgendaEvents,
   getArtistBookers,
   getArtistMatchingCompletion,
   getAttentionItems,
@@ -20,12 +21,14 @@ import {
   getBookerMatchingCompletion,
   getDiscoverBookers,
   getOfficialBookerProgress,
+  getOpenOpportunities,
   getOrcamentoLinkInfo,
   getPendingInvites,
   getRecentActivity,
   getReferralSummary,
   getSubscription,
   getUserBookings,
+  type ArtistCard,
   type BookerCard,
 } from './data';
 import { confirmInviteAction } from './actions';
@@ -79,9 +82,17 @@ export default async function DashboardPage(props: {
       ? await getArtistMatchingCompletion(user.id, supabase)
       : await getBookerMatchingCompletion(user.id, supabase);
   const subscription = profile.role === 'booker' ? await getSubscription(user.id, supabase) : null;
-  const myArtistsForChoice = subscription?.active_artist_pending_choice
-    ? await getBookerArtistRelationships(user.id, supabase)
-    : [];
+  const myArtists =
+    profile.role === 'booker' ? await getBookerArtistRelationships(user.id, supabase) : [];
+  const previewOpportunities =
+    profile.role === 'booker' ? (await getOpenOpportunities(user.id, supabase)).slice(0, 3) : [];
+  const upcomingAgenda =
+    profile.role === 'booker'
+      ? (await getAgendaEvents(user.id, profile.role, bookings, supabase))
+          .filter((e) => e.date >= new Date().toISOString().slice(0, 10))
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .slice(0, 3)
+      : [];
   const origin = referralSummary || orcamentoInfo ? await siteOrigin() : null;
   const referralUrl = referralSummary ? `${origin}/cadastro?ref=${referralSummary.referralCode}` : null;
   const orcamentoUrl =
@@ -102,7 +113,7 @@ export default async function DashboardPage(props: {
 
       {subscription?.active_artist_pending_choice && (
         <PostDowngradeBanner
-          artists={myArtistsForChoice.map((a) => ({
+          artists={myArtists.map((a) => ({
             profileId: a.profileId,
             name: a.stageName || a.fullName,
           }))}
@@ -175,6 +186,43 @@ export default async function DashboardPage(props: {
         </section>
       )}
 
+      {profile.role === 'booker' && (
+        <section>
+          <div className="flex items-center justify-between">
+            <p className={eyebrowClass}>Trabalhos para você</p>
+            <Link
+              href="/dashboard/oportunidades"
+              className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+            >
+              Descobrir trabalhos
+            </Link>
+          </div>
+          <div className="mt-4">
+            {previewOpportunities.length === 0 ? (
+              <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
+                Nenhum trabalho novo pra você agora.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {previewOpportunities.map((o) => (
+                  <li key={o.id}>
+                    <Link
+                      href="/dashboard/oportunidades"
+                      className="block rounded-[14px] border border-[var(--line-light)] p-4 text-sm hover:border-[var(--accent)]"
+                    >
+                      <span className="font-medium">{o.artistName}</span>
+                      <span className="mt-1 block truncate text-[13px] text-[var(--ink)]/65">
+                        {o.description}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
       <section>
         <div className="flex items-center justify-between">
           <p className={eyebrowClass}>Seus trabalhos</p>
@@ -190,6 +238,61 @@ export default async function DashboardPage(props: {
         </div>
       </section>
 
+      {profile.role === 'booker' && (
+        <section>
+          <div className="flex items-center justify-between">
+            <p className={eyebrowClass}>Seus artistas</p>
+            <Link
+              href="/dashboard/artistas"
+              className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+            >
+              Ver todos
+            </Link>
+          </div>
+          <div className="mt-4">
+            <ArtistPeopleRow people={myArtists} emptyMessage="Nenhum artista na sua rede ainda." />
+          </div>
+        </section>
+      )}
+
+      {profile.role === 'booker' && (
+        <section>
+          <div className="flex items-center justify-between">
+            <p className={eyebrowClass}>Agenda</p>
+            <Link
+              href="/dashboard/agenda"
+              className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+            >
+              Ver agenda
+            </Link>
+          </div>
+          <div className="mt-4">
+            {upcomingAgenda.length === 0 ? (
+              <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
+                Nenhum compromisso agendado.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2.5">
+                {upcomingAgenda.map((e, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center justify-between gap-3 rounded-[14px] border border-[var(--line-light)] p-3.5 text-sm"
+                  >
+                    <span>{e.title}</span>
+                    <span className="font-doopla-mono text-[11px] text-[var(--ink)]/50">
+                      {new Date(`${e.date}T00:00:00`).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: 'short',
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
+
       {profile.role === 'artista' && orcamentoInfo && (
         <OrcamentoLinkCard
           publicEnabled={orcamentoInfo.publicEnabled}
@@ -202,7 +305,7 @@ export default async function DashboardPage(props: {
       )}
 
       {/* Secundário de propósito (spec: nunca acima de dinheiro, pendências
-          ou bookings) — por isso vem depois de tudo isso, não antes. */}
+          ou bookings) — por isso vem depois das funções operacionais. */}
       {officialProgress && <BookerOficialCard progress={officialProgress} />}
 
       <CompletePreferencesCard filled={matchingCompletion.filled} total={matchingCompletion.total} />
@@ -293,6 +396,28 @@ function PeopleRow({ people, emptyMessage }: { people: BookerCard[]; emptyMessag
           <span className="truncate text-[13px] font-semibold">{p.fullName}</span>
           <span className="truncate text-[11px] text-[var(--ink)]/55">
             {[p.city, p.state].filter(Boolean).join(' · ') || p.mercados || 'Booker'}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ArtistPeopleRow({ people, emptyMessage }: { people: ArtistCard[]; emptyMessage: string }) {
+  if (people.length === 0) {
+    return <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">{emptyMessage}</p>;
+  }
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-1">
+      {people.map((p) => (
+        <div
+          key={p.profileId}
+          className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5"
+        >
+          <span className={avatarClass}>{initialsFromName(p.stageName || p.fullName)}</span>
+          <span className="truncate text-[13px] font-semibold">{p.stageName || p.fullName}</span>
+          <span className="truncate text-[11px] text-[var(--ink)]/55">
+            {[p.category, p.city].filter(Boolean).join(' · ') || 'Artista'}
           </span>
         </div>
       ))}

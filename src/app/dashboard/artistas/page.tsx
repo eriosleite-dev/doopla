@@ -155,7 +155,7 @@ export default async function ArtistasPage(props: {
         </section>
       )}
 
-      <section className="flex flex-col gap-3">
+      <section id="favoritos" className="flex flex-col gap-3 scroll-mt-6">
         <p className={eyebrowClass}>Meus favoritos</p>
         {favoriteArtists.length === 0 ? (
           <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
