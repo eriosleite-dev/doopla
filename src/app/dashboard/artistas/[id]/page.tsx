@@ -124,7 +124,7 @@ export default async function ArtistProfilePage(props: { params: Promise<{ id: s
 
       {rating.attributeCounts.length > 0 && (
         <section className="rounded-[18px] bg-white p-6">
-          <p className={eyebrowClass}>O que os bookers dizem</p>
+          <p className={eyebrowClass}>O que os bookers destacam</p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {rating.attributeCounts.map((a) => (
               <span

@@ -100,7 +100,7 @@ export default async function BookerProfilePage(props: { params: Promise<{ id: s
 
       {rating.attributeCounts.length > 0 && (
         <section className="rounded-[18px] bg-white p-6">
-          <p className={eyebrowClass}>O que os artistas dizem</p>
+          <p className={eyebrowClass}>O que os artistas destacam</p>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
             {rating.attributeCounts.map((a) => (
               <span

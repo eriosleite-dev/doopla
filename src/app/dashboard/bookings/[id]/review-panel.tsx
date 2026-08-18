@@ -3,11 +3,7 @@
 import { useActionState, useState } from 'react';
 
 import { contestReviewAction, requestReviewAction, submitReviewAction } from '../../actions';
-import {
-  MAX_REVIEW_ATTRIBUTES,
-  reviewAttributesFor,
-  labelForAttribute,
-} from '../../review-attributes';
+import { reviewAttributesFor, labelForAttribute } from '../../review-attributes';
 import { accentButtonClass, eyebrowClass, ghostButtonClass } from '../../ui';
 import type { Review } from '@/lib/supabase/types';
 
@@ -54,11 +50,9 @@ function ReviewForm({
   const attributeOptions = reviewAttributesFor(revieweeRole);
 
   function toggleAttribute(key: string) {
-    setAttributes((prev) => {
-      if (prev.includes(key)) return prev.filter((a) => a !== key);
-      if (prev.length >= MAX_REVIEW_ATTRIBUTES) return prev;
-      return [...prev, key];
-    });
+    setAttributes((prev) =>
+      prev.includes(key) ? prev.filter((a) => a !== key) : [...prev, key]
+    );
   }
 
   return (
@@ -101,6 +95,7 @@ function ReviewForm({
         defaultValue={review.comment ?? ''}
         placeholder="Comentário opcional"
         rows={3}
+        maxLength={400}
         className="rounded-[14px] border border-[var(--line-light)] bg-white px-4 py-3 text-sm outline-none focus:border-[var(--accent)]"
       />
 

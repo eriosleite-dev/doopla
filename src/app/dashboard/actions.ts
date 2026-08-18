@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
 import type { Booking, Invite, Opportunity, Profile, Review } from '@/lib/supabase/types';
-import { MAX_REVIEW_ATTRIBUTES } from './review-attributes';
 import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -1385,8 +1384,8 @@ export async function submitReviewAction(
 ): Promise<{ error?: string }> {
   const reviewId = String(formData.get('reviewId') ?? '');
   const rating = Number.parseInt(String(formData.get('rating') ?? ''), 10);
-  const attributes = formData.getAll('attributes').map(String).slice(0, MAX_REVIEW_ATTRIBUTES);
-  const comment = String(formData.get('comment') ?? '').trim();
+  const attributes = formData.getAll('attributes').map(String);
+  const comment = String(formData.get('comment') ?? '').trim().slice(0, 400);
 
   if (!reviewId) return { error: 'Avaliação não encontrada.' };
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {

@@ -8,6 +8,31 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Tags de avaliação finalizadas + "Identidade verificada" não vira badge de perfil ainda — 18/08/2026
+
+Você mandou os mockups finais de perfil (booker/artista) e avaliação —
+resolvi o TBD que já estava documentado no código
+(`review-attributes.ts` dizia literalmente "ainda não foi confirmada
+palavra por palavra"). Tags agora batem exatamente com o documento final,
+dos dois lados, e o limite artificial de 3 seleções foi removido (agora é
+"quantas fizerem sentido", até as 6 disponíveis).
+
+**Não implementei ainda**: os dois selos "Identidade verificada" e
+"Booker Doopla Oficial" como badge permanente de perfil, porque não
+existe nenhuma coluna real de verificação de identidade no banco — seria
+inventar um selo sem lastro, o mesmo motivo pelo qual o critério
+"identidade" do Booker Oficial já fica sempre falso hoje (ver
+`getOfficialBookerProgress`). "Doopla Verified" já era corretamente só
+do booking, nunca virou badge de pessoa em nenhum lugar do código —
+nada a corrigir aí.
+
+**Também não implementei**: perfil como modal (hoje é página com rota
+própria `/dashboard/bookers/[id]` e `/dashboard/artistas/[id]`) e o
+formulário de avaliação como modal acionado de uma lista "Trabalhos
+concluídos" (hoje é um painel dentro do detalhe do booking). São mudanças
+de arquitetura reais, não só copy — ficam pra quando entrar como
+prioridade explícita.
+
 ## Booker Básico ganha tela de plano própria na Home e no cadastro — 18/08/2026
 
 Até aqui só o artista tinha uma tela de "plano" no cadastro e uma seção

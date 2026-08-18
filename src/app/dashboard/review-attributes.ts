@@ -1,32 +1,29 @@
-// Doopla — vocabulário de atributos com contador (doopla-perfis-avaliacoes.md).
-// Máximo de 3 selecionáveis por avaliação, sempre por quem avalia.
+// Doopla — vocabulário de atributos com contador (doopla-perfis-avaliacoes
+// final). 6 tags fixas por lado, sempre por quem avalia — pode marcar
+// quantas fizerem sentido, sem limite artificial.
 
 export type ReviewAttribute = { key: string; label: string; icon: string };
 
-export const MAX_REVIEW_ATTRIBUTES = 3;
-
-// Atributos que o BOOKER usa pra avaliar o ARTISTA — lista literal do
-// documento ("pontual, boa comunicação, profissional, envia informações
-// rápido, ótimo de trabalhar, cumpre o combinado").
+// Atributos que o BOOKER usa pra avaliar o ARTISTA — o booker normalmente
+// não está no show, então as tags são sobre o processo de
+// negociação/relação, não sobre o show em si.
 export const ARTIST_REVIEW_ATTRIBUTES: ReviewAttribute[] = [
-  { key: 'pontual', label: 'Pontual', icon: '⏱' },
-  { key: 'boa_comunicacao', label: 'Boa comunicação', icon: '💬' },
+  { key: 'resposta_rapida', label: 'Resposta rápida', icon: '⚡' },
+  { key: 'cumpriu_combinado', label: 'Cumpriu o combinado', icon: '✓' },
+  { key: 'flexivel_negociacao', label: 'Flexível na negociação', icon: '⚖' },
+  { key: 'facil_comunicacao', label: 'Fácil comunicação', icon: '💬' },
   { key: 'profissional', label: 'Profissional', icon: '🎯' },
-  { key: 'envia_info_rapido', label: 'Envia informações rápido', icon: '⚡' },
-  { key: 'otimo_de_trabalhar', label: 'Ótimo de trabalhar', icon: '🤝' },
-  { key: 'cumpre_combinado', label: 'Cumpre o combinado', icon: '✓' },
+  { key: 'recomendaria', label: 'Recomendaria novamente', icon: '🤝' },
 ];
 
-// Atributos que o ARTISTA usa pra avaliar o BOOKER. O documento só dá um
-// exemplo ("Responde rápido") — esta lista completa segue o mesmo tom, mas
-// ainda não foi confirmada palavra por palavra por quem define o produto.
+// Atributos que o ARTISTA usa pra avaliar o BOOKER.
 export const BOOKER_REVIEW_ATTRIBUTES: ReviewAttribute[] = [
-  { key: 'responde_rapido', label: 'Responde rápido', icon: '⚡' },
-  { key: 'negocia_com_clareza', label: 'Negocia com clareza', icon: '💬' },
-  { key: 'paga_em_dia', label: 'Paga em dia', icon: '💰' },
-  { key: 'organizado', label: 'Organizado', icon: '🗂' },
-  { key: 'cumpre_combinado', label: 'Cumpre o combinado', icon: '✓' },
-  { key: 'indicaria_de_novo', label: 'Indicaria de novo', icon: '🤝' },
+  { key: 'atendimento_rapido', label: 'Atendimento rápido', icon: '⚡' },
+  { key: 'atendimento_cordial', label: 'Atendimento cordial', icon: '🙂' },
+  { key: 'negociacao_justa', label: 'Negociação justa', icon: '⚖' },
+  { key: 'comunicacao_clara', label: 'Comunicação clara', icon: '💬' },
+  { key: 'pontual', label: 'Pontual', icon: '⏱' },
+  { key: 'recomendaria', label: 'Recomendaria novamente', icon: '🤝' },
 ];
 
 export function reviewAttributesFor(revieweeRole: 'artista' | 'booker'): ReviewAttribute[] {
