@@ -53,17 +53,41 @@ export function BookerProModal() {
             <div>
               <p className={eyebrowClass}>Booker Pro</p>
               <h2 className="font-doopla-display mt-1 text-2xl font-semibold">
-                Transforme a Doopla no seu assistente de trabalho.
+                Profissionalize seu booking. Atenda mais. Organize menos.
               </h2>
               <p className="font-doopla-display mt-2 text-2xl font-semibold text-[var(--accent-ink)]">
                 R$49<span className="text-sm font-normal text-[var(--ink)]/55">/mês</span>
               </p>
             </div>
-            <p className="text-sm text-[var(--ink)]/70">
-              Em breve: mais automação, IA ampliada, análises, produtividade, organização e
-              capacidade de atender mais artistas e bookings. Os recursos vão aparecer aqui
-              conforme forem implementados.
+
+            <div className="flex flex-col gap-1.5 rounded-[14px] bg-[var(--musgo)]/10 p-3.5">
+              <span className="font-doopla-mono text-[10px] uppercase tracking-[.05em] text-[var(--musgo)]">
+                ✓ Disponível agora
+              </span>
+              <p className="text-sm text-[var(--ink)]/75">
+                Gerencie quantos artistas quiser — o Básico permite só 1 artista ativo por vez.
+              </p>
+            </div>
+
+            <div>
+              <span className="font-doopla-mono text-[10px] uppercase tracking-[.05em] text-[var(--ink)]/45">
+                Em breve no Pro
+              </span>
+              <ul className="mt-2 flex flex-col gap-2 text-sm text-[var(--ink)]/70">
+                <li>• IA ampliada — negociações, mensagens, propostas, follow-ups, rotina de booking</li>
+                <li>• WhatsApp profissional — centralize contatos e comunicações de trabalho</li>
+                <li>• E-mail profissional @doopla</li>
+                <li>• CRM e gestão avançada — artistas, clientes, negociações, histórico, pendências</li>
+                <li>• Automações — follow-ups, lembretes, cobranças, tarefas repetitivas</li>
+                <li>• Análises e performance — valores negociados, comissões, conversão</li>
+                <li>• Financeiro avançado — mais controle sobre comissões e recebimentos</li>
+              </ul>
+            </div>
+
+            <p className="text-[12px] text-[var(--ink)]/45">
+              Alguns recursos do Pro estão em desenvolvimento e serão liberados progressivamente.
             </p>
+
             <div className="flex flex-col gap-2">
               <button type="button" onClick={() => setStep('confirm')} className={accentButtonClass}>
                 Fazer upgrade para o Pro

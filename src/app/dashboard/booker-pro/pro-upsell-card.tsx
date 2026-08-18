@@ -13,8 +13,8 @@ export function ProUpsellCard() {
       <p className={eyebrowClass}>Faça mais com a doopla</p>
       <h2 className="font-doopla-display mt-2 text-lg font-semibold">Desbloqueie o Booker Pro</h2>
       <p className="mt-1.5 text-sm text-[var(--ink)]/60">
-        Transforme a doopla no seu assistente pra organizar bookings, automatizar sua rotina e
-        atender mais artistas.
+        Gerencie quantos artistas quiser, sem o limite de 1 do Básico — e desbloqueie automação,
+        IA e organização avançada conforme forem lançadas.
       </p>
       <p className="font-doopla-mono mt-3 text-[11px] uppercase tracking-[.05em] text-[var(--accent-ink)]">
         Booker Pro · R$49/mês

@@ -41,6 +41,23 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## LOTE 3 — Copy e posicionamento do Booker Pro
+
+- ✅ Modal reescrito com "Disponível agora" (gerenciar artistas
+  ilimitados — o único recurso Pro que existe de verdade hoje) x "Em
+  breve no Pro" (IA, WhatsApp profissional, e-mail @doopla, CRM,
+  automações, análises, financeiro avançado) claramente separados —
+  nunca apresentando recurso inexistente como disponível.
+  Mesmo tratamento no modal público da Home.
+- ✅ Card "Faça mais com a doopla" (dashboard) e sidebar já refletiam
+  o benefício real; ajustado o texto do card pra citar o limite de 1
+  artista explicitamente em vez de linguagem vaga ("automatizar sua
+  rotina").
+- Sem mudança técnica — só copy/posicionamento, sem risco de dado ou
+  financeiro, como o próprio pedido especificou.
+
+---
+
 ## Bookers, convites, vínculos e Link de Orçamento — reformulação estrutural
 
 Pedido: separar 4 conceitos que estavam misturados (encontrar, convidar/
