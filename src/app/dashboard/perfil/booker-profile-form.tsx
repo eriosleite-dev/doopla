@@ -4,12 +4,12 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 
 import {
   ARTIST_CATEGORY_OPTIONS,
+  buildRegionOptions,
   CAPACITY_OPTIONS,
   CLIENT_TYPE_OPTIONS,
   COMMISSION_RANGE_OPTIONS,
   FEE_RANGE_OPTIONS,
   LANGUAGE_OPTIONS,
-  REGION_OPTIONS,
   SPECIALTY_AREA_OPTIONS,
 } from '@/lib/matching-options';
 
@@ -28,6 +28,7 @@ export function BookerProfileForm({
   professionalName,
   bio,
   mercados,
+  cidades,
   experience,
   instagramUrl,
   websiteUrl,
@@ -43,6 +44,7 @@ export function BookerProfileForm({
   professionalName: string | null;
   bio: string | null;
   mercados: string | null;
+  cidades: string | null;
   experience: string | null;
   instagramUrl: string | null;
   websiteUrl: string | null;
@@ -200,7 +202,7 @@ export function BookerProfileForm({
           <ChipCheckboxGroup
             name="regions"
             label="Regiões onde você atua"
-            options={REGION_OPTIONS}
+            options={buildRegionOptions(cidades)}
             defaultValues={regions}
           />
           <ChipCheckboxGroup

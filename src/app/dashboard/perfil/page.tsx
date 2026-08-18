@@ -82,6 +82,7 @@ export default async function PerfilPage() {
               bio={artistDetails?.bio ?? null}
               genres={artistDetails?.genres ?? []}
               mercados={artistDetails?.mercados ?? null}
+              local={artistDetails?.local ?? null}
               websiteUrl={artistDetails?.website_url ?? null}
               otherLinks={artistDetails?.other_links ?? null}
               otherPreferences={artistDetails?.other_preferences ?? null}
@@ -101,6 +102,7 @@ export default async function PerfilPage() {
               professionalName={bookerDetails?.professional_name ?? null}
               bio={bookerDetails?.bio ?? null}
               mercados={bookerDetails?.mercados ?? null}
+              cidades={bookerDetails?.cidades ?? null}
               experience={bookerDetails?.experience ?? null}
               instagramUrl={bookerDetails?.instagram_url ?? null}
               websiteUrl={bookerDetails?.website_url ?? null}

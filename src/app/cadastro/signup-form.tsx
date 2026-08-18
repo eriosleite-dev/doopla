@@ -14,6 +14,7 @@ import {
 } from '@/app/auth/ui';
 import {
   ARTIST_CATEGORY_OPTIONS,
+  buildRegionOptions,
   CAPACITY_OPTIONS,
   CAREER_STAGE_OPTIONS,
   CLIENT_TYPE_OPTIONS,
@@ -21,7 +22,7 @@ import {
   FEE_RANGE_OPTIONS,
   HELP_AREA_OPTIONS,
   LANGUAGE_OPTIONS,
-  REGION_OPTIONS,
+  REGION_SCOPE_OPTIONS,
   SPECIALTY_AREA_OPTIONS,
   WORK_TYPE_OPTIONS,
 } from '@/lib/matching-options';
@@ -174,7 +175,7 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     kind: 'chip-multi',
     arrayOutput: true,
     label: 'Em quais regiões você topa atuar?',
-    options: REGION_OPTIONS,
+    options: REGION_SCOPE_OPTIONS,
   },
   {
     formKey: 'careerStage',
@@ -266,6 +267,17 @@ const BOOKER_ROSTER_STEP: WizardStep = {
   placeholder: 'Ex: 15',
 };
 
+// Localidade real, usada como primeira opção concreta na pergunta de
+// área de atuação logo depois, no lugar de "minha cidade/meu estado"
+// abstrato. Reaproveita a coluna `cidades`, que já existia no schema.
+const BOOKER_LOCAL_STEP: WizardStep = {
+  formKey: 'cidades',
+  kind: 'text',
+  label: 'Em qual cidade e estado você está baseado?',
+  hint: 'Cidade, estado',
+  placeholder: 'Ex: São Paulo, SP',
+};
+
 const BOOKER_JA_REPRESENTA_STEP: WizardStep = {
   formKey: 'jaRepresenta',
   kind: 'chip',
@@ -311,6 +323,7 @@ const BOOKER_EXPERIENCE_DETAIL_STEP: WizardStep = {
 // Mesmo conjunto completo pras 3 opções de modoTrabalho — nenhuma delas
 // leva a um caminho mais curto que as outras.
 const BOOKER_REMAINING_STEPS: WizardStep[] = [
+  BOOKER_LOCAL_STEP,
   {
     formKey: 'mercados',
     kind: 'chip-multi',
@@ -353,7 +366,7 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     kind: 'chip-multi',
     arrayOutput: true,
     label: 'Em quais cidades, estados ou países sua rede é mais forte?',
-    options: REGION_OPTIONS,
+    options: REGION_SCOPE_OPTIONS,
   },
   {
     formKey: 'languages',
@@ -614,6 +627,13 @@ export function SignupForm({
   const currentOtherText = currentStep
     ? (otherText[currentStep.formKey] ?? '')
     : '';
+  // 'regions' troca "minha cidade/meu estado" abstratos pela localidade
+  // real que a pessoa acabou de informar (formKey 'local' pro artista,
+  // 'cidades' pro booker — cada fluxo só preenche um dos dois).
+  const currentChipOptions =
+    currentStep?.formKey === 'regions'
+      ? buildRegionOptions(answers.local || answers.cidades)
+      : (currentStep?.options ?? []);
   const canContinue =
     currentStep?.kind === 'invites' ||
     currentStep?.kind === 'single-invite' ||
@@ -755,7 +775,7 @@ export function SignupForm({
                   Pode marcar mais de uma opção.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {currentStep.options!.map((option) => (
+                  {currentChipOptions.map((option) => (
                     <button
                       key={option}
                       type="button"

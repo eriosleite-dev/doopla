@@ -37,14 +37,16 @@ export const CLIENT_TYPE_OPTIONS = [
   'Outro',
 ];
 
-export const REGION_OPTIONS = [
-  'Minha cidade',
-  'Meu estado',
-  'Todo o Brasil',
-  'América Latina',
-  'Internacional',
-  'Outro',
-];
+// Abrangência sem localidade concreta — a cidade/estado real da pessoa
+// (respondida em 'local'/'cidades' no cadastro) entra como primeira opção
+// via buildRegionOptions, no lugar dos antigos "Minha cidade"/"Meu estado"
+// abstratos.
+export const REGION_SCOPE_OPTIONS = ['Todo o Brasil', 'América Latina', 'Internacional', 'Outro'];
+
+export function buildRegionOptions(baseLocation?: string | null): string[] {
+  const trimmed = baseLocation?.trim();
+  return trimmed ? [trimmed, ...REGION_SCOPE_OPTIONS] : REGION_SCOPE_OPTIONS;
+}
 
 export const LANGUAGE_OPTIONS = ['Português', 'Inglês', 'Espanhol', 'Francês', 'Outro'];
 

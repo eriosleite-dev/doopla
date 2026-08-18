@@ -32,9 +32,16 @@ interna do matching.
   `updateBookerProfileAction`/`updateArtistProfileAction` de antes.
   Regra de campo vazio mantida: só aparece no resumo o que já foi
   respondido.
-- ⏳ **Área de atuação com localidades concretas** (em vez de "minha
-  cidade/meu estado" abstrato): ainda não feito — precisa de migration,
-  é o próximo passo.
+- ✅ **Área de atuação com localidades concretas**: "Minha cidade"/"Meu
+  estado" abstratos saíram do REGION_OPTIONS. No lugar, a pergunta de
+  área de atuação agora abre com a localidade real que a pessoa já
+  informou (artista responde isso em "Em qual cidade e estado você está
+  baseado?" antes da pergunta de regiões; booker ganhou a mesma
+  pergunta, reaproveitando a coluna `cidades` que já existia no schema e
+  não estava sendo perguntada em lugar nenhum). Sem migration — mesma
+  coluna `regions`, só troca o que populamos como opção. Perfil usa o
+  mesmo valor salvo (`local`/`cidades`) pra montar a mesma lista ao
+  editar depois.
 - ⏳ **Cadastro: separar essencial de complementar** + card "Complete
   suas preferências" no painel: ainda não feito.
 

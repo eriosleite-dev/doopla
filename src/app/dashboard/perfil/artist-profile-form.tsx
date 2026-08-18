@@ -3,12 +3,12 @@
 import { useActionState, useEffect, useRef, useState } from 'react';
 
 import {
+  buildRegionOptions,
   CAREER_STAGE_OPTIONS,
   CLIENT_TYPE_OPTIONS,
   FEE_RANGE_OPTIONS,
   HELP_AREA_OPTIONS,
   LANGUAGE_OPTIONS,
-  REGION_OPTIONS,
   WORK_TYPE_OPTIONS,
 } from '@/lib/matching-options';
 
@@ -30,6 +30,7 @@ export function ArtistProfileForm({
   bio,
   genres,
   mercados,
+  local,
   websiteUrl,
   otherLinks,
   otherPreferences,
@@ -50,6 +51,7 @@ export function ArtistProfileForm({
   bio: string | null;
   genres: string[];
   mercados: string | null;
+  local: string | null;
   websiteUrl: string | null;
   otherLinks: string | null;
   otherPreferences: string | null;
@@ -235,7 +237,7 @@ export function ArtistProfileForm({
           <ChipCheckboxGroup
             name="regions"
             label="Regiões onde você atua"
-            options={REGION_OPTIONS}
+            options={buildRegionOptions(local)}
             defaultValues={regions}
           />
           <ChipCheckboxGroup
