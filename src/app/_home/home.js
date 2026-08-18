@@ -89,4 +89,23 @@ window.revealAndGo = function revealAndGo(evt, role, id){
   }
   document.getElementById(id).scrollIntoView({behavior:'smooth', block:'start'});
 };
+
+// ---- Booker Pro: apresentação simples (sem checkout direto) ----
+window.openBookerProModal = function openBookerProModal(evt){
+  if(evt) evt.preventDefault();
+  const modal = document.getElementById('bookerProModal');
+  if(!modal) return;
+  modal.hidden = false;
+  document.body.style.overflow = 'hidden';
+};
+window.closeBookerProModal = function closeBookerProModal(evt){
+  if(evt) evt.preventDefault();
+  const modal = document.getElementById('bookerProModal');
+  if(!modal) return;
+  modal.hidden = true;
+  document.body.style.overflow = '';
+};
+document.addEventListener('keydown', function(evt){
+  if(evt.key === 'Escape') window.closeBookerProModal();
+});
 })();
