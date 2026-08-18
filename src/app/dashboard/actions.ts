@@ -1093,6 +1093,7 @@ export async function updateBookerProfileAction(
   const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
   const capacity = String(formData.get('capacity') ?? '').trim();
   const feeRange = formData.getAll('feeRange').map(String).filter(Boolean);
+  const commissionRange = String(formData.get('commissionRange') ?? '').trim();
   const artistCategories = formData.getAll('artistCategories').map(String).filter(Boolean);
   const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
   const regions = formData.getAll('regions').map(String).filter(Boolean);
@@ -1110,6 +1111,7 @@ export async function updateBookerProfileAction(
       website_url: websiteUrl || null,
       capacity: capacity || null,
       fee_range: feeRange,
+      commission_range: commissionRange || null,
       artist_categories: artistCategories,
       client_types: clientTypes,
       regions,

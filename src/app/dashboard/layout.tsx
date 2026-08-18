@@ -46,7 +46,8 @@ async function getOpportunitiesBadgeCount(
 
 export default async function DashboardLayout({
   children,
-}: LayoutProps<'/dashboard'>) {
+  modal,
+}: LayoutProps<'/dashboard'> & { modal: React.ReactNode }) {
   const { supabase, user, profile } = await getSessionProfile();
 
   const opportunitiesBadge = await getOpportunitiesBadgeCount(supabase, user.id, profile.role);
@@ -207,6 +208,7 @@ export default async function DashboardLayout({
         {children}
         <DashboardFooter />
       </div>
+      {modal}
     </div>
   );
 }

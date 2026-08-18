@@ -95,3 +95,15 @@ export const CAPACITY_OPTIONS: { value: string; description: string }[] = [
   { value: '6 a 10', description: 'Operação estabelecida.' },
   { value: 'Mais de 10', description: 'Operação maior, roster amplo.' },
 ];
+
+// Faixa indicativa, só pra dar transparência no perfil — nunca trava a
+// comissão de nenhum booking específico, que continua sempre negociada
+// caso a caso entre booker e artista.
+export const COMMISSION_RANGE_OPTIONS = [
+  'Até 10%',
+  '10% a 15%',
+  '15% a 20%',
+  '20% a 30%',
+  'Acima de 30%',
+  'Negocio caso a caso',
+];

@@ -106,6 +106,7 @@ export default async function PerfilPage() {
               websiteUrl={bookerDetails?.website_url ?? null}
               capacity={bookerDetails?.capacity ?? null}
               feeRange={bookerDetails?.fee_range ?? []}
+              commissionRange={bookerDetails?.commission_range ?? null}
               artistCategories={bookerDetails?.artist_categories ?? []}
               clientTypes={bookerDetails?.client_types ?? []}
               regions={bookerDetails?.regions ?? []}
@@ -217,6 +218,7 @@ type BookerDetails = {
   specialty_areas: string[];
   capacity: string | null;
   fee_range: string[];
+  commission_range: string | null;
   website_url: string | null;
 };
 
@@ -246,7 +248,7 @@ async function getRoleDetails(
     const { data } = await supabase
       .from('booker_profiles')
       .select(
-        'modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster, professional_name, bio, experience, instagram_url, artist_categories, client_types, regions, languages, specialty_areas, capacity, fee_range, website_url'
+        'modo_trabalho, perfil, foco, mercados, quem, cidades, ja_representa, roster, professional_name, bio, experience, instagram_url, artist_categories, client_types, regions, languages, specialty_areas, capacity, fee_range, commission_range, website_url'
       )
       .eq('profile_id', userId)
       .single<BookerDetails>();

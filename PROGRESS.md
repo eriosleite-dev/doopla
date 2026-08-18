@@ -13,6 +13,47 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## 0.5. Perfis como modal + avaliação como modal + comissão praticada
+
+- ✅ **Faixa de comissão praticada (booker)**: migration 0028 adiciona
+  `booker_profiles.commission_range` — campo indicativo, informado pelo
+  próprio booker (nunca calculado a partir de bookings passados), nunca
+  trava a comissão de nenhum booking específico. Coletado no cadastro
+  (pergunta nova, logo depois da faixa de cachê) e editável no Perfil.
+- ✅ **Perfil de artista e booker como modal**: `/dashboard/bookers/[id]`
+  e `/dashboard/artistas/[id]` continuam existindo como páginas completas
+  (fallback pra navegação direta/refresh — preserva o link
+  compartilhável, que o próprio documento final deixou em aberto), mas
+  agora, quando abertos a partir de uma lista dentro do painel (Descubra,
+  Meus Bookers/Artistas, solicitações), abrem como janela por cima da
+  lista — usando parallel/intercepting routes do Next.js
+  (`dashboard/@modal/(.)bookers/[id]`, `.../(.)artistas/[id]`), sem
+  precisar tocar em cada link individualmente (a interceptação funciona
+  pra qualquer `<Link>` client-side existente). Conteúdo extraído em
+  componentes compartilhados (`booker-profile-view.tsx`,
+  `artist-profile-view.tsx`) reaproveitados pela página cheia e pelo
+  modal — mesma fonte, dois contextos. Todo campo (bio, mercados, redes
+  sociais, comissão) só aparece se estiver preenchido, como pedido.
+- ✅ **Avaliação bilateral como modal a partir de Trabalhos concluídos**:
+  nova rota `/dashboard/bookings/[id]/avaliar`, interceptada como modal
+  quando aberta a partir de qualquer lista dentro do painel (inclusive
+  `/dashboard/trabalhos`, que já tinha o filtro "Concluída" — não
+  precisou virar uma tela nova). Cada trabalho concluído com avaliação
+  pendente agora mostra um botão "Avaliar" direto na lista. Reaproveita
+  100% da lógica de avaliação que já existia (`ReviewPanel`, rating,
+  tags, comentário, janela de edição de 24h) — só mudou onde é acionada.
+  O painel de avaliação embutido no detalhe do booking continua
+  funcionando também, sem duplicar regra de negócio.
+- ✅ **Tags de avaliação finais**: substituídas pelas 6 de cada lado do
+  documento de perfis/avaliações, sem limite artificial de seleção.
+- ⏳ **Selos "Identidade verificada" e "Booker Doopla Oficial"**:
+  deliberadamente NÃO aparecem ainda nos modais de perfil — não existe
+  nenhum critério real de verificação de identidade no banco, e os
+  critérios de Booker Oficial têm itens permanentemente falsos hoje.
+  Os componentes já têm o espaço reservado (comentário no código) pra
+  quando existir um dado real — não precisa de mais trabalho de UI
+  depois, só plugar o valor.
+
 ## 0.4. Ajustes de cadastro, rodapé dos painéis e revisão da Home
 
 Bloco pontual, fora da fila de 8 prioridades (essa continua na seção 0.3

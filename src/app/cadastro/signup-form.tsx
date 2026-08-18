@@ -17,6 +17,7 @@ import {
   CAPACITY_OPTIONS,
   CAREER_STAGE_OPTIONS,
   CLIENT_TYPE_OPTIONS,
+  COMMISSION_RANGE_OPTIONS,
   FEE_RANGE_OPTIONS,
   HELP_AREA_OPTIONS,
   LANGUAGE_OPTIONS,
@@ -374,6 +375,13 @@ const BOOKER_REMAINING_STEPS: WizardStep[] = [
     arrayOutput: true,
     label: 'Com quais faixas de cachê você gostaria de trabalhar?',
     options: FEE_RANGE_OPTIONS,
+  },
+  {
+    formKey: 'commissionRange',
+    kind: 'chip',
+    label: 'Qual faixa de comissão você costuma ou pretende praticar?',
+    hint: 'É só indicativo pro seu perfil — a comissão de cada booking continua sendo negociada caso a caso.',
+    options: COMMISSION_RANGE_OPTIONS,
   },
 ];
 

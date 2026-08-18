@@ -29,29 +29,42 @@ export function bookingLine(
 export function BookingRow({
   booking,
   role,
+  needsReview = false,
 }: {
   booking: BookingWithOtherParty;
   role: Profile['role'];
+  needsReview?: boolean;
 }) {
   return (
-    <Link
-      href={`/dashboard/bookings/${booking.id}`}
-      className="flex items-center gap-4 rounded-[18px] bg-white p-4 transition-opacity hover:opacity-80 sm:p-5"
-    >
-      <span className={avatarClass}>{initialsFromName(booking.otherPartyName)}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{booking.otherPartyName}</span>
-        <span className="mt-0.5 block truncate text-[12.5px] text-[var(--ink)]/55">
-          {bookingLine(booking, role)}
+    <div className="flex items-center gap-4 rounded-[18px] bg-white p-4 sm:p-5">
+      <Link
+        href={`/dashboard/bookings/${booking.id}`}
+        className="flex min-w-0 flex-1 items-center gap-4 transition-opacity hover:opacity-80"
+      >
+        <span className={avatarClass}>{initialsFromName(booking.otherPartyName)}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{booking.otherPartyName}</span>
+          <span className="mt-0.5 block truncate text-[12.5px] text-[var(--ink)]/55">
+            {bookingLine(booking, role)}
+          </span>
         </span>
-      </span>
+      </Link>
       <span className="flex flex-none flex-col items-end gap-1.5">
         <span className={statusPillClasses[booking.status]}>{STATUS_LABELS[booking.status]}</span>
-        <span className="font-doopla-mono text-[11px] text-[var(--ink)]/40">
-          {formatRelativeDate(booking.updated_at)}
-        </span>
+        {needsReview ? (
+          <Link
+            href={`/dashboard/bookings/${booking.id}/avaliar`}
+            className="font-doopla-mono rounded-full bg-[var(--ink)] px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--paper)] hover:opacity-85"
+          >
+            Avaliar
+          </Link>
+        ) : (
+          <span className="font-doopla-mono text-[11px] text-[var(--ink)]/40">
+            {formatRelativeDate(booking.updated_at)}
+          </span>
+        )}
       </span>
-    </Link>
+    </div>
   );
 }
 

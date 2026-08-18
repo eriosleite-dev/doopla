@@ -868,6 +868,55 @@ export async function getReviewSummary(
   };
 }
 
+export type RecentReview = {
+  id: string;
+  rating: number | null;
+  comment: string;
+  submittedAt: string;
+  reviewerName: string;
+};
+
+// Últimas avaliações COM comentário (texto vazio não aparece na lista —
+// mesma regra de "campo vazio não aparece" que vale pro resto do perfil).
+export async function getRecentReviews(
+  profileId: string,
+  supabase: SupabaseServerClient,
+  limit = 3
+): Promise<RecentReview[]> {
+  const { data } = await supabase
+    .from('reviews')
+    .select('id, rating, comment, submitted_at, reviewer_profile_id')
+    .eq('reviewee_profile_id', profileId)
+    .eq('status', 'ativa')
+    .not('comment', 'is', null)
+    .order('submitted_at', { ascending: false })
+    .limit(limit)
+    .returns<
+      { id: string; rating: number | null; comment: string | null; submitted_at: string | null; reviewer_profile_id: string }[]
+    >();
+
+  const reviews = (data ?? []).filter(
+    (r): r is typeof r & { comment: string; submitted_at: string } =>
+      Boolean(r.comment) && Boolean(r.submitted_at)
+  );
+  if (reviews.length === 0) return [];
+
+  const { data: reviewers } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', reviews.map((r) => r.reviewer_profile_id))
+    .returns<Pick<Profile, 'id' | 'full_name'>[]>();
+  const nameById = new Map((reviewers ?? []).map((p) => [p.id, p.full_name]));
+
+  return reviews.map((r) => ({
+    id: r.id,
+    rating: r.rating,
+    comment: r.comment,
+    submittedAt: r.submitted_at,
+    reviewerName: nameById.get(r.reviewer_profile_id) ?? 'Alguém',
+  }));
+}
+
 function isThisMonth(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
@@ -1026,7 +1075,7 @@ export async function getAttentionItems(
     if (!booking) continue;
     items.push({
       text: `Como foi trabalhar com ${booking.otherPartyName}? Avalie e ajude a construir a reputação da Doopla`,
-      href: `/dashboard/bookings/${booking.id}#avaliacao`,
+      href: `/dashboard/bookings/${booking.id}/avaliar`,
       kind: 'atencao',
     });
   }

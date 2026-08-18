@@ -6,6 +6,7 @@ import {
   ARTIST_CATEGORY_OPTIONS,
   CAPACITY_OPTIONS,
   CLIENT_TYPE_OPTIONS,
+  COMMISSION_RANGE_OPTIONS,
   FEE_RANGE_OPTIONS,
   LANGUAGE_OPTIONS,
   REGION_OPTIONS,
@@ -31,6 +32,7 @@ export function BookerProfileForm({
   websiteUrl,
   capacity,
   feeRange,
+  commissionRange,
   artistCategories,
   clientTypes,
   regions,
@@ -45,6 +47,7 @@ export function BookerProfileForm({
   websiteUrl: string | null;
   capacity: string | null;
   feeRange: string[];
+  commissionRange: string | null;
   artistCategories: string[];
   clientTypes: string[];
   regions: string[];
@@ -160,6 +163,25 @@ export function BookerProfileForm({
           options={FEE_RANGE_OPTIONS}
           defaultValues={feeRange}
         />
+
+        <label className={labelClass}>
+          <span className={eyebrowClass}>Faixa de comissão que você costuma ou pretende praticar</span>
+          <select
+            name="commissionRange"
+            defaultValue={commissionRange ?? ''}
+            className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+          >
+            <option value="">Prefiro não dizer</option>
+            {COMMISSION_RANGE_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          <p className="text-[12px] text-[var(--ink)]/50">
+            É só indicativo pro seu perfil — nunca trava a comissão de um booking específico.
+          </p>
+        </label>
       </div>
 
       <div className="flex items-center gap-3">

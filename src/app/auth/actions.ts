@@ -80,6 +80,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'specialtyAreas',
     'capacity',
     'feeRange',
+    'commissionRange',
   ],
   agencia: ['agencia', 'roster', 'agentes', 'mercado'],
 };

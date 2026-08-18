@@ -90,6 +90,9 @@ export type BookerProfile = {
   capacity: string | null;
   fee_range: string[];
   website_url: string | null;
+  // Migration 0028 — indicativa, informada pelo booker, nunca trava a
+  // comissão de nenhum booking específico.
+  commission_range: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -8,9 +8,11 @@ import type { Profile } from '@/lib/supabase/types';
 export function TrabalhosList({
   bookings,
   role,
+  pendingReviewBookingIds,
 }: {
   bookings: BookingWithOtherParty[];
   role: Profile['role'];
+  pendingReviewBookingIds?: Set<string>;
 }) {
   return (
     <ListFilter
@@ -22,7 +24,9 @@ export function TrabalhosList({
       getSearchText={(b) => `${b.otherPartyName} ${b.description ?? ''} ${bookingLine(b, role)}`}
       statusFilters={BOOKING_STATUS_FILTERS}
       getStatus={(b) => b.status}
-      renderItem={(b) => <BookingRow booking={b} role={role} />}
+      renderItem={(b) => (
+        <BookingRow booking={b} role={role} needsReview={pendingReviewBookingIds?.has(b.id) ?? false} />
+      )}
       emptyMessage="Nenhum trabalho encontrado com esses filtros."
       itemLabel={{ singular: 'trabalho encontrado', plural: 'trabalhos encontrados' }}
     />
