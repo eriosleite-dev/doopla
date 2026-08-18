@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
@@ -29,7 +30,7 @@ export default async function OpportunityManagePage(props: { params: Promise<{ i
   const detail = await getOpportunityManageDetail(id, user.id, supabase);
   if (!detail) notFound();
 
-  const { opportunity, interests, invitations, invitableBookers } = detail;
+  const { opportunity, interests, invitations, invitableBookers, hasAnyBookers } = detail;
   const isOpen = opportunity.status !== 'booker_selecionado' && opportunity.status !== 'cancelada';
   const canInvite = opportunity.distribution_mode !== 'novos_bookers';
   const canReceiveInterest = opportunity.distribution_mode !== 'meus_bookers';
@@ -74,6 +75,27 @@ export default async function OpportunityManagePage(props: { params: Promise<{ i
           <span className="font-doopla-mono">{formatRelativeDate(opportunity.created_at)}</span>
         </div>
       </section>
+
+      {isOpen && opportunity.source === 'artist_link' && (
+        <section className="rounded-[18px] bg-[var(--paper-dim)] p-5">
+          <p className="text-sm font-medium">Você pode gerenciar esse pedido você mesma.</p>
+          <p className="mt-1 text-[13px] text-[var(--ink)]/60">
+            Não é obrigatório enviar pra um booker — você pode responder o cliente, negociar e
+            fechar diretamente. Se preferir ajuda, use as opções abaixo{hasAnyBookers
+              ? ' para enviar pra um booker que você já representa'
+              : ' para encontrar um booker'}
+            .
+          </p>
+          {!hasAnyBookers && (
+            <Link
+              href="/dashboard/bookers#descubra"
+              className="mt-3 inline-block text-[13px] font-medium text-[var(--accent-ink)] underline underline-offset-2"
+            >
+              Buscar ajuda de um booker →
+            </Link>
+          )}
+        </section>
+      )}
 
       {!isOpen && (
         <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/60">

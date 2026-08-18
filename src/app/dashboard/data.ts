@@ -681,6 +681,7 @@ export type OpportunityManageDetail = {
   interests: (OpportunityInterest & { bookerName: string; ratingAverage: number | null; ratingCount: number })[];
   invitations: (OpportunityInvitation & { bookerName: string })[];
   invitableBookers: BookerCard[];
+  hasAnyBookers: boolean;
 };
 
 // Tela de gestão do artista dono da oportunidade: quem se interessou (modo
@@ -745,6 +746,7 @@ export async function getOpportunityManageDetail(
       bookerName: nameById.get(i.booker_profile_id) ?? 'Booker',
     })),
     invitableBookers: myBookers.filter((b) => !involvedIds.has(b.profileId)),
+    hasAnyBookers: myBookers.length > 0,
   };
 }
 

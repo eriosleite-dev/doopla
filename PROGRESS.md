@@ -210,7 +210,38 @@ parte disso). O que faltava:
   ("Solicitações enviadas" em `/dashboard/artistas`) — antes só existia
   como badge solto nos cards de descoberta, sem lugar centralizado.
 
-### Prioridades 5–8 — na fila, ainda não começadas
+### Prioridade 5 — Corrigir e reorganizar o fluxo /orçamento ✅
+
+Investiguei antes de mexer (mesmo princípio das prioridades 1 e 4). A
+camada de dados/roteamento já estava sólida: `submit_orcamento_request`
+sempre cria a oportunidade em nome do artista primeiro
+(`artist_profile_id`), o booker só é convidado quando o roteamento
+configurado manda e nunca é dono da oportunidade; `assigned_to` é
+snapshot no momento da criação, nunca recalculado — já era "nunca
+retroativo" antes mesmo de eu mexer.
+
+A lacuna real era só na UI:
+
+- ✅ **"Pedidos recebidos" separado**: `/dashboard/oportunidades` (visão do
+  artista) misturava pedidos vindos do link de orçamento
+  (`source = 'artist_link'`) com trabalhos publicados manualmente
+  (`source = 'mural'`) numa lista só, chamada "O que você publicou" — um
+  pedido de cliente não é algo que o artista "publicou". Agora são duas
+  seções sempre separadas: "Pedidos recebidos" e "O que você publicou".
+- ✅ **Tela do pedido**: adicionado um aviso explícito — "Você pode
+  gerenciar esse pedido você mesma", deixando claro que não é obrigatório
+  envolver um booker. Quando o artista não representa nenhum booker
+  ainda, aparece "Buscar ajuda de um booker →" direto pro Descubra
+  (`/dashboard/bookers#descubra`) — antes esse caso não tinha nenhuma
+  chamada pra ação.
+- ✅ **Copy do roteamento do link** (`/dashboard/perfil`): os 3 modos já
+  existiam certos na estrutura (eu / meu booker / eu + meu booker), só a
+  linguagem que não batia com o que você pediu — "Só eu recebo" virou
+  "Decidir caso a caso" (deixando claro que dá pra escolher pedido por
+  pedido depois), "Meu booker recebe" virou "Enviar automático pro meu
+  booker".
+
+### Prioridades 6–8 — na fila, ainda não começadas
 
 ## 0.2. Cancelamento/reembolso, parte estrutural (prioridade 2 do bloco anterior)
 

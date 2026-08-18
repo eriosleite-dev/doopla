@@ -12,18 +12,18 @@ type BookerOption = { profileId: string; fullName: string };
 const MODE_OPTIONS: { value: LinkRoutingMode; label: string; hint: string }[] = [
   {
     value: 'eu',
-    label: 'Só eu recebo',
-    hint: 'As solicitações do seu link de orçamento chegam só pra você.',
+    label: 'Decidir caso a caso',
+    hint: 'As solicitações chegam pra você primeiro — depois você escolhe, pedido por pedido, se cuida sozinha ou envia pra um booker.',
   },
   {
     value: 'meu_booker',
-    label: 'Meu booker recebe',
+    label: 'Enviar automático pro meu booker',
     hint: 'As solicitações vão direto pro booker que você escolher abaixo.',
   },
   {
     value: 'eu_e_meu_booker',
-    label: 'Eu e meu booker recebemos',
-    hint: 'As solicitações aparecem pra você e pro booker escolhido.',
+    label: 'Eu e meu booker acompanhamos juntos',
+    hint: 'As solicitações aparecem pra você e pro booker escolhido, os dois acompanham.',
   },
 ];
 
