@@ -7,6 +7,7 @@ import { siteOrigin } from '@/lib/site-url';
 import { ArtistLimitBanner } from './booker-pro/artist-limit-banner';
 import { BookerOficialCard } from './booker-oficial-card';
 import { BookingsPreview } from './bookings-list';
+import { PostDowngradeBanner } from './booker-pro/post-downgrade-banner';
 import { ProUpsellCard } from './booker-pro/pro-upsell-card';
 import { CompletePreferencesCard } from './complete-preferences-card';
 import {
@@ -15,6 +16,7 @@ import {
   getArtistBookers,
   getArtistMatchingCompletion,
   getAttentionItems,
+  getBookerArtistRelationships,
   getBookerMatchingCompletion,
   getDiscoverBookers,
   getOfficialBookerProgress,
@@ -75,6 +77,9 @@ export default async function DashboardPage(props: {
       ? await getArtistMatchingCompletion(user.id, supabase)
       : await getBookerMatchingCompletion(user.id, supabase);
   const subscription = profile.role === 'booker' ? await getSubscription(user.id, supabase) : null;
+  const myArtistsForChoice = subscription?.active_artist_pending_choice
+    ? await getBookerArtistRelationships(user.id, supabase)
+    : [];
   const origin = referralSummary || orcamentoInfo ? await siteOrigin() : null;
   const referralUrl = referralSummary ? `${origin}/cadastro?ref=${referralSummary.referralCode}` : null;
   const orcamentoUrl =
@@ -92,6 +97,16 @@ export default async function DashboardPage(props: {
       </header>
 
       {limiteBooker === '1' && <ArtistLimitBanner />}
+
+      {subscription?.active_artist_pending_choice && (
+        <PostDowngradeBanner
+          artists={myArtistsForChoice.map((a) => ({
+            profileId: a.profileId,
+            name: a.stageName || a.fullName,
+          }))}
+          activeArtistId={subscription.active_artist_profile_id}
+        />
+      )}
 
       {profile.role === 'booker' ? (
         <BookerStats bookings={bookings} />

@@ -8,6 +8,33 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Bloqueio de "operação nova" no downgrade: só nos pontos de entrada reais, não em todo lugar — 18/08/2026
+
+A regra pedia bloquear "iniciar novo booking, assumir nova oportunidade,
+iniciar negociação ou criar qualquer operação nova" pra artistas que
+ficaram fora do limite depois de um downgrade Pro→Básico. Implementei
+isso em `isArtistBlockedForBooker()` (`src/lib/subscription.ts`) e
+apliquei nos pontos onde o vínculo booker↔artista de fato nasce ou uma
+proposta de trabalho nova é criada:
+
+- `requestRepresentationAction` (booker pede pra representar) — avisa
+  antes de mandar a solicitação.
+- `confirmInviteAction` (confirmar convite vira representação) — só
+  quando quem confirma é o próprio booker.
+- `respondRepresentationRequestAction` (artista aceita pedido do
+  booker) — mensagem neutra pro artista, sem "faça upgrade" (não é
+  decisão dele).
+- `proposeBookingAction` (criar uma proposta de booking nova) — trava
+  se o artista não é o `active_artist_profile_id`.
+- Trigger `booker_artist_limit_check` no banco garante o limite de
+  qualquer jeito, mesmo se uma Server Action esquecer de checar.
+
+Não toquei em toda ação secundária que também "cria algo" (ex.:
+propor remarcação de um booking já existente, aceitar pagamento) —
+essas continuam o trabalho já em andamento, que a regra explicitamente
+protege (seção 4.3 da especificação). Se aparecer um ponto de entrada
+novo que precise do mesmo bloqueio, usar o mesmo helper.
+
 ## Agenda editável do booker: só marcações manuais, não o calendário inteiro do artista — 18/08/2026
 
 Prioridade 7 pedia que o booker conseguisse "administrar o trabalho

@@ -13,6 +13,44 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Booker Básico/Pro — infraestrutura de plano real
+
+Nada de recurso Pro fake vendido — só o mecanismo, pronto pra plugar
+o primeiro recurso de verdade quando existir.
+
+- ✅ **Plano real** (`subscriptions.booker_plan`), gate central
+  `hasProAccess()` em `src/lib/subscription.ts` — qualquer recurso
+  futuro consulta esse helper, nunca reimplementa a checagem.
+- ✅ **Modal único do Pro** (info → confirmar assinatura com
+  itemização → sucesso), aberto de qualquer entrada via
+  `ProModalProvider`. Copy honesta: "em breve mais recursos", sem
+  comparação Básico×Pro fake (não há diferença real ainda pra
+  comparar).
+- ✅ **3 pontos de upsell**: sidebar ("Booker Básico + Conheça o Pro"
+  vira só "BOOKER PRO" com badge quando já é Pro), card no dashboard
+  (abaixo de Booker Oficial e Complete suas preferências — nunca acima
+  de pendência/booking), e o próprio Perfil (card "Seu plano" com
+  cancelar/conhecer o Pro).
+- ✅ **1ª diferenciação real: 1 artista ativo no Básico, ilimitado no
+  Pro**. Checado antes de criar a representação em 3 pontos de entrada
+  (pedido do booker, convite confirmado, artista aceitando pedido) +
+  trigger no banco como garantia final. Básico continua 100% igual em
+  tudo mais (Trabalhos, Agenda, Oportunidades, Dinheiro) — sem limite
+  artificial.
+- ✅ **Downgrade Pro→Básico**: cancelar não derruba na hora — continua
+  Pro até o fim do ciclo pago (aproximado em 30 dias, sem cobrança real
+  ainda). Na expiração, escolhe automaticamente o artista ativo por
+  prioridade (booking em andamento > atividade recente > vínculo mais
+  recente) e trava operações NOVAS pros demais (bookings já em
+  andamento não são afetados — ver `DECISOES.md`). Primeira entrada
+  pós-downgrade mostra quem ficou ativo, com opção de trocar uma única
+  vez.
+- ✅ **Reativação**: assinar o Pro de novo libera todos os artistas na
+  hora, sem precisar recriar nada.
+
+⏳ **Voucher pra Booker Básico** não existe — só o artista tem voucher
+Founder (preço). Não fazia parte do pedido.
+
 ## Preços — Especificação final (artista): Oferta de Lançamento + voucher Founder
 
 Documento novo substitui qualquer orientação anterior de preço do

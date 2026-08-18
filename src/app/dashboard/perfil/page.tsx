@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { siteOrigin } from '@/lib/site-url';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
 
-import { getArtistBookers, getArtistLinkRouting } from '../data';
+import { PlanCard } from '../booker-pro/plan-card';
+import { getArtistBookers, getArtistLinkRouting, getSubscription } from '../data';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
 import { ArtistProfileForm } from './artist-profile-form';
@@ -38,6 +39,7 @@ export default async function PerfilPage() {
           getArtistLinkRouting(user.id, supabase),
         ])
       : [[], null];
+  const subscription = profile.role === 'booker' ? await getSubscription(user.id, supabase) : null;
 
   return (
     <main className="flex max-w-xl flex-col gap-8">
@@ -57,6 +59,14 @@ export default async function PerfilPage() {
           <dd>{ROLE_LABELS[profile.role]}</dd>
         </dl>
       </section>
+
+      {subscription && (
+        <PlanCard
+          plan={subscription.booker_plan}
+          periodEndsAt={subscription.pro_period_ends_at}
+          canceled={Boolean(subscription.canceled_at)}
+        />
+      )}
 
       <div className="flex flex-col gap-4">
         <div>

@@ -4,7 +4,16 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
-import type { AgendaEntryType, Booking, Invite, Opportunity, Profile, Review } from '@/lib/supabase/types';
+import { isArtistBlockedForBooker } from '@/lib/subscription';
+import type {
+  AgendaEntryType,
+  Booking,
+  Invite,
+  Opportunity,
+  Profile,
+  Review,
+  Subscription,
+} from '@/lib/supabase/types';
 import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -202,6 +211,20 @@ export async function proposeBookingAction(
     .maybeSingle<{ id: string }>();
   if (!representation) {
     return { error: 'Você só pode propor bookings pra artistas que já representa.' };
+  }
+
+  // Booker no Básico só cria operações novas pro artista ativo — os
+  // demais ficam preservados, só bloqueados pra bookings/negociações
+  // novas (o que já está em andamento não é afetado por essa regra).
+  const { data: subForLimit } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('profile_id', user.id)
+    .maybeSingle<Subscription>();
+  if (isArtistBlockedForBooker(subForLimit, artistProfileId)) {
+    return {
+      error: 'Este artista requer Booker Pro. Seu plano Básico permite gerenciar 1 artista. Reative o Pro pra voltar a trabalhar com todos os seus artistas.',
+    };
   }
 
   const { data: booking, error } = await supabase
@@ -1393,6 +1416,26 @@ export async function requestRepresentationAction(
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'booker') return { error: 'Só bookers podem pedir pra representar um artista.' };
 
+  // Avisa antes de mandar a solicitação, não só quando o artista tentar
+  // aceitar mais tarde — o booker precisa saber logo que está no limite.
+  const { data: bookerSub } = await supabase
+    .from('subscriptions')
+    .select('booker_plan')
+    .eq('profile_id', user.id)
+    .maybeSingle<{ booker_plan: string }>();
+  if (bookerSub?.booker_plan === 'basic') {
+    const { count } = await supabase
+      .from('representations')
+      .select('id', { count: 'exact', head: true })
+      .eq('booker_profile_id', user.id);
+    if ((count ?? 0) >= 1) {
+      return {
+        error:
+          'Seu plano Básico permite gerenciar 1 artista ativo. Faça upgrade pro Pro pra representar mais artistas.',
+      };
+    }
+  }
+
   const { error } = await supabase.from('representation_requests').insert({
     booker_profile_id: user.id,
     artist_profile_id: artistProfileId,
@@ -1647,7 +1690,10 @@ export async function cancelProAction(): Promise<{ error?: string }> {
 // escolhido automaticamente uma única vez — essa ação consome essa
 // chance (active_artist_pending_choice vira false), mesmo se ele
 // escolher manter o mesmo artista.
-export async function chooseActiveArtistAction(formData: FormData): Promise<{ error?: string }> {
+export async function chooseActiveArtistAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
   const artistProfileId = String(formData.get('artistProfileId') ?? '').trim();
   if (!artistProfileId) return { error: 'Escolha um artista.' };
 
