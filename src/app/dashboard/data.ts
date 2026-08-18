@@ -21,11 +21,28 @@ import type {
   RepresentationRequest,
   RepresentationRequestStatus,
   Review,
+  Subscription,
 } from '@/lib/supabase/types';
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type BookingWithOtherParty = Booking & { otherPartyName: string };
+
+// Sweep sob demanda (mesmo padrão de expire_stale_representation_requests)
+// — chamar antes de ler o plano de um booker garante que um ciclo Pro
+// vencido já foi efetivado como downgrade antes da leitura.
+export async function getSubscription(
+  profileId: string,
+  supabase: SupabaseServerClient
+): Promise<Subscription | null> {
+  await supabase.rpc('expire_booker_pro_subscriptions');
+  const { data } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('profile_id', profileId)
+    .maybeSingle<Subscription>();
+  return data;
+}
 
 export type Checkpoint = { key: string; label: string; done: boolean };
 

@@ -356,6 +356,10 @@ export type Subscription = {
   locked_price_cents: number | null;
   founder_voucher_id: string | null;
   trial_ends_at: string | null;
+  booker_plan: BookerPlan;
+  active_artist_profile_id: string | null;
+  active_artist_pending_choice: boolean;
+  pro_period_ends_at: string | null;
   started_at: string;
   canceled_at: string | null;
   updated_at: string;
@@ -636,6 +640,10 @@ export type Database = {
         Returns: Opportunity;
       };
       expire_stale_representation_requests: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      expire_booker_pro_subscriptions: {
         Args: Record<string, never>;
         Returns: undefined;
       };
