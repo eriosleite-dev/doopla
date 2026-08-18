@@ -91,6 +91,11 @@ export const EVENT_LABELS: Record<string, string> = {
   em_cobranca: 'Marcado como em cobrança',
   disputa_aberta: 'Disputa aberta',
   chargeback_aberto: 'Chargeback aberto',
+  nf_prazo_atualizado: 'Prazo de pagamento da NF atualizado',
+  nf_emitida: 'NF marcada como emitida',
+  nf_enviada_cliente: 'NF marcada como enviada ao cliente',
+  nf_pagamento_recebido: 'Pagamento do cliente confirmado pelo artista',
+  nf_comissao_paga: 'Comissão do Booker marcada como paga',
 };
 
 export const avatarClass =

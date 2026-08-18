@@ -121,6 +121,7 @@ export type BookingStatus =
 export type PaymentMode = 'integral_apos_trabalho' | 'sinal_saldo';
 export type CancellationInitiator = 'cliente' | 'artista';
 export type DisputeStatus = 'nenhuma' | 'em_disputa' | 'chargeback';
+export type RequiresInvoice = 'sim' | 'nao' | 'nao_sei';
 
 export type Booking = {
   id: string;
@@ -164,6 +165,16 @@ export type Booking = {
   payment_collection_started_at: string | null;
   dispute_status: DisputeStatus;
   dispute_opened_at: string | null;
+  // Trabalhos com Nota Fiscal / pagamento direto artista↔cliente (LOTE 2
+  // Parte 2, migration 0035) — Doopla acompanha, não processa.
+  requires_invoice: RequiresInvoice;
+  invoice_payment_term: string | null;
+  invoice_terms_accepted_at: string | null;
+  invoice_terms_accepted_by: string | null;
+  invoice_issued_at: string | null;
+  invoice_sent_to_client_at: string | null;
+  invoice_client_paid_at: string | null;
+  invoice_commission_paid_at: string | null;
 };
 
 export type BookingEvent = {
@@ -255,6 +266,9 @@ export type Opportunity = {
   client_offered_cents: number | null;
   created_at: string;
   updated_at: string;
+  // LOTE 2 Parte 2 (migration 0035) — carregado pro booking quando o
+  // artista escolhe um booker (ver selectBookerForOpportunityAction).
+  requires_invoice: RequiresInvoice;
 };
 
 export type OpportunityDismissal = {

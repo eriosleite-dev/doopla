@@ -12,6 +12,7 @@ export function ProposeForm({ artists }: { artists: Artist[] }) {
   const [paymentMode, setPaymentMode] = useState<'integral_apos_trabalho' | 'sinal_saldo'>(
     'integral_apos_trabalho'
   );
+  const [requiresInvoice, setRequiresInvoice] = useState(false);
 
   return (
     <form action={formAction} className={`${cardClass} flex flex-col gap-5`}>
@@ -77,6 +78,25 @@ export function ProposeForm({ artists }: { artists: Artist[] }) {
         />
       </label>
 
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-[14px] border border-[var(--ink)]/15 px-4 py-3">
+        <input
+          type="checkbox"
+          name="requiresInvoice"
+          value="sim"
+          checked={requiresInvoice}
+          onChange={(e) => setRequiresInvoice(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="block text-sm font-medium">Este trabalho exige Nota Fiscal</span>
+          <span className="block text-[12px] text-[var(--ink)]/55">
+            Cliente paga diretamente ao artista — sua comissão será paga por ele após o
+            recebimento, fora do split da Doopla.
+          </span>
+        </span>
+      </label>
+
+      {!requiresInvoice && (
       <div className="flex flex-col gap-3 rounded-[14px] bg-[var(--paper-dim)] p-4">
         <span className={eyebrowClass}>Forma de pagamento</span>
         <div className="flex flex-col gap-2">
@@ -150,6 +170,7 @@ export function ProposeForm({ artists }: { artists: Artist[] }) {
           </label>
         </div>
       </div>
+      )}
 
       {state.error && <p className="text-sm text-red-700">{state.error}</p>}
 

@@ -203,6 +203,7 @@ export async function proposeBookingAction(
   const remainingDueRule = String(formData.get('remainingDueRule') ?? '').trim();
   const clientCancellationDepositRefundable = formData.get('clientCancellationDepositRefundable') === 'on';
   const artistCancellationDepositRefundable = formData.get('artistCancellationDepositRefundable') === 'on';
+  const requiresInvoice = formData.get('requiresInvoice') === 'sim' ? 'sim' : 'nao';
 
   if (!artistProfileId) return { error: 'Selecione um artista.' };
   if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
@@ -258,6 +259,7 @@ export async function proposeBookingAction(
       remaining_due_rule: paymentMode === 'sinal_saldo' ? remainingDueRule || null : null,
       client_cancellation_deposit_refundable: clientCancellationDepositRefundable,
       artist_cancellation_deposit_refundable: artistCancellationDepositRefundable,
+      requires_invoice: requiresInvoice,
     })
     .select('id')
     .single<{ id: string }>();
@@ -300,6 +302,13 @@ export async function respondBookingAction(formData: FormData) {
   if (user.id === proposerProfileId(booking)) return; // quem propôs não responde a si mesmo
 
   if (decision === 'aceitar' && formData.get('cancellationAccepted') !== 'on') return;
+  if (
+    decision === 'aceitar' &&
+    booking.requires_invoice === 'sim' &&
+    formData.get('invoiceTermsAccepted') !== 'on'
+  ) {
+    return;
+  }
 
   const newStatus = decision === 'aceitar' ? 'aceita' : 'recusada';
   await supabase
@@ -310,6 +319,9 @@ export async function respondBookingAction(formData: FormData) {
             status: newStatus,
             cancellation_terms_accepted_at: new Date().toISOString(),
             cancellation_terms_accepted_by: user.id,
+            ...(booking.requires_invoice === 'sim'
+              ? { invoice_terms_accepted_at: new Date().toISOString(), invoice_terms_accepted_by: user.id }
+              : {}),
           }
         : { status: newStatus }
     )
@@ -420,6 +432,10 @@ export async function markPaidAction(formData: FormData) {
     .single<Booking>();
   if (!booking || booking.status !== 'aguardando_pagamento') return;
   if (user.id !== booking.booker_profile_id) return;
+  // Trabalhos com NF fecham pelo próprio fluxo de faturamento (comissão
+  // paga direto pelo artista) — a Doopla nunca processou esse pagamento
+  // pra poder confirmá-lo aqui.
+  if (booking.requires_invoice === 'sim') return;
 
   await supabase.from('bookings').update({ status: 'concluida' }).eq('id', bookingId);
   await supabase.from('booking_events').insert({
@@ -669,6 +685,121 @@ export async function markDisputeAction(formData: FormData) {
   revalidatePath('/dashboard');
 }
 
+// Prazo de pagamento da NF é descoberto na negociação — o Booker atualiza
+// quando souber (LOTE 2 Parte 2, item 14). NULL = "A confirmar", nunca
+// assumir 30 dias como padrão.
+export async function updateInvoiceTermAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  const term = String(formData.get('invoicePaymentTerm') ?? '').trim();
+  if (!bookingId) return;
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || booking.requires_invoice !== 'sim') return;
+  if (user.id !== booking.booker_profile_id) return;
+  if (!['proposta_enviada', 'aceita', 'aguardando_pagamento'].includes(booking.status)) return;
+
+  await supabase
+    .from('bookings')
+    .update({ invoice_payment_term: term || null })
+    .eq('id', bookingId);
+  await supabase.from('booking_events').insert({
+    booking_id: bookingId,
+    actor_profile_id: user.id,
+    event_type: 'nf_prazo_atualizado',
+    note: term || null,
+  });
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+}
+
+// As quatro etapas do faturamento direto (LOTE 2 Parte 2, item 18) — só o
+// artista marca, porque é ele quem emite a NF e recebe do cliente. A
+// Doopla nunca simula um evento que não aconteceu de verdade (item 24):
+// cada marca aqui é o próprio artista confirmando que aconteceu.
+const INVOICE_STAGE_FIELDS = [
+  'invoice_issued_at',
+  'invoice_sent_to_client_at',
+  'invoice_client_paid_at',
+  'invoice_commission_paid_at',
+] as const;
+type InvoiceStageField = (typeof INVOICE_STAGE_FIELDS)[number];
+const INVOICE_STAGE_EVENTS: Record<InvoiceStageField, string> = {
+  invoice_issued_at: 'nf_emitida',
+  invoice_sent_to_client_at: 'nf_enviada_cliente',
+  invoice_client_paid_at: 'nf_pagamento_recebido',
+  invoice_commission_paid_at: 'nf_comissao_paga',
+};
+
+async function advanceInvoiceStage(bookingId: string, field: InvoiceStageField) {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return;
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('*')
+    .eq('id', bookingId)
+    .single<Booking>();
+  if (!booking || booking.requires_invoice !== 'sim') return;
+  if (user.id !== booking.artist_profile_id) return;
+  if (!['aceita', 'aguardando_pagamento'].includes(booking.status)) return;
+
+  // Só avança em ordem — não deixa marcar "comissão paga" sem ter marcado
+  // "NF emitida" antes, por exemplo.
+  const stageIndex = INVOICE_STAGE_FIELDS.indexOf(field);
+  if (booking[field]) return; // já marcado
+  for (let i = 0; i < stageIndex; i++) {
+    if (!booking[INVOICE_STAGE_FIELDS[i]]) return;
+  }
+
+  const isLastStage = field === 'invoice_commission_paid_at';
+  await supabase
+    .from('bookings')
+    .update({
+      [field]: new Date().toISOString(),
+      ...(isLastStage ? { status: 'concluida' } : {}),
+    })
+    .eq('id', bookingId);
+  await supabase.from('booking_events').insert({
+    booking_id: bookingId,
+    actor_profile_id: user.id,
+    event_type: INVOICE_STAGE_EVENTS[field],
+  });
+
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  revalidatePath('/dashboard');
+}
+
+export async function markInvoiceIssuedAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (bookingId) await advanceInvoiceStage(bookingId, 'invoice_issued_at');
+}
+
+export async function markInvoiceSentAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (bookingId) await advanceInvoiceStage(bookingId, 'invoice_sent_to_client_at');
+}
+
+export async function markInvoiceClientPaidAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (bookingId) await advanceInvoiceStage(bookingId, 'invoice_client_paid_at');
+}
+
+export async function markInvoiceCommissionPaidAction(formData: FormData) {
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (bookingId) await advanceInvoiceStage(bookingId, 'invoice_commission_paid_at');
+}
+
 export async function publishOpportunityAction(
   _prevState: { error?: string },
   formData: FormData
@@ -688,6 +819,12 @@ export async function publishOpportunityAction(
   const category = String(formData.get('category') ?? '').trim();
   const location = String(formData.get('location') ?? '').trim();
   const eventDate = String(formData.get('eventDate') ?? '').trim();
+  const requiresInvoiceRaw = String(formData.get('requiresInvoice') ?? 'nao');
+  const requiresInvoice: Opportunity['requires_invoice'] = ['sim', 'nao', 'nao_sei'].includes(
+    requiresInvoiceRaw
+  )
+    ? (requiresInvoiceRaw as Opportunity['requires_invoice'])
+    : 'nao';
 
   if (!description) return { error: 'Descreva o trabalho.' };
   if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
@@ -728,6 +865,7 @@ export async function publishOpportunityAction(
       category: category || null,
       location: location || null,
       event_date: eventDate || null,
+      requires_invoice: requiresInvoice,
     })
     .select('id')
     .single<{ id: string }>();
@@ -826,9 +964,9 @@ export async function selectBookerForOpportunityAction(
 
   const { data: current } = await supabase
     .from('opportunities')
-    .select('commission_percent')
+    .select('commission_percent, requires_invoice')
     .eq('id', opportunityId)
-    .single<{ commission_percent: number | null }>();
+    .single<{ commission_percent: number | null; requires_invoice: Opportunity['requires_invoice'] }>();
 
   let commissionPercent = current?.commission_percent ?? null;
   if (commissionPercent == null) {
@@ -864,6 +1002,7 @@ export async function selectBookerForOpportunityAction(
       commission_percent: commissionPercent,
       cache_amount_cents: opportunity.cache_amount_cents,
       description: opportunity.description,
+      requires_invoice: current?.requires_invoice ?? 'nao',
     })
     .select('id')
     .single<{ id: string }>();

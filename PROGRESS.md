@@ -13,6 +13,53 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## LOTE 2 Parte 2 — Trabalhos com Nota Fiscal
+
+- ✅ Migration 0035: `requires_invoice` (sim/não/ainda não sei) em
+  `opportunities` e `bookings`; em `bookings` também `invoice_payment_term`
+  (texto livre, NULL = "A confirmar"), `invoice_terms_accepted_at/_by`
+  (mesmo aceite da proposta), e 4 timestamps de etapa — `invoice_issued_at`
+  → `invoice_sent_to_client_at` → `invoice_client_paid_at` →
+  `invoice_commission_paid_at`. Nenhum status global novo — mesmo padrão de
+  checkpoints por timestamp da migration 0024 (cancelamento).
+- ✅ Publicar trabalho: "Como este trabalho será pago?" (Pagamento pela
+  Doopla / Este trabalho exige Nota Fiscal / Ainda não sei), com aviso
+  específico quando escolhe NF. Nunca bloqueia a publicação — se não tem
+  booker, mostra "publique pra Bookers da doopla ou convide o seu".
+- ✅ Nova proposta (booker → artista): checkbox "Este trabalho exige Nota
+  Fiscal", esconde a seção de forma de pagamento/sinal da Doopla quando
+  marcado (não faz sentido coexistir).
+- ✅ Oportunidade selecionada por um booker carrega `requires_invoice` pro
+  booking criado — sem duplicar o campo, sem re-perguntar.
+- ✅ Marcador "NOTA FISCAL NECESSÁRIA · Pagamento direto ao artista · Prazo:
+  a confirmar" no card de Descobrir trabalhos, sempre antes do booker
+  demonstrar interesse — nunca descoberto depois.
+- ✅ Aceite da proposta: quando é NF, soma um segundo checkbox obrigatório
+  com o texto exato do pedido ("Estou ciente de que este trabalho exige
+  Nota Fiscal..."), registrado em `invoice_terms_accepted_at/_by` junto do
+  aceite normal.
+- ✅ Booking com NF ganha seção própria: prazo de pagamento (editável pelo
+  Booker a qualquer momento — "à vista/15/30/45/60/90 dias/outro"), aviso
+  fixo de que a proteção de pagamento da Doopla não cobre esse valor, e
+  acompanhamento de 5 etapas (mesmo desenho visual dos Checkpoints já
+  existentes). Só o artista marca as etapas (é ele quem emite a NF e
+  recebe do cliente) — "Comissão pendente: R$X" aparece assim que ele
+  confirma o recebimento, some quando marca a comissão como paga (o que
+  também fecha o booking).
+- ✅ Fluxo "Marcar como pago" do booker (que assume que a Doopla processou
+  o pagamento) desativado pra bookings com NF — substituído por um aviso
+  apontando pro acompanhamento de faturamento acima. Doopla nunca simula
+  um evento financeiro que não aconteceu de verdade.
+- ⏳ Fora de escopo deliberado (documentado em DECISOES.md):
+  `requires_invoice` é fixado na criação do booking (proposta ou seleção
+  de booker), igual `payment_mode` já era — não editável depois de criado
+  nessa v1. "Ainda não sei" fica visível como está, sem fluxo de resolução
+  forçada.
+- ❌ Não implementado (fora do MVP por definição do próprio pedido):
+  emissão de NF, cálculo tributário, cobrança automática da comissão.
+
+---
+
 ## LOTE 2 Parte 1 — Artista já agenciado
 
 - ✅ Achado central: "agência" já é só um Booker no produto (schema

@@ -8,6 +8,58 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Nota Fiscal: `requires_invoice` fixado na criação do booking, não editável depois — 18/08/2026
+
+O pedido (LOTE 2 Parte 2, item 16) diz que "se o prazo ainda estiver 'A
+confirmar', não tratar como condição financeira fechada — quando o prazo
+for descoberto/alterado... ambas as partes precisam visualizar antes do
+fechamento definitivo." Isso é claramente sobre o **prazo de pagamento**
+(`invoice_payment_term`), que implementei como editável pelo Booker a
+qualquer momento antes do booking fechar (`updateInvoiceTermAction`).
+
+O que eu decidi (não estava explícito no pedido): se **exige NF ou não**
+(`requires_invoice`) é fixado no momento em que o booking nasce — na
+proposta (`proposeBookingAction`/publish-form) ou na seleção de um booker
+a partir de uma oportunidade (`selectBookerForOpportunityAction`, que
+carrega o valor da oportunidade) — e não é editável depois. Motivo: é
+exatamente o mesmo tratamento que `payment_mode` já recebe hoje (também
+fixado na criação, sem edição posterior) — mudar só o `requires_invoice`
+pra ser editável quebraria a simetria sem necessidade e abriria a
+pergunta de "o que acontece com `invoice_terms_accepted_at` se o booking
+já foi aceito sem saber que precisava de NF" sem uma resposta óbvia no
+documento. Se precisar mudar depois de criado, a via existente já
+resolve: `counterBookingAction` (contraproposta) antes do aceite, ou
+recriar a proposta.
+
+Efeito colateral aceito: uma oportunidade publicada como "ainda não sei"
+carrega esse valor pro booking e fica visível como "Nota fiscal: a
+definir" (`/dashboard/oportunidades/[id]`) sem nenhum fluxo dedicado de
+resolução forçada — quem descobre que precisa de NF depois de já ter um
+booking em andamento não tem como marcar isso no sistema nessa v1. Não é
+o cenário mais comum (a oportunidade normalmente já resolve isso antes
+da negociação virar booking) e documentar aqui é melhor do que inventar
+uma tela de "editar retroativamente" sem o pedido pedir isso.
+
+## Nota Fiscal: só o artista marca as etapas de faturamento, nunca automatiza a comissão — 18/08/2026
+
+Item 24 do pedido é explícito: "não simular integrações que ainda não
+existem... não inventar sucesso de pagamento, NF emitida, split
+realizado, saque disponível ou comissão liquidada sem evento real que
+sustente esse estado." Não existe emissor fiscal, PSP pra esse fluxo nem
+cobrança automática — então as 4 etapas (`invoice_issued_at` →
+`invoice_sent_to_client_at` → `invoice_client_paid_at` →
+`invoice_commission_paid_at`) só avançam quando o próprio artista clica
+pra confirmar que aconteceu de verdade (`advanceInvoiceStage` em
+`actions.ts`), sempre em ordem, nunca pulando etapa. O Booker nunca marca
+essas etapas — ele só vê o estado e o valor de "comissão pendente"
+calculado (cachê × comissão), nunca uma cobrança disparada de verdade.
+Isso também é por que `markPaidAction` (o "Marcar como pago" que existia
+pro fluxo processado pela Doopla) foi desativado pra bookings com
+`requires_invoice = 'sim'` — a Doopla nunca processou esse pagamento pra
+poder confirmá-lo.
+
+---
+
 ## Bloqueio de "operação nova" no downgrade: só nos pontos de entrada reais, não em todo lugar — 18/08/2026
 
 A regra pedia bloquear "iniciar novo booking, assumir nova oportunidade,

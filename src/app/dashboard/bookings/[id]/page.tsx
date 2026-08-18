@@ -8,6 +8,10 @@ import {
   markCompletedAction,
   markDisputeAction,
   markInCollectionAction,
+  markInvoiceClientPaidAction,
+  markInvoiceCommissionPaidAction,
+  markInvoiceIssuedAction,
+  markInvoiceSentAction,
   markPaidAction,
   respondBookingAction,
 } from '../../actions';
@@ -31,6 +35,7 @@ import {
 import { CancelBookingForm } from './cancel-booking-form';
 import { ContractSection } from './contract-section';
 import { CounterForm } from './counter-form';
+import { InvoiceTermForm } from './invoice-term-form';
 import { RescheduleForm } from './reschedule-form';
 import { ReviewPanel } from './review-panel';
 
@@ -95,6 +100,25 @@ const DISPUTE_LABELS: Record<string, string> = {
   em_disputa: 'Em disputa',
   chargeback: 'Chargeback aberto',
 };
+
+// Etapas do faturamento direto (LOTE 2 Parte 2, item 18) — computadas a
+// partir dos timestamps do booking, mesmo padrão de "A vencer/Vencido"
+// já usado acima. Nunca um status global novo.
+function invoiceStages(booking: {
+  invoice_terms_accepted_at: string | null;
+  invoice_issued_at: string | null;
+  invoice_sent_to_client_at: string | null;
+  invoice_client_paid_at: string | null;
+  invoice_commission_paid_at: string | null;
+}) {
+  return [
+    { key: 'aceite', label: 'Condições aceitas', done: booking.invoice_terms_accepted_at != null },
+    { key: 'emitida', label: 'NF emitida', done: booking.invoice_issued_at != null },
+    { key: 'enviada', label: 'Enviada ao cliente', done: booking.invoice_sent_to_client_at != null },
+    { key: 'recebida', label: 'Pagamento recebido', done: booking.invoice_client_paid_at != null },
+    { key: 'comissao', label: 'Comissão paga', done: booking.invoice_commission_paid_at != null },
+  ];
+}
 
 export default async function BookingDetailPage(
   props: PageProps<'/dashboard/bookings/[id]'>
@@ -184,6 +208,105 @@ export default async function BookingDetailPage(
         )}
       </section>
 
+      {booking.requires_invoice === 'sim' && (
+        <section className={cardClass}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-doopla-mono inline-block rounded-full bg-[var(--alert)]/10 px-3 py-1.5 text-[10.5px] uppercase tracking-[.05em] text-[var(--alert)]">
+              Nota fiscal necessária
+            </span>
+            <span className="text-[13px] text-[var(--ink)]/60">Pagamento direto ao artista</span>
+          </div>
+
+          <dl className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <dt className={eyebrowClass}>Prazo de pagamento</dt>
+              <dd className="mt-1 text-sm">{booking.invoice_payment_term ?? 'A confirmar'}</dd>
+            </div>
+            <div>
+              <dt className={eyebrowClass}>Pagamento da comissão</dt>
+              <dd className="mt-1 text-sm">Pelo artista, após o recebimento do cliente</dd>
+            </div>
+          </dl>
+
+          {profile.role === 'booker' && !['recusada', 'cancelada'].includes(booking.status) && (
+            <div className="mt-3">
+              <InvoiceTermForm bookingId={booking.id} currentTerm={booking.invoice_payment_term} />
+            </div>
+          )}
+
+          <div className="mt-4 rounded-[12px] bg-[var(--alert)]/5 p-3.5 text-[12.5px] leading-relaxed text-[var(--ink)]/70">
+            <p className="font-medium text-[var(--ink)]">Pagamento externo</p>
+            <p className="mt-1">
+              Este trabalho será faturado diretamente pelo artista ao contratante e não terá o
+              pagamento processado pela Doopla. As proteções de pagamento da Doopla não se aplicam
+              ao valor pago diretamente entre as partes.
+            </p>
+          </div>
+
+          {booking.status !== 'proposta_enviada' && booking.status !== 'recusada' && (
+            <div className="mt-5 border-t border-[var(--line-light)] pt-4">
+              <p className={eyebrowClass}>Acompanhamento do faturamento</p>
+              <div className="mt-3 flex gap-2">
+                {invoiceStages(booking).map((s) => (
+                  <div key={s.key} className="flex-1 text-center">
+                    <div className={cpDotClass(s.done)}>{s.done ? '✓' : '!'}</div>
+                    <p className={cpLabelClass(s.done)}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {profile.role === 'artista' && booking.status !== 'cancelada' && (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {!booking.invoice_issued_at && (
+                    <form action={markInvoiceIssuedAction}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit" className={ghostButtonClass}>
+                        Marcar NF como emitida
+                      </button>
+                    </form>
+                  )}
+                  {booking.invoice_issued_at && !booking.invoice_sent_to_client_at && (
+                    <form action={markInvoiceSentAction}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit" className={ghostButtonClass}>
+                        Marcar como enviada ao cliente
+                      </button>
+                    </form>
+                  )}
+                  {booking.invoice_sent_to_client_at && !booking.invoice_client_paid_at && (
+                    <form action={markInvoiceClientPaidAction}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit" className={accentButtonClass}>
+                        Marcar pagamento recebido do cliente
+                      </button>
+                    </form>
+                  )}
+                  {booking.invoice_client_paid_at && !booking.invoice_commission_paid_at && (
+                    <form action={markInvoiceCommissionPaidAction}>
+                      <input type="hidden" name="bookingId" value={booking.id} />
+                      <button type="submit" className={accentButtonClass}>
+                        Marcar comissão como paga
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+
+              {booking.invoice_client_paid_at &&
+                !booking.invoice_commission_paid_at &&
+                booking.cache_amount_cents != null && (
+                  <p className="mt-3 text-sm text-[var(--ink)]/70">
+                    Comissão pendente:{' '}
+                    {formatCentsAsBRL(
+                      Math.round((booking.cache_amount_cents * booking.commission_percent) / 100)
+                    )}
+                  </p>
+                )}
+            </div>
+          )}
+        </section>
+      )}
+
       {hasActiveCheckpoints && (
         <section className={cardClass}>
           <p className={eyebrowClass}>Checkpoints</p>
@@ -248,6 +371,14 @@ export default async function BookingDetailPage(
                 <input type="checkbox" name="cancellationAccepted" required className="mt-0.5 h-4 w-4" />
                 Li e aceito as condições de cancelamento acima.
               </label>
+              {booking.requires_invoice === 'sim' && (
+                <label className="flex items-start gap-2.5 text-[12.5px] text-[var(--ink)]/70">
+                  <input type="checkbox" name="invoiceTermsAccepted" required className="mt-0.5 h-4 w-4" />
+                  Estou ciente de que este trabalho exige Nota Fiscal, que o pagamento será feito
+                  diretamente ao artista e que minha comissão será paga pelo artista após o
+                  recebimento do cliente.
+                </label>
+              )}
               <button type="submit" className={`${primaryButtonClass} self-start`}>
                 Aceitar proposta
               </button>
@@ -307,7 +438,14 @@ export default async function BookingDetailPage(
           </div>
         )}
 
-        {booking.status === 'aguardando_pagamento' && profile.role === 'booker' && (
+        {booking.status === 'aguardando_pagamento' && profile.role === 'booker' && booking.requires_invoice === 'sim' && (
+          <p className="mt-4 text-sm text-[var(--ink)]/70">
+            Trabalho realizado. Este é um trabalho com Nota Fiscal — acompanhe o faturamento e a
+            comissão pendente na seção acima.
+          </p>
+        )}
+
+        {booking.status === 'aguardando_pagamento' && profile.role === 'booker' && booking.requires_invoice !== 'sim' && (
           <div className="mt-4 flex flex-col gap-4">
             <p className="text-sm text-[var(--ink)]/70">
               Trabalho realizado. Quando o cliente pagar, marque o booking como concluído.
@@ -385,20 +523,23 @@ export default async function BookingDetailPage(
         {booking.status === 'aguardando_pagamento' && profile.role === 'artista' && (
           <div className="mt-4 flex flex-col gap-4">
             <p className="text-sm text-[var(--ink)]/70">
-              Trabalho realizado. Aguardando confirmação de pagamento por {booking.otherPartyName}.
+              {booking.requires_invoice === 'sim'
+                ? 'Trabalho realizado. Este é um trabalho com Nota Fiscal — marque as etapas do faturamento na seção acima.'
+                : `Trabalho realizado. Aguardando confirmação de pagamento por ${booking.otherPartyName}.`}
             </p>
-            {(() => {
-              const dueState = paymentDueState(booking);
-              if (!dueState) return null;
-              return (
-                <span
-                  className={`font-doopla-mono inline-block w-fit rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[.06em] ${PAYMENT_DUE_CLASSES[dueState]}`}
-                >
-                  {PAYMENT_DUE_LABELS[dueState]}
-                </span>
-              );
-            })()}
-            {booking.dispute_status !== 'nenhuma' && (
+            {booking.requires_invoice !== 'sim' &&
+              (() => {
+                const dueState = paymentDueState(booking);
+                if (!dueState) return null;
+                return (
+                  <span
+                    className={`font-doopla-mono inline-block w-fit rounded-full px-3 py-1.5 text-[10px] uppercase tracking-[.06em] ${PAYMENT_DUE_CLASSES[dueState]}`}
+                  >
+                    {PAYMENT_DUE_LABELS[dueState]}
+                  </span>
+                );
+              })()}
+            {booking.requires_invoice !== 'sim' && booking.dispute_status !== 'nenhuma' && (
               <p className="text-sm text-[var(--alert)]">
                 {DISPUTE_LABELS[booking.dispute_status]}
                 {booking.dispute_opened_at && ` — ${formatRelativeDate(booking.dispute_opened_at)}`}.

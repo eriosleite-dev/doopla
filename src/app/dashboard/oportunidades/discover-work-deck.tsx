@@ -147,6 +147,15 @@ function WorkCard({
         </div>
       </div>
 
+      {o.requires_invoice === 'sim' && (
+        <div className="mt-4 rounded-[12px] bg-[var(--alert)]/10 px-3.5 py-2.5 text-[12px] text-[var(--alert)]">
+          <span className="font-doopla-mono font-semibold uppercase tracking-[.03em]">
+            Nota fiscal necessária
+          </span>
+          <span className="text-[var(--alert)]/80"> · Pagamento direto ao artista · Prazo de pagamento: a confirmar</span>
+        </div>
+      )}
+
       <p className="mt-4 text-[15px] leading-relaxed text-[var(--ink)]/80">{o.description}</p>
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-[var(--ink)]/60">

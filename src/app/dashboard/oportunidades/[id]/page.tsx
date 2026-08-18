@@ -50,6 +50,16 @@ export default async function OpportunityManagePage(props: { params: Promise<{ i
             Recebida pelo seu link de orçamento
           </p>
         )}
+        {opportunity.requires_invoice === 'sim' && (
+          <p className="font-doopla-mono mb-3 w-fit rounded-full bg-[var(--alert)]/10 px-2.5 py-1 text-[10px] uppercase tracking-[.03em] text-[var(--alert)]">
+            Nota fiscal necessária · pagamento direto ao artista
+          </p>
+        )}
+        {opportunity.requires_invoice === 'nao_sei' && (
+          <p className="font-doopla-mono mb-3 w-fit rounded-full bg-[var(--paper-dim)] px-2.5 py-1 text-[10px] uppercase tracking-[.03em] text-[var(--ink)]/50">
+            Nota fiscal: a definir
+          </p>
+        )}
         <p className="text-sm text-[var(--ink)]/75">{opportunity.description}</p>
         {opportunity.client_name && (
           <p className="mt-2 text-[12.5px] text-[var(--ink)]/60">
