@@ -414,7 +414,7 @@ function PlanStep() {
         </span>
       </div>
       <p className="text-sm text-[var(--ink)]/70">
-        15 dias grátis. Depois, R$19,90/mês por 3 meses. Após esse período, passa a valer o
+        7 dias grátis. Depois, R$19,90/mês por 3 meses. Após esse período, passa a valer o
         preço vigente do plano.
       </p>
     </div>
@@ -896,7 +896,7 @@ export function SignupForm({
                 {currentStep.kind === 'invites' || currentStep.kind === 'single-invite'
                   ? 'Próximo'
                   : currentStep.kind === 'plan'
-                    ? 'Começar 15 dias grátis'
+                    ? 'Começar 7 dias grátis'
                     : currentStep.kind === 'plan-booker'
                       ? 'Começar grátis'
                       : 'Continuar'}
@@ -904,7 +904,7 @@ export function SignupForm({
             </div>
             {currentStep.kind === 'plan' && (
               <p className="text-center text-xs text-[var(--ink)]/45">
-                Você só começa a pagar após os 15 dias.
+                Você só começa a pagar após os 7 dias.
               </p>
             )}
             {currentStep.kind === 'plan-booker' && (
