@@ -260,6 +260,33 @@ export async function getArtistBookerRelationships(
   }));
 }
 
+// Favoritar é uma lista salva própria, sem relação nenhuma com
+// representations ou histórico de bookings — nunca misturar as duas.
+export async function getFavoriteIds(
+  userId: string,
+  supabase: SupabaseServerClient
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from('favorites')
+    .select('favorited_user_id')
+    .eq('user_id', userId)
+    .returns<{ favorited_user_id: string }[]>();
+  return new Set((data ?? []).map((f) => f.favorited_user_id));
+}
+
+export async function getFavoriteBookers(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<BookerCard[]> {
+  const { data } = await supabase
+    .from('favorites')
+    .select('favorited_user_id')
+    .eq('user_id', artistId)
+    .order('created_at', { ascending: false })
+    .returns<{ favorited_user_id: string }[]>();
+  return fetchBookerCards((data ?? []).map((f) => f.favorited_user_id), supabase);
+}
+
 export async function getSentInvites(
   bookerId: string,
   supabase: SupabaseServerClient
@@ -446,6 +473,19 @@ export async function getBookerArtistRelationships(
     relationshipSince: sinceById.get(c.profileId) ?? '',
     ongoingCount: ongoingById.get(c.profileId) ?? 0,
   }));
+}
+
+export async function getFavoriteArtists(
+  bookerId: string,
+  supabase: SupabaseServerClient
+): Promise<ArtistCard[]> {
+  const { data } = await supabase
+    .from('favorites')
+    .select('favorited_user_id')
+    .eq('user_id', bookerId)
+    .order('created_at', { ascending: false })
+    .returns<{ favorited_user_id: string }[]>();
+  return fetchArtistCards((data ?? []).map((f) => f.favorited_user_id), supabase);
 }
 
 export async function getDiscoverArtists(

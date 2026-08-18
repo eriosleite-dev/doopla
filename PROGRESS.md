@@ -13,6 +13,22 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## 0.7. Favoritar bookers/artistas (mútuo, separado de "já trabalhei com")
+
+- 🔒 **Migration 0029 (`favorites`)**: escrita, falta você rodar no
+  Supabase SQL Editor. Tabela própria (`user_id`, `favorited_user_id`,
+  `created_at`), RLS só-dono, sem nenhuma relação com `representations`
+  ou bookings — favoritar é só uma lista salva.
+- ✅ **Coração nos cards**: em Meus bookers/artistas, Descubra e Meus
+  favoritos (BookerRow/ArtistRow), clicável sem abrir o perfil (estado
+  otimista, persistido via `toggleFavoriteAction`).
+- ✅ **Coração no modal de perfil**: ao lado do nome, no topo do card de
+  identidade — mesmo componente (`FavoriteButton`), estado inicial
+  resolvido no servidor.
+- ✅ **"Meus favoritos"**: seção própria em `/dashboard/bookers`
+  (artista) e `/dashboard/artistas` (booker), com dados só de
+  `favorites` — nunca misturado com quem você já trabalhou.
+
 ## 0.6. Home artista (badge de preço) + link de orçamento no Dashboard
 
 - ✅ **Home, jornada do artista**: card do booker no topo trocado por um

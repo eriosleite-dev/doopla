@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { getRecentReviews, getReviewSummary } from '../../data';
+import { FavoriteButton } from '../../favorite-button';
 import { getSessionProfile } from '../../session';
 import { labelForAttribute } from '../../review-attributes';
 import { avatarClass, eyebrowClass, initialsFromName } from '../../ui';
@@ -20,7 +21,7 @@ export async function BookerProfileView({ id }: { id: string }) {
   ]);
   if (!bookerAccount) notFound();
 
-  const [rating, recentReviews, { data: representation }] = await Promise.all([
+  const [rating, recentReviews, { data: representation }, { data: favorite }] = await Promise.all([
     getReviewSummary(id, supabase),
     getRecentReviews(id, supabase),
     supabase
@@ -29,6 +30,12 @@ export async function BookerProfileView({ id }: { id: string }) {
       .eq('artist_profile_id', user.id)
       .eq('booker_profile_id', id)
       .maybeSingle<{ id: string }>(),
+    supabase
+      .from('favorites')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('favorited_user_id', id)
+      .maybeSingle<{ user_id: string }>(),
   ]);
 
   const location = [bookerAccount.city, bookerAccount.state].filter(Boolean).join(', ');
@@ -57,7 +64,14 @@ export async function BookerProfileView({ id }: { id: string }) {
            quando existir um critério real por trás — ver DECISOES.md. */}
 
         <div>
-          <h1 className="font-doopla-display text-2xl font-semibold">{bookerAccount.full_name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="font-doopla-display text-2xl font-semibold">{bookerAccount.full_name}</h1>
+            <FavoriteButton
+              targetId={id}
+              initialFavorited={Boolean(favorite)}
+              className="mt-1 flex-none text-[var(--paper)]/40 hover:text-[var(--paper)]"
+            />
+          </div>
           <p className="mt-2 text-[12px] text-[var(--paper)]/55">
             {location}
             {location && <br />}

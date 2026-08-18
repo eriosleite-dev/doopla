@@ -13,15 +13,18 @@ export function DiscoverArtists({
   requestStatuses,
   limit,
   hasMore,
+  favoriteIds = [],
 }: {
   artists: ArtistCard[];
   requestStatuses: Record<string, RepresentationRequestStatus | null>;
   limit: number;
   hasMore: boolean;
+  favoriteIds?: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [loadedLimit, setLoadedLimit] = useState(limit);
+  const favoriteSet = new Set(favoriteIds);
 
   function loadMore() {
     const next = loadedLimit + 12;
@@ -38,7 +41,11 @@ export function DiscoverArtists({
       searchPlaceholder="Digite e aperte Enter... ex: DJ, São Paulo"
       getSearchText={(a) => `${a.fullName} ${a.stageName ?? ''} ${a.city ?? ''} ${a.state ?? ''} ${a.mercados ?? ''} ${a.category ?? ''}`}
       renderItem={(a) => (
-        <ArtistRow artist={a} requestStatus={requestStatuses[a.profileId] ?? null} />
+        <ArtistRow
+          artist={a}
+          requestStatus={requestStatuses[a.profileId] ?? null}
+          isFavorited={favoriteSet.has(a.profileId)}
+        />
       )}
       emptyMessage="Nenhum artista novo combina com esses filtros ainda."
       itemLabel={{ singular: 'artista encontrado', plural: 'artistas encontrados' }}

@@ -6,6 +6,8 @@ import {
   getOutgoingRepresentationRequests,
   getRepresentationRequestStatusesFor,
   getDiscoverArtists,
+  getFavoriteArtists,
+  getFavoriteIds,
   getSentInvites,
 } from '../data';
 import { getSessionProfile } from '../session';
@@ -28,9 +30,11 @@ export default async function ArtistasPage(props: {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'booker') redirect('/dashboard');
 
-  const [myArtists, outgoingRequests] = await Promise.all([
+  const [myArtists, outgoingRequests, favoriteArtists, favoriteIds] = await Promise.all([
     getBookerArtistRelationships(user.id, supabase),
     getOutgoingRepresentationRequests(user.id, supabase),
+    getFavoriteArtists(user.id, supabase),
+    getFavoriteIds(user.id, supabase),
   ]);
 
   const limit = Math.min(Math.max(Number(discoverLimit) || 12, 12), 96);
@@ -79,9 +83,31 @@ export default async function ArtistasPage(props: {
             getKey={(a) => a.profileId}
             searchPlaceholder="Buscar entre os artistas que você representa..."
             getSearchText={(a) => `${a.fullName} ${a.stageName ?? ''} ${a.city ?? ''} ${a.mercados ?? ''}`}
-            renderItem={(a) => <ArtistRow artist={a} />}
+            renderItem={(a) => (
+              <ArtistRow artist={a} isFavorited={favoriteIds.has(a.profileId)} />
+            )}
             emptyMessage="Nenhum artista combina com esses filtros."
             itemLabel={{ singular: 'artista', plural: 'artistas' }}
+          />
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <p className={eyebrowClass}>Meus favoritos</p>
+        {favoriteArtists.length === 0 ? (
+          <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
+            Nenhum artista favoritado ainda. Clique no coração de um perfil pra guardar aqui —
+            diferente de &quot;já trabalhei com&quot;, é só uma lista sua pra acompanhar.
+          </p>
+        ) : (
+          <ListFilter
+            items={favoriteArtists}
+            getKey={(a) => a.profileId}
+            searchPlaceholder="Buscar entre seus artistas favoritos..."
+            getSearchText={(a) => `${a.fullName} ${a.stageName ?? ''} ${a.city ?? ''} ${a.mercados ?? ''}`}
+            renderItem={(a) => <ArtistRow artist={a} isFavorited />}
+            emptyMessage="Nenhum favorito combina com esses filtros."
+            itemLabel={{ singular: 'favorito', plural: 'favoritos' }}
           />
         )}
       </section>
@@ -98,6 +124,7 @@ export default async function ArtistasPage(props: {
         requestStatuses={requestStatusRecord}
         limit={limit}
         hasMore={hasMore}
+        favoriteIds={[...favoriteIds]}
       />
 
       <section className="flex flex-col gap-3">

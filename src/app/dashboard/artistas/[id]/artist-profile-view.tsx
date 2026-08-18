@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 
 import { getRecentReviews, getRepresentationRequestStatus, getReviewSummary } from '../../data';
+import { FavoriteButton } from '../../favorite-button';
 import { getSessionProfile } from '../../session';
 import { labelForAttribute } from '../../review-attributes';
 import { avatarClass, eyebrowClass, initialsFromName } from '../../ui';
@@ -21,17 +22,24 @@ export async function ArtistProfileView({ id }: { id: string }) {
   ]);
   if (!artistProfile) notFound();
 
-  const [requestStatus, rating, recentReviews, { data: alreadyRepresents }] = await Promise.all([
-    getRepresentationRequestStatus(user.id, id, supabase),
-    getReviewSummary(id, supabase),
-    getRecentReviews(id, supabase),
-    supabase
-      .from('representations')
-      .select('id')
-      .eq('artist_profile_id', id)
-      .eq('booker_profile_id', user.id)
-      .maybeSingle<{ id: string }>(),
-  ]);
+  const [requestStatus, rating, recentReviews, { data: alreadyRepresents }, { data: favorite }] =
+    await Promise.all([
+      getRepresentationRequestStatus(user.id, id, supabase),
+      getReviewSummary(id, supabase),
+      getRecentReviews(id, supabase),
+      supabase
+        .from('representations')
+        .select('id')
+        .eq('artist_profile_id', id)
+        .eq('booker_profile_id', user.id)
+        .maybeSingle<{ id: string }>(),
+      supabase
+        .from('favorites')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .eq('favorited_user_id', id)
+        .maybeSingle<{ user_id: string }>(),
+    ]);
 
   const name = artist?.stage_name || artistProfile.full_name;
   const location = [artistProfile.city, artistProfile.state].filter(Boolean).join(', ');
@@ -59,7 +67,14 @@ export async function ArtistProfileView({ id }: { id: string }) {
            critério real por trás — ver DECISOES.md. */}
 
         <div>
-          <h1 className="font-doopla-display text-2xl font-semibold">{name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="font-doopla-display text-2xl font-semibold">{name}</h1>
+            <FavoriteButton
+              targetId={id}
+              initialFavorited={Boolean(favorite)}
+              className="mt-1 flex-none text-[var(--paper)]/40 hover:text-[var(--paper)]"
+            />
+          </div>
           <p className="mt-2 text-[12px] text-[var(--paper)]/55">
             {location}
             {location && <br />}

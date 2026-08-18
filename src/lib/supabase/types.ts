@@ -190,6 +190,12 @@ export type Invite = {
   confirmed_at: string | null;
 };
 
+export type Favorite = {
+  user_id: string;
+  favorited_user_id: string;
+  created_at: string;
+};
+
 export type Representation = {
   id: string;
   artist_profile_id: string;
@@ -458,6 +464,12 @@ export type Database = {
         Insert: Partial<Representation> &
           Pick<Representation, 'artist_profile_id' | 'booker_profile_id'>;
         Update: Partial<Representation>;
+        Relationships: [];
+      };
+      favorites: {
+        Row: Favorite;
+        Insert: Pick<Favorite, 'user_id' | 'favorited_user_id'>;
+        Update: Partial<Favorite>;
         Relationships: [];
       };
       opportunities: {

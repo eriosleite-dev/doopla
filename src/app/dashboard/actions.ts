@@ -1477,3 +1477,35 @@ export async function contestReviewAction(formData: FormData) {
 
   revalidatePath(`/dashboard/bookings/${review.booking_id}`);
 }
+
+// Favoritar não tem relação nenhuma com representations/bookings — é só
+// uma lista salva, sem regra de negócio por trás.
+export async function toggleFavoriteAction(
+  targetId: string,
+  favorite: boolean
+): Promise<{ ok: boolean }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { ok: false };
+  const { supabase, user } = ctx;
+  if (!targetId || targetId === user.id) return { ok: false };
+
+  if (favorite) {
+    const { error } = await supabase
+      .from('favorites')
+      .upsert({ user_id: user.id, favorited_user_id: targetId }, { onConflict: 'user_id,favorited_user_id' });
+    if (error) return { ok: false };
+  } else {
+    const { error } = await supabase
+      .from('favorites')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('favorited_user_id', targetId);
+    if (error) return { ok: false };
+  }
+
+  revalidatePath('/dashboard/bookers');
+  revalidatePath('/dashboard/artistas');
+  revalidatePath(`/dashboard/bookers/${targetId}`);
+  revalidatePath(`/dashboard/artistas/${targetId}`);
+  return { ok: true };
+}

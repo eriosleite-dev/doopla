@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import type { ArtistCard, ArtistRelationshipCard } from '../data';
+import { FavoriteButton } from '../favorite-button';
 import { avatarClass, initialsFromName } from '../ui';
 import { RequestRepresentationButton } from './request-button';
 import type { RepresentationRequestStatus } from '@/lib/supabase/types';
@@ -12,9 +13,11 @@ function formatSince(iso: string): string {
 export function ArtistRow({
   artist,
   requestStatus,
+  isFavorited = false,
 }: {
   artist: ArtistCard | ArtistRelationshipCard;
   requestStatus?: RepresentationRequestStatus | null;
+  isFavorited?: boolean;
 }) {
   const relationship = 'relationshipSince' in artist ? artist : null;
   const name = artist.stageName || artist.fullName;
@@ -27,15 +30,25 @@ export function ArtistRow({
 
   return (
     <div className="flex flex-col gap-3 rounded-[18px] bg-white p-5">
-      <Link href={`/dashboard/artistas/${artist.profileId}`} className="flex items-center gap-3">
-        <span className={avatarClass}>{initialsFromName(name)}</span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{name}</p>
-          <p className="truncate text-[12px] text-[var(--ink)]/55">
-            {[artist.category, location].filter(Boolean).join(' · ') || 'Artista na doopla'}
-          </p>
-        </div>
-      </Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link
+          href={`/dashboard/artistas/${artist.profileId}`}
+          className="flex min-w-0 flex-1 items-center gap-3"
+        >
+          <span className={avatarClass}>{initialsFromName(name)}</span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{name}</p>
+            <p className="truncate text-[12px] text-[var(--ink)]/55">
+              {[artist.category, location].filter(Boolean).join(' · ') || 'Artista na doopla'}
+            </p>
+          </div>
+        </Link>
+        <FavoriteButton
+          targetId={artist.profileId}
+          initialFavorited={isFavorited}
+          className="flex-none text-[var(--ink)]/30 hover:text-[var(--accent-ink)]"
+        />
+      </div>
       {artist.ratingCount > 0 ? (
         <p className="font-doopla-mono text-[11.5px] text-[var(--accent-ink)]">
           ★ {artist.ratingAverage?.toFixed(1)} · {artist.ratingCount}{' '}

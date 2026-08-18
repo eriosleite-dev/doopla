@@ -11,14 +11,17 @@ export function DiscoverBookers({
   bookers,
   limit,
   hasMore,
+  favoriteIds = [],
 }: {
   bookers: BookerCard[];
   limit: number;
   hasMore: boolean;
+  favoriteIds?: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [loadedLimit, setLoadedLimit] = useState(limit);
+  const favoriteSet = new Set(favoriteIds);
 
   function loadMore() {
     const next = loadedLimit + 12;
@@ -34,7 +37,7 @@ export function DiscoverBookers({
       getKey={(b) => b.profileId}
       searchPlaceholder="Digite e aperte Enter... ex: marcas, São Paulo"
       getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.state ?? ''} ${b.mercados ?? ''} ${b.perfil ?? ''}`}
-      renderItem={(b) => <BookerRow booker={b} />}
+      renderItem={(b) => <BookerRow booker={b} isFavorited={favoriteSet.has(b.profileId)} />}
       emptyMessage="Nenhum booker novo combina com esses filtros ainda."
       itemLabel={{ singular: 'booker encontrado', plural: 'bookers encontrados' }}
       onLoadMore={hasMore ? loadMore : undefined}

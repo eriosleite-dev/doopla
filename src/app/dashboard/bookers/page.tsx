@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation';
 import {
   getArtistBookerRelationships,
   getDiscoverBookers,
+  getFavoriteBookers,
+  getFavoriteIds,
   getIncomingRepresentationRequests,
   getSentInvites,
 } from '../data';
@@ -26,9 +28,11 @@ export default async function BookersPage(props: {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
-  const [myBookers, incomingRequests] = await Promise.all([
+  const [myBookers, incomingRequests, favoriteBookers, favoriteIds] = await Promise.all([
     getArtistBookerRelationships(user.id, supabase),
     getIncomingRepresentationRequests(user.id, supabase),
+    getFavoriteBookers(user.id, supabase),
+    getFavoriteIds(user.id, supabase),
   ]);
 
   const limit = Math.min(Math.max(Number(discoverLimit) || 12, 12), 96);
@@ -70,9 +74,29 @@ export default async function BookersPage(props: {
             getKey={(b) => b.profileId}
             searchPlaceholder="Buscar entre os bookers que trabalham com você..."
             getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.mercados ?? ''}`}
-            renderItem={(b) => <BookerRow booker={b} />}
+            renderItem={(b) => <BookerRow booker={b} isFavorited={favoriteIds.has(b.profileId)} />}
             emptyMessage="Nenhum booker combina com esses filtros."
             itemLabel={{ singular: 'booker', plural: 'bookers' }}
+          />
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <p className={eyebrowClass}>Meus favoritos</p>
+        {favoriteBookers.length === 0 ? (
+          <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
+            Nenhum booker favoritado ainda. Clique no coração de um perfil pra guardar aqui —
+            diferente de &quot;já trabalhei com&quot;, é só uma lista sua pra acompanhar.
+          </p>
+        ) : (
+          <ListFilter
+            items={favoriteBookers}
+            getKey={(b) => b.profileId}
+            searchPlaceholder="Buscar entre seus bookers favoritos..."
+            getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.mercados ?? ''}`}
+            renderItem={(b) => <BookerRow booker={b} isFavorited />}
+            emptyMessage="Nenhum favorito combina com esses filtros."
+            itemLabel={{ singular: 'favorito', plural: 'favoritos' }}
           />
         )}
       </section>
@@ -84,7 +108,12 @@ export default async function BookersPage(props: {
           pra ver outros perfis.
         </p>
       </div>
-      <DiscoverBookers bookers={visibleDiscover} limit={limit} hasMore={hasMore} />
+      <DiscoverBookers
+        bookers={visibleDiscover}
+        limit={limit}
+        hasMore={hasMore}
+        favoriteIds={[...favoriteIds]}
+      />
 
       <section className="flex flex-col gap-3">
         <p className={eyebrowClass}>Convites enviados</p>
