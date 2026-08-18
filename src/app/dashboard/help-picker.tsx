@@ -1,56 +1,17 @@
-'use client';
-
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
 
-const OPTIONS = [
-  { label: 'Publicar um trabalho', href: '/dashboard/publicar-trabalho' },
-  { label: 'Cuidar de uma oportunidade', href: '/dashboard/oportunidades' },
-  { label: 'Ver meus trabalhos', href: '/dashboard/trabalhos' },
-  { label: 'Encontrar um booker', href: '/dashboard/bookers' },
-  { label: 'Falar sobre pagamento', href: '/dashboard/dinheiro' },
-];
-
+// Antes era um menu genérico ("Como podemos ajudar?") com 5 atalhos que
+// já existem na sidebar (Trabalhos, Oportunidades, Bookers, Dinheiro) —
+// redundante e vago demais pra ser o CTA principal do artista. Agora é
+// uma ação direta: o artista tem um trabalho/demanda e quer publicar
+// pra encontrar um booker que ajude.
 export function HelpPicker() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
   return (
-    <div ref={ref} className="relative">
-      {open && (
-        <div className="absolute bottom-full left-0 mb-2 w-full min-w-[220px] rounded-[14px] bg-[var(--paper)] p-2 shadow-lg">
-          <p className="font-doopla-mono px-2.5 py-1.5 text-[10px] uppercase tracking-[.06em] text-[var(--ink)]/45">
-            Como podemos ajudar?
-          </p>
-          <div className="flex flex-col">
-            {OPTIONS.map((opt) => (
-              <Link
-                key={opt.href}
-                href={opt.href}
-                onClick={() => setOpen(false)}
-                className="rounded-[10px] px-2.5 py-2 text-[13px] text-[var(--ink)] hover:bg-[var(--paper-dim)]"
-              >
-                {opt.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="font-doopla-mono w-full rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)]"
-      >
-        + Preciso de ajuda
-      </button>
-    </div>
+    <Link
+      href="/dashboard/publicar-trabalho"
+      className="font-doopla-mono block w-full rounded-full bg-[var(--accent)] px-4 py-3 text-center text-[13.5px] font-semibold text-[var(--ink)]"
+    >
+      + Publicar um trabalho
+    </Link>
   );
 }

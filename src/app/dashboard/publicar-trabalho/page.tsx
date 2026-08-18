@@ -21,7 +21,9 @@ export default async function PublicarTrabalhoPage() {
           Tenho um trabalho, preciso de um booker
         </h1>
         <p className="mt-2 text-sm text-[var(--ink)]/60">
-          Isso aparece no mural de Oportunidades pra todos os bookers da doopla.
+          Encontre um booker pra negociar, cobrar, fechar contrato ou ajudar você neste
+          trabalho. Isso aparece no mural de Pedidos e trabalhos pra todos os bookers da
+          doopla.
         </p>
       </header>
       <PublishForm />

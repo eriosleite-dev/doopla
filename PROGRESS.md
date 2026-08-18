@@ -13,6 +13,25 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Prioridade 6 — Reorganizar nomenclatura do painel do artista
+
+- ✅ Sidebar do artista: "Oportunidades" virou "Pedidos e trabalhos" —
+  a página de destino (`/dashboard/oportunidades`) já estava dividida em
+  "Pedidos recebidos" (via link de orçamento) e "O que você publicou"
+  de um trabalho anterior; só o rótulo da sidebar ainda não batia.
+  Booker mantém "Oportunidades" (faz sentido do lado dele — mural de
+  trabalhos em aberto pra pegar).
+- ✅ Botão "+ Preciso de ajuda" virou "+ Publicar um trabalho" — deixou
+  de ser um menu genérico com 5 atalhos (redundantes com a sidebar) e
+  virou uma ação direta pro fluxo de publicar trabalho, com a explicação
+  "Encontre um booker pra negociar, cobrar, fechar contrato ou ajudar
+  você neste trabalho" já na tela de destino.
+
+Com isso a Prioridade 6 está fechada. Próxima: Prioridade 7 (Agenda
+editável) — mas boa parte já existe (evento confirmado já é clicável e
+leva pro booking, remarcação já embutida ali); falta confirmar o resto
+do escopo (bloquear período, adicionar/editar manualmente).
+
 ## 0.8. Preferências de matching: perfil deixa de ser formulário aberto
 
 Pedido: os campos de matching (especialidades, nichos, área de atuação,

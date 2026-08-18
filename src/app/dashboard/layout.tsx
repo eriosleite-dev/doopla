@@ -106,7 +106,7 @@ export default async function DashboardLayout({
             label: 'Trabalho',
             links: [
               { href: '/dashboard/trabalhos', label: 'Trabalhos' },
-              { href: '/dashboard/oportunidades', label: 'Oportunidades' },
+              { href: '/dashboard/oportunidades', label: 'Pedidos e trabalhos' },
             ],
           },
           {
