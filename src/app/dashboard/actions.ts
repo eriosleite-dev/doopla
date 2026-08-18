@@ -1531,3 +1531,96 @@ export async function toggleFavoriteAction(
   revalidatePath(`/dashboard/artistas/${targetId}`);
   return { ok: true };
 }
+
+// Booker Básico/Pro — sem processador de pagamento real ainda:
+// "confirmar" grava o estado real da assinatura (mesmo estágio do
+// resto do produto). O plano só muda depois desta confirmação, nunca
+// só por abrir o modal.
+export async function upgradeToProAction(): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return { error: 'Só bookers podem assinar o Pro.' };
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update({
+      booker_plan: 'pro',
+      status: 'active',
+      pro_period_ends_at: null,
+      active_artist_profile_id: null,
+      active_artist_pending_choice: false,
+      canceled_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', user.id);
+  if (error) return { error: 'Não foi possível confirmar o upgrade. Tente novamente.' };
+
+  revalidatePath('/dashboard');
+  return {};
+}
+
+// Cancelar não derruba o Pro na hora — os benefícios continuam até o
+// fim do ciclo já pago (aproximado em 30 dias, sem cobrança recorrente
+// real ainda pra saber a data exata). O downgrade de verdade acontece
+// via expire_booker_pro_subscriptions quando essa data passa.
+export async function cancelProAction(): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return { error: 'Ação inválida.' };
+
+  const periodEnd = new Date();
+  periodEnd.setDate(periodEnd.getDate() + 30);
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update({
+      canceled_at: new Date().toISOString(),
+      pro_period_ends_at: periodEnd.toISOString().slice(0, 10),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', user.id)
+    .eq('booker_plan', 'pro');
+  if (error) return { error: 'Não foi possível cancelar. Tente novamente.' };
+
+  revalidatePath('/dashboard');
+  return {};
+}
+
+// Depois de um downgrade automático, o booker pode trocar o artista
+// escolhido automaticamente uma única vez — essa ação consome essa
+// chance (active_artist_pending_choice vira false), mesmo se ele
+// escolher manter o mesmo artista.
+export async function chooseActiveArtistAction(formData: FormData): Promise<{ error?: string }> {
+  const artistProfileId = String(formData.get('artistProfileId') ?? '').trim();
+  if (!artistProfileId) return { error: 'Escolha um artista.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'booker') return { error: 'Ação inválida.' };
+
+  const { data: rep } = await supabase
+    .from('representations')
+    .select('id')
+    .eq('booker_profile_id', user.id)
+    .eq('artist_profile_id', artistProfileId)
+    .maybeSingle<{ id: string }>();
+  if (!rep) return { error: 'Esse artista não faz parte da sua rede.' };
+
+  const { error } = await supabase
+    .from('subscriptions')
+    .update({
+      active_artist_profile_id: artistProfileId,
+      active_artist_pending_choice: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', user.id)
+    .eq('booker_plan', 'basic');
+  if (error) return { error: 'Não foi possível salvar. Tente novamente.' };
+
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/artistas');
+  return {};
+}

@@ -6,6 +6,7 @@ import { siteOrigin } from '@/lib/site-url';
 
 import { BookerOficialCard } from './booker-oficial-card';
 import { BookingsPreview } from './bookings-list';
+import { ProUpsellCard } from './booker-pro/pro-upsell-card';
 import { CompletePreferencesCard } from './complete-preferences-card';
 import {
   computeArtistStats,
@@ -19,6 +20,7 @@ import {
   getOrcamentoLinkInfo,
   getPendingInvites,
   getReferralSummary,
+  getSubscription,
   getUserBookings,
   type BookerCard,
 } from './data';
@@ -68,6 +70,7 @@ export default async function DashboardPage() {
     profile.role === 'artista'
       ? await getArtistMatchingCompletion(user.id, supabase)
       : await getBookerMatchingCompletion(user.id, supabase);
+  const subscription = profile.role === 'booker' ? await getSubscription(user.id, supabase) : null;
   const origin = referralSummary || orcamentoInfo ? await siteOrigin() : null;
   const referralUrl = referralSummary ? `${origin}/cadastro?ref=${referralSummary.referralCode}` : null;
   const orcamentoUrl =
@@ -178,6 +181,8 @@ export default async function DashboardPage() {
       {officialProgress && <BookerOficialCard progress={officialProgress} />}
 
       <CompletePreferencesCard filled={matchingCompletion.filled} total={matchingCompletion.total} />
+
+      {subscription?.booker_plan === 'basic' && <ProUpsellCard />}
 
       {profile.role === 'artista' && (
         <>
