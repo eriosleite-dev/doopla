@@ -446,9 +446,10 @@ function PeopleRow({
       {people.map((p) => {
         const reasons = matchReasons?.get(p.profileId) ?? [];
         return (
-          <div
+          <Link
             key={p.profileId}
-            className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5"
+            href={`/dashboard/bookers/${p.profileId}`}
+            className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5 hover:border-[var(--accent)]"
           >
             <span className={avatarClass}>{initialsFromName(p.fullName)}</span>
             <span className="truncate text-[13px] font-semibold">{p.fullName}</span>
@@ -460,7 +461,7 @@ function PeopleRow({
                 ✓ {reasons.join(', ')}
               </span>
             )}
-          </div>
+          </Link>
         );
       })}
     </div>
@@ -474,16 +475,17 @@ function ArtistPeopleRow({ people, emptyMessage }: { people: ArtistCard[]; empty
   return (
     <div className="flex gap-3 overflow-x-auto pb-1">
       {people.map((p) => (
-        <div
+        <Link
           key={p.profileId}
-          className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5"
+          href={`/dashboard/artistas/${p.profileId}`}
+          className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5 hover:border-[var(--accent)]"
         >
           <span className={avatarClass}>{initialsFromName(p.stageName || p.fullName)}</span>
           <span className="truncate text-[13px] font-semibold">{p.stageName || p.fullName}</span>
           <span className="truncate text-[11px] text-[var(--ink)]/55">
             {[p.category, p.city].filter(Boolean).join(' · ') || 'Artista'}
           </span>
-        </div>
+        </Link>
       ))}
     </div>
   );
