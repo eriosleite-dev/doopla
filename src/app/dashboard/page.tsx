@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { formatCentsAsBRL } from '@/lib/format';
+import { formatCentsAsBRL, formatPercent } from '@/lib/format';
 import { siteOrigin } from '@/lib/site-url';
 
 import { ArtistLimitBanner } from './booker-pro/artist-limit-banner';
@@ -30,6 +30,7 @@ import {
   getUserBookings,
   type ArtistCard,
   type BookerCard,
+  type OpportunityWithArtist,
 } from './data';
 import { confirmInviteAction } from './actions';
 import { OrcamentoLinkCard } from './orcamento-link-card';
@@ -189,7 +190,31 @@ export default async function DashboardPage(props: {
       {profile.role === 'booker' && (
         <section>
           <div className="flex items-center justify-between">
-            <p className={eyebrowClass}>Trabalhos para você</p>
+            <p className={eyebrowClass}>Bookings em andamento</p>
+            <Link
+              href="/dashboard/trabalhos"
+              className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+            >
+              Ver todos
+            </Link>
+          </div>
+          <div className="mt-4">
+            <BookingsPreview
+              bookings={bookings}
+              role={profile.role}
+              emptyState={{
+                message: 'Você ainda não tem bookings em andamento.',
+                cta: { label: 'Descobrir oportunidades', href: '/dashboard/oportunidades' },
+              }}
+            />
+          </div>
+        </section>
+      )}
+
+      {profile.role === 'booker' && (
+        <section>
+          <div className="flex items-center justify-between">
+            <p className={eyebrowClass}>Oportunidades para você</p>
             <Link
               href="/dashboard/oportunidades"
               className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
@@ -200,7 +225,7 @@ export default async function DashboardPage(props: {
           <div className="mt-4">
             {previewOpportunities.length === 0 ? (
               <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
-                Nenhum trabalho novo pra você agora.
+                Nenhuma oportunidade nova para você agora.
               </p>
             ) : (
               <ul className="flex flex-col gap-3">
@@ -214,6 +239,9 @@ export default async function DashboardPage(props: {
                       <span className="mt-1 block truncate text-[13px] text-[var(--ink)]/65">
                         {o.description}
                       </span>
+                      <span className="mt-1 block text-[12px] text-[var(--ink)]/50">
+                        {opportunityStateLine(o)}
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -223,20 +251,22 @@ export default async function DashboardPage(props: {
         </section>
       )}
 
-      <section>
-        <div className="flex items-center justify-between">
-          <p className={eyebrowClass}>Seus trabalhos</p>
-          <Link
-            href="/dashboard/trabalhos"
-            className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
-          >
-            Ver todos
-          </Link>
-        </div>
-        <div className="mt-4">
-          <BookingsPreview bookings={bookings} role={profile.role} />
-        </div>
-      </section>
+      {profile.role !== 'booker' && (
+        <section>
+          <div className="flex items-center justify-between">
+            <p className={eyebrowClass}>Seus trabalhos</p>
+            <Link
+              href="/dashboard/trabalhos"
+              className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
+            >
+              Ver todos
+            </Link>
+          </div>
+          <div className="mt-4">
+            <BookingsPreview bookings={bookings} role={profile.role} />
+          </div>
+        </section>
+      )}
 
       {profile.role === 'booker' && (
         <section>
@@ -425,6 +455,22 @@ function ArtistPeopleRow({ people, emptyMessage }: { people: ArtistCard[]; empty
   );
 }
 
+// Mesma copy do card de "Descobrir trabalhos" (discover-work-deck.tsx) —
+// nunca deixar um número solto sem dizer se já foi negociado ou não.
+function opportunityStateLine(o: OpportunityWithArtist): string {
+  const cacheLine =
+    o.cache_amount_cents != null
+      ? `Cachê do artista: ${formatCentsAsBRL(o.cache_amount_cents)}`
+      : o.client_offered_cents != null
+        ? `Cliente ofereceu: ${formatCentsAsBRL(o.client_offered_cents)}`
+        : 'Cachê: ainda não definido';
+  const commissionLine =
+    o.commission_percent != null
+      ? `Comissão: ${formatPercent(o.commission_percent)}`
+      : 'Comissão: ainda não negociada';
+  return `${commissionLine} · ${cacheLine}`;
+}
+
 function BookerStats({ bookings }: { bookings: Parameters<typeof computeBookerStats>[0] }) {
   const stats = computeBookerStats(bookings);
 
@@ -436,22 +482,14 @@ function BookerStats({ bookings }: { bookings: Parameters<typeof computeBookerSt
         <p className={statSubClass}>Bruto, em bookings confirmados</p>
       </div>
       <div className={statCardLeadClass}>
-        <p className={statLabelLeadClass}>Comissão total ganha</p>
+        <p className={statLabelLeadClass}>Comissão ganha</p>
         <p className={statValueLeadClass}>{formatCentsAsBRL(stats.totalEarnedCents)}</p>
         <p className="mt-2 text-[12.5px] text-[var(--paper)]/60">Em bookings concluídos</p>
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Disponível para sacar</p>
-        <p className={statValueClass}>{formatCentsAsBRL(stats.availableToWithdrawCents)}</p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className={statSubClass}>Saque via Bloco 2, em breve</p>
-          <Link
-            href="/dashboard/dinheiro"
-            className="font-doopla-mono flex-none rounded-full border border-[var(--ink)]/20 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--ink)]/60 hover:border-[var(--ink)]/40"
-          >
-            Ver detalhes
-          </Link>
-        </div>
+        <p className={statValueClass}>—</p>
+        <p className={statSubClass}>Disponível quando os pagamentos pela Doopla forem ativados</p>
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Bookings ativos</p>

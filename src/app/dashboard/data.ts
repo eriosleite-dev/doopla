@@ -1354,6 +1354,23 @@ export async function getAttentionItems(
   }
 
   if (role === 'booker') {
+    const incomingArtistRequests = await getIncomingRepresentationRequestsForBooker(userId, supabase);
+    for (const req of incomingArtistRequests) {
+      items.push({
+        text: `${req.artist.stageName || req.artist.fullName} quer se conectar com você`,
+        href: '/dashboard/artistas#solicitacoes',
+        kind: 'atencao',
+      });
+    }
+    for (const b of bookings.filter(
+      (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'booker'
+    )) {
+      items.push({
+        text: `Proposta de ${b.otherPartyName} aguarda sua resposta`,
+        href: `/dashboard/bookings/${b.id}`,
+        kind: 'atencao',
+      });
+    }
     for (const b of bookings.filter((x) => x.status === 'aguardando_pagamento')) {
       items.push({
         text: `${b.otherPartyName}, cliente ainda não pagou, booking fechado ${formatRelativeDate(b.updated_at)}`,

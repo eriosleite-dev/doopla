@@ -13,6 +13,41 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Revisão UX — Visão Geral do Booker (nomenclatura + hierarquia)
+
+- ✅ "Trabalhos para você" → "Oportunidades para você" (empty state:
+  "Nenhuma oportunidade nova para você agora."); "Seus trabalhos" →
+  "Bookings em andamento" só pro booker (artista mantém "Seus
+  trabalhos" — não fazia parte do pedido).
+- ✅ Ordem corrigida: Métricas → Precisa da sua atenção → Bookings em
+  andamento → Oportunidades para você → Seus artistas → Agenda.
+- ✅ Empty state de "Bookings em andamento" perdeu os 3 CTAs (Encontrar
+  artistas/Nova proposta/Convidar artista) — agora é só o texto + um
+  CTA contextual único ("Descobrir oportunidades"). O empty state do
+  artista continua com os 3 CTAs dele, sem mudança.
+- ✅ Nomenclatura consistente com a sidebar: "Descobrir trabalhos" e
+  "Meus trabalhos" já eram os nomes usados lá — a Home passou a usar
+  os mesmos dois conceitos, sem inventar um terceiro nome.
+- ✅ "Precisa da sua atenção" (booker) ganhou dois itens que já
+  existiam pro artista mas faltavam pro booker: solicitação de
+  representação recebida de um artista (nomeando a pessoa, nunca texto
+  genérico) e proposta de booking aguardando resposta do booker.
+- ✅ Card "Disponível para sacar" não mostra mais um valor formatado
+  nem botão "Ver detalhes" — mostra "—" e o texto "Disponível quando os
+  pagamentos pela Doopla forem ativados", porque não existe saque real
+  ainda (sem PSP). "Comissão ganha" renomeada (era "Comissão total
+  ganha") pra não ficar parecendo a mesma coisa que "Disponível pra
+  sacar". Só no card do booker — o do artista não fazia parte do pedido.
+- ✅ Preview de "Oportunidades para você" ganhou uma linha de estado da
+  negociação (comissão negociada/ainda não negociada + cachê do
+  artista ou oferta do cliente) — mesma copy já usada no card completo
+  de Descobrir trabalhos, nunca um número solto.
+- ✅ "Seus artistas" já era só vínculo ativo (`representations`), sem
+  mudança de dados — confirmado que não mistura com histórico/
+  favoritos, que já viviam separados desde antes.
+
+---
+
 ## LOTE 2 Parte 2 — Trabalhos com Nota Fiscal
 
 - ✅ Migration 0035: `requires_invoice` (sim/não/ainda não sei) em

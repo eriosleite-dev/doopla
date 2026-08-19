@@ -122,7 +122,7 @@ export default async function ArtistasPage(props: {
       </section>
 
       {hasAnyPending && (
-        <section className="flex flex-col gap-3">
+        <section id="solicitacoes" className="flex flex-col gap-3 scroll-mt-6">
           <p className={eyebrowClass}>Solicitações e convites</p>
 
           {receivedInvites.length > 0 && (

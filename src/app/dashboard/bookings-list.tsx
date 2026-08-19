@@ -92,14 +92,31 @@ export function BookingsPreview({
   bookings,
   role,
   limit = 5,
+  emptyState,
 }: {
   bookings: BookingWithOtherParty[];
   role: Profile['role'];
   limit?: number;
+  // Override do estado vazio padrão (3 CTAs genéricos) — usado na Visão
+  // Geral do booker, onde "Bookings em andamento" deve só informar, sem
+  // competir com as ações de Artistas (ver revisão de UX).
+  emptyState?: { message: string; cta?: { label: string; href: string } };
 }) {
   const preview = bookings.slice(0, limit);
 
   if (preview.length === 0) {
+    if (emptyState) {
+      return (
+        <div className="flex flex-col items-center gap-4 rounded-[18px] bg-white p-8 text-center">
+          <p className="text-sm text-[var(--ink)]/70">{emptyState.message}</p>
+          {emptyState.cta && (
+            <Link href={emptyState.cta.href} className={ghostButtonClass}>
+              {emptyState.cta.label}
+            </Link>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center gap-4 rounded-[18px] bg-white p-8 text-center">
         <p className="text-sm text-[var(--ink)]/70">Você ainda não tem bookings.</p>
