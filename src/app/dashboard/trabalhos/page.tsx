@@ -31,7 +31,7 @@ export default async function TrabalhosPage() {
       </div>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className={eyebrowClass}>{profile.role === 'booker' ? 'Meus trabalhos' : 'Trabalhos'}</p>
+          <p className={eyebrowClass}>Meus trabalhos</p>
           <h1 className="font-doopla-display mt-1 text-3xl font-semibold">Seus trabalhos</h1>
         </div>
         {profile.role === 'booker' && <JobPicker align="down" />}

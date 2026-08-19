@@ -846,6 +846,60 @@ export async function getBookerMatchProfile(
   };
 }
 
+// Espelha BookerMatchProfile — usado pra calcular motivo real de
+// "combina com você" em Bookers para você (Home do artista), mesma
+// lógica de matchReasonsFor já usada em Descobrir trabalhos.
+export type ArtistMatchProfile = { category: string | null; regions: string[] };
+
+export async function getArtistMatchProfile(
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<ArtistMatchProfile> {
+  const { data } = await supabase
+    .from('artist_profiles')
+    .select('category, regions')
+    .eq('profile_id', artistId)
+    .maybeSingle<{ category: string | null; regions: string[] }>();
+  return {
+    category: data?.category ?? null,
+    regions: data?.regions ?? [],
+  };
+}
+
+// Motivo real de compatibilidade entre um booker e o perfil do artista
+// (categoria/região que ele já atende) — nunca um percentual inventado.
+export async function getBookerMatchReasons(
+  bookerIds: string[],
+  artistProfile: ArtistMatchProfile,
+  supabase: SupabaseServerClient
+): Promise<Map<string, string[]>> {
+  if (bookerIds.length === 0) return new Map();
+  const { data } = await supabase
+    .from('booker_profiles')
+    .select('profile_id, artist_categories, regions')
+    .in('profile_id', bookerIds)
+    .returns<{ profile_id: string; artist_categories: string[]; regions: string[] }[]>();
+
+  const map = new Map<string, string[]>();
+  for (const b of data ?? []) {
+    const reasons: string[] = [];
+    if (
+      artistProfile.category &&
+      (b.artist_categories ?? []).some((c) => c.toLowerCase() === artistProfile.category!.toLowerCase())
+    ) {
+      reasons.push(`categoria: ${artistProfile.category}`);
+    }
+    const regionMatch = artistProfile.regions.find((r) =>
+      (b.regions ?? []).some(
+        (br) => br.toLowerCase().includes(r.toLowerCase()) || r.toLowerCase().includes(br.toLowerCase())
+      )
+    );
+    if (regionMatch) reasons.push(`região: ${regionMatch}`);
+    map.set(b.profile_id, reasons);
+  }
+  return map;
+}
+
 // Mural do booker: RLS de `opportunities` já resolve o que é visível (aberta
 // com distribution_mode aberto, ou onde o booker foi convidado) — aqui só
 // filtramos as descartadas e anexamos o status pessoal do booker em cada uma
@@ -1313,6 +1367,38 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
 export type AttentionItemKind = 'urgente' | 'atencao';
 export type AttentionItem = { text: string; href: string; kind: AttentionItemKind };
 
+// Distingue "propôs X% de comissão" (primeira proposta) de "enviou uma
+// contraproposta" (já houve troca) olhando o evento mais recente do
+// booking — evita chamar de "proposta" algo que já é uma negociação em
+// andamento. Compartilhado entre artista e booker, mesma regra pros dois.
+async function getLatestEventTypes(
+  bookingIds: string[],
+  supabase: SupabaseServerClient
+): Promise<Map<string, string>> {
+  if (bookingIds.length === 0) return new Map();
+  const { data } = await supabase
+    .from('booking_events')
+    .select('booking_id, event_type, created_at')
+    .in('booking_id', bookingIds)
+    .order('created_at', { ascending: false })
+    .returns<{ booking_id: string; event_type: string; created_at: string }[]>();
+  const map = new Map<string, string>();
+  for (const e of data ?? []) {
+    if (!map.has(e.booking_id)) map.set(e.booking_id, e.event_type);
+  }
+  return map;
+}
+
+function proposalAttentionText(
+  otherPartyName: string,
+  commissionPercent: number,
+  latestEventType: string | undefined
+): string {
+  return latestEventType === 'contraproposta'
+    ? `${otherPartyName} enviou uma contraproposta`
+    : `${otherPartyName} propôs ${commissionPercent}% de comissão`;
+}
+
 export async function getAttentionItems(
   userId: string,
   role: Profile['role'],
@@ -1337,17 +1423,29 @@ export async function getAttentionItems(
     const incomingRequests = await getIncomingRepresentationRequests(userId, supabase);
     for (const req of incomingRequests) {
       items.push({
-        text: `${req.bookerName} pediu pra te representar`,
+        text: `${req.bookerName} quer se conectar com você`,
         href: '/dashboard/bookers#solicitacoes',
         kind: 'atencao',
       });
     }
-    for (const b of bookings.filter(
+
+    const pendingProposals = bookings.filter(
       (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'artista'
-    )) {
+    );
+    const latestEvents = await getLatestEventTypes(pendingProposals.map((b) => b.id), supabase);
+    for (const b of pendingProposals) {
       items.push({
-        text: `${b.otherPartyName} propôs ${b.commission_percent}% de comissão`,
+        text: proposalAttentionText(b.otherPartyName, b.commission_percent, latestEvents.get(b.id)),
         href: `/dashboard/bookings/${b.id}`,
+        kind: 'atencao',
+      });
+    }
+
+    const myOpportunities = await getMyOpportunities(userId, supabase);
+    for (const o of myOpportunities.filter((x) => x.source === 'artist_link' && x.status === 'aberta')) {
+      items.push({
+        text: `Novo pedido de ${o.client_name || 'um cliente'} pelo seu link de orçamento`,
+        href: `/dashboard/oportunidades/${o.id}`,
         kind: 'atencao',
       });
     }
@@ -1362,11 +1460,17 @@ export async function getAttentionItems(
         kind: 'atencao',
       });
     }
-    for (const b of bookings.filter(
+
+    const pendingProposals = bookings.filter(
       (x) => x.status === 'proposta_enviada' && x.proposed_by !== 'booker'
-    )) {
+    );
+    const latestEvents = await getLatestEventTypes(pendingProposals.map((b) => b.id), supabase);
+    for (const b of pendingProposals) {
       items.push({
-        text: `Proposta de ${b.otherPartyName} aguarda sua resposta`,
+        text:
+          latestEvents.get(b.id) === 'contraproposta'
+            ? `${b.otherPartyName} enviou uma contraproposta`
+            : `Proposta de ${b.otherPartyName} aguarda sua resposta`,
         href: `/dashboard/bookings/${b.id}`,
         kind: 'atencao',
       });

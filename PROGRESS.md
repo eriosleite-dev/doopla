@@ -13,6 +13,51 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Revisão UX — Visão Geral do Artista (nomenclatura + hierarquia)
+
+Mesma lógica aplicada ao painel do Booker, agora no do Artista.
+
+- ✅ "Seus trabalhos" → "Bookings em andamento"; empty state perdeu os
+  3 CTAs (Publicar um trabalho/Ver oportunidades/Encontrar um booker),
+  agora é texto + 1 CTA contextual ("Publicar um trabalho").
+- ✅ "Precisa da sua atenção" (artista) ganhou dois itens novos, mesma
+  lógica do que foi feito pro booker: distinção entre "propôs X% de
+  comissão" (primeira proposta) e "enviou uma contraproposta" (olhando
+  o evento mais recente do booking); e pedidos recebidos pelo link de
+  orçamento ainda sem encaminhamento (`status='aberta'`, nomeando o
+  cliente). Não implementei "contrato aguardando validação" — não é
+  acionável de verdade hoje (ver DECISOES.md).
+- ✅ "Bookers que você já trabalhou" → "Seus Bookers" (só corrigiu a
+  nomenclatura — o dado já era só vínculo ativo, `representations`,
+  nunca histórico). "Descubra novos bookers" → "Bookers para você",
+  com motivo real de compatibilidade (categoria/região do cadastro),
+  mesma lógica já usada em Descobrir trabalhos — não é mais só "os mais
+  recentes" sem contexto.
+- ✅ Link de orçamento: "Oportunidades direcionadas para" → "Novos
+  pedidos vão para", com "Você · Alterar" na mesma linha.
+- ✅ "Complete suas preferências" virou uma faixa compacta (progresso +
+  "Completar perfil →") em vez de um card branco grande — some ao
+  chegar em 4/4, sem mudar a fonte de dado. Componente compartilhado
+  com o painel do booker, ganhou o mesmo tratamento lá também.
+- ✅ Card "Disponível para sacar" (artista) recebeu o mesmo tratamento
+  honesto do booker — "—" + aviso, sem "Ver detalhes", enquanto não
+  existe PSP.
+- ✅ Referral "Indique. Ganhe R$5." já era honesto (`qualifiedTotalCents`
+  só soma indicação com status 'qualificada', que hoje é sempre 0 —
+  comentário no código já documentava isso desde antes) — conferido,
+  sem mudança necessária.
+- ✅ Sidebar reorganizada: Início (Visão geral, Agenda) / Bookings
+  (Meus trabalhos, Pedidos recebidos) / Minha rede (Bookers, Favoritos)
+  / Financeiro (Pagamentos) / Conta (Meu perfil) — mesma estrutura do
+  booker. O botão fixo "+ Publicar um trabalho" já existia
+  (`help-picker.tsx`), não precisou de mudança.
+- ✅ Hierarquia final: Métricas → Atenção → Bookings em andamento →
+  Link de orçamento → Complete seu perfil → Seus Bookers → Bookers
+  para você → Indique e ganhe — já era essa ordem por construção
+  (só os títulos e o conteúdo das seções mudaram, não a posição).
+
+---
+
 ## Revisão UX — Visão Geral do Booker (nomenclatura + hierarquia)
 
 - ✅ "Trabalhos para você" → "Oportunidades para você" (empty state:

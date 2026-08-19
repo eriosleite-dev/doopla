@@ -1,7 +1,5 @@
 import Link from 'next/link';
 
-import { cardClass, eyebrowClass, ghostButtonClass } from './ui';
-
 export function CompletePreferencesCard({
   filled,
   total,
@@ -14,23 +12,20 @@ export function CompletePreferencesCard({
   const pct = Math.round((filled / total) * 100);
 
   return (
-    <section className={cardClass}>
-      <p className={eyebrowClass}>Complete suas preferências</p>
-      <p className="mt-2 text-sm text-[var(--ink)]/70">
-        {filled} de {total} informações preenchidas — quanto mais completo, melhor o matching
-        com oportunidades e pessoas compatíveis.
-      </p>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[var(--paper-dim)]">
-        <div
-          className="h-full rounded-full bg-[var(--accent)]"
-          style={{ width: `${pct}%` }}
-        />
+    <section className="flex flex-wrap items-center gap-4 rounded-[14px] bg-[var(--paper-dim)] px-4 py-3.5">
+      <div className="min-w-[220px] flex-1">
+        <p className="text-[13px] text-[var(--ink)]/70">
+          Complete seu perfil para melhorar seu matching · {filled}/{total}
+        </p>
+        <div className="mt-1.5 h-1 w-full max-w-[260px] overflow-hidden rounded-full bg-white">
+          <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
+        </div>
       </div>
       <Link
         href="/dashboard/perfil#preferencias-matching"
-        className={`${ghostButtonClass} mt-4 w-fit`}
+        className="font-doopla-mono flex-none text-[11px] uppercase tracking-[.05em] text-[var(--accent-ink)] hover:underline"
       >
-        Completar →
+        Completar perfil →
       </Link>
     </section>
   );

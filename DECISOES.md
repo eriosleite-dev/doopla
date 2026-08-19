@@ -8,6 +8,24 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## "Precisa da sua atenção" (artista): não incluí "contrato aguardando validação" — 19/08/2026
+
+O pedido de revisão da Visão Geral do artista dá como exemplo "Seu
+contrato está aguardando validação → Revisar →". Não implementei esse
+item porque ele não é honesto hoje: a validação de um booking (Doopla
+Verified) depende de um link que o cliente final recebe pra confirmar,
+e essa página ainda não existe (`getBookingCheckpoints`/`isDooplaVerified`
+já preparam o dado, mas o botão "Reenviar link de validação" no booking
+do Booker está `disabled` com "Em breve"). Pro artista especificamente,
+hoje não existe nenhuma ação real que ele possa tomar sobre isso — o
+texto atual já é honesto ("Fale com [Booker] pra enviar a validação ao
+cliente"), mas não é uma ação DELE, é uma ação do Booker. Colocar isso
+em "Precisa da sua atenção" com um "Revisar →" que não leva a nenhuma
+ação real quebraria a regra que a própria revisão está reforçando (nunca
+mostrar algo acionável que não é). Quando a página de validação do
+cliente existir, esse item volta a fazer sentido — fica documentado
+aqui pra não esquecer o motivo.
+
 ## Nota Fiscal: `requires_invoice` fixado na criação do booking, não editável depois — 18/08/2026
 
 O pedido (LOTE 2 Parte 2, item 16) diz que "se o prazo ainda estiver 'A

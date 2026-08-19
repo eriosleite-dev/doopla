@@ -66,7 +66,7 @@ export default async function OportunidadesPage() {
     return (
       <main className="flex flex-col gap-10">
         <header>
-          <p className={eyebrowClass}>Pedidos e trabalhos</p>
+          <p className={eyebrowClass}>Pedidos recebidos</p>
           <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
             O que chegou e o que você publicou
           </h1>

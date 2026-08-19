@@ -16,9 +16,11 @@ import {
   getAgendaEvents,
   getArtistBookers,
   getArtistMatchingCompletion,
+  getArtistMatchProfile,
   getAttentionItems,
   getBookerArtistRelationships,
   getBookerMatchingCompletion,
+  getBookerMatchReasons,
   getDiscoverBookers,
   getOfficialBookerProgress,
   getOpenOpportunities,
@@ -72,6 +74,14 @@ export default async function DashboardPage(props: {
     profile.role === 'artista'
       ? await getDiscoverBookers(myBookers.map((b) => b.profileId), supabase, 4)
       : [];
+  const discoverBookersMatchReasons =
+    profile.role === 'artista'
+      ? await getBookerMatchReasons(
+          discoverBookers.map((b) => b.profileId),
+          await getArtistMatchProfile(user.id, supabase),
+          supabase
+        )
+      : new Map<string, string[]>();
   const officialProgress =
     profile.role === 'booker' ? await getOfficialBookerProgress(user.id, bookings, supabase) : null;
   const referralSummary =
@@ -254,7 +264,7 @@ export default async function DashboardPage(props: {
       {profile.role !== 'booker' && (
         <section>
           <div className="flex items-center justify-between">
-            <p className={eyebrowClass}>Seus trabalhos</p>
+            <p className={eyebrowClass}>Bookings em andamento</p>
             <Link
               href="/dashboard/trabalhos"
               className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
@@ -263,7 +273,14 @@ export default async function DashboardPage(props: {
             </Link>
           </div>
           <div className="mt-4">
-            <BookingsPreview bookings={bookings} role={profile.role} />
+            <BookingsPreview
+              bookings={bookings}
+              role={profile.role}
+              emptyState={{
+                message: 'Você ainda não tem bookings em andamento.',
+                cta: { label: 'Publicar um trabalho', href: '/dashboard/publicar-trabalho' },
+              }}
+            />
           </div>
         </section>
       )}
@@ -346,7 +363,7 @@ export default async function DashboardPage(props: {
         <>
           <section>
             <div className="flex items-center justify-between">
-              <p className={eyebrowClass}>Bookers que você já trabalhou</p>
+              <p className={eyebrowClass}>Seus Bookers</p>
               <Link
                 href="/dashboard/bookers"
                 className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
@@ -355,13 +372,13 @@ export default async function DashboardPage(props: {
               </Link>
             </div>
             <div className="mt-4">
-              <PeopleRow people={myBookers} emptyMessage="Nenhum booker na sua rede ainda." />
+              <PeopleRow people={myBookers} emptyMessage="Nenhum booker com vínculo ativo ainda." />
             </div>
           </section>
 
           <section>
             <div className="flex items-center justify-between">
-              <p className={eyebrowClass}>Descubra novos bookers</p>
+              <p className={eyebrowClass}>Bookers para você</p>
               <Link
                 href="/dashboard/bookers#descubra"
                 className="font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50 hover:text-[var(--accent-ink)]"
@@ -373,6 +390,7 @@ export default async function DashboardPage(props: {
               <PeopleRow
                 people={discoverBookers}
                 emptyMessage="Nenhum booker novo pra mostrar ainda."
+                matchReasons={discoverBookersMatchReasons}
               />
             </div>
           </section>
@@ -411,24 +429,40 @@ export default async function DashboardPage(props: {
   );
 }
 
-function PeopleRow({ people, emptyMessage }: { people: BookerCard[]; emptyMessage: string }) {
+function PeopleRow({
+  people,
+  emptyMessage,
+  matchReasons,
+}: {
+  people: BookerCard[];
+  emptyMessage: string;
+  matchReasons?: Map<string, string[]>;
+}) {
   if (people.length === 0) {
     return <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">{emptyMessage}</p>;
   }
   return (
     <div className="flex gap-3 overflow-x-auto pb-1">
-      {people.map((p) => (
-        <div
-          key={p.profileId}
-          className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5"
-        >
-          <span className={avatarClass}>{initialsFromName(p.fullName)}</span>
-          <span className="truncate text-[13px] font-semibold">{p.fullName}</span>
-          <span className="truncate text-[11px] text-[var(--ink)]/55">
-            {[p.city, p.state].filter(Boolean).join(' · ') || p.mercados || 'Booker'}
-          </span>
-        </div>
-      ))}
+      {people.map((p) => {
+        const reasons = matchReasons?.get(p.profileId) ?? [];
+        return (
+          <div
+            key={p.profileId}
+            className="flex min-w-[150px] flex-col gap-1.5 rounded-[14px] border border-[var(--line-light)] p-3.5"
+          >
+            <span className={avatarClass}>{initialsFromName(p.fullName)}</span>
+            <span className="truncate text-[13px] font-semibold">{p.fullName}</span>
+            <span className="truncate text-[11px] text-[var(--ink)]/55">
+              {[p.city, p.state].filter(Boolean).join(' · ') || p.mercados || 'Booker'}
+            </span>
+            {reasons.length > 0 && (
+              <span className="font-doopla-mono truncate text-[10px] uppercase tracking-[.02em] text-[var(--musgo)]">
+                ✓ {reasons.join(', ')}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -521,16 +555,8 @@ function ArtistStats({ bookings }: { bookings: Parameters<typeof computeArtistSt
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Disponível para sacar</p>
-        <p className={statValueClass}>{formatCentsAsBRL(stats.availableToWithdrawCents)}</p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <p className={statSubClass}>Saque via Bloco 2, em breve</p>
-          <Link
-            href="/dashboard/dinheiro"
-            className="font-doopla-mono flex-none rounded-full border border-[var(--ink)]/20 px-3 py-1.5 text-[10px] uppercase tracking-[.05em] text-[var(--ink)]/60 hover:border-[var(--ink)]/40"
-          >
-            Ver detalhes
-          </Link>
-        </div>
+        <p className={statValueClass}>—</p>
+        <p className={statSubClass}>Disponível quando os pagamentos pela Doopla forem ativados</p>
       </div>
       <div className={statCardClass}>
         <p className={statLabelClass}>Bookings ativos</p>

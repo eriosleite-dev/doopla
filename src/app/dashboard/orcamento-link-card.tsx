@@ -89,23 +89,23 @@ export function OrcamentoLinkCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[12.5px] text-[var(--ink)]/60">
-        <span>
-          <span className="font-doopla-mono text-[10px] uppercase tracking-[.06em] text-[var(--ink)]/40">
-            Oportunidades direcionadas para
-          </span>
-          <br />
+      <div className="mt-4 text-[12.5px] text-[var(--ink)]/60">
+        <span className="font-doopla-mono block text-[10px] uppercase tracking-[.06em] text-[var(--ink)]/40">
+          Novos pedidos vão para
+        </span>
+        <span className="mt-0.5 block">
           {routingMode === 'eu' && 'Você'}
           {routingMode === 'meu_booker' && (bookerName ?? 'Seu booker')}
           {routingMode === 'eu_e_meu_booker' && `Você + ${bookerName ?? 'seu booker'}`}
+          {' · '}
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 underline hover:text-[var(--ink)]"
+          >
+            {editing ? 'Fechar' : 'Alterar'}
+          </button>
         </span>
-        <button
-          type="button"
-          onClick={() => setEditing((v) => !v)}
-          className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50 underline hover:text-[var(--ink)]"
-        >
-          {editing ? 'Fechar' : 'Alterar'}
-        </button>
       </div>
 
       {editing && (

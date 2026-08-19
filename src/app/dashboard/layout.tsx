@@ -114,22 +114,26 @@ export default async function DashboardLayout({
             ],
           },
           {
-            label: 'Trabalho',
+            label: 'Bookings',
             links: [
-              { href: '/dashboard/trabalhos', label: 'Trabalhos' },
-              { href: '/dashboard/oportunidades', label: 'Pedidos e trabalhos' },
+              { href: '/dashboard/trabalhos', label: 'Meus trabalhos' },
+              { href: '/dashboard/oportunidades', label: 'Pedidos recebidos' },
             ],
           },
           {
             label: 'Minha rede',
             links: [
               { href: '/dashboard/bookers', label: 'Bookers' },
-              { href: '/dashboard/perfil', label: 'Meu perfil' },
+              { href: '/dashboard/bookers#favoritos', label: 'Favoritos' },
             ],
           },
           {
             label: 'Financeiro',
             links: [{ href: '/dashboard/dinheiro', label: 'Pagamentos' }],
+          },
+          {
+            label: 'Conta',
+            links: [{ href: '/dashboard/perfil', label: 'Meu perfil' }],
           },
         ];
 
