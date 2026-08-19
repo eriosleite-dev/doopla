@@ -1,111 +1,207 @@
-(function () {
-// ---- Logo eyes: smooth follow (lerp) + blink ----
-const pupilState = new Map();
-document.querySelectorAll('#home-marketing .eye-pupil').forEach(p=>pupilState.set(p,{x:0,y:0,tx:0,ty:0}));
-document.addEventListener('mousemove', (e)=>{
-  pupilState.forEach((s,p)=>{
-    const eye = p.parentElement.getBoundingClientRect();
-    const cx = eye.left + eye.width/2, cy = eye.top + eye.height/2;
-    const dx = e.clientX - cx, dy = e.clientY - cy;
-    const dist = Math.min(Math.hypot(dx,dy)/9, eye.width*0.34);
+(function boot() {
+// next/script (afterInteractive) não garante, na prática, que os dois
+// <script src> do GSAP terminem de carregar antes deste script inline
+// rodar, então espera window.gsap/ScrollTrigger existirem antes de seguir.
+if (typeof window.gsap === 'undefined' || typeof window.ScrollTrigger === 'undefined') {
+  requestAnimationFrame(boot);
+  return;
+}
+
+gsap.registerPlugin(ScrollTrigger);
+
+/* ===== reveal genérico de cada seção ao entrar na viewport ===== */
+gsap.utils.toArray('#home-marketing section').forEach(el=>{
+  if(el.classList.contains('stage')) return; // hero tem timeline própria
+  gsap.from(el.querySelectorAll(':scope > *, :scope > div > *'), {
+    opacity:0, y:22, duration:0.55, stagger:0.05,
+    scrollTrigger:{ trigger:el, start:'top 82%' }
+  });
+});
+
+/* ===== nav: claro sobre seções de fundo claro, escuro sobre fundo escuro ===== */
+const nav = document.getElementById('mainNav');
+document.querySelectorAll('#home-marketing section[data-navlight]').forEach(sec=>{
+  const light = sec.dataset.navlight === '1';
+  ScrollTrigger.create({
+    trigger:sec, start:'top 90px', end:'bottom 90px',
+    onEnter:()=> nav.classList.toggle('on-light', light),
+    onEnterBack:()=> nav.classList.toggle('on-light', light)
+  });
+});
+
+/* ===== olhos grandes: cursor, piscada, vagar sozinho ===== */
+const pupils = [document.getElementById('pupilL'), document.getElementById('pupilR')];
+const eyeEls = [document.getElementById('eyeL'), document.getElementById('eyeR')];
+
+const pupilXY = new Map();
+function setupPupilFollow(p){
+  const qx = gsap.quickTo(p, "x", { duration:0.65, ease:"power3.out" });
+  const qy = gsap.quickTo(p, "y", { duration:0.65, ease:"power3.out" });
+  pupilXY.set(p, {qx, qy});
+}
+pupils.forEach(setupPupilFollow);
+
+function trackTo(x, y){
+  pupils.forEach(p => {
+    const rect = p.parentElement.getBoundingClientRect();
+    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+    const dx = x - cx, dy = y - cy;
+    const maxDist = rect.width * 0.28;
+    const dist = Math.min(Math.hypot(dx,dy)/8, maxDist);
     const angle = Math.atan2(dy,dx);
-    s.tx = Math.cos(angle)*dist;
-    s.ty = Math.sin(angle)*dist;
+    const fn = pupilXY.get(p);
+    if(fn){ fn.qx(Math.cos(angle)*dist); fn.qy(Math.sin(angle)*dist); }
   });
-});
-function animatePupils(){
-  pupilState.forEach((s,p)=>{
-    s.x += (s.tx - s.x) * 0.22;
-    s.y += (s.ty - s.y) * 0.22;
-    p.style.transform = `translate(${s.x}px, ${s.y}px)`;
+}
+let idleTween=null, idleTimer=null;
+function startIdleWander(){
+  const angle = { v: Math.random()*Math.PI*2 };
+  idleTween = gsap.to(angle, { v:"+="+(Math.PI*2), duration:7, ease:"none", repeat:-1,
+    onUpdate:() => {
+      pupils.forEach((p,i) => {
+        const rect = p.parentElement.getBoundingClientRect();
+        const r = rect.width*0.16, off = i*0.4;
+        const fn = pupilXY.get(p);
+        if(fn){ fn.qx(Math.cos(angle.v+off)*r); fn.qy(Math.sin((angle.v+off)*1.3)*r*0.6); }
+      });
+    }
   });
-  requestAnimationFrame(animatePupils);
 }
-animatePupils();
-
-function initBlink(root){
-  function blink(){
-    root.classList.add('blink');
-    setTimeout(()=>root.classList.remove('blink'), 130);
-    setTimeout(blink, 2600 + Math.random()*4200);
-  }
-  setTimeout(blink, 1800 + Math.random()*2000);
+function resetIdle(){
+  if(idleTween){ idleTween.kill(); idleTween=null; }
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(startIdleWander, 2800);
 }
-document.querySelectorAll('#home-marketing .logo').forEach(initBlink);
+window.addEventListener('mousemove', (e)=>{ resetIdle(); trackTo(e.clientX, e.clientY); });
+resetIdle();
 
-// ---- FAQ (reduzida, resto vai pra central de ajuda) ----
-const faqData = [
-  ["A doopla é uma agência?","Não. A doopla é uma plataforma de representação que conecta artistas e bookers e fornece a infraestrutura pra essa relação funcionar."],
-  ["Preciso contratar um booker pra sempre?","Não. Você pode pedir ajuda pontual, só pra responder um e-mail, cobrar um cliente ou negociar uma proposta específica, sem compromisso de representação de carreira inteira."],
-  ["Preciso ser booker profissional pra usar a doopla?","Não. Se você é bem conectado, conhece artistas ou pessoas do meio e quer transformar isso em renda extra, também pode entrar como booker."],
-  ["Quem fala com o cliente?","Um booker humano autorizado pelo artista. A doopla ajuda com propostas, contratos, follow-ups, pagamentos e organização."],
-  ["Posso ter mais de um booker?","Sim. Você pode trabalhar com pessoas diferentes por território, mercado ou tipo de oportunidade."],
-  ["Preciso dar exclusividade?","Não como regra da doopla. Você decide com quem trabalha e sob quais condições."],
-  ["Já tenho booker. Posso usar a doopla?","Sim. Você pode convidar seu booker pra doopla — vocês usam a plataforma juntos pra organizar oportunidades, negociações, contratos, agenda e pagamentos."],
-  ["Quanto custa para o artista?","7 dias grátis. R$19,90 no 1º mês. A partir do 2º mês, R$39,90/mês — sem comissão sobre o cachê."],
-  ["Quanto custa para o booker?","O Booker Básico é R$0/mês, sem mensalidade. Sua comissão é negociada diretamente com o artista em cada booking."],
-  ["A doopla fica com uma porcentagem do cachê ou da comissão?","Não. O artista paga a mensalidade do plano, sem desconto sobre o cachê. A comissão negociada entre booker e artista é 100% do booker."],
-  ["O que é Doopla Verified?","O selo que um booking recebe depois que o cliente confirma, por um link oficial da doopla, as condições que foram combinadas."],
-  ["Como funcionam os pagamentos?","Você pode usar o Pagamento Doopla, que mantém os dados oficiais do booking registrados num canal seguro, ou manter o pagamento fora da plataforma — nesse caso a doopla não acompanha nem se responsabiliza pela transação."]
-];
-const faqList = document.getElementById('faqlist');
-if (faqList) {
-  faqData.forEach(([q,a])=>{
-    const item = document.createElement('div');
-    item.className = 'faq-item';
-    item.innerHTML = `<button class="faq-q"><span>${q}</span><span class="plus">+</span></button><div class="faq-a"><p>${a}</p></div>`;
-    const btn = item.querySelector('.faq-q');
-    const body = item.querySelector('.faq-a');
-    btn.addEventListener('click', ()=>{
-      const isOpen = item.classList.contains('open');
-      document.querySelectorAll('#home-marketing .faq-item').forEach(i=>{ i.classList.remove('open'); i.querySelector('.faq-a').style.maxHeight=null; });
-      if(!isOpen){ item.classList.add('open'); body.style.maxHeight = body.scrollHeight+'px'; }
+function startBlinking(eyes){
+  (function blink(){
+    const delay = 2.4 + Math.random()*4.5;
+    gsap.delayedCall(delay, () => {
+      gsap.to(eyes, { scaleY:0.12, duration:0.09, ease:"power1.in", transformOrigin:"center",
+        yoyo:true, repeat:1, onComplete: blink });
     });
-    faqList.appendChild(item);
-  });
+  })();
+}
+startBlinking(eyeEls);
+
+function cloneEyeInto(slotId, sourceEye){
+  const slot = document.getElementById(slotId);
+  const clone = sourceEye.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.querySelector('.pupil').removeAttribute('id');
+  slot.appendChild(clone);
+  return { eye: clone, pupil: clone.querySelector('.pupil') };
+}
+const wmL = cloneEyeInto('slotL', document.getElementById('eyeL'));
+const wmR = cloneEyeInto('slotR', document.getElementById('eyeR'));
+pupils.push(wmL.pupil, wmR.pupil); setupPupilFollow(wmL.pupil); setupPupilFollow(wmR.pupil);
+
+const navL = cloneEyeInto('navSlotL', document.getElementById('eyeL'));
+const navR = cloneEyeInto('navSlotR', document.getElementById('eyeR'));
+pupils.push(navL.pupil, navR.pupil); setupPupilFollow(navL.pupil); setupPupilFollow(navR.pupil);
+startBlinking([navL.eye, navR.eye]);
+
+const footL = cloneEyeInto('footSlotL', document.getElementById('eyeL'));
+const footR = cloneEyeInto('footSlotR', document.getElementById('eyeR'));
+pupils.push(footL.pupil, footR.pupil); setupPupilFollow(footL.pupil); setupPupilFollow(footR.pupil);
+startBlinking([footL.eye, footR.eye]);
+
+/* ===== timeline do stage: olhos grandes -> encolhem no wordmark -> nav/kicker/hero-copy entram ===== */
+const stageTl = gsap.timeline({
+  scrollTrigger:{ trigger:"#home-marketing .stage", start:"top top", end:"bottom bottom", scrub:1 }
+});
+stageTl
+  .to("#logoMark", { scale:0.5, duration:1, ease:"none" }, 0)
+  .to("#home-marketing .grain", { y:"18%", duration:1, ease:"none" }, 0)
+  .to("#scrollHint", { opacity:0, duration:0.15 }, 0)
+  .to("#mainNav", { opacity:1, y:0, pointerEvents:"auto", duration:0.4 }, 0.5)
+  .to(["#edgeLeft","#edgeRight","#seal","#indexCount"], { opacity:1, duration:0.4 }, 0.5)
+  .to("#kicker", { opacity:1, duration:0.3 }, 0.55)
+  .to("#logoMark", { opacity:0, duration:0.2 }, 0.65)
+  .to("#wordmark", { opacity:1, duration:0.4 }, 0.68)
+  .to("#wordmark", { y:-40, duration:0.35 }, 1.15)
+  .to("#kicker", { y:-40, opacity:0, duration:0.3 }, 1.15)
+  .to("#heroCopy", { opacity:1, y:0, duration:0.5 }, 1.25);
+
+/* ===== interação dos olhos: Você × Sua Doopla ===== */
+const colA=document.getElementById('colA'), colB=document.getElementById('colB');
+const eyeA=document.getElementById('eyeA'), eyeB=document.getElementById('eyeB');
+const pA=document.getElementById('pA'), pB=document.getElementById('pB');
+const shA=document.getElementById('shA'), shB=document.getElementById('shB');
+
+const MAX = 38;
+function look(el,x,y,dur=0.4,ease="power3.out"){
+  x = Math.max(-MAX, Math.min(MAX, x)); y = Math.max(-MAX, Math.min(MAX, y));
+  return gsap.to(el,{x,y,duration:dur,ease});
+}
+function blink(eye,dur=0.09){ return gsap.to(eye,{scaleY:0.1,duration:dur,ease:"power1.in",yoyo:true,repeat:1,transformOrigin:"center"}); }
+
+// pulo que sempre mira uma posição X ABSOLUTA (nunca soma relativo, então nunca dá deriva/sobreposição ao longo dos loops)
+function jumpTo(col, eye, shadow, x, duration=0.34){
+  const tl = gsap.timeline();
+  const anticip = duration*0.14;   // pequena antecipação antes de sair do chão
+  const rise = duration*0.36;      // subida (desacelera, tipo gravidade)
+  const fall = duration*0.32;      // queda (acelera)
+  const land = duration*0.18;      // impacto + assentamento
+
+  // antecipação: agacha um pouco antes de saltar
+  tl.to(eye,{scaleY:0.86,scaleX:1.1,duration:anticip,ease:"power1.out"},0)
+    .to(shadow,{scale:0.9,duration:anticip,ease:"power1.out"},0);
+
+  // movimento horizontal cobre o pulo inteiro (evita "chegar antes" de terminar de cair)
+  tl.to(col,{x,duration:rise+fall,ease:"power1.inOut"},anticip);
+
+  // subida: estica um pouco, sombra encolhe
+  tl.to(col,{y:-30,duration:rise,ease:"power2.out"},anticip)
+    .to(eye,{scaleY:1.16,scaleX:0.9,duration:rise,ease:"power2.out"},anticip)
+    .to(shadow,{scale:0.55,opacity:0.12,duration:rise,ease:"power1.out"},anticip);
+
+  // queda: acelera de volta ao chão, volta ao formato normal
+  tl.to(col,{y:0,duration:fall,ease:"power2.in"},anticip+rise)
+    .to(eye,{scaleY:1,scaleX:1,duration:fall,ease:"power1.in"},anticip+rise)
+    .to(shadow,{scale:1,opacity:0.25,duration:fall,ease:"power1.in"},anticip+rise);
+
+  // impacto: achata na aterrissagem, depois assenta com leve elasticidade
+  tl.to(eye,{scaleY:0.84,scaleX:1.14,duration:land*0.35,ease:"power1.out"},anticip+rise+fall)
+    .to(eye,{scaleY:1,scaleX:1,duration:land*0.9,ease:"elastic.out(1,0.55)"},anticip+rise+fall+land*0.3);
+
+  return tl;
+}
+// pulinho no lugar (nunca move x, só sobe/desce com squash-and-stretch)
+function hopInPlace(col, eye, shadow, duration=0.42){ return jumpTo(col, eye, shadow, 0, duration); }
+
+// ENTRADA (uma vez, quando a seção aparece na tela): pulam largo pela área vermelha e convergem
+// rápido pro distanciamento fixo, igual ao espaçamento do logo.
+function entrance(){
+  const span = Math.min(window.innerWidth * 0.26, 340);
+  const jumpsA = [-span, span*0.45, 0];
+  const jumpsB = [span, -span*0.45, 0];
+  const tl = gsap.timeline({ onComplete: startSettledLoop });
+  jumpsA.forEach((x,i)=> tl.add(jumpTo(colA,eyeA,shA,x,0.62), i*0.55));
+  jumpsB.forEach((x,i)=> tl.add(jumpTo(colB,eyeB,shB,x,0.62), i*0.55+0.18));
 }
 
-// ---- Audience gating: home decide "quem é você" antes de mostrar conteúdo ----
-let currentAudience = null;
-window.selectAudience = function selectAudience(role){
-  currentAudience = role;
-  document.querySelectorAll('#home-marketing .gated.shared').forEach(el=>el.classList.add('revealed'));
-  document.querySelectorAll('#home-marketing .gated.view-artista, #home-marketing .gated.view-booker, #home-marketing .gated.view-agencia').forEach(el=>el.classList.remove('revealed'));
-  document.querySelectorAll('#home-marketing .gated.view-'+role).forEach(el=>el.classList.add('revealed'));
-  const sw = document.getElementById('roleSwitch');
-  sw.classList.add('show');
-  sw.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.role===role));
-  const firstRevealed = document.querySelector('#home-marketing .gated.revealed');
-  if(firstRevealed){ firstRevealed.scrollIntoView({behavior:'smooth', block:'start'}); }
-};
-// Fallback pra links de nav/rodapé clicados antes de escolher audiência: revela o grupo pedido e vai direto pro id.
-window.revealAndGo = function revealAndGo(evt, role, id){
-  evt.preventDefault();
-  if(role==='shared'){
-    document.querySelectorAll('#home-marketing .gated.shared').forEach(el=>el.classList.add('revealed'));
-    if(!currentAudience){ document.querySelectorAll('#home-marketing .gated.view-artista').forEach(el=>el.classList.add('revealed')); }
-  } else {
-    selectAudience(role);
-  }
-  document.getElementById(id).scrollIntoView({behavior:'smooth', block:'start'});
-};
+// ESTADO ASSENTADO (loop contínuo): ficam no distanciamento fixo, se olham, pulinhos no mesmo lugar.
+function settledLoop(){
+  const tl = gsap.timeline({ onComplete:()=>gsap.delayedCall(0.7, settledLoop) });
+  tl.add(look(pA,-24,13)).add(look(pB,24,-15),"<");
+  tl.to({},{duration:0.8});
+  tl.add(look(pA,28,0,0.3)); tl.add(hopInPlace(colA,eyeA,shA),"-=0.05");
+  tl.to({},{duration:0.15});
+  tl.add(look(pB,-28,0,0.3)); tl.add(hopInPlace(colB,eyeB,shB),"-=0.05");
+  tl.to({},{duration:0.2});
+  tl.add(hopInPlace(colA,eyeA,shA)); tl.to({},{duration:0.1}); tl.add(hopInPlace(colB,eyeB,shB)); tl.to({},{duration:0.1});
+  tl.add(hopInPlace(colA,eyeA,shA)).add(hopInPlace(colB,eyeB,shB),"<");
+  tl.add(hopInPlace(colA,eyeA,shA)).add(hopInPlace(colB,eyeB,shB),"<");
+  tl.add(look(pA,32,0,0.35)).add(look(pB,-32,0,0.35),"<");
+  tl.to({},{duration:0.55});
+  tl.add(blink(eyeA)).add(blink(eyeB),"<");
+  tl.to({},{duration:1.2});
+}
+function startSettledLoop(){ settledLoop(); }
 
-// ---- Booker Pro: apresentação simples (sem checkout direto) ----
-window.openBookerProModal = function openBookerProModal(evt){
-  if(evt) evt.preventDefault();
-  const modal = document.getElementById('bookerProModal');
-  if(!modal) return;
-  modal.hidden = false;
-  document.body.style.overflow = 'hidden';
-};
-window.closeBookerProModal = function closeBookerProModal(evt){
-  if(evt) evt.preventDefault();
-  const modal = document.getElementById('bookerProModal');
-  if(!modal) return;
-  modal.hidden = true;
-  document.body.style.overflow = '';
-};
-document.addEventListener('keydown', function(evt){
-  if(evt.key === 'Escape') window.closeBookerProModal();
-});
+// dispara a entrada só uma vez, quando a seção entra na tela
+ScrollTrigger.create({ trigger:"#home-marketing .eyes-section", start:"top 70%", once:true, onEnter:entrance });
 })();

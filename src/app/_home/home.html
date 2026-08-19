@@ -1,433 +1,293 @@
 <div id="home-marketing">
-<nav>
-  <div class="navpill">
-    <div class="logo on-dark" id="navlogo">d<span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span><span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span>pla</div>
-    <div class="navlinks">
-      <a href="#como-funciona" onclick="revealAndGo(event,'shared','como-funciona')">Como funciona</a>
-      <a href="#seguranca-home" onclick="revealAndGo(event,'shared','seguranca-home')">Segurança</a>
-      <a href="/sobre">Sobre</a>
-      <a href="#faq" onclick="revealAndGo(event,'shared','faq')">FAQ</a>
-    </div>
-    <div class="nav-actions">
-      <a class="nav-login" href="/login">Entrar</a>
-      <a class="btn on-dark" href="/cadastro">Criar conta</a>
-    </div>
+
+<nav id="mainNav">
+  <div class="nav-logo">
+    <span>d</span><span class="eye-slot" id="navSlotL"></span><span class="eye-slot" id="navSlotR"></span><span>pla</span>
+  </div>
+  <div class="links">
+    <a href="#como-funciona">Menu</a>
+    <a href="#">Sobre</a>
+    <a href="#">Entrar</a>
   </div>
 </nav>
 
-<!-- ================= HERO ================= -->
-<section class="hero" id="hero">
-  <div class="wrap">
-    <span class="eyebrow">plataforma de representação para artistas independentes</span>
-    <div class="logo logo-hero on-light" id="herologo">d<span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span><span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span>pla</div>
-    <div class="hero-sub">TODA CARREIRA MERECE SUA DOOPLA.</div>
-    <p class="lede">Um novo jeito de conectar artistas, bookers e agências e organizar tudo que acontece entre eles.</p>
-    <p class="lede" style="margin-top:8px; opacity:.9;">Do primeiro e-mail ao contrato fechado, tudo em um só lugar.</p>
-    <div class="eyebrow" style="margin-top:38px;">quem é você?</div>
-    <div class="role-boxes hero-roles" id="heroRoles" style="grid-template-columns:1fr 1fr 1fr;">
-      <div class="role-box" onclick="selectAudience('artista')">
-        <div class="role-icon">🎤</div>
-        <h4>Sou artista</h4>
-        <p>Quero encontrar representação</p>
-      </div>
-      <div class="role-box" onclick="selectAudience('booker')">
-        <div class="role-icon">🤝</div>
-        <h4>Sou booker</h4>
-        <p>Quero gerar oportunidades</p>
-      </div>
-      <div class="role-box" onclick="selectAudience('agencia')">
-        <div class="role-icon">🏢</div>
-        <h4>Sou agência</h4>
-        <p>Quero conhecer a infraestrutura</p>
-      </div>
+<section class="stage" data-navlight="0">
+  <div class="stage-pin">
+    <div class="grain"></div>
+
+    <div class="edge-label left" id="edgeLeft">Sua carreira</div>
+    <div class="edge-label right" id="edgeRight">Sua Doopla</div>
+
+    <div class="seal" id="seal">
+      <svg viewBox="0 0 100 100">
+        <rect x="14" y="14" width="72" height="72" rx="6" fill="none" stroke="#fbf9f2" stroke-width="2.4" transform="rotate(-3 50 50)"/>
+        <g transform="rotate(-3 50 50)">
+          <circle cx="38" cy="50" r="12" fill="#fbf9f2"/>
+          <circle cx="62" cy="50" r="12" fill="#fbf9f2"/>
+          <circle cx="38" cy="50" r="4" fill="#e2291c"/>
+          <circle cx="62" cy="50" r="4" fill="#e2291c"/>
+        </g>
+      </svg>
+    </div>
+    <div class="index-count" id="indexCount">REPRESENTAÇÃO</div>
+
+    <div class="logo-mark" id="logoMark">
+      <div class="eye" id="eyeL"><div class="pupil" id="pupilL"></div></div>
+      <div class="eye" id="eyeR"><div class="pupil" id="pupilR"></div></div>
+    </div>
+
+    <div class="kicker" id="kicker">Representação inteligente</div>
+
+    <div class="wordmark" id="wordmark">
+      <span>d</span>
+      <span class="eye-slot" id="slotL"></span>
+      <span class="eye-slot" id="slotR"></span>
+      <span>pla</span>
+    </div>
+
+    <div class="hero-copy" id="heroCopy">
+      <p>Toda carreira merece sua Doopla. Ela atende, negocia, organiza e cuida do booking com você.</p>
+      <a href="#" class="btn btn-primary">Começar agora</a>
+    </div>
+
+    <div class="scroll-hint" id="scrollHint">role pra baixo</div>
+  </div>
+</section>
+
+<!-- 2. DOR -->
+<section class="dor" data-navlight="1">
+  <span class="mono">O problema</span>
+  <h2>Ser independente não deveria significar cuidar sozinho de toda a operação comercial.</h2>
+  <p class="lead">Responder cliente, negociar, lembrar prazo, cobrar saldo, organizar contrato: tudo isso consome tempo que deveria estar na sua arte, não na sua planilha.</p>
+</section>
+
+<!-- 3. O QUE A DOOPLA FAZ -->
+<section class="cuida" data-navlight="0">
+  <div class="wide">
+    <span class="mono" style="color:rgba(251,249,242,.65)">O que sua Doopla faz</span>
+    <h2>Ela cuida junto, do primeiro contato ao pagamento.</h2>
+    <div class="cuida-grid">
+      <div class="cuida-item"><div class="verb">Atende</div><p>Recebe o cliente, entende o pedido, qualifica o essencial.</p></div>
+      <div class="cuida-item"><div class="verb">Negocia</div><p>Conduz a conversa e apresenta proposta, sempre com sua aprovação final.</p></div>
+      <div class="cuida-item"><div class="verb">Organiza</div><p>Contrato, agenda e condições combinadas, tudo num só lugar.</p></div>
+      <div class="cuida-item"><div class="verb">Acompanha</div><p>Segue cada booking até a conclusão, sem deixar pendência esquecida.</p></div>
+      <div class="cuida-item"><div class="verb">Cobra</div><p>Envia lembrete e cobrança pelo canal oficial, sem constrangimento.</p></div>
+      <div class="cuida-item"><div class="verb">Lembra</div><p>Prazos, sinais, saldos e detalhes do dia do evento.</p></div>
+      <div class="cuida-item"><div class="verb">Cuida do booking</div><p>Do primeiro "oi" ao pagamento final, sempre com você no controle.</p></div>
     </div>
   </div>
-  <div class="hero-foot">
-    <div class="role-switch" id="roleSwitch">
-      <button data-role="artista" onclick="selectAudience('artista')">Sou artista</button>
-      <button data-role="booker" onclick="selectAudience('booker')">Sou booker</button>
-      <button data-role="agencia" onclick="selectAudience('agencia')">Sou agência</button>
-    </div>
-    <div class="marquee">
-      <div class="marquee-track">
-        <span>ARTISTAS</span><span class="thin">·</span><span>BOOKERS</span><span class="thin">·</span><span>OPORTUNIDADES</span><span class="thin">·</span><span>REPRESENTAÇÃO</span><span class="thin">·</span><span>ARTISTAS</span><span class="thin">·</span><span>BOOKERS</span><span class="thin">·</span><span>OPORTUNIDADES</span><span class="thin">·</span><span>REPRESENTAÇÃO</span><span class="thin">·</span>
+</section>
+
+<!-- interação dos olhos: Você × Sua Doopla -->
+<section class="eyes-section" data-navlight="0">
+  <div class="eyes-inner">
+    <span class="mono">Representação, não automação</span>
+    <h2>Você e sua Doopla, em sintonia.</h2>
+    <div class="eyes-stage">
+      <div class="eyes-col a" id="colA">
+        <div class="eyes-eye" id="eyeA"><div class="eyes-pupil" id="pA"></div></div>
+        <div class="eyes-shadow" id="shA"></div>
+      </div>
+      <div class="eyes-col b" id="colB">
+        <div class="eyes-eye" id="eyeB"><div class="eyes-pupil" id="pB"></div></div>
+        <div class="eyes-shadow" id="shB"></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ================= MARKETPLACE ================= -->
-<section id="marketplace" class="on-dark gated shared">
-  <div class="bleed" style="min-height:56vh;">
-    <img class="bg" src="https://picsum.photos/seed/doopla-market/1800/1000" alt="">
-    <span class="edge-label">plataforma de representação</span>
-    <div class="bleed-content">
-      <h2>Encontre sua doopla.</h2>
-      <p>Artistas encontram bookers. Bookers encontram artistas. Os dois escolhem com quem querem trabalhar.</p>
-      <p style="margin-top:10px; opacity:.75;">Sem exclusividade obrigatória. Toda representação começa com aprovação dos dois lados.</p>
+<!-- 4. NÃO É IA GENÉRICA -->
+<section class="naogenerica" data-navlight="1">
+  <div class="wide">
+    <span class="mono">Não é uma IA genérica</span>
+    <h2>A Doopla combina conhecimento de representação, as particularidades da sua área e as regras da sua carreira.</h2>
+    <div class="layers">
+      <div class="layer-card"><span class="tag">Doopla Core</span><h4>Como representar</h4><p>Atendimento, negociação, prudência, segurança, follow-up, cobrança e contratos.</p></div>
+      <div class="layer-card"><span class="tag">Playbook</span><h4>Como funciona seu nicho</h4><p>Linguagem, práticas e nuances de booking do seu mercado.</p></div>
+      <div class="layer-card"><span class="tag">Minha Doopla</span><h4>Como você trabalha</h4><p>Cachês, preferências, riders, limites e autorizações confirmadas.</p></div>
+      <div class="layer-card"><span class="tag">Booking</span><h4>Cada trabalho</h4><p>Cliente, data, proposta, histórico, pagamento e pendências daquele booking.</p></div>
     </div>
   </div>
 </section>
 
-<!-- ================= CONTEÚDO PARA ARTISTA ================= -->
-<section id="pra-quem" class="pad gated view-artista">
-  <div class="wrap">
-    <span class="eyebrow">para artistas</span>
-    <div class="market-grid" style="align-items:start;">
-      <div class="simple-col" style="padding:0; background:none;">
-        <div class="tags">DJ · músico · banda · fotógrafo · creator · modelo · ator</div>
-        <h3 style="margin-top:10px;">Você não precisa fazer tudo sozinho.</h3>
-        <p class="desc" style="font-weight:600; opacity:1;">Chegou proposta? Cliente pediu desconto? Tem alguém te enrolando pra pagar?</p>
-        <p class="desc">Na doopla, você encontra quem pode te ajudar a negociar, cobrar, responder e fechar — só quando precisar. Também pode encontrar alguém para representar você de forma recorrente, se fizer sentido.</p>
-        <p class="desc">Sem precisar entrar numa agência. Sem compromisso de longo prazo. A comissão é combinada conforme o trabalho.</p>
-        <ul class="simple-list">
-          <li><span class="bullet">✓</span>Precisa só resolver uma negociação ou cobrança? Manda pra doopla.</li>
-          <li><span class="bullet">✓</span>Escolha com quem quer trabalhar</li>
-          <li><span class="bullet">✓</span>Receba oportunidades</li>
-          <li><span class="bullet">✓</span>Organize bookings e pagamentos</li>
-          <li><span class="bullet">✓</span>Encontre bookers/assistentes</li>
-        </ul>
-      </div>
-      <div class="price-seal-block">
-        <div class="price-seal">
-          <span class="ps-eyebrow">Oferta de lançamento</span>
-          <span class="ps-old-price">R$39,90/mês</span>
-          <span class="ps-price">R$19,90<span class="ps-unit">no 1º mês</span></span>
-          <span class="ps-trial">7 dias grátis</span>
-        </div>
-        <a class="btn accent" href="/cadastro?tipo=artista">Começar grátis</a>
-      </div>
-    </div>
-
-    <div class="commission-block" style="margin-top:28px;">
-      <span class="eyebrow">já tem alguém que representa você?</span>
-      <h3 style="font-size:22px; margin-top:10px;">Traga seu booker para a doopla.</h3>
-      <p>Vocês podem usar a plataforma juntos para organizar oportunidades, negociações, contratos, agenda e pagamentos.</p>
-      <a class="btn ghost" style="margin-top:14px;" href="/cadastro?role=artista">Convidar meu booker</a>
-      <p style="margin-top:10px; opacity:.6; font-size:13px;">Não quer convidar agora? Tudo bem. Você também pode fazer isso depois pelo seu perfil.</p>
-    </div>
-
-    <div class="commission-block" style="margin-top:20px;">
-      <span class="eyebrow">seu link, suas oportunidades</span>
-      <h3 style="font-size:22px; margin-top:10px;">Receba oportunidades pelo seu próprio link.</h3>
-      <p>Compartilhe seu perfil de orçamento e receba solicitações de clientes direto pela doopla. Com um booker vinculado, você escolhe o direcionamento: você, seu booker, ou os dois.</p>
+<!-- 5. COMO FUNCIONA -->
+<section class="comofunciona" id="como-funciona" data-navlight="0">
+  <div class="wide">
+    <span class="mono" style="color:rgba(251,249,242,.65)">Como funciona</span>
+    <h2>Cliente chama. Sua Doopla cuida do resto.</h2>
+    <div class="flow">
+      <div class="flow-step"><span class="n">01</span><p>Cliente chama pelo seu link ou WhatsApp.</p></div>
+      <div class="flow-step"><span class="n">02</span><p>Sua Doopla atende e entende o pedido.</p></div>
+      <div class="flow-step"><span class="n">03</span><p>Negocia, consultando você quando necessário.</p></div>
+      <div class="flow-step"><span class="n">04</span><p>Fecha o booking com sua aprovação.</p></div>
+      <div class="flow-step"><span class="n">05</span><p>Acompanha até a conclusão.</p></div>
     </div>
   </div>
 </section>
 
-<!-- ================= CONTEÚDO PARA BOOKER ================= -->
-<section id="pra-quem-booker" class="pad gated view-booker">
-  <div class="wrap">
-    <span class="eyebrow">para bookers</span>
-    <div class="market-grid" style="align-items:start;">
-      <div class="simple-col is-booker" style="padding:0; background:none; color:inherit;">
-        <h3 style="margin-top:14px;">Transforme seu networking em negócio.</h3>
-        <div class="tags" style="color:var(--accent-ink); opacity:.85;">bem conectado · quer renda extra · booker independente · agência</div>
-        <p class="desc">Encontre artistas, represente quem você acredita e ganhe criando oportunidades pra eles.</p>
-        <p class="desc" style="font-weight:600; opacity:1;">Não precisa ser booker profissional pra começar. Se você é bem conectado, conhece gente e quer transformar isso em renda extra, também é pra você.</p>
-        <p class="desc">Já trabalha com booking? Use a doopla pra organizar artistas, oportunidades, negociações, contratos, agenda e pagamentos em um só lugar.</p>
-        <ul class="simple-list">
-          <li><span class="bullet">✓</span>Encontre artistas e veja se fazem sentido pra você</li>
-          <li><span class="bullet">✓</span>Represente quem você acredita — a representação só começa quando os dois lados concordam</li>
-          <li><span class="bullet">✓</span>Gere oportunidades, das suas e das que a doopla te trouxer</li>
-          <li><span class="bullet">✓</span>Ganhe representando talentos</li>
-        </ul>
-      </div>
-      <div class="booker-seal-block">
-        <div class="booker-seal">
-          <div class="bs-tier">
-            <span class="bs-eyebrow">Grátis pra começar</span>
-            <span class="bs-price">R$0<span class="bs-unit">/mês</span></span>
-            <a class="btn accent bs-btn" href="/cadastro?tipo=booker">Entrar na doopla</a>
-          </div>
-          <div class="bs-divider"></div>
-          <div class="bs-tier">
-            <span class="bs-eyebrow">Quer ir além?</span>
-            <span class="bs-pro-label">Booker Pro</span>
-            <span class="bs-price">R$49<span class="bs-unit">/mês</span></span>
-            <button type="button" class="btn ghost-dark bs-btn" onclick="openBookerProModal(event)">Conhecer o Pro</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="commission-block">
-      <span class="eyebrow">sua comissão. seu acordo.</span>
-      <div class="range">100% seu</div>
-      <p>Entrar na doopla como booker é grátis, R$0/mês. Você propõe a comissão daquele booking. O artista aceita, contrapropõe ou recusa antes do fechamento. Comissões maiores fazem sentido quando você traz o cliente ou gera diretamente a oportunidade. A doopla não fica com uma porcentagem da comissão negociada por você.</p>
-      <ul>
-        <li><span class="bullet">✓</span>Grátis pra entrar, sem mensalidade</li>
-        <li><span class="bullet">✓</span>A comissão é definida por booking e aceita antes do fechamento</li>
-        <li><span class="bullet">✓</span>Você fica com 100% do que negociar com o artista</li>
-        <li><span class="bullet">✓</span>Sem vínculo, sem exclusividade</li>
-      </ul>
+<!-- 6. CONTROLE / AUTONOMIA -->
+<section class="controle" data-navlight="1">
+  <div class="wide">
+    <span class="mono">Controle</span>
+    <h2>Sua Doopla negocia. Você sempre dá a palavra final.</h2>
+    <p class="lead" style="margin-bottom:6px;">Nenhuma condição comercial (valor, prazo, desconto) é fechada sem sua aprovação, em nenhum nível de autonomia. O que muda entre os níveis é o quanto ela prepara e organiza por conta própria.</p>
+    <div class="autonomy-grid">
+      <div class="autonomy-card"><h4>Conservador</h4><p>Sua Doopla prepara e recomenda, mas consulta antes de qualquer decisão importante.</p></div>
+      <div class="autonomy-card active"><h4>Negociação assistida</h4><p>Ela conversa e negocia; você aprova a condição final.</p></div>
+      <div class="autonomy-card"><h4>Rotina automática</h4><p>Ela cuida sozinha de follow-up, lembretes e cobrança. Condição comercial continua sempre com você.</p></div>
     </div>
   </div>
 </section>
 
-<!-- ================= CONTEÚDO PARA AGÊNCIA ================= -->
-<section id="pra-agencia" class="pad gated view-agencia">
-  <div class="wrap">
-    <span class="eyebrow">para agências</span>
-    <div class="agencia-block">
-      <h3>Amplie sua rede. Não sua estrutura.</h3>
-      <p>Sua agência recebe mais talentos do que consegue representar. A doopla transforma esse alcance em uma nova fonte de receita, sem aumentar sua equipe, sem assumir novos artistas e sem mudar a operação do seu casting principal.</p>
-      <a class="btn accent" style="margin-top:22px;" href="/cadastro?role=booker">Quero ser uma agência parceira</a>
-    </div>
-
-    <div class="agency-list">
-      <p><strong>Do "não" pro "ainda não".</strong> Em vez de encerrar a relação com quem sua agência não consegue absorver hoje, convide essas pessoas a continuarem a carreira de forma independente pela doopla, permanecendo no seu radar.</p>
-      <p><strong>Um link exclusivo, uma origem rastreada.</strong> Cada agência parceira tem um link próprio. Quem entra por ele fica identificado como originado pela sua agência, automaticamente.</p>
-      <p><strong>Zero nova operação.</strong> Sua agência não precisa conseguir trabalhos, negociar cachês, elaborar contratos, cobrar clientes nem administrar agenda pra essas pessoas. A doopla e a rede de bookers cuidam disso.</p>
-      <p><strong>Uma nova fonte de receita.</strong> Profissionais originados pela sua parceria podem gerar revenue share pra agência, sobre a receita que a doopla gera com eles, durante um período definido.</p>
-      <p><strong>Eles continuam no seu radar.</strong> Acompanhe sinais reais de atividade profissional (bookings, cachê médio, recorrência) de quem veio pela sua rede, e decida quando fizer sentido olhar de novo.</p>
-      <p><strong>Não é representação pela sua agência.</strong> O profissional continua independente, sem entrar no casting oficial, sem exclusividade e sem sua agência assumir obrigação de gerar trabalho pra ele. A relação é de origem e conexão com o ecossistema, não de representação.</p>
+<!-- 7. DEMONSTRAÇÃO DE CONVERSA -->
+<section class="demo" data-navlight="1">
+  <div class="narrow">
+    <span class="mono">Na prática</span>
+    <h2>Uma conversa real, do jeito que ela acontece.</h2>
+    <div class="chat">
+      <div class="bubble client">Oi! Vocês têm disponibilidade pro dia 14/09? É um evento corporativo em São Paulo.</div>
+      <div class="bubble doopla">Oi! Temos sim. Quantas horas de set vocês precisam?</div>
+      <div class="bubble client">3 horas.</div>
+      <div class="bubble doopla">Perfeito. Vou preparar a proposta e te envio por aqui.</div>
     </div>
   </div>
 </section>
 
-<!-- ================= HUMANO x DOOPLA ================= -->
-<section class="pad gated shared">
-  <div class="wrap">
-    <span class="eyebrow">tecnologia nos bastidores</span>
-    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px; max-width:640px;">Pessoas fazem relações. A doopla faz o resto.</h2>
-    <p style="font-size:15px; opacity:.75; max-width:520px; margin-top:14px; line-height:1.6;">A representação continua humana. A tecnologia cuida do operacional.</p>
-    <div class="tech-cols">
-      <div class="tech-col">
-        <span class="eyebrow">lado humano</span>
-        <div class="tech-label">Humano</div>
+<!-- 8. CICLO DO BOOKING -->
+<section class="ciclo" data-navlight="0">
+  <div class="wide">
+    <span class="mono" style="color:rgba(251,249,242,.65)">O ciclo completo</span>
+    <h2>Do primeiro contato ao pagamento, sem nada escapar.</h2>
+    <div class="ciclo-track">
+      <span class="ciclo-chip">Proposta</span>
+      <span class="ciclo-chip">Negociação</span>
+      <span class="ciclo-chip">Contrato (quando aplicável)</span>
+      <span class="ciclo-chip">Pagamento / sinal</span>
+      <span class="ciclo-chip">Preparação</span>
+      <span class="ciclo-chip">Evento</span>
+      <span class="ciclo-chip">Saldo</span>
+      <span class="ciclo-chip">Cobrança</span>
+    </div>
+  </div>
+</section>
+
+<!-- 9. HUMANO -->
+<section class="humano" data-navlight="1">
+  <div class="narrow">
+    <span class="mono">E quando precisar de uma pessoa?</span>
+    <h2>Às vezes, uma pessoa é a resposta certa.</h2>
+    <div class="humano-box">
+      <p>Se a situação pedir (uma negociação delicada, um cliente que quer falar por telefone), sua Doopla pode recomendar um representante humano.</p>
+      <p>Você autoriza o custo, pode preferir continuar com a IA, ou resolver pessoalmente. A decisão é sempre sua.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 10. SEGURANÇA -->
+<section class="security" data-navlight="0">
+  <div class="wide">
+    <span class="mono">Segurança</span>
+    <h2>Seu cachê, direto pra sua conta. Sempre.</h2>
+    <p class="lead" style="color:rgba(251,249,242,.72); margin-bottom:26px;">Sem split, sem comissão de booker, sem divisão de cachê. O pagamento do booking vai direto pra conta que você cadastrou. A Doopla acompanha o processo: registra a condição negociada, cobra no prazo certo e avisa quando o dinheiro cai.</p>
+    <ul class="checklist">
+      <li>Cachê recebido direto na sua conta, nunca passa pela Doopla</li>
+      <li>Sua Doopla nunca altera uma condição comercial sem sua autorização</li>
+      <li>Decisões importantes ficam registradas</li>
+      <li>Cobrança sempre pelo canal oficial</li>
+      <li>Você pode ajustar autonomia e regras a qualquer momento</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 11. PARA QUEM -->
+<section class="paraquem" data-navlight="1">
+  <span class="mono">Para quem</span>
+  <h2>Começando por quem já conhecemos de perto.</h2>
+  <p class="lead" style="margin:0 auto;">A Doopla nasce especializada em DJs e música, e cresce por nicho, nunca genérica.</p>
+  <div class="nicho-tag">DJ / Música</div>
+</section>
+
+<!-- 12. PLANOS -->
+<section class="pricing" id="planos" data-navlight="1">
+  <div class="wide">
+    <span class="mono">Planos</span>
+    <h2>Sem surpresa no fim do mês.</h2>
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div class="who">Doopla</div>
+        <div class="amount">R$29,90<span class="per">/mês</span></div>
+        <p class="desc">Sua Doopla trabalha com você.</p>
         <ul>
-          <li>Relacionamento</li>
-          <li>Networking</li>
-          <li>Oportunidades</li>
-          <li>Negociação</li>
-          <li>Posicionamento</li>
+          <li>Representação por IA</li>
+          <li>WhatsApp oficial</li>
+          <li>Negociação e acompanhamento</li>
+          <li>Contratos, cobrança e agenda</li>
+          <li>Perfil + link de booking</li>
+          <li>Atendimento humano avulso: R$49</li>
         </ul>
       </div>
-      <div class="tech-col is-tech">
-        <span class="eyebrow on-dark">tecnologia</span>
-        <div class="tech-label">doopla</div>
+      <div class="price-card dark">
+        <div class="who">Doopla Pro</div>
+        <div class="amount">R$59,90<span class="per">/mês</span></div>
+        <p class="desc">Sua Doopla pode trabalhar mais por você.</p>
         <ul>
-          <li>Propostas</li>
-          <li>Contratos</li>
-          <li>Agenda</li>
-          <li>Follow-ups</li>
-          <li>CRM</li>
-          <li>Pagamentos</li>
+          <li>Rotina mais automatizada (follow-up, lembretes, cobrança)</li>
+          <li>Analytics avançado</li>
+          <li>Press kit, bio e propostas geradas</li>
+          <li>E-mail profissional (previsto)</li>
+          <li>1 atendimento humano incluído/mês</li>
         </ul>
       </div>
     </div>
-    <p style="font-size:14.5px; opacity:.6; margin-top:22px; max-width:480px;">Mais tempo criando oportunidades. Menos tempo administrando planilhas, mensagens e documentos.</p>
   </div>
 </section>
 
-<!-- ================= COMO FUNCIONA ================= -->
-<section id="como-funciona" class="pad gated shared">
-  <div class="wrap">
-    <span class="eyebrow">como funciona</span>
-    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px;">Da conexão ao pagamento.</h2>
-    <div class="flow-steps">
-      <div class="flow-step">
-        <div class="step-idx">01</div>
-        <h4>Encontre</h4>
-        <p>Artistas encontram bookers. Bookers encontram artistas.</p>
-      </div>
-      <div class="flow-step">
-        <div class="step-idx">02</div>
-        <h4>Conecte</h4>
-        <p>Os dois escolhem com quem querem trabalhar.</p>
-      </div>
-      <div class="flow-step">
-        <div class="step-idx">03</div>
-        <h4>Represente</h4>
-        <p>O booker ajuda o artista a gerar, receber e negociar oportunidades.</p>
-      </div>
-      <div class="flow-step">
-        <div class="step-idx">04</div>
-        <h4>Feche</h4>
-        <p>Proposta, condições do booking, contrato, pagamento e histórico ficam organizados na doopla.</p>
-      </div>
-    </div>
-    <p style="font-size:14.5px; opacity:.6; margin-top:24px;">Você cuida das relações. A doopla organiza o resto.</p>
-
-    <!-- ================= SEGURANÇA (compacta) ================= -->
-    <div class="safety-band">
-      <span class="eyebrow on-dark">representação com controle</span>
-      <ul>
-        <li>✓ Você decide quem pode representar você e mantém controle sobre os acordos</li>
-        <li>✓ Propostas e pagamentos ficam registrados na plataforma</li>
-      </ul>
-      <a href="/seguranca">Saiba mais sobre segurança →</a>
-    </div>
+<!-- 13. FAQ -->
+<section class="faq" data-navlight="1">
+  <span class="mono">Perguntas</span>
+  <h2 style="margin-bottom:30px;">Antes de começar</h2>
+  <div class="faq-list">
+    <details open>
+      <summary>É uma IA? Como ela conhece minha profissão?<span class="plus">+</span></summary>
+      <p>Sim, mas não uma IA genérica. Ela combina conhecimento de representação, as particularidades da sua área e as regras da sua carreira.</p>
+    </details>
+    <details>
+      <summary>Ela pode negociar sem mim?<span class="plus">+</span></summary>
+      <p>Ela conduz a conversa, mas nunca fecha uma condição comercial material sem sua autorização.</p>
+    </details>
+    <details>
+      <summary>A Doopla cobra comissão sobre meu cachê?<span class="plus">+</span></summary>
+      <p>Não. O modelo é assinatura, não comissão sobre o que você recebe.</p>
+    </details>
+    <details>
+      <summary>Contratos são obrigatórios?<span class="plus">+</span></summary>
+      <p>Não. Sua Doopla recomenda formalizar quando faz sentido, mas mesmo sem contrato as condições ficam registradas no booking.</p>
+    </details>
+    <details>
+      <summary>Posso cancelar quando quiser?<span class="plus">+</span></summary>
+      <p>Sim, sem multa.</p>
+    </details>
   </div>
 </section>
 
-<!-- ================= SEGURANÇA (seção completa) ================= -->
-<section id="seguranca-home" class="pad gated shared">
-  <div class="wrap">
-    <div class="sec-head" style="padding-top:0; text-align:center;">
-      <span class="eyebrow">segurança doopla</span>
-      <h2 style="margin-left:auto; margin-right:auto;">Negocie. Valide. Trabalhe com mais segurança.</h2>
-      <p class="kicker" style="margin-left:auto; margin-right:auto;">A doopla cria etapas de proteção para artistas, bookers e clientes, da verificação dos profissionais à confirmação do booking.</p>
-    </div>
-
-    <div class="trust-grid">
-      <div class="trust-card">
-        <div class="trust-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0116 0v1"/></svg>
-        </div>
-        <h3>Identidade verificada</h3>
-        <p>Artistas e bookers passam por etapas de verificação de identidade, incluindo dados pessoais e validação por foto.</p>
-      </div>
-      <div class="trust-card">
-        <div class="trust-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-        </div>
-        <h3>Doopla Verified</h3>
-        <p>Quando uma negociação é fechada, o cliente recebe um link para conferir e confirmar as condições combinadas. Depois da confirmação, o booking recebe o selo Doopla Verified.</p>
-      </div>
-      <div class="trust-card">
-        <div class="trust-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
-        </div>
-        <h3>Pagamento Doopla</h3>
-        <p>Quando o Pagamento Doopla é utilizado, os dados de pagamento são disponibilizados ao cliente pelo canal oficial vinculado ao booking. Quem já tem relação de confiança também pode optar por manter o processo externo.</p>
-      </div>
-    </div>
-
-    <div class="trust-spotlight">
-      <span class="eyebrow" style="color:var(--accent);">Pagamento Doopla</span>
-      <h3>Sem troca de conta no meio do caminho.</h3>
-      <p class="kicker">A doopla ajuda artista, booker e cliente a saberem exatamente para onde o pagamento deve ir. Com o Doopla Verified, os dados oficiais do booking ficam registrados em um link seguro da doopla.</p>
-      <div class="trust-checklist">
-        <span>✓ Artista contratado</span>
-        <span>✓ Valor combinado</span>
-        <span>✓ Dados do booking</span>
-        <span>✓ Forma e destino do pagamento</span>
-      </div>
-      <div class="trust-warning">
-        <strong>Mudou a conta por WhatsApp? Desconfie.</strong>
-        A doopla e seus bookers nunca alteram dados bancários por mensagens ou links externos. Para sua segurança, considere válidas apenas as informações disponíveis no link oficial Doopla Verified.
-      </div>
-      <p class="trust-tagline">Um booking. Uma fonte oficial de verdade.</p>
-    </div>
-
-    <div class="trust-cta">
-      <a class="btn ghost" href="/seguranca">Entenda nossa segurança</a>
-    </div>
-    <p class="trust-disclaimer">Pagamentos realizados fora da doopla não são acompanhados, verificados ou de responsabilidade da plataforma.</p>
-  </div>
+<!-- 14. CTA FINAL -->
+<section class="final-cta" data-navlight="0">
+  <h2>Toda carreira merece sua Doopla.</h2>
+  <a href="#" class="btn btn-primary" style="background:var(--black);">Começar agora</a>
 </section>
 
-<!-- ================= PLANOS — ARTISTA ================= -->
-<section id="planos" class="pad gated view-artista">
-  <div class="wrap">
-    <span class="eyebrow">oferta de lançamento</span>
-    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px;">7 dias grátis. Sem comissão sobre o cachê.</h2>
-    <div class="plans">
-      <div class="plan">
-        <div class="plan-info">
-          <span class="eyebrow">artista</span>
-          <span style="text-decoration:line-through; opacity:.4; font-size:14px; font-family:'IBM Plex Mono',monospace;">R$39,90/mês</span>
-          <div class="plan-price">R$ 19,90<span> no 1º mês</span></div>
-          <span class="plan-fee">sem comissão sobre o cachê</span>
-        </div>
-        <p class="plan-desc">Perfil, plataforma de representação, propostas, pagamentos, agenda. A doopla não fica com nada do seu cachê. 7 dias grátis, depois R$19,90 no 1º mês — a partir do 2º mês, R$39,90/mês.</p>
-        <a class="btn accent" href="/cadastro?tipo=artista">Começar 7 dias grátis</a>
-      </div>
-    </div>
-    <p style="font-size:12.5px; opacity:.55; margin-top:10px;">Sem cobrança durante o teste.</p>
-    <a class="link-more" href="/precos">Entenda como funciona →</a>
-  </div>
-</section>
-
-<!-- ================= PLANOS — BOOKER ================= -->
-<section id="planos-booker" class="pad gated view-booker">
-  <div class="wrap">
-    <span class="eyebrow">booker básico</span>
-    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px;">Comece de graça. Sem mensalidade.</h2>
-    <div class="plans">
-      <div class="plan">
-        <div class="plan-info">
-          <span class="eyebrow">booker básico</span>
-          <div class="plan-price">R$ 0<span> /mês</span></div>
-          <span class="plan-fee">sem mensalidade</span>
-        </div>
-        <p class="plan-desc">Perfil profissional, busca de artistas, solicitações de representação, oportunidades e gestão de bookings pela doopla. Sua comissão é negociada diretamente com o artista.</p>
-        <a class="btn accent" href="/cadastro?role=booker">Começar grátis</a>
-      </div>
-    </div>
-    <p style="font-size:12.5px; opacity:.55; margin-top:10px;">Sua comissão é negociada diretamente com o artista.</p>
-    <a class="link-more" href="/precos">Entenda como funciona →</a>
-  </div>
-</section>
-
-<!-- ================= FAQ (reduzida) ================= -->
-<section id="faq" class="pad gated shared">
-  <div class="wrap">
-    <span class="eyebrow">perguntas frequentes</span>
-    <h2 style="font-size:clamp(28px,4.4vw,50px); margin-top:16px; margin-bottom:20px;">O essencial, antes de entrar.</h2>
-    <div id="faqlist"></div>
-    <a class="link-more" href="/ajuda">Ver central de ajuda completa →</a>
-  </div>
-</section>
-
-<!-- ================= CTA FINAL ================= -->
-<section class="final-cta gated shared">
-  <div class="wrap">
-    <h2>Sua carreira não precisa<br>crescer sozinha.</h2>
-    <div class="sub">Encontre sua doopla.</div>
-    <div class="ctas">
-      <a class="btn on-dark" href="/cadastro?role=artista">Encontrar representação</a>
-      <a class="btn ghost-dark" href="/cadastro?role=booker">Começar como booker</a>
-    </div>
-  </div>
-</section>
-
-<!-- ================= FOOTER ================= -->
+<!-- 15. FOOTER -->
 <footer>
-  <div class="wrap">
-    <div class="foot-cols">
-      <div class="foot-col">
-        <h5>Produto</h5>
-        <a href="#pra-quem" onclick="revealAndGo(event,'artista','pra-quem')">Para artistas</a>
-        <a href="#pra-quem-booker" onclick="revealAndGo(event,'booker','pra-quem-booker')">Para bookers</a>
-        <a href="#pra-agencia" onclick="revealAndGo(event,'agencia','pra-agencia')">Para agências</a>
-        <a href="#como-funciona" onclick="revealAndGo(event,'shared','como-funciona')">Como funciona</a>
-      </div>
-      <div class="foot-col">
-        <h5>Doopla</h5>
-        <a href="/sobre">Sobre</a>
-        <a href="/ajuda">Central de Ajuda</a>
-        <a href="/ajuda">Contato</a>
-      </div>
-      <div class="foot-col">
-        <h5>Segurança</h5>
-        <a href="/seguranca#verified">Doopla Verified</a>
-        <a href="/seguranca#pagamento">Pagamentos e Segurança</a>
-      </div>
-      <div class="foot-col">
-        <h5>Legal</h5>
-        <a href="/termos">Termos de Uso</a>
-        <a href="/privacidade">Política de Privacidade</a>
-      </div>
-    </div>
+  <div class="foot-logo">
+    d<span class="eye-slot" id="footSlotL"></span><span class="eye-slot" id="footSlotR"></span>pla
   </div>
-  <div class="logo foot-word on-dark" id="footlogo">d<span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span><span class="eye-o"><span class="eye-white"></span><span class="eye-pupil"></span><span class="eye-lid"></span></span>pla</div>
-  <div class="wrap foot-bottom">
-    <span>© 2026 Doopla — Plataforma de representação para artistas independentes.</span>
+  <div class="foot-links">
+    <a href="#">Termos</a>
+    <a href="#">Privacidade</a>
+    <a href="#">Segurança</a>
+    <a href="#">Pagamentos e cancelamentos</a>
+    <a href="#">Contato/Suporte</a>
   </div>
 </footer>
 
-<div class="pro-modal-overlay" id="bookerProModal" hidden onclick="closeBookerProModal(event)">
-  <div class="pro-modal" role="dialog" aria-modal="true" aria-labelledby="bookerProModalTitle" onclick="event.stopPropagation()">
-    <button type="button" class="pro-modal-close" onclick="closeBookerProModal(event)" aria-label="Fechar">✕</button>
-    <span class="eyebrow on-dark">booker pro</span>
-    <h3 id="bookerProModalTitle">Profissionalize seu booking. Atenda mais. Organize menos.</h3>
-    <span class="bs-price" style="margin-top:14px;">R$49<span class="bs-unit">/mês</span></span>
-    <p class="pro-modal-desc">Já disponível: gerencie quantos artistas quiser, sem o limite de 1 do Básico. Em breve: IA ampliada, automações, CRM e análises de performance — liberados progressivamente conforme forem implementados.</p>
-    <a class="btn accent" href="/cadastro?tipo=booker">Começar grátis com o Básico</a>
-    <p class="pro-modal-note">Você pode fazer upgrade pro Pro a qualquer momento, direto do seu painel.</p>
-  </div>
-</div>
 </div>
