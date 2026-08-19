@@ -11,7 +11,7 @@ const HOME_JS = fs.readFileSync(path.join(homeDir, 'home.js'), 'utf8');
 export const metadata: Metadata = {
   title: 'doopla · toda carreira merece sua doopla',
   description:
-    'Toda carreira merece sua Doopla. Ela atende, negocia, organiza e cuida do booking com você.',
+    'Você faz seu trabalho. A Doopla cuida do booking: responde, negocia e organiza com você.',
 };
 
 export default function Home() {

@@ -1210,6 +1210,40 @@ branch (migration `0018`).
 - PR #2 fechado como redundante — o schema dele (e os achados que só
   existiam lá) já estão absorvidos aqui.
 
+## 11. Home pública — pivot pra Doopla AI-first (`src/app/_home`)
+
+- ✅ Home reconstruída em cima do HTML aprovado `doopla-home-ai-first`
+  (hero cinematográfico com os dois olhos encolhendo até o wordmark,
+  olhos seguindo o cursor, paleta e tipografia próprias do
+  posicionamento novo). Depois reestruturada e reduzida de 15 pra 8
+  seções por diretriz explícita (vender a ideia primeiro, não exigir
+  que o usuário "estude" a Doopla antes de confiar): Hero → O que sua
+  Doopla faz (com a demonstração de conversa incorporada, não mais
+  seção própria) → Feita com quem entende de booking (substitui "Não é
+  IA genérica" + dobra a menção de representante humano) → Como
+  funciona (3 passos, controle/autonomia dobrado numa frase) → Planos →
+  Segurança (checklist enxuto) → FAQ (6 objeções de conversão) → CTA
+  final + rodapé. Removidas de vez (não é reorganização com nome novo):
+  Dor, a interação "Você × Sua Doopla" (JS/CSS junto), Ciclo do
+  booking, Para quem, os 3 blocos de autonomia, e os nomes internos
+  (Doopla Core/Playbook/Minha Doopla).
+- ✅ GSAP/ScrollTrigger (motor da timeline do hero) servidos de
+  `public/vendor/gsap` em vez de CDN externo — o próprio sandbox de
+  build bloqueou `cdnjs.cloudflare.com` por política de rede durante o
+  teste, então não faz sentido depender de terceiro fora do controle
+  da doopla em produção.
+- 🔜 **Pendência obrigatória da próxima etapa**: `/login`, `/sobre`,
+  `/cadastro`, `/seguranca` e demais páginas públicas ainda refletem o
+  modelo antigo de marketplace (bookers, matching, comissão). Por isso
+  os links da Home pra essas páginas (nav "Sobre"/"Entrar", footer
+  "Termos"/"Privacidade"/"Segurança"/"Pagamentos e
+  cancelamentos"/"Contato/Suporte", CTAs "Começar agora") continuam
+  como `#` de propósito — não apontar pra telas que ainda contradizem o
+  que a Home promete agora. Quando essas páginas forem revisadas pro
+  posicionamento AI-first, trocar os `#` pelos destinos reais. A Home
+  nova é a fonte de verdade de posicionamento pra essa revisão, não o
+  conteúdo antigo dessas páginas.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
