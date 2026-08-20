@@ -6,7 +6,7 @@ import { PageShell } from '../_home/PageShell';
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
   description:
-    'A Doopla nasceu para dar a artistas independentes uma estrutura de representação sem exigir uma agência ou alguém cuidando de tudo por eles.',
+    'A Doopla nasceu para dar ao artista independente a estrutura que existe por trás de uma carreira profissional. Representação, organização e inteligência para que você possa focar no seu trabalho e continuar no controle da sua carreira.',
 };
 
 export default function SobrePage() {
@@ -14,11 +14,12 @@ export default function SobrePage() {
     <PageShell>
       <section className="page-hero">
         <span className="eyebrow">Sobre a Doopla</span>
-        <h1>Uma nova forma de ter quem cuide dos seus bookings.</h1>
+        <h1>Toda carreira merece sua Doopla.</h1>
         <p>
-          A Doopla nasceu para dar a artistas independentes uma estrutura de
-          representação sem exigir uma agência ou alguém cuidando de tudo por
-          eles.
+          A Doopla nasceu para dar ao artista independente a estrutura que
+          existe por trás de uma carreira profissional. Representação,
+          organização e inteligência para que você possa focar no seu
+          trabalho e continuar no controle da sua carreira.
         </p>
         <div className="hero-eyes" aria-hidden="true">
           <span className="dot">

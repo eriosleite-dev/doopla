@@ -1601,6 +1601,41 @@ branch (migration `0018`).
   e-mail configurado no projeto). Se quiser um envio de verdade
   (ex.: Resend, API route), isso é trabalho novo, não builicado aqui.
 
+## 21. Correções pós-institucionais: marquee com buraco preto, menu piscando, copy de Planos/Sobre
+
+- ✅ **Marquee com espaço preto vazio em telas largas**: o loop infinito
+  usava só 2 cópias do conteúdo (6 spans); em monitores largos o trecho
+  repetido não cobria 2x a largura da viewport, sobrando um vão preto
+  depois do texto. Aumentado pra 6 cópias (18 spans) — testado num
+  viewport de 2200px confirmando que a trilha renderizada sempre fica
+  mais larga que 2x a viewport, sem vão.
+- ✅ **Overlay do MENU abrindo/fechando sozinho nas páginas
+  institucionais**: causa raiz provável identificada — `PageShell` lia
+  `site-chrome.css` com `fs.readFileSync` e injetava num `<style>`
+  inline a cada mount de página; como as páginas institucionais navegam
+  entre si via `next/link` (navegação client-side), esse `<style>`
+  inline desaparecia e reaparecia a cada troca de página, causando um
+  flash sem estilo bem na hora em que o overlay poderia estar montando/
+  desmontando. Trocado por `import './site-chrome.css'` direto (CSS
+  real, buildado uma vez, sem re-injeção a cada navegação). Testado com
+  Playwright: 4 ciclos de abrir o menu → navegar por um link do overlay
+  → voltar, overlay abriu 100% das vezes e o fundo do header continuou
+  sólido depois de cada navegação (sem flash detectado nas amostras).
+- ✅ Planos (Pro): lista revisada — "Especialista humano quando uma
+  negociação precisar" virou "Especialista humano se precisar"; removido
+  o item "Radar de clientes e oportunidades".
+- ✅ Kicker "Mais que automação. Representação." com ponto final.
+- ✅ Sobre: hero reescrito duas vezes seguindo correção do usuário —
+  versão final: h1 "Toda carreira merece sua Doopla." + novo parágrafo
+  ("...a estrutura que existe por trás de uma carreira profissional...
+  continuar no controle da sua carreira."). Meta description atualizada
+  junto pra bater com o texto visível.
+- ⏳ Ainda pendente (fora do escopo técnico resolvível aqui): envio real
+  do formulário de contato (ver item 20) — segue precisando de um
+  serviço de e-mail configurado (usuário confirmou que já tem o domínio/
+  e-mail pago, então isso pode ser um próximo passo natural).
+- ✅ `npm run build`/`npx eslint` limpos em cada rodada.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
