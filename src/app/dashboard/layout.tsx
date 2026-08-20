@@ -2,14 +2,18 @@ import Link from 'next/link';
 
 import { logoutAction } from '@/app/auth/actions';
 import { createClient } from '@/lib/supabase/server';
+import { siteOrigin } from '@/lib/site-url';
 import type { Profile } from '@/lib/supabase/types';
 
 import { BookerProModal } from './booker-pro/booker-pro-modal';
 import { ProModalProvider } from './booker-pro/pro-modal-context';
 import { ProSidebarBadge } from './booker-pro/pro-sidebar-badge';
-import { getAttentionItems, getSubscription, getUserBookings } from './data';
+import { getAttentionItems, getReferralSummary, getSubscription, getUserBookings } from './data';
 import { DashboardFooter } from './dashboard-footer';
 import { HelpPicker } from './help-picker';
+import { ReferralChip } from './referral-chip';
+import { ReferralModal } from './referral-modal';
+import { ReferralModalProvider } from './referral-modal-context';
 import { getSessionProfile } from './session';
 import { type SidebarGroup, SidebarNav } from './sidebar-nav';
 import { avatarClass, initialsFromName } from './ui';
@@ -53,6 +57,11 @@ export default async function DashboardLayout({
   const { supabase, user, profile } = await getSessionProfile();
 
   const opportunitiesBadge = await getOpportunitiesBadgeCount(supabase, user.id, profile.role);
+  const referralSummary =
+    profile.role === 'artista' ? await getReferralSummary(user.id, profile.referral_code, supabase) : null;
+  const referralUrl = referralSummary
+    ? `${await siteOrigin()}/cadastro?ref=${referralSummary.referralCode}`
+    : null;
   const subscription = profile.role === 'booker' ? await getSubscription(user.id, supabase) : null;
   const bookingsForAttention = await getUserBookings(user.id, profile.role, supabase);
   const attentionItemsForBell = await getAttentionItems(
@@ -139,6 +148,7 @@ export default async function DashboardLayout({
 
   return (
     <ProModalProvider>
+    <ReferralModalProvider>
     <div className="flex min-h-screen flex-col bg-[var(--paper)] font-doopla-sans text-[var(--ink)] md:flex-row">
       <aside className="flex flex-col gap-5 bg-[var(--sidebar)] px-5 py-6 text-[var(--paper)] md:sticky md:top-0 md:h-screen md:w-[272px] md:flex-none md:gap-6 md:overflow-y-auto md:px-5 md:py-7">
         <div className="flex items-center justify-between">
@@ -146,6 +156,7 @@ export default async function DashboardLayout({
             doopla
           </Link>
           <div className="flex items-center gap-2">
+            {referralUrl && referralSummary && <ReferralChip />}
             <Link
               href="/dashboard#atencao"
               aria-label={
@@ -228,7 +239,16 @@ export default async function DashboardLayout({
       </div>
       {modal}
       <BookerProModal />
+      {referralUrl && referralSummary && (
+        <ReferralModal
+          referralUrl={referralUrl}
+          referralCount={referralSummary.referrals.length}
+          pendingCount={referralSummary.pendingCount}
+          qualifiedTotalCents={referralSummary.qualifiedTotalCents}
+        />
+      )}
     </div>
+    </ReferralModalProvider>
     </ProModalProvider>
   );
 }

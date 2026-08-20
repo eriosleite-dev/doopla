@@ -1282,6 +1282,31 @@ branch (migration `0018`).
   criada nenhuma comunicação que diminua agências — o texto não fala
   de agências ainda, mantém a diretriz como guardrail pra copy futura.
 
+## 13. Referral "Indique e ganhe R$5" — chip global no header do painel
+
+- ✅ Saiu do card grande no meio do dashboard (`referral-card.tsx`,
+  removido) e virou um chip compacto no header, dentro do
+  `DashboardLayout` (`src/app/dashboard/layout.tsx`) — aparece em
+  qualquer rota de `/dashboard/*` de uma vez só, sem duplicar
+  componente por tela. Mesmo critério de elegibilidade de antes: só
+  artista com `referral_code` (bookers nunca tiveram esse programa).
+  Clique abre modal (`ReferralModal` + `ReferralModalContext`, mesmo
+  padrão arquitetural do `BookerProModal`/`ProModalContext` já
+  existente) com link de indicação, copiar/compartilhar (Web Share API
+  com fallback silencioso pra quem não suporta), quanto já foi ganho, e
+  a regra de liberação **exatamente como fechada em DECISOES.md**: o
+  bônus só libera quando a pessoa indicada vira cliente pagante, sem
+  inventar prazo, saldo ou condição que ainda não existe no backend
+  (`qualifiedTotalCents` continua sempre 0 até o sistema de assinatura
+  real existir).
+- ✅ Não foi pra Home pública, não criou banner/pop-up, não mudou
+  nenhuma regra financeira do programa — só o posicionamento/UX.
+- ⚠️ Não verificado visualmente num navegador: rota de `/dashboard` só
+  renderiza com sessão Supabase real autenticada, que não existe neste
+  ambiente sandbox. Validado por build de produção limpo, ESLint limpo
+  e checagem manual de tipos/fluxo de dados linha a linha — mas vale
+  uma conferência visual real antes de confiar 100%.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
