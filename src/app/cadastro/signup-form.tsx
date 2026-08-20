@@ -24,7 +24,6 @@ import {
   LANGUAGE_OPTIONS,
   REGION_SCOPE_OPTIONS,
   SPECIALTY_AREA_OPTIONS,
-  WORK_TYPE_OPTIONS,
 } from '@/lib/matching-options';
 
 const initialState: AuthFormState = {};
@@ -141,18 +140,18 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     label: 'E seu nome completo?',
     placeholder: 'Ex: Beatriz Duarte Souza',
   },
-  {
-    formKey: 'categoria',
-    kind: 'chip-multi',
-    label: 'O que você faz?',
-    options: ARTIST_CATEGORY_OPTIONS,
-  },
+  // Sem lista fixa de profissão/tipo de trabalho: a aquisição inicial é
+  // nichada em DJs, mas o produto não é exclusivo pra DJs — fotógrafo,
+  // ator, músico, creator etc. precisam sentir que também cabem aqui.
+  // Uma pergunta aberta só, sem categoria pra escolher (mantém o
+  // formKey 'bio' porque essa resposta também é o texto do perfil
+  // público, exibido pra bookers e clientes).
   {
     formKey: 'bio',
     kind: 'textarea',
-    label: 'Conte o que você faz, seu estilo e onde costuma trabalhar',
-    hint: 'Isso vai aparecer no seu perfil pra bookers e clientes.',
-    placeholder: 'Ex: DJ house/tech house, toco em clubs e festivais em SP há 5 anos',
+    label: 'Fale sobre o seu trabalho. O que você faz?',
+    hint: 'Conte do seu jeito. Sua Doopla usa isso para entender seu trabalho e as oportunidades que chegam até você.',
+    placeholder: 'Ex: Sou fotógrafa de moda e também faço campanhas para marcas.',
   },
   {
     formKey: 'local',
@@ -160,19 +159,6 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     label: 'Em qual cidade e estado você está baseado?',
     hint: 'Cidade, estado',
     placeholder: 'Ex: São Paulo, SP',
-  },
-  {
-    formKey: 'workTypes',
-    kind: 'chip-multi',
-    arrayOutput: true,
-    label: 'Que tipos de trabalho você costuma fazer?',
-    options: WORK_TYPE_OPTIONS,
-  },
-  {
-    formKey: 'mercados',
-    kind: 'chip-multi',
-    label: 'Em quais nichos você gostaria de ser mais representado?',
-    options: ['Marcas', 'Eventos sociais', 'Festivais', 'Corporativo', 'Fashion', OUTRO],
   },
   {
     formKey: 'regions',
@@ -189,13 +175,10 @@ const ARTISTA_CARREIRA_STEPS: WizardStep[] = [
     choices: choiceCardsFrom(CAREER_STAGE_OPTIONS),
     optional: true,
   },
-  {
-    formKey: 'feeRange',
-    kind: 'chip',
-    label: 'Qual sua faixa de cachê ou ticket médio?',
-    options: FEE_RANGE_OPTIONS,
-    optional: true,
-  },
+  // Cachê não entra mais aqui: é informação comercial que a Doopla
+  // aprende no contexto de um booking real, quando precisar negociar —
+  // não faz sentido perguntar isso logo no primeiro contato com a
+  // plataforma. Continua editável depois em Minha Doopla (perfil).
   {
     formKey: 'helpAreas',
     kind: 'chip-multi',
