@@ -1,11 +1,24 @@
   /* Doopla AI-first: identidade visual própria da Home (paleta e fontes
      diferentes do restante do produto, que ainda usa o sistema antigo em
      src/app/globals.css). Tudo escopado sob #home-marketing de propósito,
-     pra não vazar pra outras rotas em navegação client-side. */
-  html{ scroll-behavior:smooth; }
+     pra não vazar pra outras rotas em navegação client-side.
+
+     Propositalmente SEM `scroll-behavior:smooth` no html: o GSAP
+     ScrollTrigger que dirige o pin do hero (.stage) depende de calcular a
+     posição de scroll com precisão, e o smooth-scroll nativo do browser
+     interfere nesse cálculo — é o que causava a tela em branco ao rolar
+     pra depois do hero.
+
+     `overflow-x:hidden` fica no body (global, sem risco pras outras
+     rotas), não em #home-marketing: declarar só overflow-x num elemento
+     comum faz o overflow-y computar pra "auto" (regra do próprio CSS),
+     virando um novo container de scroll que quebra a cadeia de
+     position:sticky do .stage-pin. body/html têm uma exceção no spec que
+     propaga o overflow pro viewport em vez de criar esse container. */
+  body{ overflow-x:hidden; }
   #home-marketing{
     --red:#e2291c; --red-deep:#c21f14; --black:#121110; --cream:#f3efe2; --off:#fbf9f2;
-    background:var(--cream); color:var(--black); font-family:'Inter', sans-serif; overflow-x:hidden;
+    background:var(--cream); color:var(--black); font-family:'Inter', sans-serif;
   }
   #home-marketing *{ box-sizing:border-box; margin:0; padding:0; }
   #home-marketing ::selection{ background:var(--black); color:var(--red); }
@@ -86,20 +99,16 @@
   #home-marketing section h2{ font-family:'Anton',sans-serif; font-size:clamp(1.7rem,3.6vw,2.9rem); line-height:1.12; margin-bottom:20px; }
   #home-marketing section p.lead{ font-size:1.02rem; color:#4a463d; line-height:1.65; max-width:620px; }
 
-  /* cuida-de section: lista do que a Doopla faz + demonstração incorporada */
+  /* cuida-de section: situações reais + demonstração incorporada (a prova visual do produto, não uma grade de cards) */
   #home-marketing .cuida{ background:var(--black); color:var(--off); }
   #home-marketing .cuida h2{ color:var(--off); max-width:680px; }
-  #home-marketing .cuida-grid{ display:flex; flex-wrap:wrap; justify-content:center; gap:14px; margin-top:40px; }
-  #home-marketing .cuida-item{ flex:1 1 200px; max-width:240px; border:1px solid rgba(251,249,242,.15); border-radius:16px; padding:22px 18px; }
-  #home-marketing .cuida-item .verb{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; margin-bottom:6px; }
-  #home-marketing .cuida-item p{ font-size:.85rem; color:rgba(251,249,242,.65); line-height:1.5; }
   #home-marketing .cuida-note{ margin-top:28px; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--off); }
 
   #home-marketing .situacoes{ margin-top:26px; display:flex; flex-direction:column; gap:6px; }
   #home-marketing .situacoes p{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.15rem; color:rgba(251,249,242,.85); }
 
-  #home-marketing .chat-eyebrow{ display:block; margin-top:48px; }
-  #home-marketing .chat{ max-width:440px; margin:18px auto 0; display:flex; flex-direction:column; gap:14px; }
+  #home-marketing .chat-eyebrow{ display:block; margin-top:52px; }
+  #home-marketing .chat{ max-width:480px; margin:18px auto 0; display:flex; flex-direction:column; gap:14px; }
   #home-marketing .chat-row{ display:flex; flex-direction:column; gap:5px; }
   #home-marketing .chat-row.client{ align-items:flex-start; }
   #home-marketing .chat-row.doopla, #home-marketing .chat-row.artist{ align-items:flex-end; }
@@ -144,7 +153,7 @@
   #home-marketing .price-card li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
 
   /* faq */
-  #home-marketing .faq{ background:var(--off); max-width:760px; margin:0 auto; }
+  #home-marketing .faq{ background:var(--off); }
   #home-marketing .faq-list details{ border-bottom:1px solid #e7e2d3; padding:16px 0; }
   #home-marketing .faq-list summary{ list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:.95rem; }
   #home-marketing .faq-list summary::-webkit-details-marker{ display:none; }
@@ -152,13 +161,13 @@
   #home-marketing .faq-list p{ font-size:.86rem; color:#5a5648; margin-top:10px; line-height:1.55; }
 
   /* cta final */
-  #home-marketing .final-cta{ background:var(--red); color:var(--off); text-align:center; }
-  #home-marketing .final-cta h2{ color:var(--off); margin:0 auto 30px; max-width:620px; }
+  #home-marketing .final-cta{ background:var(--red); color:var(--off); text-align:center; padding:56px 28px; }
+  #home-marketing .final-cta h2{ color:var(--off); margin:0 auto 22px; max-width:620px; font-size:clamp(1.7rem,3.6vw,2.9rem); }
 
-  #home-marketing footer{ background:var(--black); color:rgba(251,249,242,.6); padding:36px 44px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
-  #home-marketing .foot-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--off); display:flex; align-items:center; }
-  #home-marketing .foot-links{ display:flex; gap:22px; flex-wrap:wrap; }
-  #home-marketing .foot-links a{ color:inherit; text-decoration:none; font-size:.8rem; }
+  #home-marketing footer{ background:var(--black); color:rgba(251,249,242,.6); padding:44px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+  #home-marketing .foot-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.3rem; color:var(--off); display:flex; align-items:center; }
+  #home-marketing .foot-links{ display:flex; gap:26px; flex-wrap:wrap; }
+  #home-marketing .foot-links a{ color:inherit; text-decoration:none; font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; }
 
   @media (max-width:820px){
     #home-marketing .cuida-grid{ grid-template-columns:1fr 1fr; }

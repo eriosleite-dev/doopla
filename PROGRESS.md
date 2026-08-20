@@ -1307,6 +1307,52 @@ branch (migration `0018`).
   e checagem manual de tipos/fluxo de dados linha a linha — mas vale
   uma conferência visual real antes de confiar 100%.
 
+## 14. Home — bug crítico de tela em branco + segunda passada de limpeza
+
+- ✅ **Bug real, reportado em produção**: depois de rolar a página, uma
+  tela inteira aparecia em branco. Causa raiz: `#home-marketing` tinha
+  `overflow-x:hidden` — e por regra do próprio CSS, declarar só
+  overflow-x != visible faz o overflow-y computar pra `auto`
+  implicitamente, o que transforma o elemento num novo container de
+  scroll. Isso quebra a cadeia de `position:sticky` do `.stage-pin`
+  (o pin do hero), que soltava bem antes da hora, revelando a seção
+  seguinte com a animação de entrada travada pela metade. Corrigido
+  movendo `overflow-x:hidden` pro `body` (global, sem risco) — body/
+  html têm uma exceção no spec que propaga o overflow pro viewport em
+  vez de criar esse container. Removido também `scroll-behavior:smooth`
+  do html (documentadamente incompatível com o cálculo de posição do
+  GSAP ScrollTrigger). Verificado com scroll gradual real via Playwright
+  pixel a pixel: sem gap em nenhum lugar da página.
+- ✅ **"O que sua Doopla faz" simplificado outra vez**: removida a
+  grade de 7 cards (Negociação/Respostas e propostas/Follow up/
+  Organização/Contratos/Cobranças/**Representação** — este último
+  removido também por reintroduzir de leve o resquício do modelo
+  antigo). A demonstração de conversa vira o elemento visual principal
+  da seção (não mais um apêndice depois dos cards), com copy nova que
+  mostra a Doopla coletando informação faltante antes de negociar
+  (capacidade que a demo antiga não mostrava).
+- ✅ **FAQ**: estava com `max-width` e `margin:auto` na própria
+  `<section>` (sem wrapper), criando um retângulo branco estreito
+  centralizado com margens bege dos dois lados — quebrava o grid do
+  resto do site. Corrigido: a seção agora é full-width (como todas as
+  outras), com o conteúdo dentro de um `<div class="narrow">`.
+- ✅ **CTA final**: reduzido de `padding:100px` + h2 `clamp(32px,6vw,
+  64px)` (quase uma segunda hero section) pra `padding:56px` + h2 do
+  mesmo tamanho-padrão usado pelos outros headlines de seção.
+- ✅ **Footer**: 5 links (Termos/Privacidade/Segurança/Pagamentos e
+  cancelamentos/Contato-Suporte) reduzidos pra 4, com nomenclatura mais
+  direta (Segurança/Termos/Privacidade/Contato), tratamento mono/
+  uppercase igual ao resto do design system, logo um pouco maior — pra
+  não parecer uma barra utilitária esquecida. Destinos continuam `#`
+  de propósito (mesma pendência de sempre: páginas internas ainda não
+  revisadas pro posicionamento novo).
+- ✅ Varredura completa por resquício do modelo antigo (booker como
+  necessidade, comissão, split, repasse, intervenção humana, níveis de
+  autonomia antigos, marketplace, pagamento processado pela doopla):
+  único hit foi o texto já aprovado da Segurança, que nega
+  explicitamente essas coisas ("sem split, sem comissão de booker...").
+  Nada mais encontrado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
