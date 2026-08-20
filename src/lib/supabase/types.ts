@@ -380,6 +380,9 @@ export type AgendaEntry = {
 export type SubscriptionStatus = 'trialing' | 'active' | 'canceled';
 export type SubscriptionPriceRule = 'standard_launch' | 'founder_locked';
 export type BookerPlan = 'basic' | 'pro';
+// Plano do artista (Doopla / Doopla Pro) — coluna separada de
+// booker_plan, que é exclusivo do booker (migration 0036).
+export type ArtistPlan = 'doopla' | 'pro';
 
 export type Subscription = {
   id: string;
@@ -391,6 +394,7 @@ export type Subscription = {
   founder_voucher_id: string | null;
   trial_ends_at: string | null;
   booker_plan: BookerPlan;
+  artist_plan: ArtistPlan | null;
   active_artist_profile_id: string | null;
   active_artist_pending_choice: boolean;
   pro_period_ends_at: string | null;
