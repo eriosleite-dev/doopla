@@ -1636,6 +1636,22 @@ branch (migration `0018`).
   e-mail pago, então isso pode ser um próximo passo natural).
 - ✅ `npm run build`/`npx eslint` limpos em cada rodada.
 
+## 22. Marquee presa visível em link direto pra âncora depois do hero
+
+- ✅ Bug real reportado com screenshot: chegando na Home direto numa
+  âncora depois do hero (ex.: `/#o-que-sua-doopla-faz`, que é exatamente
+  o link do item "O que sua Doopla faz" no overlay do menu), a marquee
+  ficava presa visível, sobrepondo o título da seção "Tem booking pra
+  resolver?". Causa: o `onLeave` do ScrollTrigger que esconde a marquee
+  só dispara numa TRANSIÇÃO de scroll — se a página já carrega com o
+  scroll direto além do hero, o ScrollTrigger nasce já no estado "depois
+  do fim", sem nenhuma transição pra disparar o callback. Corrigido
+  checando `st.isActive` logo após criar o ScrollTrigger e aplicando o
+  estado escondido manualmente se necessário. Testado reproduzindo
+  exatamente o cenário (`goto('/#o-que-sua-doopla-faz')` direto, sem
+  scroll gradual antes): antes do fix a marquee ficava visível
+  sobrepondo o título; depois do fix ela nasce corretamente escondida.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

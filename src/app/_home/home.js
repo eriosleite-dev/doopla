@@ -60,11 +60,18 @@ document.querySelectorAll('#home-marketing section[data-nav]').forEach(sec=>{
 (function(){
   const marquee = document.querySelector('#home-marketing .marquee');
   if(!marquee) return;
-  ScrollTrigger.create({
+  const st = ScrollTrigger.create({
     trigger:"#home-marketing .stage", start:"top top", end:"bottom top",
     onLeave:()=> marquee.classList.add('marquee-hide'),
     onEnterBack:()=> marquee.classList.remove('marquee-hide')
   });
+  // onLeave só dispara numa TRANSIÇÃO de scroll. Se a página já carrega
+  // além do hero (link direto pra uma âncora depois dele, tipo
+  // /#o-que-sua-doopla-faz vindo do overlay do menu), o ScrollTrigger
+  // nasce direto no estado "já passou", sem transição nenhuma pra
+  // disparar o onLeave — daí a marquee ficava presa visível, sobrepondo
+  // a seção seguinte. Corrige o estado logo na criação.
+  if(!st.isActive) marquee.classList.add('marquee-hide');
 })();
 
 /* ===== olhos grandes do hero: agora usam o mesmo motion de "pulo" da
