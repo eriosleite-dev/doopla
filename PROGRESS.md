@@ -1485,6 +1485,53 @@ branch (migration `0018`).
   `getComputedStyle` (preto em toda a primeira tela e na seção
   unificada), marquee confirmado no DOM, footer reconferido.
 
+## 19. Correções de nav/marquee reportadas pelo usuário + logo dentro da frase da CTA final
+
+- ✅ **Nav com fundo "rosa desbotado"**: bug real desta sessão — ao marcar
+  o hero e a seção "Tem booking" como `data-navlight="1"` (pra deixar o
+  texto deles preto), a nav passou a usar o estado "on-light" (fundo
+  branco/creme só 78% opaco) por cima do vermelho, e a mistura virava um
+  rosa lavado, não o vermelho sólido da marca. Troquei o sistema inteiro
+  de "vidro translúcido" por fundo **sólido**: cada seção agora declara
+  `data-nav="red|black|cream|redcream"` com a combinação exata de
+  cor+texto que ela usa (vermelho+preto no hero/"Tem booking", preto+creme
+  em Como funciona/Segurança, creme+preto em Feita/Planos/FAQ,
+  vermelho+creme na CTA final), e a nav pega literalmente essa cor —
+  nunca mistura opacidade com o que está atrás. Confirmado com Playwright
+  rolando a página inteira e conferindo a classe/cor da nav em cada seção.
+- ✅ **Barra corrida "flutuando" na primeira tela**: primeiro ajuste foi
+  sincronizar a entrada da marquee com a da nav (mesmo timing do GSAP).
+  Depois o usuário esclareceu o pedido real: a marquee é **exclusiva da
+  tela do hero** — não pode ficar fixa acompanhando o scroll pelo resto
+  da página (a nav continua fixa e trocando de cor normalmente, isso não
+  mudou). Implementado com um ScrollTrigger próprio: `onLeave` do hero
+  esconde a marquee (fade), `onEnterBack` (voltando pra cima) traz ela de
+  volta. Testado: marquee visível durante o hero, some ao passar pra
+  "Feita"/"Tem booking" em diante, nav permanece visível o tempo todo.
+- ✅ **"Doopla" com o logo dentro da frase da CTA final**: na seção "Toda
+  carreira merece sua Doopla." (a que fica logo acima do rodapé de
+  links, não o rodapé em si), os dois "o" de Doopla agora são os olhos
+  animados de verdade (mesmo componente clonado do nav/rodapé/wordmark —
+  segue o cursor, vaga sozinho, pisca), mantendo a fonte Anton do resto
+  da frase. Bug pego e corrigido no processo: a palavra quebrava no meio
+  entre os dois olhos ao virar linha (um olho ficava numa linha, o outro
+  na de baixo) — corrigido envolvendo "d + olhos + pla" num
+  `white-space:nowrap` pra nunca quebrar ali.
+- ✅ CTA da nav renomeado de "Criar conta" pra "Começar agora" (mesmo link
+  pro `/cadastro`) — padronização de copy pedida pelo usuário: "Começar
+  agora" é o CTA de aquisição em todo o site, "Criar conta" fica restrito
+  ao fluxo de cadastro em si.
+- ✅ `npm run build`/`npx eslint` limpos. Tudo verificado com Playwright
+  local (build de produção): scroll completo da página conferindo classe
+  da nav seção a seção, opacidade da marquee em cada trecho, screenshot
+  da frase da CTA final com os olhos alinhados na mesma linha.
+- ⏳ **Pendência grande, ainda não iniciada**: o pedido de reconstruir
+  Header (overlay de MENU fullscreen) + páginas institucionais completas
+  (`/sobre`, `/seguranca`, `/contato` nova, `/termos`, `/privacidade`) +
+  padronizar CTA "Começar agora" nessas páginas também. Ficou de fora
+  desta sessão por limite de orçamento/sessão — precisa de uma sessão
+  nova dedicada a isso.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

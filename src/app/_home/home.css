@@ -24,24 +24,36 @@
   #home-marketing ::selection{ background:var(--black); color:var(--red); }
   #home-marketing .mono{ font-family:'IBM Plex Mono', monospace; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem; }
 
-  #home-marketing .nav-wrap{ position:fixed; top:0; left:0; right:0; z-index:50; }
+  /* opacity:0 aqui (não só na nav) pra barra corrida não ficar flutuando
+     sozinha, sem cabeçalho em cima, antes da entrada cinematográfica do
+     hero revelar a nav — os dois entram juntos (ver stageTl em home.js). */
+  #home-marketing .nav-wrap{ position:fixed; top:0; left:0; right:0; z-index:50; opacity:0; }
+  /* nav sempre com fundo sólido igual ao da seção por trás dela (nunca um
+     "vidro" translúcido) — cada seção declara data-nav com a combinação de
+     cor exata que ela usa, pra nav nunca virar uma cor que não existe na
+     paleta (ex.: vermelho + branco translúcido = rosa desbotado). */
   #home-marketing nav{
     display:flex; align-items:center; justify-content:space-between;
-    padding:18px 44px; color:var(--off); background:rgba(18,17,16,.22);
-    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-    opacity:0; transform:translateY(-14px); pointer-events:none;
+    padding:18px 44px; transform:translateY(-14px); pointer-events:none;
     transition:color .35s ease, background .35s ease;
   }
-  #home-marketing nav.on-light{ color:var(--black); background:rgba(251,249,242,.78); }
+  #home-marketing nav.nav-red{ color:var(--black); background:var(--red); }
+  #home-marketing nav.nav-black{ color:var(--off); background:var(--black); }
+  #home-marketing nav.nav-cream{ color:var(--black); background:var(--off); }
+  #home-marketing nav.nav-redcream{ color:var(--off); background:var(--red); }
   #home-marketing nav .links{ display:flex; gap:44px; align-items:center; }
   #home-marketing nav a{ color:inherit; text-decoration:none; font-weight:600; font-size:.78rem; letter-spacing:.12em; text-transform:uppercase; }
   #home-marketing nav .btn.nav-cta{ padding:9px 20px; font-size:.72rem; }
 
-  /* barra corrida fixa, sempre visível, debaixo da nav */
+  /* barra corrida: só existe na tela do hero — some (fade) assim que o
+     usuário rola pra além dela, não fica presa acompanhando o resto da
+     página como a nav (ver ScrollTrigger em home.js). */
   #home-marketing .marquee{
     background:var(--black); overflow:hidden; white-space:nowrap; padding:10px 0;
     border-top:1px solid rgba(243,239,226,.12);
+    transition:opacity .3s ease;
   }
+  #home-marketing .marquee.marquee-hide{ opacity:0; pointer-events:none; }
   #home-marketing .marquee-track{ display:inline-flex; animation:doopla-marquee 22s linear infinite; }
   #home-marketing .marquee-track span{
     font-family:'IBM Plex Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
@@ -187,6 +199,12 @@
   /* cta final */
   #home-marketing .final-cta{ background:var(--red); color:var(--off); text-align:center; padding:56px 28px; }
   #home-marketing .final-cta h2{ color:var(--off); margin:0 auto 22px; max-width:620px; font-size:clamp(1.7rem,3.6vw,2.9rem); }
+  /* "Doopla" no meio da frase: os dois "o" viram os olhos da marca, mesma
+     fonte Anton ao redor — só o alinhamento vertical precisa de ajuste
+     fino, já que aqui o eye-slot fica dentro do fluxo normal do texto
+     (não centralizado por flex como no nav/rodapé). */
+  #home-marketing .final-cta h2 .eye-slot{ vertical-align:middle; position:relative; top:-.08em; }
+  #home-marketing .final-cta h2 .nowrap{ white-space:nowrap; }
 
   #home-marketing footer{ background:var(--black); color:rgba(251,249,242,.6); padding:44px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
   #home-marketing .foot-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.3rem; color:var(--off); display:flex; align-items:center; }
@@ -219,4 +237,5 @@
   #home-marketing.gsap-fallback .wordmark{ opacity:1; }
   #home-marketing.gsap-fallback .hero-copy{ opacity:1; transform:translateY(0); }
   #home-marketing.gsap-fallback .scroll-hint{ display:none; }
-  #home-marketing.gsap-fallback nav{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  #home-marketing.gsap-fallback .nav-wrap{ opacity:1; }
+  #home-marketing.gsap-fallback nav{ transform:translateY(0); pointer-events:auto; }

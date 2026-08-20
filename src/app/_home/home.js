@@ -44,16 +44,28 @@ gsap.utils.toArray('#home-marketing section').forEach(el=>{
   });
 });
 
-/* ===== nav: claro sobre seções de fundo claro, escuro sobre fundo escuro ===== */
+/* ===== nav: fundo sólido, trocando pra combinação exata de cor da seção
+   que está atrás dela no momento (ver data-nav em cada <section>) ===== */
 const nav = document.getElementById('mainNav');
-document.querySelectorAll('#home-marketing section[data-navlight]').forEach(sec=>{
-  const light = sec.dataset.navlight === '1';
-  ScrollTrigger.create({
-    trigger:sec, start:'top 90px', end:'bottom 90px',
-    onEnter:()=> nav.classList.toggle('on-light', light),
-    onEnterBack:()=> nav.classList.toggle('on-light', light)
-  });
+const NAV_CLASSES = ['nav-red','nav-black','nav-cream','nav-redcream'];
+document.querySelectorAll('#home-marketing section[data-nav]').forEach(sec=>{
+  const cls = 'nav-' + sec.dataset.nav;
+  function apply(){ nav.classList.remove(...NAV_CLASSES); nav.classList.add(cls); }
+  ScrollTrigger.create({ trigger:sec, start:'top 90px', end:'bottom 90px', onEnter:apply, onEnterBack:apply });
 });
+
+/* ===== barra corrida: só existe na tela do hero, some assim que o usuário
+   rola pra além dela (a nav continua fixa e visível o resto da página,
+   como sempre foi — só a marquee é exclusiva do hero) ===== */
+(function(){
+  const marquee = document.querySelector('#home-marketing .marquee');
+  if(!marquee) return;
+  ScrollTrigger.create({
+    trigger:"#home-marketing .stage", start:"top top", end:"bottom top",
+    onLeave:()=> marquee.classList.add('marquee-hide'),
+    onEnterBack:()=> marquee.classList.remove('marquee-hide')
+  });
+})();
 
 /* ===== olhos grandes do hero: agora usam o mesmo motion de "pulo" da
    seção "Tem booking pra resolver?" (ver makeEyesMotion abaixo), não
@@ -140,6 +152,16 @@ const footR = cloneEyeInto('footSlotR', eyeR);
 pupils.push(footL.pupil, footR.pupil); setupPupilFollow(footL.pupil); setupPupilFollow(footR.pupil);
 startBlinking([footL.eye, footR.eye]);
 
+// "Doopla" na frase da CTA final: mesmo componente/comportamento de olho
+// clonado usado em wordmark/nav/rodapé (segue o cursor, vaga sozinho, pisca).
+const ctaSlotL = document.getElementById('ctaSlotL');
+if(ctaSlotL){
+  const ctaL = cloneEyeInto('ctaSlotL', eyeL);
+  const ctaR = cloneEyeInto('ctaSlotR', eyeR);
+  pupils.push(ctaL.pupil, ctaR.pupil); setupPupilFollow(ctaL.pupil); setupPupilFollow(ctaR.pupil);
+  startBlinking([ctaL.eye, ctaR.eye]);
+}
+
 /* ===== timeline do stage: olhos grandes -> encolhem no wordmark -> nav/kicker/hero-copy entram ===== */
 const stageTl = gsap.timeline({
   scrollTrigger:{ trigger:"#home-marketing .stage", start:"top top", end:"bottom bottom", scrub:1 }
@@ -148,7 +170,8 @@ stageTl
   .to("#logoMark", { scale:0.5, duration:1, ease:"none" }, 0)
   .to("#home-marketing .grain", { y:"18%", duration:1, ease:"none" }, 0)
   .to("#scrollHint", { opacity:0, duration:0.15 }, 0)
-  .to("#mainNav", { opacity:1, y:0, pointerEvents:"auto", duration:0.4 }, 0.5)
+  .to("#navWrap", { opacity:1, duration:0.4 }, 0.5)
+  .to("#mainNav", { y:0, pointerEvents:"auto", duration:0.4 }, 0.5)
   .to(["#edgeLeft","#edgeRight","#seal","#indexCount"], { opacity:1, duration:0.4 }, 0.5)
   .to("#kicker", { opacity:1, duration:0.3 }, 0.55)
   .to("#logoMark", { opacity:0, duration:0.2 }, 0.65)
