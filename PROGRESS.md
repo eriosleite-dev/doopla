@@ -1778,6 +1778,76 @@ branch (migration `0018`).
   explícito pra tirar só dali) — continua nos cards de planos e na CTA
   final.
 
+## 23. Cadastro reconstruído: sem escolha Artista/Booker, plano real, trial exposto direito
+
+- ✅ O usuário deixou claro (três vezes, cada vez mais explícito) que a
+  remoção parcial de perguntas do onboarding antigo (item 22) não
+  bastava — o problema estrutural era o `/cadastro` continuar abrindo
+  com "Tipo de conta: Artista / Booker/Assistente" como primeira
+  pergunta, resquício do produto de marketplace antigo. Corrigido de
+  verdade: o funil público (Home → Começar grátis) nunca mais mostra
+  esse seletor. `role` fica sempre `'artista'`. O seletor só existe
+  pra quem chega por um link explícito de booker (`?tipo=booker`), o
+  que preserva o cadastro de booker funcionando sem apagar essa parte
+  do produto/banco (dashboard de booker continua 100% intacto).
+- ✅ **Escolha de plano de verdade**: o `PlanStep` antigo (tier único
+  desatualizado, "R$19,90 no 1º mês → R$39,90/mês") virou dois cards
+  selecionáveis — Doopla R$29,90 e Doopla Pro R$59,90 — usando o preço
+  de `src/lib/market.ts` (o arquivo central criado no item de
+  internacionalização), não mais número solto no componente.
+  "7 dias grátis, sem cartão" nos dois. Pré-seleção vem de `?plano=` (o
+  mesmo parâmetro que os cards de planos da Home já mandam desde o
+  item 21), com fallback em `localStorage` pra sobreviver a um refresh
+  no meio do formulário, e fica gravada em `subscriptions.artist_plan`
+  (coluna nova, migration 0036) assim que a conta é criada — não
+  depende só do parâmetro da URL depois disso.
+- ✅ **O trial de 7 dias sem cartão já existia de verdade** — descoberto
+  ao investigar o schema antes de mexer: a trigger `handle_new_user`
+  (migration 0031) já cria toda assinatura de artista em
+  `status: 'trialing'` com `trial_ends_at = agora + 7 dias`, sem
+  processador de pagamento nenhum envolvido. Não foi inventado agora,
+  só exposto corretamente na tela nova (antes o `PlanStep` nem
+  mencionava isso claramente).
+- ✅ Adicionado um passo informativo (não é pergunta, não bloqueia
+  continuar) explicando o modo Conservador — "Você continua no
+  controle. Sua Doopla começa no modo Conservador e consulta você
+  antes de decisões comerciais importantes. Depois, se quiser, você
+  pode dar mais autonomia a ela em Minha Doopla." — na conclusão das
+  perguntas de perfil, como pedido explicitamente (não dentro de uma
+  etapa de cachê, que já não existe mais).
+- ⚠️ **Pendências que continuam fora desta sessão, agora com o motivo
+  técnico documentado**:
+  - **Interpretação por IA da resposta "Fale sobre o seu trabalho"**:
+    precisa de uma chamada real a um modelo de IA + um lugar pra
+    guardar o contexto estruturado extraído (profissão/segmento/tipo
+    de cliente) — hoje a resposta só é salva como texto livre em
+    `bio`, igual antes.
+  - **Resposta por áudio**: precisa de gravação/upload/transcrição —
+    infraestrutura nova, não existe nada disso no produto hoje.
+  - **"Criar conta" como primeira tela visual de verdade**: o
+    e-mail/senha continua sendo tecnicamente o ÚLTIMO passo do wizard
+    (a conta só é criada de fato nesse envio final, como sempre foi —
+    os passos anteriores só acumulam estado local no navegador). Não
+    reordenei isso porque mexe na wiring central de submissão do
+    formulário — risco alto pra um ganho de UX que não foi o ponto
+    central do pedido (o ponto central, resolvido, era não perguntar
+    Artista/Booker).
+  - **Persistência de onboarding entre sessões** (retomar depois que a
+    conta já existe, fechar e voltar dias depois): não existe nada
+    assim em nenhuma parte do produto hoje — exigiria um sistema de
+    sessão de onboarding resumível no servidor, trabalho novo e maior.
+- ✅ `npm run build`/`npx tsc --noEmit`/`npx eslint` limpos. Verificado
+  com Playwright: `/cadastro` sem seletor de tipo de conta (confirmado
+  programaticamente), `/cadastro?tipo=booker` com o seletor presente
+  (confirmado), e o primeiro passo real do fluxo do artista avançando
+  corretamente ("Pergunta 2 de 12: Qual é seu nome artístico?").
+  **Não consegui automatizar o clique-a-clique completo até a tela de
+  planos aqui no sandbox** (mesma fricção do Playwright com esse
+  formulário multi-etapa já relatada no item 22, não indício de bug) —
+  recomendo fortemente abrir `/cadastro?plano=pro` no navegador e
+  conferir visualmente que o card "Doopla Pro" aparece pré-selecionado
+  na etapa de planos.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
