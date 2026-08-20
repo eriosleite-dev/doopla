@@ -1243,6 +1243,44 @@ branch (migration `0018`).
   posicionamento AI-first, trocar os `#` pelos destinos reais. A Home
   nova é a fonte de verdade de posicionamento pra essa revisão, não o
   conteúdo antigo dessas páginas.
+- 🔜 Mesma pendência acima **também cobre** o rodapé: o da Home já usa
+  a logo real (`.foot-logo` com os olhos, clonado via JS do hero), mas
+  `legal-page.tsx` (usado por `/sobre`, `/termos`, `/privacidade`) só
+  tem "doopla" em texto puro sem logo nem rodapé de verdade, e
+  `dashboard-footer.tsx` também é só texto e ainda diz "Plataforma de
+  representação para artistas independentes" (copy do modelo antigo).
+  Corrigir junto quando essas páginas forem revisadas.
+
+## 12. Home — duas correções de diretriz (humano/booker 1.0 + Home geral)
+
+- ✅ **Humano/Booker não é feature comercial do 1.0.** Removido da Home
+  tudo que tratava intervenção humana como unidade comercial fixa:
+  "Atendimento humano avulso: R$49" (plano Doopla), "1 atendimento
+  humano incluído/mês" (Doopla Pro), o card "Precisa de uma pessoa de
+  verdade?" em "Feita com quem entende de booking", e a pergunta
+  "Existe atendimento humano?" do FAQ. A Doopla 1.0 é IA-first: a
+  hipótese a testar é se ela sozinha consegue conduzir o booking de
+  ponta a ponta. Humano vira backup operacional/aprendizado de beta,
+  não produto vendido — por isso não aparece mais na Home. Bookers
+  continuam existindo no ecossistema (não foram removidos como
+  conceito), só não são mais assumidos como destino automático de todo
+  booking.
+- ✅ **Home geral corrigida** (não é Home exclusiva de artista): hero
+  trocado pra "Toda carreira merece sua Doopla." (headline em
+  destaque/uppercase visual, `.hero-copy h1` novo) + subtexto "Um novo
+  jeito de cuidar dos seus bookings, sem precisar cuidar de tudo
+  sozinho. Do primeiro contato ao contrato fechado, tudo em um só
+  lugar.". Seção "O que sua Doopla faz" reescrita como "Tem booking pra
+  resolver? Manda pra Doopla." — abre com situações reais (precisa
+  negociar? cliente pediu desconto? etc.), repete "Manda pra Doopla."
+  como frase de marca, e troca os 6 cards por verbo por 7 cards por
+  situação (Negociação, Respostas e propostas, Follow up, Organização,
+  Contratos, Cobranças, Representação — este último reintroduz, de
+  forma leve, a ideia de conectar pessoas pra representação, sem
+  reconstruir o "quem é você"/matching do modelo antigo). Demonstração
+  de conversa continua incorporada na mesma seção, inalterada. Não
+  criada nenhuma comunicação que diminua agências — o texto não fala
+  de agências ainda, mantém a diretriz como guardrail pra copy futura.
 
 ## Como usar isso
 
