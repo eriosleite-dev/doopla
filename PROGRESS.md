@@ -1412,6 +1412,23 @@ branch (migration `0018`).
   disparando um hover programático e capturando o frame: confirma o
   pulo em andamento (squash-and-stretch visível nos dois olhos).
 
+## 17. CTAs e nav apontando pro cadastro/login de verdade
+
+- ✅ Os dois botões "Começar agora" (hero e CTA final) apontam pra
+  `/cadastro` — antes eram `href="#"`.
+- ✅ Adicionado "Criar conta" na nav, ao lado de "Entrar" (que já
+  apontava pro `/login`), como botão preto sólido (`.btn.btn-primary`
+  com modificador `.nav-cta` pra caber no tamanho da barra). Testado
+  via Playwright nos dois estados da nav (sobre o hero vermelho e
+  depois de rolar, com fundo claro) — botão aparece sólido e legível
+  nos dois.
+- ✅ Verificado com Playwright: `getAttribute('href')` dos três links
+  confirma `/cadastro` (hero), `/cadastro` (CTA final) e presença do
+  novo link "Criar conta" na nav.
+- Não mexi em nenhuma página interna (`/login`, `/cadastro`, etc) além
+  de apontar os links pra elas — só a Home foi alterada, como
+  combinado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

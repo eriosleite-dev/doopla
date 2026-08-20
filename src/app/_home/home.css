@@ -34,6 +34,7 @@
   #home-marketing nav.on-light{ color:var(--black); background:rgba(251,249,242,.78); }
   #home-marketing nav .links{ display:flex; gap:44px; align-items:center; }
   #home-marketing nav a{ color:inherit; text-decoration:none; font-weight:600; font-size:.78rem; letter-spacing:.12em; text-transform:uppercase; }
+  #home-marketing nav .btn.nav-cta{ padding:9px 20px; font-size:.72rem; }
   #home-marketing .nav-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.25rem; display:flex; align-items:center; }
   #home-marketing .eye-slot{ width:.6em; height:.6em; display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; }
   #home-marketing .eye-slot .eye{ width:100%; height:100%; max-width:none; max-height:none; }
