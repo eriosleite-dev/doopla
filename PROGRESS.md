@@ -1391,6 +1391,27 @@ branch (migration `0018`).
   de 9 seções e pede reduzir ao máximo essa seção especificamente,
   então esperando confirmação de encaixe antes de construir.
 
+## 16. Interação "Você × Sua Doopla" — restaurada como seção própria compacta
+
+- ✅ Usuário escolheu (pergunta feita via AskUserQuestion): seção
+  própria e compacta entre "O que sua Doopla faz" e "Feita com quem
+  entende de booking" — não dentro da primeira, não como uma segunda
+  hero. Padding reduzido de 100px pra 64px, olhos de 150px pra 120px
+  (90px no mobile), gap do `.eyes-stage` ajustado pra ficar mais perto
+  da mesma proporção olho/distância dos olhos do logo grande do hero.
+- ✅ Mecânica original restaurada (posição sempre absoluta, nunca
+  incremento relativo — a mesma trava anti-deriva de sempre): entrada
+  com pulos largos convergindo pro distanciamento fixo, depois loop
+  contínuo de pulinhos no lugar com pausa de 0.7s entre repetições.
+  Verificado programaticamente via Playwright: a posição X das duas
+  colunas fica em exatamente 0 em 8 amostras ao longo de 4s de loop —
+  zero deriva confirmada, não só por inspeção visual.
+- ✅ **Novo**: hover no bloco dos olhos cancela qualquer timeline ativa
+  e a pausa pendente, e dispara o pulo de entrada de novo na hora —
+  funciona mesmo com o loop automático no meio da pausa. Testado
+  disparando um hover programático e capturando o frame: confirma o
+  pulo em andamento (squash-and-stretch visível nos dois olhos).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

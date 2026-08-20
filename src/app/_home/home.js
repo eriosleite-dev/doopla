@@ -150,4 +150,95 @@ stageTl
   .to("#wordmark", { y:-40, duration:0.35 }, 1.15)
   .to("#kicker", { y:-40, opacity:0, duration:0.3 }, 1.15)
   .to("#heroCopy", { opacity:1, y:0, duration:0.5 }, 1.25);
+
+/* ===== interação dos olhos: Você × Sua Doopla ===== */
+(function initEyesInteraction(){
+  const colA=document.getElementById('colA'), colB=document.getElementById('colB');
+  const eyeA=document.getElementById('eyeA'), eyeB=document.getElementById('eyeB');
+  const pA=document.getElementById('pA'), pB=document.getElementById('pB');
+  const shA=document.getElementById('shA'), shB=document.getElementById('shB');
+  const stage=document.getElementById('eyesStage');
+  if(!colA || !stage) return; // seção não presente nesta página
+
+  const MAX = 38;
+  function look(el,x,y,dur=0.4,ease="power3.out"){
+    x = Math.max(-MAX, Math.min(MAX, x)); y = Math.max(-MAX, Math.min(MAX, y));
+    return gsap.to(el,{x,y,duration:dur,ease});
+  }
+  function blink(eye,dur=0.09){ return gsap.to(eye,{scaleY:0.1,duration:dur,ease:"power1.in",yoyo:true,repeat:1,transformOrigin:"center"}); }
+
+  // pulo que sempre mira uma posição X ABSOLUTA (nunca soma relativo, então nunca dá deriva/sobreposição ao longo dos loops)
+  function jumpTo(col, eye, shadow, x, duration=0.34){
+    const tl = gsap.timeline();
+    const anticip = duration*0.14;   // pequena antecipação antes de sair do chão
+    const rise = duration*0.36;      // subida (desacelera, tipo gravidade)
+    const fall = duration*0.32;      // queda (acelera)
+    const land = duration*0.18;      // impacto + assentamento
+
+    tl.to(eye,{scaleY:0.86,scaleX:1.1,duration:anticip,ease:"power1.out"},0)
+      .to(shadow,{scale:0.9,duration:anticip,ease:"power1.out"},0);
+    tl.to(col,{x,duration:rise+fall,ease:"power1.inOut"},anticip);
+    tl.to(col,{y:-30,duration:rise,ease:"power2.out"},anticip)
+      .to(eye,{scaleY:1.16,scaleX:0.9,duration:rise,ease:"power2.out"},anticip)
+      .to(shadow,{scale:0.55,opacity:0.12,duration:rise,ease:"power1.out"},anticip);
+    tl.to(col,{y:0,duration:fall,ease:"power2.in"},anticip+rise)
+      .to(eye,{scaleY:1,scaleX:1,duration:fall,ease:"power1.in"},anticip+rise)
+      .to(shadow,{scale:1,opacity:0.25,duration:fall,ease:"power1.in"},anticip+rise);
+    tl.to(eye,{scaleY:0.84,scaleX:1.14,duration:land*0.35,ease:"power1.out"},anticip+rise+fall)
+      .to(eye,{scaleY:1,scaleX:1,duration:land*0.9,ease:"elastic.out(1,0.55)"},anticip+rise+fall+land*0.3);
+    return tl;
+  }
+  // pulinho no lugar (nunca move x, só sobe/desce com squash-and-stretch)
+  function hopInPlace(col, eye, shadow, duration=0.42){ return jumpTo(col, eye, shadow, 0, duration); }
+
+  let activeTl = null;
+  let pendingCall = null;
+
+  // ENTRADA: pulam um em direção ao outro até convergir na posição final de
+  // descanso (mesma proporção de distância dos olhos do logo, dada pelo gap
+  // do .eyes-stage), depois entra no loop assentado.
+  function entrance(){
+    const span = Math.min(stage.clientWidth * 0.5, 220);
+    const jumpsA = [-span, span*0.4, 0];
+    const jumpsB = [span, -span*0.4, 0];
+    const tl = gsap.timeline({ onComplete: startSettledLoop });
+    jumpsA.forEach((x,i)=> tl.add(jumpTo(colA,eyeA,shA,x,0.6), i*0.5));
+    jumpsB.forEach((x,i)=> tl.add(jumpTo(colB,eyeB,shB,x,0.6), i*0.5+0.16));
+    activeTl = tl;
+  }
+
+  // ESTADO ASSENTADO (loop contínuo, com pausa entre repetições): ficam no
+  // distanciamento fixo, se olham, pulinhos no mesmo lugar.
+  function settledLoop(){
+    const tl = gsap.timeline({ onComplete:()=>{ pendingCall = gsap.delayedCall(0.7, settledLoop); } });
+    tl.add(look(pA,-24,13)).add(look(pB,24,-15),"<");
+    tl.to({},{duration:0.8});
+    tl.add(look(pA,28,0,0.3)); tl.add(hopInPlace(colA,eyeA,shA),"-=0.05");
+    tl.to({},{duration:0.15});
+    tl.add(look(pB,-28,0,0.3)); tl.add(hopInPlace(colB,eyeB,shB),"-=0.05");
+    tl.to({},{duration:0.2});
+    tl.add(hopInPlace(colA,eyeA,shA)); tl.to({},{duration:0.1}); tl.add(hopInPlace(colB,eyeB,shB)); tl.to({},{duration:0.1});
+    tl.add(hopInPlace(colA,eyeA,shA)).add(hopInPlace(colB,eyeB,shB),"<");
+    tl.add(hopInPlace(colA,eyeA,shA)).add(hopInPlace(colB,eyeB,shB),"<");
+    tl.add(look(pA,32,0,0.35)).add(look(pB,-32,0,0.35),"<");
+    tl.to({},{duration:0.55});
+    tl.add(blink(eyeA)).add(blink(eyeB),"<");
+    tl.to({},{duration:1.2});
+    activeTl = tl;
+  }
+  function startSettledLoop(){ settledLoop(); }
+
+  // hover: dispara o pulo de novo na hora, do mesmo jeito que a entrada,
+  // mesmo que o loop automático esteja no meio da pausa entre repetições.
+  function retrigger(){
+    if(pendingCall){ pendingCall.kill(); pendingCall = null; }
+    if(activeTl){ activeTl.kill(); activeTl = null; }
+    gsap.set([pA,pB], { x:0, y:0 });
+    entrance();
+  }
+  stage.addEventListener('mouseenter', retrigger);
+
+  // dispara a entrada só uma vez, quando a seção entra na tela
+  ScrollTrigger.create({ trigger:"#home-marketing .eyes-section", start:"top 70%", once:true, onEnter:entrance });
+})();
 })();
