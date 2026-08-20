@@ -1732,6 +1732,52 @@ branch (migration `0018`).
   Playwright: texto e `href` de cada CTA conferidos, FAQ com 7 itens
   confirmado, screenshot dos cards de planos e da CTA final.
 
+## 22. Onboarding: sem cachê, sem lista fixa de profissão (finalmente mexendo no /cadastro real)
+
+- ✅ Primeira vez nesta sessão que uma mudança de conteúdo toca o
+  `/cadastro` de verdade (antes só os *links* pra ele eram alterados,
+  nunca o conteúdo — instrução explícita e antiga do usuário). O pedido
+  desta vez foi explícito e específico o suficiente pra justificar:
+  duas correções concretas no wizard de onboarding do artista.
+- ✅ **Removida a pergunta de cachê** ("Qual sua faixa de cachê ou
+  ticket médio?", já opcional mas ainda perguntada). Passa a ser
+  aprendida depois, no contexto de um booking real — continua editável
+  em Minha Doopla (perfil), o campo já existe lá.
+- ✅ **Removidas as listas fixas que deixavam o onboarding "cara de
+  DJ"**: categoria (DJ/Músico/Modelo/Ator/Fotógrafo/...), tipos de
+  trabalho (Shows/Casamentos/Festas corporativas/...) e nichos fixos
+  (Marcas/Eventos sociais/Festivais/...). Substituídas por uma pergunta
+  aberta só: "Fale sobre o seu trabalho. O que você faz?" — reaproveita
+  o campo `bio` já existente (mesmo texto usado no perfil público),
+  então nada quebra a jusante.
+- ⚠️ **Fora do escopo desta sessão, documentado explicitamente**: a
+  interpretação por IA da resposta livre (extrair profissão/segmento/
+  tipo de cliente como contexto estruturado) e a opção de responder por
+  áudio. Os dois exigem trabalho novo de verdade (chamada a um modelo,
+  schema pra guardar o contexto estruturado, gravação/transcrição de
+  áudio) — a resposta hoje só é salva como texto livre em `bio`, igual
+  já funcionava antes.
+- ✅ Conferido que `categoria`/`workTypes`/`mercados`/`feeRange` do
+  artista não têm nenhuma dependência quebrada: `ONBOARDING_FIELDS`
+  em `auth/actions.ts` só encaminha o que veio preenchido (nenhum é
+  campo obrigatório no banco), e `totalSteps` no wizard é calculado
+  dinamicamente a partir do tamanho do array de perguntas — não tem
+  contagem fixa pra corrigir.
+- ✅ `npm run build`/`npx tsc --noEmit`/`npx eslint` limpos. **Não
+  consegui automatizar um clique-a-clique completo do wizard aqui no
+  sandbox** (fricção do Playwright com o form multi-etapa client-side,
+  não indício de bug real) — recomendo abrir `/cadastro`, escolher
+  Artista e conferir manualmente que a pergunta de cachê e as listas
+  antigas não aparecem mais, e que "Fale sobre o seu trabalho" aparece
+  no lugar certo.
+- ✅ Bônus pequeno resolvido no caminho: os dois botões "Começar
+  grátis" dos cards de Planos estavam desalinhados (um mais alto que o
+  outro, por causa dos cards terem tamanhos de conteúdo diferentes).
+  Corrigido ancorando os dois no fim do card via `margin-top:auto`.
+- ✅ Também removida a nota "7 dias grátis. Sem cartão." do hero (pedido
+  explícito pra tirar só dali) — continua nos cards de planos e na CTA
+  final.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
