@@ -58,6 +58,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'pendingBookerInvite',
     'founderVoucherCode',
     'pendingInviteToken',
+    'artistPlan',
   ],
   booker: [
     'modoTrabalho',

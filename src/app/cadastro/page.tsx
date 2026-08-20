@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { eyebrowClass } from '@/app/auth/ui';
+import type { PlanId } from '@/lib/market';
 import { SignupForm } from './signup-form';
 
 export const metadata: Metadata = {
@@ -18,10 +19,20 @@ function isSignupRole(value: string | undefined): value is SignupRole {
   return VALID_ROLES.includes(value as SignupRole);
 }
 
+function isPlanId(value: string | undefined): value is PlanId {
+  return value === 'doopla' || value === 'pro';
+}
+
 export default async function CadastroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ role?: string; tipo?: string; ref?: string; invite?: string }>;
+  searchParams: Promise<{
+    role?: string;
+    tipo?: string;
+    ref?: string;
+    invite?: string;
+    plano?: string;
+  }>;
 }) {
   const params = await searchParams;
   // `tipo` é o nome pedido pela especificação de preços pros CTAs da
@@ -33,6 +44,11 @@ export default async function CadastroPage({
     : isSignupRole(params.role)
       ? params.role
       : 'artista';
+  // O funil público (Home → Começar grátis) nunca pergunta Artista ou
+  // Booker antes de mais nada — o seletor só aparece pra quem chegou
+  // por um link explícito de booker (ex: convite de agência antigo).
+  const showRolePicker = params.tipo === 'booker' || params.role === 'booker';
+  const planIntent = isPlanId(params.plano) ? params.plano : undefined;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">
@@ -52,7 +68,13 @@ export default async function CadastroPage({
           </p>
         </div>
 
-        <SignupForm defaultRole={defaultRole} referralCode={params.ref} inviteToken={params.invite} />
+        <SignupForm
+          defaultRole={defaultRole}
+          referralCode={params.ref}
+          inviteToken={params.invite}
+          showRolePicker={showRolePicker}
+          planIntent={planIntent}
+        />
 
         {!params.invite && (
           <p className="text-center text-[12px] text-[var(--ink)]/45">

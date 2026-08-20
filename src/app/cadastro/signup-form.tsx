@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 
 import { signupAction, type AuthFormState } from '@/app/auth/actions';
 import {
@@ -25,6 +25,15 @@ import {
   REGION_SCOPE_OPTIONS,
   SPECIALTY_AREA_OPTIONS,
 } from '@/lib/matching-options';
+import { MARKETS, TRIAL_DAYS, type PlanId } from '@/lib/market';
+
+// Chave do localStorage pra lembrar a intenção de plano vinda do card
+// clicado na Home (?plano=doopla|pro) mesmo se a página recarregar
+// antes do cadastro terminar. Isso é só sobrevivência a refresh
+// DENTRO deste formulário de uma página só — retomar um onboarding já
+// iniciado depois de a conta existir é um sistema diferente (sessão
+// resumível no servidor), que não existe ainda neste produto.
+const PLAN_INTENT_KEY = 'doopla_plan_intent';
 
 const initialState: AuthFormState = {};
 
@@ -58,6 +67,7 @@ const ROLE_OPTIONS: { value: SignupRole; label: string; hint: string }[] = [
 // 'invites'/'single-invite': coleta de convite opcional (nunca bloqueia
 //   o cadastro) — múltiplos artistas (booker) ou um único booker (artista).
 // 'choice-cards': seleção única com descrição por opção.
+// 'info': tela só informativa, sem pergunta — nunca bloqueia continuar.
 type WizardStep = {
   formKey: string;
   kind:
@@ -69,7 +79,8 @@ type WizardStep = {
     | 'single-invite'
     | 'choice-cards'
     | 'plan'
-    | 'plan-booker';
+    | 'plan-booker'
+    | 'info';
   label: string;
   hint?: string;
   placeholder?: string;
@@ -403,10 +414,34 @@ const BOOKER_INVITES_STEP: WizardStep = {
   hint: 'Adicione quem já trabalha com você.',
 };
 
+// Explicação do modo Conservador: pertence à conclusão de "Prepare sua
+// Doopla", não a uma etapa de cachê (removida — ver PROGRESS.md). Só
+// informa, não pergunta nada — por isso 'info', não bloqueia continuar.
+const ARTISTA_MODO_CONSERVADOR_STEP: WizardStep = {
+  formKey: 'modoConservadorVisto',
+  kind: 'info',
+  label: 'Você continua no controle',
+};
+
+function ModoConservadorStep() {
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper-dim)] p-6">
+      <span className="font-doopla-display text-lg font-semibold">Você continua no controle</span>
+      <p className="text-sm text-[var(--ink)]/80">
+        Sua Doopla começa no modo <strong>Conservador</strong> e consulta você antes de decisões
+        comerciais importantes.
+      </p>
+      <p className="text-sm text-[var(--ink)]/80">
+        Depois, se quiser, você pode dar mais autonomia a ela em Minha Doopla.
+      </p>
+    </div>
+  );
+}
+
 const ARTISTA_PLANO_STEP: WizardStep = {
-  formKey: 'planoVisto',
+  formKey: 'artistPlan',
   kind: 'plan',
-  label: 'Seu plano na doopla',
+  label: 'Escolha seu plano',
 };
 
 const BOOKER_PLANO_STEP: WizardStep = {
@@ -415,41 +450,100 @@ const BOOKER_PLANO_STEP: WizardStep = {
   label: 'Seu plano na doopla',
 };
 
+const PLAN_CARDS: { id: PlanId; name: string; description: string; features: string[] }[] = [
+  {
+    id: 'doopla',
+    name: 'Doopla',
+    description: 'Sua Doopla trabalha com você.',
+    features: [
+      'Até 5 novos bookings por mês',
+      'Sua Doopla atende, negocia e acompanha cada booking até o fechamento',
+      'Contratos e acompanhamento de pagamentos',
+      'Comunidade Doopla',
+    ],
+  },
+  {
+    id: 'pro',
+    name: 'Doopla Pro',
+    description: 'Mais estrutura para fazer sua carreira crescer.',
+    features: [
+      'Bookings ilimitados',
+      'Especialista humano se precisar',
+      'Inteligência sobre cachês, clientes e negociações',
+      'Materiais profissionais para sua carreira',
+    ],
+  },
+];
+
 // Sem cobrança de verdade ainda (nenhum processador de pagamento
 // integrado) — "confirmar assinatura" grava estado real no banco
-// (subscriptions, migration 0031), não cobra cartão. Regra pública:
-// 7 dias grátis -> R$19,90 no 1º mês -> R$39,90/mês. O voucher Founder
-// (condição especial, nunca pública) é aplicado no próprio cadastro se
-// um código válido for informado aqui — ver ESPECIFICAÇÃO FINAL DE
-// PREÇOS.
-function PlanStep() {
+// (subscriptions.artist_plan, migration 0036), não cobra cartão.
+// 7 dias grátis, sem cartão, pros dois planos — a escolha aqui só
+// marca qual plano a assinatura em trial já nasce apontando; o
+// artista continua podendo trocar depois em Minha Doopla, antes do
+// trial acabar. O voucher Founder (condição especial, nunca pública)
+// é aplicado no próprio cadastro se um código válido for informado
+// aqui.
+function PlanStep({ initialPlan }: { initialPlan: PlanId }) {
+  const [selected, setSelected] = useState<PlanId>(initialPlan);
   const [showVoucher, setShowVoucher] = useState(false);
+  const market = MARKETS.BR;
+
+  function choose(plan: PlanId) {
+    setSelected(plan);
+    try {
+      window.localStorage.setItem(PLAN_INTENT_KEY, plan);
+    } catch {
+      // localStorage indisponível (modo privado etc.) — a escolha ainda
+      // vale pra essa sessão, só não sobrevive a um refresh.
+    }
+  }
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-[var(--ink)]/10 bg-[var(--paper-dim)] p-6">
-      <div className="flex items-center justify-between">
-        <span className="font-doopla-display text-lg font-semibold">doopla</span>
-        <span className="font-doopla-mono rounded-full bg-[var(--accent)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--ink)]">
-          Oferta de lançamento
-        </span>
+    <div className="flex flex-col gap-4">
+      <input type="hidden" name="artistPlan" value={selected} />
+      <p className="font-doopla-mono text-[11px] uppercase tracking-[.1em] text-[var(--ink)]/50">
+        {TRIAL_DAYS} dias grátis, sem cartão, nos dois planos
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {PLAN_CARDS.map((card) => {
+          const isSelected = selected === card.id;
+          return (
+            <button
+              key={card.id}
+              type="button"
+              onClick={() => choose(card.id)}
+              className={`flex flex-col gap-3 rounded-2xl border p-5 text-left transition-colors ${
+                isSelected
+                  ? 'border-[var(--ink)] bg-[var(--paper-dim)]'
+                  : 'border-[var(--ink)]/10 hover:border-[var(--ink)]/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-doopla-display text-lg font-semibold">{card.name}</span>
+                {isSelected && (
+                  <span className="font-doopla-mono rounded-full bg-[var(--accent)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[.08em] text-[var(--ink)]">
+                    Selecionado
+                  </span>
+                )}
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className="font-doopla-display text-2xl font-semibold text-[var(--accent-ink)]">
+                  {market.currencySymbol}
+                  {market.pricing[card.id].toFixed(2).replace('.', ',')}
+                </span>
+                <span className="text-sm text-[var(--ink)]/60">/mês</span>
+              </div>
+              <p className="text-sm text-[var(--ink)]/70">{card.description}</p>
+              <ul className="flex flex-col gap-1.5 text-sm text-[var(--ink)]/75">
+                {card.features.map((f) => (
+                  <li key={f}>• {f}</li>
+                ))}
+              </ul>
+            </button>
+          );
+        })}
       </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-sm text-[var(--ink)]/40 line-through">R$39,90/mês</span>
-        <span className="font-doopla-display text-3xl font-semibold text-[var(--accent-ink)]">
-          R$19,90
-        </span>
-        <span className="text-sm text-[var(--ink)]/60">no 1º mês</span>
-      </div>
-
-      <ul className="flex flex-col gap-1.5 text-sm text-[var(--ink)]/75">
-        <li>• Plano: doopla Artista</li>
-        <li>• 7 dias grátis, sem cobrança</li>
-        <li>• 1º mês (após o teste): R$19,90</li>
-        <li>• A partir do 2º mês: R$39,90/mês</li>
-        <li>• Cobrança mensal, recorrente</li>
-        <li>• Começa a valer só depois dos 7 dias grátis</li>
-        <li>• Cancela quando quiser, sem multa — sem cobrança após o cancelamento</li>
-      </ul>
 
       {showVoucher ? (
         <label className="flex flex-col gap-1.5">
@@ -461,8 +555,8 @@ function PlanStep() {
             className={fieldInputClass}
           />
           <span className="text-xs text-[var(--ink)]/50">
-            Se o código for válido, sua assinatura fica em R$19,90/mês enquanto continuar ativa —
-            não vira R$39,90 depois.
+            Se o código for válido, o preço mensal do seu plano fica travado nessa condição
+            enquanto a assinatura continuar ativa.
           </span>
         </label>
       ) : (
@@ -534,6 +628,7 @@ function getBookerSteps(answers: Record<string, string>): WizardStep[] {
 // reduzido pra sempre.
 const ARTISTA_INVITED_STEPS: WizardStep[] = [
   ...ARTISTA_CARREIRA_STEPS.slice(0, 2),
+  ARTISTA_MODO_CONSERVADOR_STEP,
   ARTISTA_PLANO_STEP,
 ];
 
@@ -553,6 +648,7 @@ function getQuestionSteps(
       if (answers.temBooker === 'Sim, quero trazer essa pessoa pra doopla') {
         steps.push(ARTISTA_BOOKER_INVITE_STEP);
       }
+      steps.push(ARTISTA_MODO_CONSERVADOR_STEP);
       steps.push(ARTISTA_PLANO_STEP);
     }
     return steps;
@@ -564,10 +660,18 @@ export function SignupForm({
   defaultRole,
   referralCode,
   inviteToken,
+  showRolePicker = false,
+  planIntent,
 }: {
   defaultRole: SignupRole;
   referralCode?: string;
   inviteToken?: string;
+  // Só true quando alguém chega por um link explícito de booker
+  // (?tipo=booker / ?role=booker) — o funil público da Home (Começar
+  // grátis) nunca pergunta Artista ou Booker antes de mais nada.
+  showRolePicker?: boolean;
+  // Intenção de plano vinda do card clicado na Home (?plano=doopla|pro).
+  planIntent?: PlanId;
 }) {
   const [state, formAction, pending] = useActionState(
     signupAction,
@@ -576,6 +680,31 @@ export function SignupForm({
   const [role, setRole] = useState<SignupRole>(defaultRole);
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Prioridade: ?plano= da URL > localStorage (sobrevive a um refresh
+  // no meio do cadastro) > 'doopla' como padrão. Lido uma vez, de forma
+  // lazy, no próprio useState — seguro porque esse valor só afeta o
+  // PlanStep, que nunca faz parte da árvore renderizada na primeira
+  // tela do wizard (stepIndex começa em 0, o plano vem bem depois),
+  // então não existe risco de mismatch de hidratação aqui.
+  const [resolvedPlan] = useState<PlanId>(() => {
+    if (planIntent) return planIntent;
+    if (typeof window === 'undefined') return 'doopla';
+    try {
+      const saved = window.localStorage.getItem(PLAN_INTENT_KEY);
+      if (saved === 'doopla' || saved === 'pro') return saved;
+    } catch {
+      // sem localStorage — fica no padrão 'doopla'.
+    }
+    return 'doopla';
+  });
+  useEffect(() => {
+    if (!planIntent) return;
+    try {
+      window.localStorage.setItem(PLAN_INTENT_KEY, planIntent);
+    } catch {
+      // sem localStorage — a intenção ainda vale pra essa visita.
+    }
+  }, [planIntent]);
   const [multiSelections, setMultiSelections] = useState<
     Record<string, string[]>
   >({});
@@ -690,7 +819,8 @@ export function SignupForm({
     currentStep?.kind === 'invites' ||
     currentStep?.kind === 'single-invite' ||
     currentStep?.kind === 'plan' ||
-    currentStep?.kind === 'plan-booker'
+    currentStep?.kind === 'plan-booker' ||
+    currentStep?.kind === 'info'
       ? true
       : currentStep?.kind === 'chip-multi'
         ? currentMultiSelected.length > 0 &&
@@ -703,7 +833,7 @@ export function SignupForm({
         <p className="rounded-[12px] bg-[var(--paper-dim)] p-3 text-[13px] text-[var(--ink)]/70">
           Você está criando uma conta de artista pra aceitar um convite. Isso não muda depois.
         </p>
-      ) : (
+      ) : showRolePicker ? (
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-medium text-[var(--ink)]">
             Tipo de conta
@@ -736,7 +866,7 @@ export function SignupForm({
             ))}
           </div>
         </fieldset>
-      )}
+      ) : null}
 
       <form action={formAction} className="flex flex-col gap-4">
         <input type="hidden" name="role" value={role} />
@@ -748,12 +878,12 @@ export function SignupForm({
 
         {currentStep && (
           <div className="flex flex-col gap-3">
-            {currentStep.kind !== 'plan' && currentStep.kind !== 'plan-booker' && (
+            {currentStep.kind !== 'plan' && currentStep.kind !== 'plan-booker' && currentStep.kind !== 'info' && (
               <span className={eyebrowClass}>
                 Pergunta {stepIndex + 1} de {totalSteps}
               </span>
             )}
-            {currentStep.kind !== 'plan' && currentStep.kind !== 'plan-booker' && (
+            {currentStep.kind !== 'plan' && currentStep.kind !== 'plan-booker' && currentStep.kind !== 'info' && (
               <>
                 <label className={fieldLabelClass}>{currentStep.label}</label>
                 {currentStep.hint && (
@@ -790,9 +920,11 @@ export function SignupForm({
               />
             )}
 
-            {currentStep.kind === 'plan' && <PlanStep />}
+            {currentStep.kind === 'plan' && <PlanStep initialPlan={resolvedPlan} />}
 
             {currentStep.kind === 'plan-booker' && <BookerPlanStep />}
+
+            {currentStep.kind === 'info' && <ModoConservadorStep />}
 
             {currentStep.kind === 'chip' && (
               <div className="flex flex-wrap gap-2">
@@ -1080,7 +1212,11 @@ export function SignupForm({
                 disabled={pending}
                 className={primaryButtonClass}
               >
-                {pending ? 'Criando conta…' : 'Criar conta'}
+                {pending
+                  ? 'Criando conta…'
+                  : role === 'artista'
+                    ? `Iniciar ${TRIAL_DAYS} dias grátis`
+                    : 'Criar conta'}
               </button>
             </div>
           </div>
