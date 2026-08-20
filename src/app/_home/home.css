@@ -116,7 +116,6 @@
   #home-marketing .btn-primary{ background:var(--black); color:var(--off); }
   #home-marketing .btn-ghost{ border:1px solid rgba(251,249,242,.5); color:var(--off); }
   #home-marketing .btn-invert{ background:var(--off); color:var(--black); }
-  #home-marketing .trial-note{ display:block; margin-top:14px; font-family:'IBM Plex Mono',monospace; font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--black); opacity:.7; }
   #home-marketing .scroll-hint{
     position:absolute; bottom:38px; left:50%; transform:translateX(-50%); color:var(--black);
     font-weight:600; font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
