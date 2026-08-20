@@ -60,8 +60,14 @@ document.querySelectorAll('#home-marketing section[data-nav]').forEach(sec=>{
 (function(){
   const marquee = document.querySelector('#home-marketing .marquee');
   if(!marquee) return;
-  const st = ScrollTrigger.create({
-    trigger:"#home-marketing .stage", start:"top top", end:"bottom top",
+  // end:"bottom bottom" (não "bottom top") de propósito: precisa ser
+  // exatamente o mesmo ponto de scroll em que o stageTl solta o pin do
+  // hero (ver scrollTrigger do stageTl logo abaixo, mesmo end) — que é
+  // também quando o botão "Começar agora" já terminou de aparecer. Com
+  // "bottom top" a marquee ficava presa por mais ~100vh depois disso,
+  // sobrepondo a seção seguinte enquanto ela já rolava por baixo.
+  ScrollTrigger.create({
+    trigger:"#home-marketing .stage", start:"top top", end:"bottom bottom",
     onLeave:()=> marquee.classList.add('marquee-hide'),
     onEnterBack:()=> marquee.classList.remove('marquee-hide')
   });
@@ -69,9 +75,11 @@ document.querySelectorAll('#home-marketing section[data-nav]').forEach(sec=>{
   // além do hero (link direto pra uma âncora depois dele, tipo
   // /#o-que-sua-doopla-faz vindo do overlay do menu), o ScrollTrigger
   // nasce direto no estado "já passou", sem transição nenhuma pra
-  // disparar o onLeave — daí a marquee ficava presa visível, sobrepondo
-  // a seção seguinte. Corrige o estado logo na criação.
-  if(!st.isActive) marquee.classList.add('marquee-hide');
+  // disparar o onLeave. Corrige isso olhando o scroll bruto (não
+  // st.isActive: medido logo na criação, antes do layout assentar —
+  // no boot ele dava falso negativo mesmo com scrollY 0, escondendo a
+  // marquee no carregamento normal do topo da página).
+  if(window.scrollY > 20) marquee.classList.add('marquee-hide');
 })();
 
 /* ===== olhos grandes do hero: agora usam o mesmo motion de "pulo" da

@@ -1652,6 +1652,49 @@ branch (migration `0018`).
   scroll gradual antes): antes do fix a marquee ficava visível
   sobrepondo o título; depois do fix ela nasce corretamente escondida.
 
+## 20. Marquee: fim do "descolamento" do ponto certo (Começar agora) + copy de Planos/Pro
+
+- ✅ **Bug real, achado pelo usuário via vídeo**: a marquee continuava
+  visível ~100vh (uma altura de viewport inteira) depois do botão
+  "Começar agora" já ter aparecido, sobrepondo a seção seguinte
+  enquanto ela já rolava por baixo. Causa: o ScrollTrigger que esconde
+  a marquee usava `end:"bottom top"` enquanto o `stageTl` (que solta o
+  pin do hero) usa `end:"bottom bottom"` — são pontos de scroll
+  diferentes, um viewport inteiro de distância um do outro. Corrigido
+  igualando os dois `end`, então a marquee agora some exatamente
+  quando o pin do hero solta (que é também quando "Começar agora" já
+  terminou de aparecer), não 100vh depois. Verificado programaticamente:
+  botão CTA aparece em scrollY≈2000, marquee some em scrollY≈2300 (gap
+  pequeno, não mais ~100vh), zero sobreposição detectada com o título
+  da seção seguinte durante um scroll gradual completo.
+- ✅ **Regressão pega e corrigida no mesmo processo**: a correção anterior
+  pro bug do link direto (`st.isActive` medido logo após criar o
+  ScrollTrigger) dava falso negativo mesmo em carregamento normal do
+  topo da página — a medição acontecia cedo demais, antes do layout
+  assentar, escondendo a marquee por engano mesmo em scrollY 0.
+  Trocado por uma checagem direta de `window.scrollY > 20`, sem
+  depender de medição do GSAP nesse instante específico. Testado os
+  dois cenários (carregamento normal do topo E link direto pra âncora
+  depois do hero) — os dois corretos agora.
+- ✅ Marquee: aumentado de 2 pra 6 repetições do conteúdo, pra não deixar
+  buraco preto vazio em telas muito largas (reportado com print).
+- ✅ Copy: kicker da seção "Tem booking" agora é "Mais que automação.
+  Representação." (era "Representação, não automação"); headline virou
+  "Você faz seu trabalho. Sua Doopla cuida do booking." com "Sua Doopla
+  resolve." embaixo da lista; "Como funciona" agora é "Tem booking? Tem
+  Doopla."; Planos agora é "Mais estrutura. Sem comissão por booking.";
+  lista do Doopla Pro atualizada (Especialista humano se precisar,
+  Inteligência sobre cachês/clientes/negociações, Materiais
+  profissionais, Benefícios com parceiros, rede de bookers "Em breve").
+  CTA final "Toda carreira merece sua Doopla" (sem ponto final) agora
+  em preto (era creme/branco); nav do header voltou a dizer "Criar
+  conta" (revertendo a padronização "Começar agora" só pra esse botão
+  específico, por pedido explícito do usuário).
+- ✅ `npm run build`/`npx eslint` limpos em cada rodada. Tudo testado
+  com Playwright local reproduzindo os cenários exatos reportados
+  (scroll gradual completo, link direto pra âncora, carregamento
+  normal do topo).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
