@@ -7,9 +7,9 @@
     </div>
     <div class="links">
       <a href="#como-funciona">Menu</a>
-      <a href="#">Sobre</a>
+      <a href="/sobre">Sobre</a>
       <a href="/login">Entrar</a>
-      <a href="/cadastro" class="btn btn-primary nav-cta">Começar agora</a>
+      <a href="/cadastro" class="btn btn-primary nav-cta">Criar conta</a>
     </div>
   </nav>
   <div class="marquee">
@@ -65,7 +65,7 @@
     </div>
 
     <div class="hero-copy" id="heroCopy">
-      <h1>Toda carreira merece sua Doopla.</h1>
+      <h1>Toda carreira merece sua Doopla</h1>
       <p>Um novo jeito de cuidar dos seus bookings, sem precisar cuidar de tudo sozinho. Do primeiro contato ao contrato fechado, tudo em um só lugar.</p>
       <a href="/cadastro" class="btn btn-primary">Começar agora</a>
     </div>
@@ -75,9 +75,9 @@
 </section>
 
 <!-- 1. TEM BOOKING PRA RESOLVER? (unificada com a interação dos olhos) -->
-<section class="manda" data-nav="red">
+<section class="manda" id="o-que-sua-doopla-faz" data-nav="red">
   <div class="manda-copy">
-    <h2>Tem booking<br>pra<br>resolver?</h2>
+    <h2>Você faz seu trabalho.<br>Sua Doopla cuida do booking.</h2>
     <div class="situacoes">
       <div class="situacao">
         <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg></span>
@@ -104,6 +104,7 @@
         <p>Chegou a hora de cobrar?</p>
       </div>
     </div>
+    <p class="manda-note">Sua Doopla resolve.</p>
   </div>
 
   <div class="manda-eyes">
@@ -117,7 +118,7 @@
         <div class="eyes-shadow" id="shB"></div>
       </div>
     </div>
-    <span class="mono">Representação, não automação</span>
+    <span class="mono">Mais que automação. Representação.</span>
   </div>
 </section>
 
@@ -134,7 +135,7 @@
 <section class="comofunciona" id="como-funciona" data-nav="black">
   <div class="wide">
     <span class="mono" style="color:rgba(251,249,242,.65)">Como funciona</span>
-    <h2>Você passa o booking. Sua Doopla cuida do resto.</h2>
+    <h2>Tem booking? Tem Doopla.</h2>
     <div class="flow">
       <div class="flow-step"><span class="n">01</span><p>Sua Doopla entra em contato com o cliente.</p></div>
       <div class="flow-step"><span class="n">02</span><p>Conduz a conversa, negocia e acompanha o booking.</p></div>
@@ -148,30 +149,35 @@
 <section class="pricing" id="planos" data-nav="cream">
   <div class="wide">
     <span class="mono">Planos</span>
-    <h2>Sem surpresa no fim do mês.</h2>
+    <h2>Sem comissão. Sem surpresa no fim do mês.</h2>
     <div class="pricing-grid">
       <div class="price-card">
         <div class="who">Doopla</div>
         <div class="amount">R$29,90<span class="per">/mês</span></div>
-        <p class="desc">Sua Doopla trabalha com você.</p>
+        <p class="desc">Tenha quem cuide dos seus bookings.</p>
         <ul>
-          <li>Representação por IA</li>
-          <li>WhatsApp oficial</li>
-          <li>Negociação e acompanhamento</li>
-          <li>Contratos, cobrança e agenda</li>
-          <li>Perfil + link de booking</li>
+          <li>Até 5 novos bookings por mês</li>
+          <li>Sua Doopla atende, negocia e acompanha cada booking até o fechamento</li>
+          <li>Contratos e acompanhamento de pagamentos</li>
+          <li>Comunidade Doopla</li>
         </ul>
+        <p class="note">Para quem quer deixar de cuidar de booking sozinho.</p>
       </div>
       <div class="price-card dark">
         <div class="who">Doopla Pro</div>
         <div class="amount">R$59,90<span class="per">/mês</span></div>
-        <p class="desc">Sua Doopla pode trabalhar mais por você.</p>
+        <p class="desc">Mais estrutura para fazer sua carreira crescer.</p>
+        <p class="lead-in">Tudo da Doopla, mais:</p>
         <ul>
-          <li>Rotina mais automatizada (follow-up, lembretes, cobrança)</li>
-          <li>Analytics avançado</li>
-          <li>Press kit, bio e propostas geradas</li>
-          <li>E-mail profissional (previsto)</li>
+          <li>Bookings ilimitados</li>
+          <li>Especialista humano quando uma negociação precisar</li>
+          <li>Inteligência sobre cachês, clientes e negociações</li>
+          <li>Radar de clientes e oportunidades</li>
+          <li>Materiais profissionais para sua carreira</li>
+          <li>Benefícios e descontos com parceiros Doopla</li>
+          <li>Em breve: acesso à rede de bookers humanos Doopla</li>
         </ul>
+        <p class="note">Para quem quer mais do que representação: quer inteligência e estrutura para crescer.</p>
       </div>
     </div>
   </div>
@@ -192,7 +198,7 @@
 </section>
 
 <!-- 6. FAQ -->
-<section class="faq" data-nav="cream">
+<section class="faq" id="faq" data-nav="cream">
   <div class="narrow">
     <span class="mono">Perguntas</span>
     <h2 style="margin-bottom:30px;">Antes de começar</h2>
@@ -226,8 +232,8 @@
 </section>
 
 <!-- 7. CTA FINAL -->
-<section class="final-cta" data-nav="redcream">
-  <h2>Toda carreira merece sua <span class="nowrap">d<span class="eye-slot" id="ctaSlotL"></span><span class="eye-slot" id="ctaSlotR"></span>pla.</span></h2>
+<section class="final-cta" data-nav="red">
+  <h2>Toda carreira merece sua <span class="nowrap">d<span class="eye-slot" id="ctaSlotL"></span><span class="eye-slot" id="ctaSlotR"></span>pla</span></h2>
   <a href="/cadastro" class="btn btn-primary" style="background:var(--black);">Começar agora</a>
 </section>
 
@@ -237,10 +243,10 @@
     d<span class="eye-slot" id="footSlotL"></span><span class="eye-slot" id="footSlotR"></span>pla
   </div>
   <div class="foot-links">
-    <a href="#">Segurança</a>
-    <a href="#">Termos</a>
-    <a href="#">Privacidade</a>
-    <a href="#">Contato</a>
+    <a href="/seguranca">Segurança</a>
+    <a href="/termos">Termos</a>
+    <a href="/privacidade">Privacidade</a>
+    <a href="/contato">Contato</a>
   </div>
 </footer>
 

@@ -1532,6 +1532,75 @@ branch (migration `0018`).
   desta sessão por limite de orçamento/sessão — precisa de uma sessão
   nova dedicada a isso.
 
+## 20. Páginas institucionais (Sobre, Segurança, Contato, Termos, Privacidade) + Header/Footer compartilhados + ajustes de copy na Home
+
+- ✅ **Header + Footer + overlay de MENU compartilhados**, novos, escopados
+  em `src/app/_home/` (`SiteHeader.tsx`, `SiteFooter.tsx`, `PageShell.tsx`,
+  `EyeLogo.tsx`, `site-chrome.css`) — usados pelas 5 páginas institucionais
+  abaixo. Mesma identidade visual da Home (vermelho/preto/creme, Anton/
+  Familjen Grotesk/IBM Plex Mono), mas implementado em React puro (sem
+  GSAP), separado do sistema vanilla-JS da Home por decisão de escopo:
+  não mexi na Home's própria nav pra não arriscar quebrar a timeline
+  cinematográfica já testada — só corrigi os placeholders de link dela.
+  MENU abre um overlay fullscreen (não dropdown) com: Como funciona, O que
+  sua Doopla faz, Planos, Segurança, FAQ, Sobre — sem "Entrar" (removido
+  por correção do usuário) — mais CTA "Começar agora" e "Quero minha
+  Doopla" como legenda de apoio (não label de botão). Fecha com Esc, trava
+  scroll do body enquanto aberto.
+- ✅ **`/sobre`**: reescrita do zero (era conteúdo do modelo antigo de
+  marketplace) — Hero + composição única com os 3 conceitos
+  (Representação / Com você no controle / Independência) + CTA final,
+  sem virar uma página longa.
+- ✅ **`/seguranca`**: reescrita do zero — Hero + 3 princípios (Você
+  aprova / Você acompanha / Seus dados são protegidos, com link discreto
+  pra Política de Privacidade) + seção final com "Falar com a Doopla"
+  (→ `/contato`) e link pra Política de Privacidade.
+- ✅ **`/contato`**: página nova — Hero + e-mail (`contato@doopla.pro`) e
+  formulário (nome/e-mail/assunto/mensagem) lado a lado no desktop,
+  empilhado no mobile. Sem backend de envio (não existe ainda) — o botão
+  "Enviar mensagem" abre um `mailto:` pré-preenchido pro
+  contato@doopla.pro, não finge enviar algo que não seria realmente
+  entregue.
+- ✅ **`/termos` e `/privacidade`**: reescritas com o texto legal completo
+  fornecido, layout editorial (largura de leitura confeitável, hierarquia
+  tipográfica), mesmos Header/Footer das outras. Bug pego e corrigido:
+  as listas com marcador (`<ul>`) da Política de Privacidade não
+  mostravam os bullets (herdavam `list-style:none` de algum reset
+  global) — corrigido com `list-style:disc` explícito no escopo de
+  `.legal-content`.
+- ✅ Footer da Home: os 4 links (Segurança/Termos/Privacidade/Contato),
+  antes `href="#"`, agora apontam pras páginas reais. Nav da Home:
+  "Sobre" também corrigido de `#` pra `/sobre`.
+- ✅ Ajustes de copy na Home pedidos nesta sessão: kicker do hero mudou
+  pra "Mais que automação. Representação."; seção "O que sua Doopla faz"
+  ganhou novo headline ("Você faz seu trabalho. Sua Doopla cuida do
+  booking.") e nota abaixo das perguntas ("Sua Doopla resolve."); "Como
+  funciona" mudou pra "Tem booking? Tem Doopla."; a seção final antes do
+  footer voltou a ter texto preto (era branco, o usuário apontou o
+  erro); "Toda carreira merece sua Doopla" perdeu o ponto final em todo
+  lugar que aparece como título; CTA da nav voltou de "Começar agora"
+  pra "Criar conta" (reversão explícita do usuário — só na nav da Home,
+  as páginas institucionais continuam com "Começar agora" no header,
+  que foi o padrão pedido antes dessa reversão pontual).
+- ✅ **Planos reescritos** com a estrutura de negócio atualizada (o
+  usuário reverteu a diretriz anterior de "zero intervenção humana no
+  1.0"): plano Doopla (R$29,90, até 5 novos bookings/mês) e Doopla Pro
+  (R$59,90, bookings ilimitados, "Especialista humano quando uma
+  negociação precisar", "Em breve: acesso à rede de bookers humanos
+  Doopla"). Isso substitui o que estava documentado no item 1 deste
+  arquivo sobre não construir infraestrutura de humano — a diretriz
+  vigente agora é a desta seção.
+- ✅ `npm run build`, `npx eslint` e `npx tsc --noEmit` limpos em todo o
+  projeto (não só nos arquivos tocados). Testado com Playwright local:
+  todas as 5 páginas institucionais renderizando (screenshot completo de
+  cada uma), overlay de menu abrindo/fechando (Esc funciona), links do
+  overlay com os hrefs certos, todas as seções editadas da Home
+  conferidas visualmente uma a uma.
+- ⏳ Pendência técnica: o formulário de contato não tem envio real (usa
+  `mailto:` como alternativa honesta, já que não existe serviço de
+  e-mail configurado no projeto). Se quiser um envio de verdade
+  (ex.: Resend, API route), isso é trabalho novo, não builicado aqui.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

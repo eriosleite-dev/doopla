@@ -100,7 +100,7 @@
   }
   #home-marketing .wordmark .eye-slot{ width:.62em; height:.62em; margin:0 .02em; }
   #home-marketing .kicker{
-    position:absolute; top:calc(50% - 15vw - 70px); color:var(--black); font-weight:600; font-size:.78rem;
+    position:absolute; top:calc(50% - 15vw - 30px); color:var(--black); font-weight:600; font-size:.78rem;
     letter-spacing:.3em; text-transform:uppercase; opacity:0;
   }
   #home-marketing .hero-copy{
@@ -136,7 +136,8 @@
     display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:40px;
     min-height:100vh; padding:100px 80px;
   }
-  #home-marketing .manda h2{ color:var(--black); font-size:clamp(2.1rem,4.4vw,3.6rem); line-height:.98; margin-bottom:44px; }
+  #home-marketing .manda h2{ color:var(--black); font-size:clamp(2.1rem,4.4vw,3.6rem); line-height:1.02; margin-bottom:44px; }
+  #home-marketing .manda .manda-note{ margin-top:28px; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--black); }
   #home-marketing .manda .situacoes{ display:flex; flex-direction:column; gap:22px; }
   #home-marketing .manda .situacao{ display:flex; align-items:center; gap:16px; }
   #home-marketing .manda .situacao p{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--black); }
@@ -184,9 +185,12 @@
   #home-marketing .price-card.dark .amount .per{ color:rgba(251,249,242,.5); }
   #home-marketing .price-card p.desc{ font-size:.88rem; color:#5a5648; margin-bottom:16px; }
   #home-marketing .price-card.dark p.desc{ color:rgba(251,249,242,.7); }
+  #home-marketing .price-card p.lead-in{ font-size:.83rem; font-weight:600; margin-bottom:10px; }
   #home-marketing .price-card ul{ list-style:none; display:flex; flex-direction:column; gap:7px; }
   #home-marketing .price-card li{ font-size:.83rem; padding-left:18px; position:relative; }
   #home-marketing .price-card li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
+  #home-marketing .price-card p.note{ font-size:.78rem; color:#8a8676; margin-top:18px; line-height:1.5; }
+  #home-marketing .price-card.dark p.note{ color:rgba(251,249,242,.5); }
 
   /* faq */
   #home-marketing .faq{ background:var(--off); }
@@ -197,8 +201,8 @@
   #home-marketing .faq-list p{ font-size:.86rem; color:#5a5648; margin-top:10px; line-height:1.55; }
 
   /* cta final */
-  #home-marketing .final-cta{ background:var(--red); color:var(--off); text-align:center; padding:56px 28px; }
-  #home-marketing .final-cta h2{ color:var(--off); margin:0 auto 22px; max-width:620px; font-size:clamp(1.7rem,3.6vw,2.9rem); }
+  #home-marketing .final-cta{ background:var(--red); color:var(--black); text-align:center; padding:56px 28px; }
+  #home-marketing .final-cta h2{ color:var(--black); margin:0 auto 22px; max-width:620px; font-size:clamp(1.7rem,3.6vw,2.9rem); }
   /* "Doopla" no meio da frase: os dois "o" viram os olhos da marca, mesma
      fonte Anton ao redor — só o alinhamento vertical precisa de ajuste
      fino, já que aqui o eye-slot fica dentro do fluxo normal do texto

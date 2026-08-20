@@ -1,103 +1,118 @@
 import type { Metadata } from 'next';
 
-import { LegalPage } from '../_home/legal-page';
+import { PageShell } from '../_home/PageShell';
 
 export const metadata: Metadata = {
-  title: 'doopla, política de privacidade',
+  title: 'Política de Privacidade — Doopla',
+  description: 'Como a Doopla coleta, utiliza e protege informações pessoais.',
 };
+
+const UPDATED = '20 de agosto de 2026';
 
 export default function PrivacidadePage() {
   return (
-    <LegalPage
-      eyebrow="documento legal"
-      title="Política de privacidade"
-      updated="Última atualização: agosto de 2026"
-      notice={
-        <>
-          <strong>Este é um texto preliminar de validação.</strong> Ainda não
-          passou por revisão jurídica formal e não deve ser tratado como
-          versão final antes do lançamento público da doopla.
-        </>
-      }
-    >
-      <h2>1. Quais dados coletamos</h2>
-      <p>
-        Coletamos os dados que você fornece ao criar sua conta (nome,
-        e-mail, tipo de perfil, informações profissionais como mercados de
-        atuação e cidades), além de dados gerados pelo uso da plataforma,
-        como propostas, negociações, comissões e histórico de bookings.
-      </p>
+    <PageShell>
+      <section className="legal-content">
+        <div className="inner">
+          <span className="eyebrow">Legal</span>
+          <h1>Política de Privacidade</h1>
+          <div className="updated">Última atualização: {UPDATED}</div>
 
-      <h2>2. Como usamos seus dados</h2>
-      <ul>
-        <li>Para viabilizar o cadastro, o login e o funcionamento da conta.</li>
-        <li>
-          Para conectar artistas e bookers com base em mercado, nicho e
-          território.
-        </li>
-        <li>
-          Para processar pagamentos e comissões de forma centralizada e
-          segura.
-        </li>
-        <li>
-          Para prevenir fraude, spam e comportamento abusivo na
-          plataforma.
-        </li>
-      </ul>
+          <p>
+            Esta Política explica como a Doopla coleta, utiliza e protege
+            informações pessoais durante o uso da plataforma e de seus
+            serviços.
+          </p>
 
-      <h2>3. Base legal (LGPD)</h2>
-      <p>
-        O tratamento dos seus dados se baseia principalmente na execução
-        do contrato entre você e a doopla (para viabilizar o cadastro e as
-        negociações) e no legítimo interesse da plataforma (para
-        segurança, prevenção de fraude e melhoria do serviço).
-      </p>
+          <h2>1. Informações que podemos coletar</h2>
+          <p>
+            Podemos tratar informações fornecidas pelo usuário durante o
+            cadastro e uso da plataforma, informações profissionais
+            necessárias para a prestação do serviço, preferências
+            configuradas pelo usuário e dados relacionados às interações
+            realizadas por meio da Doopla.
+          </p>
 
-      <h2>4. Com quem compartilhamos dados</h2>
-      <p>
-        Compartilhamos dados com prestadores essenciais ao funcionamento
-        da doopla, como o processador de pagamentos, e com a outra parte
-        de uma negociação (artista e booker enxergam informações
-        relevantes um do outro apenas após a relação ser confirmada). Não
-        vendemos dados pessoais a terceiros.
-      </p>
+          <h2>2. Como utilizamos essas informações</h2>
+          <p>As informações podem ser utilizadas para:</p>
+          <ul>
+            <li>criar e manter sua conta;</li>
+            <li>prestar os serviços contratados;</li>
+            <li>personalizar o funcionamento da sua Doopla;</li>
+            <li>conduzir e organizar interações relacionadas a bookings;</li>
+            <li>gerar documentos e comunicações solicitadas;</li>
+            <li>prestar suporte;</li>
+            <li>melhorar segurança e funcionamento da plataforma;</li>
+            <li>cumprir obrigações legais.</li>
+          </ul>
 
-      <h2>5. Segurança dos dados</h2>
-      <p>
-        Pagamentos são sempre processados de forma centralizada pela
-        doopla, nunca diretamente entre artista e booker. Adotamos
-        medidas técnicas e organizacionais razoáveis para proteger seus
-        dados contra acesso não autorizado.
-      </p>
+          <h2>3. Inteligência artificial</h2>
+          <p>
+            Determinadas informações podem ser processadas por sistemas de
+            inteligência artificial para permitir funcionalidades da Doopla,
+            como interpretação de solicitações, assistência em negociações,
+            organização de informações e geração de comunicações.
+          </p>
 
-      <h2>6. Seus direitos como titular</h2>
-      <p>
-        Você pode solicitar a qualquer momento a confirmação, o acesso, a
-        correção ou a exclusão dos seus dados pessoais, nos termos da Lei
-        Geral de Proteção de Dados (LGPD), através dos canais de contato
-        disponíveis no site.
-      </p>
+          <h2>4. Serviços de terceiros</h2>
+          <p>
+            A operação da Doopla pode utilizar fornecedores de tecnologia
+            necessários para hospedagem, comunicação, autenticação,
+            armazenamento, inteligência artificial e outros componentes da
+            plataforma.
+          </p>
+          <p>
+            Esses fornecedores recebem apenas os dados necessários à
+            prestação dos respectivos serviços, conforme aplicável.
+          </p>
 
-      <h2>7. Retenção de dados</h2>
-      <p>
-        Mantemos seus dados enquanto sua conta estiver ativa e pelo
-        período necessário para cumprir obrigações legais, fiscais ou
-        contratuais, como histórico de pagamentos e comissões.
-      </p>
+          <h2>5. Compartilhamento</h2>
+          <p>A Doopla não vende dados pessoais.</p>
+          <p>
+            Informações poderão ser compartilhadas quando necessário para
+            prestar o serviço, cumprir obrigação legal, proteger a
+            plataforma ou mediante autorização do usuário, conforme
+            aplicável.
+          </p>
 
-      <h2>8. Alterações nesta política</h2>
-      <p>
-        Esta política pode ser atualizada conforme a doopla evolui.
-        Mudanças relevantes serão comunicadas aos usuários com
-        antecedência razoável.
-      </p>
+          <h2>6. Segurança</h2>
+          <p>
+            Adotamos medidas técnicas e organizacionais destinadas a proteger
+            as informações tratadas pela plataforma.
+          </p>
+          <p>
+            Nenhum sistema digital é completamente imune a riscos, mas
+            buscamos reduzir acessos, usos e divulgações não autorizados.
+          </p>
 
-      <h2>9. Contato</h2>
-      <p>
-        Dúvidas sobre esta política ou solicitações relacionadas aos seus
-        dados podem ser enviadas pelos canais de contato disponíveis no
-        site.
-      </p>
-    </LegalPage>
+          <h2>7. Retenção</h2>
+          <p>
+            As informações são mantidas pelo período necessário para prestar
+            os serviços, cumprir obrigações legais e atender às finalidades
+            descritas nesta Política.
+          </p>
+
+          <h2>8. Direitos do titular</h2>
+          <p>
+            O usuário poderá solicitar informações e exercer os direitos
+            previstos na legislação de proteção de dados aplicável,
+            incluindo a LGPD.
+          </p>
+
+          <h2>9. Alterações desta Política</h2>
+          <p>
+            Esta Política poderá ser atualizada conforme o produto, nossa
+            operação ou requisitos legais evoluam.
+          </p>
+
+          <h2>10. Contato sobre privacidade</h2>
+          <p>
+            Solicitações relacionadas a dados pessoais e privacidade poderão
+            ser enviadas para{' '}
+            <a href="mailto:contato@doopla.pro">contato@doopla.pro</a>.
+          </p>
+        </div>
+      </section>
+    </PageShell>
   );
 }
