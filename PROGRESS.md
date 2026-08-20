@@ -1429,6 +1429,62 @@ branch (migration `0018`).
   de apontar os links pra elas — só a Home foi alterada, como
   combinado.
 
+## 18. Hero em preto (não branco) + unificação "Tem booking pra resolver?" + marquee + FAQ nova
+
+- ✅ **Texto do hero de branco/creme pra preto**: kicker, wordmark (letras
+  "d"/"pla"), h1, parágrafo, edge-labels, index-count, scroll-hint e o
+  selo (seal SVG) — tudo passou de `var(--off)`/creme pra preto
+  (`var(--black)`). Motivo apontado: vermelho + texto branco lembrava a
+  paleta do iFood. A nav também passou a usar o estado "on-light" (texto
+  preto) enquanto está sobre o hero (`data-navlight` de "0" pra "1" na
+  `.stage`), pra não sobrar nenhum texto branco na primeira tela. Os
+  círculos do logo (olho preto + pupila creme) não são "texto", são o
+  ícone da marca — não mudaram, é o mesmo mark usado em todo o site.
+- ✅ **Seção "Tem booking pra resolver?" unificada com a interação dos
+  olhos**: as duas seções separadas (`.cuida` preta com a lista de
+  perguntas, e `.eyes-section` vermelha com "Você e sua Doopla, em
+  sintonia.") viraram uma seção só (`.manda`), vermelha, duas colunas:
+  headline "Tem booking / pra / resolver?" + lista de 6 perguntas com
+  ícone circular outline (mesmos ícones Lucide do mockup aprovado) à
+  esquerda, olhos grandes + kicker "Representação, não automação" à
+  direita. Removido o texto "Manda pra Doopla." (ficava implícito).
+  Tudo em preto sobre vermelho, sem nenhuma cor nova inventada — reusa
+  a paleta já existente.
+- ✅ **Motion dos olhos reaproveitado, não recriado — duas vezes**: extraí
+  a coreografia (pulo com squash-and-stretch, sombra, olhar, blink) pra
+  uma função genérica (`makeEyesMotion`), com o alcance dos movimentos
+  calculado a partir do tamanho real de cada par de olhos (não
+  hardcoded) em vez de duplicar números fixos. Ela agora roda em **dois
+  lugares com o mesmo código**: nos olhos grandes do hero (que antes só
+  seguiam o cursor e ganhavam vida ao carregar a página, sem depender
+  de scroll) e na seção "Tem booking pra resolver?" (dispara quando a
+  seção entra na tela, como antes). Os olhos pequenos clonados
+  (wordmark, nav, rodapé) continuam com o comportamento antigo de
+  seguir o cursor — não foram tocados.
+- ✅ **Barra corrida (marquee) fixa debaixo da nav**: fundo preto, texto
+  creme mono, "Artistas independentes • Representação • Toda carreira
+  merece sua Doopla" em loop infinito via CSS puro (não depende do
+  GSAP carregar — funciona mesmo no fallback). Nav e marquee agora
+  vivem dentro de um wrapper (`.nav-wrap`) fixo no topo; a marquee fica
+  sempre visível desde o carregamento da página, a nav em si continua
+  com a mesma entrada cinematográfica de antes.
+- ✅ **FAQ**: adicionada a pergunta "A Doopla fala com o cliente por
+  mim?" logo após a primeira, respondida ("Sim. Ela conduz a conversa,
+  negocia, faz follow-up e organiza o booking. Quando houver uma
+  decisão comercial importante, ela consulta você antes de seguir.").
+- ✅ Footer: reconferido de novo (terceira vez) — `#footSlotL`/`#footSlotR`
+  continuam recebendo o clone real do olho (`<div class="eye">` com
+  `<div class="pupil">` dentro, com `transform` aplicado pelo
+  rastreamento de cursor), não texto estático. Nenhuma mudança foi
+  necessária aqui.
+- ✅ `npm run build` e `npx eslint src/app/_home` limpos. Testado com
+  Playwright local (build de produção): screenshot do hero mostrando
+  os olhos já pulando ao carregar a página (sem depender de scroll),
+  screenshot da seção unificada mostrando layout de duas colunas com
+  os 6 ícones certos e os olhos em pleno pulo, cores confirmadas via
+  `getComputedStyle` (preto em toda a primeira tela e na seção
+  unificada), marquee confirmado no DOM, footer reconferido.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

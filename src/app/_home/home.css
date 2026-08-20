@@ -24,9 +24,10 @@
   #home-marketing ::selection{ background:var(--black); color:var(--red); }
   #home-marketing .mono{ font-family:'IBM Plex Mono', monospace; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem; }
 
+  #home-marketing .nav-wrap{ position:fixed; top:0; left:0; right:0; z-index:50; }
   #home-marketing nav{
-    position:fixed; top:0; left:0; right:0; display:flex; align-items:center; justify-content:space-between;
-    padding:18px 44px; z-index:50; color:var(--off); background:rgba(18,17,16,.22);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 44px; color:var(--off); background:rgba(18,17,16,.22);
     backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
     opacity:0; transform:translateY(-14px); pointer-events:none;
     transition:color .35s ease, background .35s ease;
@@ -35,6 +36,19 @@
   #home-marketing nav .links{ display:flex; gap:44px; align-items:center; }
   #home-marketing nav a{ color:inherit; text-decoration:none; font-weight:600; font-size:.78rem; letter-spacing:.12em; text-transform:uppercase; }
   #home-marketing nav .btn.nav-cta{ padding:9px 20px; font-size:.72rem; }
+
+  /* barra corrida fixa, sempre visível, debaixo da nav */
+  #home-marketing .marquee{
+    background:var(--black); overflow:hidden; white-space:nowrap; padding:10px 0;
+    border-top:1px solid rgba(243,239,226,.12);
+  }
+  #home-marketing .marquee-track{ display:inline-flex; animation:doopla-marquee 22s linear infinite; }
+  #home-marketing .marquee-track span{
+    font-family:'IBM Plex Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--cream); padding:0 24px; white-space:nowrap;
+  }
+  #home-marketing .marquee-track span::after{ content:"•"; margin-left:24px; color:rgba(243,239,226,.4); }
+  @keyframes doopla-marquee{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
   #home-marketing .nav-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.25rem; display:flex; align-items:center; }
   #home-marketing .eye-slot{ width:.6em; height:.6em; display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; }
   #home-marketing .eye-slot .eye{ width:100%; height:100%; max-width:none; max-height:none; }
@@ -51,36 +65,38 @@
     background-size:3px 3px; opacity:.5; pointer-events:none;
   }
   #home-marketing .edge-label{
-    position:absolute; top:50%; writing-mode:vertical-rl; color:rgba(251,249,242,.65);
+    position:absolute; top:50%; writing-mode:vertical-rl; color:rgba(18,17,16,.65);
     font-weight:600; letter-spacing:.16em; font-size:.7rem; text-transform:uppercase; opacity:0;
   }
   #home-marketing .edge-label.left{ left:28px; transform:translateY(-50%) rotate(180deg); }
   #home-marketing .edge-label.right{ right:28px; transform:translateY(-50%); }
   #home-marketing .seal{ position:absolute; bottom:34px; left:34px; width:60px; height:60px; opacity:0; }
   #home-marketing .seal svg{ width:100%; height:100%; }
-  #home-marketing .index-count{ position:absolute; bottom:34px; right:44px; color:var(--off); font-weight:600; font-size:.78rem; letter-spacing:.1em; opacity:0; }
+  #home-marketing .index-count{ position:absolute; bottom:34px; right:44px; color:var(--black); font-weight:600; font-size:.78rem; letter-spacing:.1em; opacity:0; }
   #home-marketing .logo-mark{ position:absolute; display:flex; align-items:center; justify-content:center; gap:3vw; }
   #home-marketing .eye{
     width:15vw; height:15vw; max-width:190px; max-height:190px; border-radius:50%;
     background:var(--black); display:flex; align-items:center; justify-content:center; position:relative;
   }
   #home-marketing .pupil{ width:34%; height:34%; border-radius:50%; background:var(--cream); position:relative; z-index:2; }
+  #home-marketing .logo-mark .eyes-col{ position:relative; }
+  #home-marketing .logo-mark .eyes-shadow{ width:64%; height:12px; bottom:-14px; }
   #home-marketing .wordmark{
     position:absolute; display:flex; align-items:center; justify-content:center;
-    font-family:'Familjen Grotesk',sans-serif; font-weight:600; color:var(--off);
+    font-family:'Familjen Grotesk',sans-serif; font-weight:600; color:var(--black);
     font-size:clamp(2.8rem,12vw,10rem); line-height:1; letter-spacing:-.01em; opacity:0;
   }
   #home-marketing .wordmark .eye-slot{ width:.62em; height:.62em; margin:0 .02em; }
   #home-marketing .kicker{
-    position:absolute; top:calc(50% - 15vw - 70px); color:var(--off); font-weight:600; font-size:.78rem;
+    position:absolute; top:calc(50% - 15vw - 70px); color:var(--black); font-weight:600; font-size:.78rem;
     letter-spacing:.3em; text-transform:uppercase; opacity:0;
   }
   #home-marketing .hero-copy{
     position:absolute; top:calc(50% + 5vw + 40px); text-align:center; max-width:560px; padding:0 24px;
     opacity:0; transform:translateY(20px);
   }
-  #home-marketing .hero-copy h1{ font-family:'Anton',sans-serif; font-weight:400; color:var(--off); font-size:clamp(1.6rem,4.2vw,2.6rem); line-height:1.16; margin-bottom:16px; text-transform:uppercase; }
-  #home-marketing .hero-copy p{ color:var(--off); font-size:1rem; line-height:1.55; opacity:.92; margin-bottom:26px; }
+  #home-marketing .hero-copy h1{ font-family:'Anton',sans-serif; font-weight:400; color:var(--black); font-size:clamp(1.6rem,4.2vw,2.6rem); line-height:1.16; margin-bottom:16px; text-transform:uppercase; }
+  #home-marketing .hero-copy p{ color:var(--black); font-size:1rem; line-height:1.55; opacity:.78; margin-bottom:26px; }
   #home-marketing .btn{
     padding:13px 26px; border-radius:2px; font-size:.8rem; font-weight:700; letter-spacing:.08em;
     text-transform:uppercase; text-decoration:none; display:inline-block;
@@ -88,7 +104,7 @@
   #home-marketing .btn-primary{ background:var(--black); color:var(--off); }
   #home-marketing .btn-ghost{ border:1px solid rgba(251,249,242,.5); color:var(--off); }
   #home-marketing .scroll-hint{
-    position:absolute; bottom:38px; left:50%; transform:translateX(-50%); color:var(--off);
+    position:absolute; bottom:38px; left:50%; transform:translateX(-50%); color:var(--black);
     font-weight:600; font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
   }
 
@@ -100,24 +116,31 @@
   #home-marketing section h2{ font-family:'Anton',sans-serif; font-size:clamp(1.7rem,3.6vw,2.9rem); line-height:1.12; margin-bottom:20px; }
   #home-marketing section p.lead{ font-size:1.02rem; color:#4a463d; line-height:1.65; max-width:620px; }
 
-  /* cuida-de section: situações reais + demonstração incorporada (a prova visual do produto, não uma grade de cards) */
-  #home-marketing .cuida{ background:var(--black); color:var(--off); }
-  #home-marketing .cuida h2{ color:var(--off); max-width:680px; }
-  #home-marketing .cuida-note{ margin-top:28px; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--off); }
+  /* "Tem booking pra resolver?" unificada com a interação dos olhos —
+     um único bloco vermelho, duas colunas, texto preto (nada de texto
+     branco sobre vermelho aqui — combinação que lembrava o site do iFood). */
+  #home-marketing .manda{
+    background:var(--red); color:var(--black);
+    display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:40px;
+    min-height:100vh; padding:100px 80px;
+  }
+  #home-marketing .manda h2{ color:var(--black); font-size:clamp(2.1rem,4.4vw,3.6rem); line-height:.98; margin-bottom:44px; }
+  #home-marketing .manda .situacoes{ display:flex; flex-direction:column; gap:22px; }
+  #home-marketing .manda .situacao{ display:flex; align-items:center; gap:16px; }
+  #home-marketing .manda .situacao p{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--black); }
+  #home-marketing .manda .icone{
+    width:38px; height:38px; min-width:38px; border-radius:50%; border:1.5px solid var(--black);
+    display:flex; align-items:center; justify-content:center; color:var(--black);
+  }
+  #home-marketing .manda .icone svg{ width:18px; height:18px; }
 
-  #home-marketing .situacoes{ margin-top:26px; display:flex; flex-direction:column; gap:6px; }
-  #home-marketing .situacoes p{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.15rem; color:rgba(251,249,242,.85); }
-
-  /* interação dos olhos: Você × Sua Doopla — compacta, não é uma segunda hero */
-  #home-marketing .eyes-section{ background:var(--red); padding:64px 44px; }
-  #home-marketing .eyes-inner{ max-width:1000px; margin:0 auto; text-align:center; }
-  #home-marketing .eyes-inner .mono{ color:rgba(251,249,242,.75); }
-  #home-marketing .eyes-inner h2{ color:var(--off); max-width:680px; margin:0 auto 36px; }
-  #home-marketing .eyes-stage{ position:relative; width:100%; max-width:560px; height:190px; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; gap:clamp(22px,5vw,54px); cursor:pointer; }
+  #home-marketing .manda-eyes{ display:flex; flex-direction:column; align-items:center; gap:32px; }
+  #home-marketing .manda-eyes .mono{ color:var(--black); }
+  #home-marketing .eyes-stage{ position:relative; width:100%; max-width:560px; height:230px; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; gap:clamp(26px,5vw,60px); cursor:pointer; }
   #home-marketing .eyes-col{ display:flex; flex-direction:column; align-items:center; }
-  #home-marketing .eyes-eye{ width:120px; height:120px; border-radius:50%; background:var(--black); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-  #home-marketing .eyes-shadow{ position:absolute; bottom:-18px; left:50%; width:80px; height:11px; background:rgba(0,0,0,.22); border-radius:50%; transform:translateX(-50%); filter:blur(2px); }
-  #home-marketing .eyes-pupil{ width:40px; height:40px; border-radius:50%; background:var(--off); position:absolute; top:50%; left:50%; margin:-20px 0 0 -20px; }
+  #home-marketing .eyes-eye{ width:160px; height:160px; border-radius:50%; background:var(--black); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  #home-marketing .eyes-shadow{ position:absolute; bottom:-18px; left:50%; width:100px; height:13px; background:rgba(0,0,0,.22); border-radius:50%; transform:translateX(-50%); filter:blur(2px); }
+  #home-marketing .eyes-pupil{ width:52px; height:52px; border-radius:50%; background:var(--off); position:absolute; top:50%; left:50%; margin:-26px 0 0 -26px; }
 
   /* feita com quem entende de booking */
   #home-marketing .feita{ background:var(--off); }
@@ -173,7 +196,10 @@
   @media (max-width:820px){
     #home-marketing .pricing-grid{ grid-template-columns:1fr; }
     #home-marketing footer{ flex-direction:column; text-align:center; }
-    #home-marketing .eyes-eye{ width:90px; height:90px; }
+    #home-marketing .manda{ grid-template-columns:1fr; min-height:0; padding:72px 24px; gap:56px; }
+    #home-marketing .manda-eyes{ order:-1; }
+    #home-marketing .eyes-eye{ width:110px; height:110px; }
+    #home-marketing .eyes-pupil{ width:36px; height:36px; margin:-18px 0 0 -18px; }
   }
 
   /* ===== Fallback sem GSAP =====

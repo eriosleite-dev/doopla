@@ -1,18 +1,30 @@
 <div id="home-marketing">
 
-<nav id="mainNav">
-  <div class="nav-logo">
-    <span>d</span><span class="eye-slot" id="navSlotL"></span><span class="eye-slot" id="navSlotR"></span><span>pla</span>
+<div class="nav-wrap" id="navWrap">
+  <nav id="mainNav">
+    <div class="nav-logo">
+      <span>d</span><span class="eye-slot" id="navSlotL"></span><span class="eye-slot" id="navSlotR"></span><span>pla</span>
+    </div>
+    <div class="links">
+      <a href="#como-funciona">Menu</a>
+      <a href="#">Sobre</a>
+      <a href="/login">Entrar</a>
+      <a href="/cadastro" class="btn btn-primary nav-cta">Criar conta</a>
+    </div>
+  </nav>
+  <div class="marquee">
+    <div class="marquee-track">
+      <span>Artistas independentes</span>
+      <span>Representação</span>
+      <span>Toda carreira merece sua Doopla</span>
+      <span>Artistas independentes</span>
+      <span>Representação</span>
+      <span>Toda carreira merece sua Doopla</span>
+    </div>
   </div>
-  <div class="links">
-    <a href="#como-funciona">Menu</a>
-    <a href="#">Sobre</a>
-    <a href="/login">Entrar</a>
-    <a href="/cadastro" class="btn btn-primary nav-cta">Criar conta</a>
-  </div>
-</nav>
+</div>
 
-<section class="stage" data-navlight="0">
+<section class="stage" data-navlight="1">
   <div class="stage-pin">
     <div class="grain"></div>
 
@@ -21,10 +33,10 @@
 
     <div class="seal" id="seal">
       <svg viewBox="0 0 100 100">
-        <rect x="14" y="14" width="72" height="72" rx="6" fill="none" stroke="#fbf9f2" stroke-width="2.4" transform="rotate(-3 50 50)"/>
+        <rect x="14" y="14" width="72" height="72" rx="6" fill="none" stroke="#121110" stroke-width="2.4" transform="rotate(-3 50 50)"/>
         <g transform="rotate(-3 50 50)">
-          <circle cx="38" cy="50" r="12" fill="#fbf9f2"/>
-          <circle cx="62" cy="50" r="12" fill="#fbf9f2"/>
+          <circle cx="38" cy="50" r="12" fill="#121110"/>
+          <circle cx="62" cy="50" r="12" fill="#121110"/>
           <circle cx="38" cy="50" r="4" fill="#e2291c"/>
           <circle cx="62" cy="50" r="4" fill="#e2291c"/>
         </g>
@@ -33,8 +45,14 @@
     <div class="index-count" id="indexCount">REPRESENTAÇÃO</div>
 
     <div class="logo-mark" id="logoMark">
-      <div class="eye" id="eyeL"><div class="pupil" id="pupilL"></div></div>
-      <div class="eye" id="eyeR"><div class="pupil" id="pupilR"></div></div>
+      <div class="eyes-col" id="heroColL">
+        <div class="eye" id="eyeL"><div class="pupil" id="pupilL"></div></div>
+        <div class="eyes-shadow" id="heroShL"></div>
+      </div>
+      <div class="eyes-col" id="heroColR">
+        <div class="eye" id="eyeR"><div class="pupil" id="pupilR"></div></div>
+        <div class="eyes-shadow" id="heroShR"></div>
+      </div>
     </div>
 
     <div class="kicker" id="kicker">Representação inteligente</div>
@@ -56,28 +74,39 @@
   </div>
 </section>
 
-<!-- 1. TEM BOOKING PRA RESOLVER? MANDA PRA DOOPLA (com demonstração incorporada) -->
-<section class="cuida" data-navlight="0">
-  <div class="wide">
-    <span class="mono" style="color:rgba(251,249,242,.65)">O que sua Doopla resolve</span>
-    <h2>Tem booking pra resolver? Manda pra Doopla.</h2>
+<!-- 1. TEM BOOKING PRA RESOLVER? (unificada com a interação dos olhos) -->
+<section class="manda" data-navlight="1">
+  <div class="manda-copy">
+    <h2>Tem booking<br>pra<br>resolver?</h2>
     <div class="situacoes">
-      <p>Precisa negociar?</p>
-      <p>Cliente pediu desconto?</p>
-      <p>Tem proposta esperando resposta?</p>
-      <p>Precisa fazer follow up?</p>
-      <p>Contrato pra organizar?</p>
-      <p>Chegou a hora de cobrar?</p>
+      <div class="situacao">
+        <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg></span>
+        <p>Precisa negociar?</p>
+      </div>
+      <div class="situacao">
+        <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span>
+        <p>Cliente pediu desconto?</p>
+      </div>
+      <div class="situacao">
+        <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 12"/></svg></span>
+        <p>Tem proposta esperando resposta?</p>
+      </div>
+      <div class="situacao">
+        <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></span>
+        <p>Precisa fazer follow up?</p>
+      </div>
+      <div class="situacao">
+        <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg></span>
+        <p>Contrato pra organizar?</p>
+      </div>
+      <div class="situacao">
+        <span class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></span>
+        <p>Chegou a hora de cobrar?</p>
+      </div>
     </div>
-    <p class="cuida-note">Manda pra Doopla.</p>
   </div>
-</section>
 
-<!-- interação dos olhos: Você × Sua Doopla -->
-<section class="eyes-section" data-navlight="0">
-  <div class="eyes-inner">
-    <span class="mono">Representação, não automação</span>
-    <h2>Você e sua Doopla, em sintonia.</h2>
+  <div class="manda-eyes">
     <div class="eyes-stage" id="eyesStage">
       <div class="eyes-col a" id="colA">
         <div class="eyes-eye" id="eyeA"><div class="eyes-pupil" id="pA"></div></div>
@@ -88,6 +117,7 @@
         <div class="eyes-shadow" id="shB"></div>
       </div>
     </div>
+    <span class="mono">Representação, não automação</span>
   </div>
 </section>
 
@@ -170,6 +200,10 @@
       <details open>
         <summary>Já tenho alguém que cuida disso pra mim. Preciso trocar?<span class="plus">+</span></summary>
         <p>Não. Você decide o que passa pela Doopla e o que continua do seu jeito.</p>
+      </details>
+      <details>
+        <summary>A Doopla fala com o cliente por mim?<span class="plus">+</span></summary>
+        <p>Sim. Ela conduz a conversa, negocia, faz follow-up e organiza o booking. Quando houver uma decisão comercial importante, ela consulta você antes de seguir.</p>
       </details>
       <details>
         <summary>A Doopla fecha coisas sem minha aprovação?<span class="plus">+</span></summary>

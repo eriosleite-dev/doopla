@@ -55,9 +55,14 @@ document.querySelectorAll('#home-marketing section[data-navlight]').forEach(sec=
   });
 });
 
-/* ===== olhos grandes: cursor, piscada, vagar sozinho ===== */
-const pupils = [document.getElementById('pupilL'), document.getElementById('pupilR')];
-const eyeEls = [document.getElementById('eyeL'), document.getElementById('eyeR')];
+/* ===== olhos grandes do hero: agora usam o mesmo motion de "pulo" da
+   seção "Tem booking pra resolver?" (ver makeEyesMotion abaixo), não
+   mais cursor-tracking — por isso pupilL/pupilR não entram no array
+   `pupils` de rastreio de mouse. Só os clones pequenos (wordmark, nav,
+   footer) continuam seguindo o cursor. ===== */
+const pupilL = document.getElementById('pupilL'), pupilR = document.getElementById('pupilR');
+const eyeL = document.getElementById('eyeL'), eyeR = document.getElementById('eyeR');
+const pupils = [];
 
 const pupilXY = new Map();
 function setupPupilFollow(p){
@@ -110,7 +115,8 @@ function startBlinking(eyes){
     });
   })();
 }
-startBlinking(eyeEls);
+// eyeL/eyeR (os olhos grandes do hero) não entram aqui: a piscada deles já
+// faz parte da coreografia do motion de pulo reaproveitado (ver makeEyesMotion).
 
 function cloneEyeInto(slotId, sourceEye){
   const slot = document.getElementById(slotId);
@@ -120,17 +126,17 @@ function cloneEyeInto(slotId, sourceEye){
   slot.appendChild(clone);
   return { eye: clone, pupil: clone.querySelector('.pupil') };
 }
-const wmL = cloneEyeInto('slotL', document.getElementById('eyeL'));
-const wmR = cloneEyeInto('slotR', document.getElementById('eyeR'));
+const wmL = cloneEyeInto('slotL', eyeL);
+const wmR = cloneEyeInto('slotR', eyeR);
 pupils.push(wmL.pupil, wmR.pupil); setupPupilFollow(wmL.pupil); setupPupilFollow(wmR.pupil);
 
-const navL = cloneEyeInto('navSlotL', document.getElementById('eyeL'));
-const navR = cloneEyeInto('navSlotR', document.getElementById('eyeR'));
+const navL = cloneEyeInto('navSlotL', eyeL);
+const navR = cloneEyeInto('navSlotR', eyeR);
 pupils.push(navL.pupil, navR.pupil); setupPupilFollow(navL.pupil); setupPupilFollow(navR.pupil);
 startBlinking([navL.eye, navR.eye]);
 
-const footL = cloneEyeInto('footSlotL', document.getElementById('eyeL'));
-const footR = cloneEyeInto('footSlotR', document.getElementById('eyeR'));
+const footL = cloneEyeInto('footSlotL', eyeL);
+const footR = cloneEyeInto('footSlotR', eyeR);
 pupils.push(footL.pupil, footR.pupil); setupPupilFollow(footL.pupil); setupPupilFollow(footR.pupil);
 startBlinking([footL.eye, footR.eye]);
 
@@ -151,16 +157,19 @@ stageTl
   .to("#kicker", { y:-40, opacity:0, duration:0.3 }, 1.15)
   .to("#heroCopy", { opacity:1, y:0, duration:0.5 }, 1.25);
 
-/* ===== interação dos olhos: Você × Sua Doopla ===== */
-(function initEyesInteraction(){
-  const colA=document.getElementById('colA'), colB=document.getElementById('colB');
-  const eyeA=document.getElementById('eyeA'), eyeB=document.getElementById('eyeB');
-  const pA=document.getElementById('pA'), pB=document.getElementById('pB');
-  const shA=document.getElementById('shA'), shB=document.getElementById('shB');
-  const stage=document.getElementById('eyesStage');
-  if(!colA || !stage) return; // seção não presente nesta página
+/* ===== motion de "pulo" dos olhos: implementado uma vez, reaproveitado tanto
+   pelos olhos grandes do hero quanto pela seção "Tem booking pra resolver?"
+   — mesma coreografia (squash-and-stretch, sombra, olhar, blink), só o
+   alcance dos movimentos muda, calculado a partir do tamanho real de cada
+   par de olhos (não hardcoded), pra escalar certo em cada instância. ===== */
+function makeEyesMotion({ colL, colR, eyeL, eyeR, pupilL, pupilR, shadowL, shadowR, spanEl, hoverEl }){
+  const eyeSize = eyeL.getBoundingClientRect().width || 160;
+  const MAX = eyeSize * 0.24; // alcance do olhar, proporcional ao tamanho do olho
+  function jumpSpan(){
+    const base = spanEl ? spanEl.clientWidth * 0.5 : eyeSize * 2.75;
+    return Math.min(base, eyeSize * 1.375);
+  }
 
-  const MAX = 38;
   function look(el,x,y,dur=0.4,ease="power3.out"){
     x = Math.max(-MAX, Math.min(MAX, x)); y = Math.max(-MAX, Math.min(MAX, y));
     return gsap.to(el,{x,y,duration:dur,ease});
@@ -195,15 +204,14 @@ stageTl
   let pendingCall = null;
 
   // ENTRADA: pulam um em direção ao outro até convergir na posição final de
-  // descanso (mesma proporção de distância dos olhos do logo, dada pelo gap
-  // do .eyes-stage), depois entra no loop assentado.
+  // descanso, depois entra no loop assentado.
   function entrance(){
-    const span = Math.min(stage.clientWidth * 0.5, 220);
-    const jumpsA = [-span, span*0.4, 0];
-    const jumpsB = [span, -span*0.4, 0];
-    const tl = gsap.timeline({ onComplete: startSettledLoop });
-    jumpsA.forEach((x,i)=> tl.add(jumpTo(colA,eyeA,shA,x,0.6), i*0.5));
-    jumpsB.forEach((x,i)=> tl.add(jumpTo(colB,eyeB,shB,x,0.6), i*0.5+0.16));
+    const span = jumpSpan();
+    const jumpsL = [-span, span*0.4, 0];
+    const jumpsR = [span, -span*0.4, 0];
+    const tl = gsap.timeline({ onComplete: settledLoop });
+    jumpsL.forEach((x,i)=> tl.add(jumpTo(colL,eyeL,shadowL,x,0.6), i*0.5));
+    jumpsR.forEach((x,i)=> tl.add(jumpTo(colR,eyeR,shadowR,x,0.6), i*0.5+0.16));
     activeTl = tl;
   }
 
@@ -211,34 +219,58 @@ stageTl
   // distanciamento fixo, se olham, pulinhos no mesmo lugar.
   function settledLoop(){
     const tl = gsap.timeline({ onComplete:()=>{ pendingCall = gsap.delayedCall(0.7, settledLoop); } });
-    tl.add(look(pA,-24,13)).add(look(pB,24,-15),"<");
+    tl.add(look(pupilL,MAX*-0.632,MAX*0.342)).add(look(pupilR,MAX*0.632,MAX*-0.395),"<");
     tl.to({},{duration:0.8});
-    tl.add(look(pA,28,0,0.3)); tl.add(hopInPlace(colA,eyeA,shA),"-=0.05");
+    tl.add(look(pupilL,MAX*0.737,0,0.3)); tl.add(hopInPlace(colL,eyeL,shadowL),"-=0.05");
     tl.to({},{duration:0.15});
-    tl.add(look(pB,-28,0,0.3)); tl.add(hopInPlace(colB,eyeB,shB),"-=0.05");
+    tl.add(look(pupilR,MAX*-0.737,0,0.3)); tl.add(hopInPlace(colR,eyeR,shadowR),"-=0.05");
     tl.to({},{duration:0.2});
-    tl.add(hopInPlace(colA,eyeA,shA)); tl.to({},{duration:0.1}); tl.add(hopInPlace(colB,eyeB,shB)); tl.to({},{duration:0.1});
-    tl.add(hopInPlace(colA,eyeA,shA)).add(hopInPlace(colB,eyeB,shB),"<");
-    tl.add(hopInPlace(colA,eyeA,shA)).add(hopInPlace(colB,eyeB,shB),"<");
-    tl.add(look(pA,32,0,0.35)).add(look(pB,-32,0,0.35),"<");
+    tl.add(hopInPlace(colL,eyeL,shadowL)); tl.to({},{duration:0.1}); tl.add(hopInPlace(colR,eyeR,shadowR)); tl.to({},{duration:0.1});
+    tl.add(hopInPlace(colL,eyeL,shadowL)).add(hopInPlace(colR,eyeR,shadowR),"<");
+    tl.add(hopInPlace(colL,eyeL,shadowL)).add(hopInPlace(colR,eyeR,shadowR),"<");
+    tl.add(look(pupilL,MAX*0.842,0,0.35)).add(look(pupilR,MAX*-0.842,0,0.35),"<");
     tl.to({},{duration:0.55});
-    tl.add(blink(eyeA)).add(blink(eyeB),"<");
+    tl.add(blink(eyeL)).add(blink(eyeR),"<");
     tl.to({},{duration:1.2});
     activeTl = tl;
   }
-  function startSettledLoop(){ settledLoop(); }
 
   // hover: dispara o pulo de novo na hora, do mesmo jeito que a entrada,
   // mesmo que o loop automático esteja no meio da pausa entre repetições.
   function retrigger(){
     if(pendingCall){ pendingCall.kill(); pendingCall = null; }
     if(activeTl){ activeTl.kill(); activeTl = null; }
-    gsap.set([pA,pB], { x:0, y:0 });
+    gsap.set([pupilL,pupilR], { x:0, y:0 });
     entrance();
   }
-  stage.addEventListener('mouseenter', retrigger);
+  if(hoverEl) hoverEl.addEventListener('mouseenter', retrigger);
 
-  // dispara a entrada só uma vez, quando a seção entra na tela
-  ScrollTrigger.create({ trigger:"#home-marketing .eyes-section", start:"top 70%", once:true, onEnter:entrance });
+  return { entrance };
+}
+
+/* olhos grandes do hero: entram em cena assim que a página carrega (não
+   dependem de scroll, já que são visíveis na primeira tela). */
+const heroEyes = makeEyesMotion({
+  colL: document.getElementById('heroColL'), colR: document.getElementById('heroColR'),
+  eyeL, eyeR, pupilL, pupilR,
+  shadowL: document.getElementById('heroShL'), shadowR: document.getElementById('heroShR'),
+  spanEl: document.getElementById('logoMark'), hoverEl: document.getElementById('logoMark')
+});
+heroEyes.entrance();
+
+/* seção "Tem booking pra resolver?": entra só quando a seção aparece na tela */
+(function initMandaEyes(){
+  const colA=document.getElementById('colA'), colB=document.getElementById('colB');
+  const stage=document.getElementById('eyesStage');
+  if(!colA || !stage) return; // seção não presente nesta página
+
+  const mandaEyes = makeEyesMotion({
+    colL: colA, colR: colB,
+    eyeL: document.getElementById('eyeA'), eyeR: document.getElementById('eyeB'),
+    pupilL: document.getElementById('pA'), pupilR: document.getElementById('pB'),
+    shadowL: document.getElementById('shA'), shadowR: document.getElementById('shB'),
+    spanEl: stage, hoverEl: stage
+  });
+  ScrollTrigger.create({ trigger:"#home-marketing .manda", start:"top 70%", once:true, onEnter: mandaEyes.entrance });
 })();
 })();
