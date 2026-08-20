@@ -1353,6 +1353,44 @@ branch (migration `0018`).
   explicitamente essas coisas ("sem split, sem comissão de booker...").
   Nada mais encontrado.
 
+## 15. Home — correção consolidada final (remove conversa fictícia + blinda fallback do GSAP)
+
+- ✅ **"Sua Doopla em ação" removida por completo.** Instrução anterior
+  pedia pra manter uma demonstração de conversa; documento consolidado
+  reverteu isso explicitamente ("DESCONSIDERAR ESSA INSTRUÇÃO... NÃO
+  TER CONVERSA FICTÍCIA NA HOME"). Removido título, as 6 bolhas
+  (cliente/doopla/você), wrapper e o CSS associado (`.chat`,
+  `.chat-row`, `.chat-who`, `.bubble`, `.chat-eyebrow`) — nenhum
+  espaço residual, a seção "O que sua Doopla faz" agora termina em
+  "Manda pra Doopla." direto.
+- ✅ **Segurança**: removida a menção literal a "split" e "comissão de
+  booker" (mesmo em negação) — item novo do documento consolidado que
+  pede eliminar esses termos mesmo quando usados pra negar. Reescrito
+  preservando o mesmo fato ("a Doopla nunca processa nem retém esse
+  valor") sem invocar o vocabulário do modelo antigo.
+- ✅ Limpeza de CSS morta: `.cuida-grid` no media query (código órfão
+  desde a remoção dos cards, ninguém tinha limpado essa referência).
+- ✅ **Fallback de robustez pro GSAP** (achado durante a investigação,
+  não pedido explicitamente, mas endereça um risco real): todo o
+  conteúdo do hero (wordmark, nav, kicker, hero-copy/CTA) nasce com
+  `opacity:0` no CSS e só fica visível através da timeline do GSAP. Se
+  `/vendor/gsap/*.js` falhar em carregar por qualquer motivo (rede do
+  usuário, bloqueio, etc.), esse conteúdo ficava invisível pra sempre.
+  Agora `home.js` roda um watcher independente do `boot()`: se o GSAP
+  não carregar em 4s, aplica a classe `gsap-fallback` em
+  `#home-marketing`, que força esse conteúdo visível numa versão
+  estática (sem a entrada cinematográfica, mas nunca em branco).
+  Testado de propósito bloqueando as requisições do GSAP via
+  Playwright: fallback ativa corretamente, conteúdo aparece.
+- 🔜 **Pendente, aguardando decisão do usuário**: pedido separado pra
+  restaurar a animação de pulo dos olhos ("Você × Sua Doopla", removida
+  na passada de 15→8 seções) dentro de "O que sua Doopla faz", com
+  hover-retrigger novo (não existia no mecanismo original). Não
+  implementado ainda — o documento consolidado final (mesma mensagem,
+  tratado como fonte de verdade) não lista esse elemento na estrutura
+  de 9 seções e pede reduzir ao máximo essa seção especificamente,
+  então esperando confirmação de encaixe antes de construir.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

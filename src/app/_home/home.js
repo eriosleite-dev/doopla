@@ -1,3 +1,29 @@
+// Fallback independente do boot() abaixo: se /vendor/gsap falhar em
+// carregar (rede do usuário, bloqueio, etc.), o boot() nunca sai do loop
+// de espera e o hero fica com opacity:0 pra sempre (ver home.css,
+// bloco "Fallback sem GSAP"). Isso roda de qualquer jeito, com ou sem
+// GSAP, e força o conteúdo visível numa versão estática se o script
+// não aparecer a tempo.
+(function gsapFallbackWatch() {
+  var settled = false;
+  function markLoaded() {
+    if (settled) return;
+    settled = true;
+    clearTimeout(fallbackTimer);
+    clearInterval(pollTimer);
+  }
+  var fallbackTimer = setTimeout(function () {
+    if (settled) return;
+    var root = document.getElementById('home-marketing');
+    if (root) root.classList.add('gsap-fallback');
+  }, 4000);
+  var pollTimer = setInterval(function () {
+    if (typeof window.gsap !== 'undefined' && typeof window.ScrollTrigger !== 'undefined') {
+      markLoaded();
+    }
+  }, 150);
+})();
+
 (function boot() {
 // next/script (afterInteractive) não garante, na prática, que os dois
 // <script src> do GSAP terminem de carregar antes deste script inline
