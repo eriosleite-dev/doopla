@@ -13,6 +13,7 @@ export function SiteFooter() {
         <Link href="/termos">Termos</Link>
         <Link href="/privacidade">Privacidade</Link>
         <Link href="/contato">Contato</Link>
+        <span className="foot-legal">Doopla © 2026 · CNPJ: 68.636.132/0001-48</span>
       </div>
     </footer>
   );

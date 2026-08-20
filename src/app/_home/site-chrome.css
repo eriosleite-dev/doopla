@@ -68,6 +68,9 @@
   letter-spacing:.06em; text-transform:uppercase; transition:color .2s ease;
 }
 #site-chrome .site-footer .foot-links a:hover{ color:var(--off); }
+#site-chrome .site-footer .foot-legal{
+  font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; opacity:.55;
+}
 
 /* foco visível em qualquer elemento interativo do chrome */
 #site-chrome a:focus-visible, #site-chrome button:focus-visible{

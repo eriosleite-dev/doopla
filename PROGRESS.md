@@ -1695,6 +1695,43 @@ branch (migration `0018`).
   (scroll gradual completo, link direto pra âncora, carregamento
   normal do topo).
 
+## 21. Footer legal (CNPJ) + copy de teste grátis na Home
+
+- ✅ Rodapé (Home e páginas institucionais): adicionada a linha discreta
+  "Doopla © 2026 · CNPJ: 68.636.132/0001-48" junto aos links de
+  Segurança/Termos/Privacidade/Contato, mesma família/tamanho de fonte,
+  só com opacidade reduzida pra ficar visivelmente secundária — mesmo
+  padrão em desktop e mobile (`flex-wrap` já existente).
+- ✅ Mensagem de teste grátis incorporada na Home, como argumento de
+  conversão (não como mensagem principal da marca):
+  - Hero: CTA "Começar grátis" + nota "7 dias grátis. Sem cartão."
+    abaixo do botão.
+  - Cards de Planos (Doopla e Doopla Pro): adicionada a linha "7 dias
+    grátis" e um botão "Começar grátis" próprio em cada card (nenhum
+    dos dois tinha CTA antes). Link do Pro usa `.btn-invert` (fundo
+    claro) pra não ficar preto-sobre-preto no card escuro.
+  - CTA final: virou "Pronto para ter sua d[olhos]pla?" + "Comece
+    grátis por 7 dias." + botão "Começar grátis" — manteve o logo
+    animado embutido na palavra "Doopla" (mesmo recurso já
+    implementado antes).
+  - FAQ: nova pergunta "Como funcionam os 7 dias grátis?" (a lista já
+    tinha 6 perguntas de rodadas anteriores; virou 7 — a regra de
+    "só 3 perguntas" foi explicitamente dispensada pelo usuário).
+- ⚠️ **Pendência grande, propositalmente não implementada**: o fluxo
+  novo de onboarding (`Criar conta → Preparar sua Doopla → Escolher
+  plano → Iniciar teste grátis → Painel`) e a persistência da intenção
+  de plano (sobreviver a refresh, voltar etapas, retomar depois de
+  criar a conta) **não existem ainda**. Os CTAs de plano hoje apontam
+  pra `/cadastro?plano=doopla` e `/cadastro?plano=pro` — o parâmetro
+  `plano` é só um sinal simples pra um onboarding futuro ler; a página
+  `/cadastro` atual (fluxo antigo Artista/Booker) não lê nem usa esse
+  parâmetro hoje. Construir o onboarding novo de verdade (telas,
+  estado, persistência em banco) é trabalho separado, maior, que não
+  cabe nesta sessão.
+- ✅ `npm run build`/`npx tsc --noEmit`/`npx eslint` limpos. Testado com
+  Playwright: texto e `href` de cada CTA conferidos, FAQ com 7 itens
+  confirmado, screenshot dos cards de planos e da CTA final.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
