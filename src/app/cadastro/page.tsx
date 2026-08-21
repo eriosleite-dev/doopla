@@ -57,6 +57,14 @@ export default async function CadastroPage({
   // precisava ser reconstruído agora.
   const useNewFlow = !isBooker && !params.invite;
 
+  // Fluxo novo tem chrome próprio (topbar/progresso/rodapé vermelho do
+  // onboarding, ver OnboardingShell) — não entra no <main> genérico de
+  // --paper usado pelo wizard antigo (booker / artista convidado por
+  // agência).
+  if (useNewFlow) {
+    return <CreateAccountForm referralCode={params.ref} artistPlan={planIntent} />;
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">
       <div className="flex w-full max-w-md flex-col gap-6">
@@ -75,17 +83,13 @@ export default async function CadastroPage({
           </p>
         </div>
 
-        {useNewFlow ? (
-          <CreateAccountForm referralCode={params.ref} artistPlan={planIntent} />
-        ) : (
-          <SignupForm
-            defaultRole={defaultRole}
-            referralCode={params.ref}
-            inviteToken={params.invite}
-            showRolePicker={isBooker}
-            planIntent={planIntent}
-          />
-        )}
+        <SignupForm
+          defaultRole={defaultRole}
+          referralCode={params.ref}
+          inviteToken={params.invite}
+          showRolePicker={isBooker}
+          planIntent={planIntent}
+        />
 
         {!params.invite && (
           <p className="text-center text-[12px] text-[var(--ink)]/45">

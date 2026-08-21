@@ -1,9 +1,8 @@
-// Profissão e tipos de trabalho por profissão vêm do banco agora
-// (tabelas professions/profession_job_types, migration 0037) — não
-// hardcoded aqui, exatamente pra permitir cadastrar profissão nova sem
-// mexer em código. Este arquivo guarda só o que continua sendo uma
-// lista fixa pequena e estável: o alcance geográfico de trabalho
-// ("onde você trabalha"), que não varia por profissão.
+// Alcance geográfico de trabalho ("onde você costuma trabalhar",
+// etapa 2 do onboarding) — lista fixa pequena e estável, não varia por
+// profissão. "O que você faz" é texto livre (sem lista de profissões
+// nem taxonomia de tipos de trabalho por profissão): a Doopla aprende
+// o resto pela resposta aberta "Conte um pouco sobre o seu trabalho".
 
 export const WORK_REGIONS = [
   'Minha cidade/região',

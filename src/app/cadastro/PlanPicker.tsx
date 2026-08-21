@@ -40,20 +40,24 @@ export const PLAN_CARDS: { id: PlanId; name: string; description: string; featur
 // é aplicado no próprio cadastro se um código válido for informado
 // aqui.
 //
-// Componente compartilhado entre o wizard antigo (cadastro de booker)
-// e a nova tela dedicada "Escolha seu plano" (cadastro de artista,
-// já autenticado) — uma única fonte de verdade pros dois cards, pra
-// nunca desalinhar preço/feature entre os dois lugares.
+// Componente compartilhado entre o wizard antigo (cadastro de booker,
+// sistema visual --paper/--ink) e a nova etapa 7 do onboarding
+// (sistema visual vermelho/cream do onboarding.css, escopado sob
+// #onboarding) — variant escolhe qual CSS usar, mas os dois sempre
+// leem os mesmos PLAN_CARDS, pra nunca desalinhar preço/feature entre
+// os dois lugares.
 export function PlanPicker({
   initialPlan,
   fieldName = 'artistPlan',
   onChange,
   showVoucherField = true,
+  variant = 'legacy',
 }: {
   initialPlan: PlanId;
   fieldName?: string;
   onChange?: (plan: PlanId) => void;
   showVoucherField?: boolean;
+  variant?: 'legacy' | 'onboarding';
 }) {
   const [selected, setSelected] = useState<PlanId>(initialPlan);
   const [showVoucher, setShowVoucher] = useState(false);
@@ -62,6 +66,63 @@ export function PlanPicker({
   function choose(plan: PlanId) {
     setSelected(plan);
     onChange?.(plan);
+  }
+
+  if (variant === 'onboarding') {
+    return (
+      <div>
+        <input type="hidden" name={fieldName} value={selected} />
+        {PLAN_CARDS.map((card) => {
+          const isSelected = selected === card.id;
+          return (
+            <div
+              key={card.id}
+              className={`plan-card${isSelected ? ' selected' : ''}`}
+              onClick={() => choose(card.id)}
+            >
+              {card.id === 'pro' && <div className="plan-tag">Mais completo</div>}
+              <div className="plan-body">
+                <div className="plan-head">
+                  <span className="plan-name">{card.name}</span>
+                  <span className="plan-price">
+                    {market.currencySymbol}
+                    {market.pricing[card.id].toFixed(2).replace('.', ',')}
+                    <span>/mês</span>
+                  </span>
+                </div>
+                <span className="plan-trial">{TRIAL_DAYS} dias grátis</span>
+                <ul className="plan-feats">
+                  {card.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          );
+        })}
+
+        {showVoucherField &&
+          (showVoucher ? (
+            <div className="field" style={{ marginTop: 12 }}>
+              <label htmlFor="founderVoucherCode">Código do voucher Founder</label>
+              <input type="text" id="founderVoucherCode" name="founderVoucherCode" placeholder="Ex: FOUNDER-ABC123" />
+              <p className="hint">
+                Se o código for válido, o preço mensal do seu plano fica travado nessa condição
+                enquanto a assinatura continuar ativa.
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowVoucher(true)}
+              className="back-btn show"
+              style={{ marginTop: 8 }}
+            >
+              Tenho um código de voucher Founder
+            </button>
+          ))}
+      </div>
+    );
   }
 
   return (
