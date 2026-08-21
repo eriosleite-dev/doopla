@@ -1911,9 +1911,13 @@ branch (migration `0018`).
   localmente: renderização dos dois fluxos (novo vs. booker), guarda de
   autenticação em `/cadastro/preparar` e `/cadastro/plano` (redirecionam
   pra `/login?next=...` sem sessão), e o hidden field de intenção de
-  plano. Não dá pra testar o fluxo de `signUp()` → confirmação de
-  e-mail → resume ponta a ponta neste sandbox (sem caixa de e-mail de
-  teste) — pedir pro usuário testar criando uma conta de verdade.
+  plano.
+- ✅ **Confirmado ponta a ponta pelo usuário, em produção** (não dava pra
+  testar `signUp()` → e-mail de confirmação → resume neste sandbox, sem
+  caixa de e-mail real): criou conta de teste, recebeu o e-mail de
+  confirmação, clicou no link, passou por `/cadastro/preparar` e
+  `/cadastro/plano`, e chegou no painel normalmente. Fluxo novo
+  validado como funcionando de verdade, não só em teoria.
 
 ## 22. Camada humana — escalonamento de exceções (Home)
 
