@@ -2027,6 +2027,60 @@ branch (migration `0018`).
   produção (senão a query em `professions`/`profession_job_types`
   falha silenciosamente e a etapa 1 do formulário fica sem opções).
 
+## 25. Onboarding 7 etapas — reconstrução completa no visual do mockup
+
+- ✅ **`/cadastro` reconstruído de verdade, não ajustado** — as 7 etapas
+  (Criar conta → Prepare sua Doopla → Cachê → Como você trabalha →
+  Canal de atenção → Conclusão → Planos) agora existem com o visual do
+  mockup enviado (vermelho/ink/cream, Anton/Familjen Grotesk/IBM Plex
+  Mono, cards e chips, nunca `<select>` longo), barra de progresso
+  segmentada sempre visível e o logo com olhos que seguem o cursor
+  (`OnboardingShell.tsx`, `onboarding.css` escopado sob `#onboarding`
+  pra não vazar pro resto do produto). Em nenhum ponto do funil público
+  aparece "Sou Artista / Sou Booker" — isso continua isolado no wizard
+  antigo, só acessível por `?tipo=booker`/`?role=booker` ou `?invite=`.
+- ⚠️ **Correção de escopo a meio da implementação**: a primeira versão
+  do item 24 tinha criado `professions`/`profession_job_types` como
+  tabelas no banco pra alimentar chips de "tipos de trabalho" por
+  profissão. O usuário reverteu essa decisão explicitamente: sem
+  taxonomia de profissão → tipos de trabalho nenhuma, nem no banco nem
+  na tela. "O que você faz?" voltou a ser texto livre (grava direto em
+  `artist_profiles.category`), e o contexto que a taxonomia tentava
+  capturar agora vem inteiro da resposta aberta "Conte um pouco sobre
+  o seu trabalho" (`bio`). As tabelas `professions`/`profession_job_types`
+  continuam existindo no Supabase (migration 0037 já tinha rodado) mas
+  não são mais lidas por nada — podem ser removidas depois num cleanup,
+  não é bloqueante.
+- ✅ **Etapa 3 (Cachê)** — "tem cachê de referência" (sim/ainda não) +
+  valor, e "cachê varia por trabalho" (sim/não, sem detalhar categoria
+  aqui). Reaproveita `base_fee_cents`/`fee_varies_by_job_type`, que já
+  existiam — sem nova migration pra essa etapa.
+- ✅ **Etapa 4 (Como você trabalha)** — nota fiscal, duração típica do
+  trabalho (pergunta genérica, não específica de DJ), e "tem algo que
+  sua Doopla sempre deve saber antes de negociar por você"
+  (`negotiation_notes`) — **campo separado de `bio`**, nunca
+  concatenado, como já era o requisito.
+- ✅ **Etapa 5 (Canal de atenção)** — WhatsApp/Painel/Ambos, sem
+  qualquer menção a receber oportunidades.
+- ✅ **Áudio honesto, não fingido**: os dois campos abertos (contexto na
+  Etapa 2, regras na Etapa 4) têm o toggle "Escrever/Falar por áudio"
+  do mockup, mas clicar em "Falar por áudio" não esconde o textarea
+  nem mostra uma gravação falsa — só avisa que áudio ainda não está
+  disponível e mantém o texto como única forma real de responder, pra
+  nunca descartar silenciosamente o que a pessoa digitou.
+- ✅ **`PlanPicker` ganhou `variant` (`onboarding` | `legacy`)** — mesmo
+  componente, mesmos `PLAN_CARDS`, mas dois visuais: o novo
+  vermelho/cream pra Etapa 7, e o antigo `--paper/--ink` continua
+  servindo o wizard do booker sem duplicar preço/feature em dois
+  lugares.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos. Etapa 1
+  verificada visualmente com Playwright (bate com o mockup). Etapas
+  2-7 exigem sessão autenticada — não dá pra testar ao vivo neste
+  sandbox; revisão foi por leitura cuidadosa do código, validação real
+  fica por conta do usuário em produção.
+- ⏳ Indique e ganhe R$5 (dashboard) não foi tocado por essa mudança —
+  vive inteiramente em `src/app/dashboard/`, fora do `/cadastro`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
