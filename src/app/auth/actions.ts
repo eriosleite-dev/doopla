@@ -100,10 +100,11 @@ export async function createAccountAction(
 ): Promise<AuthFormState> {
   const fullName = String(formData.get('fullName') ?? '').trim();
   const email = String(formData.get('email') ?? '').trim();
+  const whatsapp = String(formData.get('whatsapp') ?? '').trim();
   const password = String(formData.get('password') ?? '');
   const confirmPassword = String(formData.get('confirmPassword') ?? '');
 
-  if (!fullName || !email || !password) {
+  if (!fullName || !email || !whatsapp || !password) {
     return { error: 'Preencha todos os campos obrigatórios.' };
   }
   if (password.length < 8) {
@@ -113,7 +114,7 @@ export async function createAccountAction(
     return { error: 'As senhas não conferem.' };
   }
 
-  const metadata: Record<string, string> = { role: 'artista', full_name: fullName };
+  const metadata: Record<string, string> = { role: 'artista', full_name: fullName, whatsapp };
   const referralCode = String(formData.get('referralCode') ?? '').trim();
   if (referralCode) metadata.referralCode = referralCode;
   const artistPlan = String(formData.get('artistPlan') ?? '').trim();

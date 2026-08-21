@@ -1980,6 +1980,53 @@ branch (migration `0018`).
   etc.) — não existe ainda, precisa ser construída como funcionalidade
   própria do painel.
 
+## 24. Onboarding 7 etapas — arquitetura de dados feita, UI aguardando mockup
+
+- ⚠️ **Bloqueado esperando o mockup**: o usuário pediu pra reconstruir
+  `/cadastro` completo em 7 etapas (Criar conta → Prepare sua Doopla →
+  Cachê → Como você trabalha → Canal de atenção → Conclusão → Planos),
+  citando "te enviei o mockup do layout e design do cadastro" — esse
+  arquivo não chegou nesta sessão (nenhum anexo visível). Perguntei e
+  fiquei esperando. Enquanto isso, adiantei só a parte que não depende
+  de layout nenhum:
+- ✅ **`profession_job_types` como dado real no banco, não mais arquivo
+  TS** (era um requisito explícito de arquitetura, não front) —
+  migration 0037 cria as tabelas `professions` e `profession_job_types`
+  (profissão → lista de tipos de trabalho), com RLS de leitura pública,
+  seedadas com as 7 profissões já usadas (DJ, Banda, Cantor(a),
+  Fotógrafo(a), Videomaker, Influenciador(a)/creator, Outro) e os
+  tipos de trabalho de cada uma. Adicionar profissão nova agora é um
+  `insert`, nunca mexer no componente React. `/cadastro/preparar`
+  busca essas tabelas no carregamento da página e passa como prop pro
+  formulário — `src/lib/artist-categories.ts` foi limpo, só guarda
+  `WORK_REGIONS` (lista pequena e estável, não precisa ser tabela).
+- ✅ **WhatsApp na Etapa 1** (Criar conta): campo novo, obrigatório,
+  grava em `profiles.phone` (coluna que já existia, só a trigger nunca
+  preenchia — corrigido).
+- ✅ **Colunas novas em `artist_profiles`** pras etapas Cachê / Como você
+  trabalha / Canal de atenção, prontas pro backend quando as telas
+  forem construídas: `fee_varies_by_job_type` (bool), `issues_invoice`
+  (bool, emite nota fiscal), `typical_job_duration` (text),
+  `negotiation_notes` (text — **campo separado de `bio`, de propósito**:
+  `bio` é intenção/preferência comercial da Etapa 2 ("quero mais
+  eventos de marca"), `negotiation_notes` é regra de representação da
+  Etapa 4 ("nunca aceite exclusividade sem falar comigo") — nunca
+  concatenados, exatamente como pedido), `attention_channel` (enum
+  whatsapp/painel/ambos). `base_fee_cents` (já existia) reaproveitado
+  como cachê de referência.
+- ⏳ **Não construído ainda, esperando o mockup**: as telas de Cachê,
+  Como você trabalha, Canal de atenção e Conclusão (Etapas 3-6) — as
+  colunas existem, os server actions e a UI ainda não. "Prepare sua
+  Doopla" (Etapa 2) continua com a versão da rodada anterior (5
+  perguntas), ainda não reestruturada pra bater exatamente com a nova
+  numeração de etapas do usuário — só o profession_job_types dela foi
+  atualizado pra vir do banco.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⚠️ **Migration 0037 ainda não rodou no Supabase** — preciso mandar
+  pro usuário rodar antes de `/cadastro/preparar` funcionar em
+  produção (senão a query em `professions`/`profession_job_types`
+  falha silenciosamente e a etapa 1 do formulário fica sem opções).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

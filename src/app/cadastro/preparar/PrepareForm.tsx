@@ -3,7 +3,8 @@
 import { useActionState, useState } from 'react';
 
 import { chipClass, fieldInputClass, fieldLabelClass, primaryButtonClass } from '@/app/auth/ui';
-import { ARTIST_CATEGORIES, WORK_REGIONS, workTypesFor } from '@/lib/artist-categories';
+import { WORK_REGIONS } from '@/lib/artist-categories';
+import type { Profession, ProfessionJobType } from '@/lib/supabase/types';
 import { savePrepareAction, type OnboardingFormState } from '../actions';
 
 const initialState: OnboardingFormState = {};
@@ -14,6 +15,8 @@ function toggle(list: string[], value: string): string[] {
 }
 
 export function PrepareForm({
+  professions,
+  jobTypes,
   initialStageName,
   initialCategory,
   initialLocal,
@@ -25,6 +28,8 @@ export function PrepareForm({
   initialOtherLinks,
   initialBio,
 }: {
+  professions: Profession[];
+  jobTypes: ProfessionJobType[];
   initialStageName: string;
   initialCategory: string;
   initialLocal: string;
@@ -50,7 +55,7 @@ export function PrepareForm({
   const [otherLinks, setOtherLinks] = useState(initialOtherLinks);
   const [bio, setBio] = useState(initialBio);
 
-  const workTypeOptions = workTypesFor(category);
+  const workTypeOptions = jobTypes.filter((jt) => jt.profession_id === category);
   const hasAnyLink = Boolean(instagramUrl || portfolioUrl || websiteUrl || otherLinks);
 
   const canAdvance =
@@ -98,7 +103,7 @@ export function PrepareForm({
           <div className="flex flex-col gap-1.5">
             <span className={fieldLabelClass}>O que você faz?</span>
             <div className="flex flex-wrap gap-2">
-              {ARTIST_CATEGORIES.map((c) => (
+              {professions.map((c) => (
                 <button
                   key={c.id}
                   type="button"
@@ -150,12 +155,12 @@ export function PrepareForm({
           <div className="flex flex-wrap gap-2">
             {workTypeOptions.map((w) => (
               <button
-                key={w}
+                key={w.id}
                 type="button"
-                onClick={() => setWorkTypes((prev) => toggle(prev, w))}
-                className={chipClass(workTypes.includes(w))}
+                onClick={() => setWorkTypes((prev) => toggle(prev, w.label))}
+                className={chipClass(workTypes.includes(w.label))}
               >
-                {w}
+                {w.label}
               </button>
             ))}
           </div>

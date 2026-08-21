@@ -53,8 +53,33 @@ export type ArtistProfile = {
   career_stage: string | null;
   help_areas: string[];
   fee_range: string | null;
+  // Onboarding reconstruído (migration 0037) — etapas Cachê / Como você
+  // trabalha / Canal de atenção. negotiation_notes é regra de
+  // representação/negociação, semanticamente diferente de bio (que é
+  // intenção/preferência comercial) — nunca concatenar os dois.
+  fee_varies_by_job_type: boolean | null;
+  issues_invoice: boolean | null;
+  typical_job_duration: string | null;
+  negotiation_notes: string | null;
+  attention_channel: 'whatsapp' | 'painel' | 'ambos' | null;
   created_at: string;
   updated_at: string;
+};
+
+// Profissão → tipos de trabalho, como dado no banco (migration 0037) —
+// não lista fixa no componente de onboarding. Adicionar profissão nova
+// é inserir linhas nessas tabelas, nunca mexer no React.
+export type Profession = {
+  id: string;
+  label: string;
+  sort_order: number;
+};
+
+export type ProfessionJobType = {
+  id: string;
+  profession_id: string;
+  label: string;
+  sort_order: number;
 };
 
 export type BookerProfile = {
@@ -504,6 +529,18 @@ export type Database = {
         Row: ArtistProfile;
         Insert: Partial<ArtistProfile> & Pick<ArtistProfile, 'profile_id'>;
         Update: Partial<ArtistProfile>;
+        Relationships: [];
+      };
+      professions: {
+        Row: Profession;
+        Insert: Profession;
+        Update: Partial<Profession>;
+        Relationships: [];
+      };
+      profession_job_types: {
+        Row: ProfessionJobType;
+        Insert: Partial<ProfessionJobType> & Pick<ProfessionJobType, 'profession_id' | 'label'>;
+        Update: Partial<ProfessionJobType>;
         Relationships: [];
       };
       booker_profiles: {

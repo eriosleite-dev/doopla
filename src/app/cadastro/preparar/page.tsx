@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 
 import { eyebrowClass } from '@/app/auth/ui';
 import { createClient } from '@/lib/supabase/server';
-import type { ArtistProfile } from '@/lib/supabase/types';
+import type { ArtistProfile, Profession, ProfessionJobType } from '@/lib/supabase/types';
 import { PrepareForm } from './PrepareForm';
 
 export const metadata: Metadata = {
@@ -38,6 +38,18 @@ export default async function PrepararPage() {
     redirect('/cadastro/plano');
   }
 
+  // Tipos de trabalho por profissão vêm do banco (migration 0037), não
+  // de um arquivo hardcoded — cadastrar profissão nova é inserir linha,
+  // nunca mexer neste componente.
+  const [{ data: professions }, { data: jobTypes }] = await Promise.all([
+    supabase.from('professions').select('*').order('sort_order').returns<Profession[]>(),
+    supabase
+      .from('profession_job_types')
+      .select('*')
+      .order('sort_order')
+      .returns<ProfessionJobType[]>(),
+  ]);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">
       <div className="flex w-full max-w-md flex-col gap-6">
@@ -50,6 +62,8 @@ export default async function PrepararPage() {
         </div>
 
         <PrepareForm
+          professions={professions ?? []}
+          jobTypes={jobTypes ?? []}
           initialStageName={artistProfile.stage_name ?? ''}
           initialCategory={artistProfile.category ?? ''}
           initialLocal={artistProfile.local ?? ''}

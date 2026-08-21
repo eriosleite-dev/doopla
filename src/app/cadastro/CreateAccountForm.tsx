@@ -48,6 +48,18 @@ export function CreateAccountForm({
       </label>
 
       <label className="flex flex-col gap-1.5">
+        <span className={fieldLabelClass}>WhatsApp</span>
+        <input
+          type="tel"
+          name="whatsapp"
+          required
+          autoComplete="tel"
+          placeholder="(11) 91234-5678"
+          className={fieldInputClass}
+        />
+      </label>
+
+      <label className="flex flex-col gap-1.5">
         <span className={fieldLabelClass}>Senha</span>
         <input
           type="password"
