@@ -1938,6 +1938,48 @@ branch (migration `0018`).
   Playwright (screenshot do bloco + lista de perguntas do FAQ
   conferida).
 
+## 23. "Prepare sua Doopla" reconstruído — de 2 perguntas pra contexto de verdade
+
+- ✅ **Problema real apontado pelo usuário**: depois de escolher o plano,
+  o passo 2 só perguntava profissão (texto livre) e cidade — insuficiente
+  pra Doopla ter contexto mínimo pra representar alguém quando um
+  cliente aparecer. Reconstruído do zero, sem voltar ao cadastro longo
+  do modelo antigo de matching.
+- ✅ **5 perguntas curtas, uma tela por vez, com barra de progresso**
+  (client-side, `/cadastro/preparar` continua sendo uma página só —
+  submete tudo junto no fim, como o wizard antigo já fazia): nome
+  artístico + profissão (chips: DJ, Banda, Cantor(a), Fotógrafo(a),
+  Videomaker, Influenciador(a)/creator, Outro) → cidade + onde trabalha
+  (chips múltiplos: minha região, outros estados, Brasil inteiro,
+  internacional, remoto) → tipos de trabalho (chips múltiplos,
+  **específicos da profissão escolhida** — DJ vê "Clubes e festas,
+  Festivais, Restaurantes/hotéis...", fotógrafo vê "Ensaios, Moda e
+  campanhas, Produtos...") → presença profissional (Instagram/site/
+  portfólio/outro, pelo menos um) → contexto aberto ("que tipo de
+  trabalho você mais faz ou gostaria de receber", a mesma resposta
+  aberta de antes, pronta pra interpretação por IA quando for
+  implementada).
+- ✅ **Arquitetura extensível por categoria**: `src/lib/artist-categories.ts`
+  — `WORK_TYPES_BY_CATEGORY` é um `Record<categoria, opções[]>` com
+  fallback genérico pra categoria sem lista própria ainda. Adicionar
+  uma profissão nova = uma entrada nesse arquivo, não mexe no
+  formulário.
+- ✅ Todos os campos gravam em colunas que já existiam em
+  `artist_profiles` (`category`, `regions`, `work_types`,
+  `instagram_url`, `portfolio_url`, `website_url`, `other_links`,
+  `local`, `bio`, `stage_name`) — nenhuma migration nova precisou.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos. **Não deu
+  pra testar visualmente no navegador** (a página exige sessão real,
+  autenticação já validada pelo usuário na rodada anterior) — validado
+  por revisão cuidadosa de código em vez de Playwright desta vez.
+  Pedir pro usuário conferir criando uma conta de teste nova.
+- ⏳ **Explicitamente fora desta rodada** (é a próxima peça, não este
+  ajuste): a área no painel pra continuar configurando a representação
+  progressivamente depois do onboarding (referência de cachê, nota
+  fiscal, rider, forma de pagamento, "nunca aceitar sem me perguntar"
+  etc.) — não existe ainda, precisa ser construída como funcionalidade
+  própria do painel.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

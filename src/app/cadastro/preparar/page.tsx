@@ -34,7 +34,7 @@ export default async function PrepararPage() {
 
   // Já preencheu essa etapa antes (retomando um onboarding iniciado) —
   // segue direto pra escolha de plano em vez de pedir tudo de novo.
-  if (artistProfile.stage_name && artistProfile.bio) {
+  if (artistProfile.stage_name && artistProfile.category && artistProfile.bio) {
     redirect('/cadastro/plano');
   }
 
@@ -43,16 +43,23 @@ export default async function PrepararPage() {
       <div className="flex w-full max-w-md flex-col gap-6">
         <div className="flex flex-col gap-1">
           <span className={eyebrowClass}>passo 2 de 3</span>
-          <h1 className="font-doopla-display text-3xl">Preparar sua Doopla</h1>
+          <h1 className="font-doopla-display text-3xl">Prepare sua Doopla</h1>
           <p className="text-sm text-[var(--ink)]/60">
-            O essencial pra sua Doopla já começar entendendo seu trabalho.
+            Conte um pouco sobre como você trabalha para sua Doopla saber como representar você.
           </p>
         </div>
 
         <PrepareForm
           initialStageName={artistProfile.stage_name ?? ''}
-          initialBio={artistProfile.bio ?? ''}
+          initialCategory={artistProfile.category ?? ''}
           initialLocal={artistProfile.local ?? ''}
+          initialRegions={artistProfile.regions ?? []}
+          initialWorkTypes={artistProfile.work_types ?? []}
+          initialInstagramUrl={artistProfile.instagram_url ?? ''}
+          initialPortfolioUrl={artistProfile.portfolio_url ?? ''}
+          initialWebsiteUrl={artistProfile.website_url ?? ''}
+          initialOtherLinks={artistProfile.other_links ?? ''}
+          initialBio={artistProfile.bio ?? ''}
         />
       </div>
     </main>
