@@ -1848,6 +1848,92 @@ branch (migration `0018`).
   conferir visualmente que o card "Doopla Pro" aparece pré-selecionado
   na etapa de planos.
 
+## 21. Reconstrução real do cadastro — Criar conta é a primeira etapa, progresso salvo no banco
+
+- ✅ **Isso estava pendente, não implementado** — no fim da rodada
+  anterior eu tinha só analisado a arquitetura (schema, trigger
+  `handle_new_user`, exigência de confirmação de e-mail do Supabase)
+  sem chegar a escrever o código novo, e não deixei isso claro. O
+  usuário testou em produção, viu que "Criar conta"/"Começar grátis"
+  continuavam caindo no wizard antigo (pergunta "O que você está
+  buscando?" primeiro) e cobrou corretamente. Está implementado agora,
+  de verdade, testado localmente.
+- ✅ **Novo funil público do artista** (`/cadastro`, sem `?tipo=booker`
+  nem `?invite=`): passo 1 é só "Criar conta" (nome, e-mail, senha) —
+  sem seletor Artista/Booker. `role` fica sempre `'artista'` no
+  server action, nunca perguntado. Testado: os campos renderizados em
+  `/cadastro` são só `fullName/email/password/confirmPassword`, sem
+  fieldset de tipo de conta.
+- ✅ **Conta já existe antes das próximas perguntas**: `createAccountAction`
+  (novo, em `auth/actions.ts`) chama `supabase.auth.signUp()` já no
+  passo 1 — a trigger `handle_new_user` cria profile + artist_profile +
+  subscription (trial de 7 dias, `artist_plan`) na hora, mesmo antes da
+  confirmação de e-mail. As etapas seguintes só fazem `UPDATE` nessas
+  linhas já existentes (autenticado, via RLS `auth.uid() = profile_id`)
+  — nunca ficam só em estado local do componente.
+- ✅ **Dois passos novos, autenticados, com resume real**:
+  `/cadastro/preparar` (nome artístico, "fale sobre seu trabalho", 
+  cidade/estado — a resposta aberta continua sendo coletada
+  normalmente, pronta pra quando a interpretação por IA for
+  implementada) e `/cadastro/plano` (escolha Doopla/Doopla Pro,
+  reaproveitando os preços de `src/lib/market.ts`). Cada página busca o
+  estado atual no banco no carregamento e pré-preenche o formulário —
+  se o usuário atualizar a página, fechar o navegador ou voltar depois
+  (já com a conta existindo), o progresso está lá, não depende de
+  localStorage. Se uma etapa já foi preenchida antes, a página pula
+  direto pra próxima (`/cadastro/preparar` → `/cadastro/plano` se
+  `stage_name`/`bio` já existem).
+- ✅ **Intenção de plano sem localStorage depois que a conta existe**: o
+  card clicado na Home (`?plano=doopla` ou `?plano=pro`) vira campo
+  oculto no passo 1, vai como metadata no `signUp()`, e a trigger já
+  grava em `subscriptions.artist_plan` — quando o usuário chega em
+  "Escolher plano", o valor pré-selecionado vem de uma leitura real do
+  banco, não de localStorage. Testado: `?plano=pro` → campo oculto
+  `artistPlan=pro` confirmado no DOM do passo 1.
+- ✅ **Booker e artista convidado por agência preservados**: `?tipo=booker`
+  (ou `?role=booker`) e `?invite=...` continuam caindo no wizard antigo
+  (`SignupForm`), sem nenhuma mudança de comportamento — só o funil
+  público padrão (Home → Começar grátis) foi reconstruído. Testado:
+  `/cadastro?tipo=booker` ainda mostra o fieldset "Tipo de conta".
+  `PlanStep`/`PLAN_CARDS` do wizard antigo foram extraídos pra um
+  componente compartilhado (`PlanPicker.tsx`) reaproveitado pelos dois
+  fluxos, sem duplicar preço/feature em dois lugares.
+- ✅ Nova coluna `subscriptions.artist_plan` (migration 0036) — usuário
+  já rodou no Supabase, confirmado.
+- ⏳ **Pendências explicitamente mantidas como próxima implementação, não
+  refinamento futuro indefinido** (conforme o usuário pediu): interpretação
+  por IA da resposta aberta sobre o trabalho (já coletada, ainda não
+  processada), resposta por áudio nessa mesma etapa, e detecção
+  automática de região/idioma + seletor PT/EN + integração real com
+  Stripe (fundação central já existe em `src/lib/market.ts`, nada
+  disso está ligado ainda).
+- ✅ `npm run build`, `npx tsc --noEmit` e `npx eslint` limpos. Testado
+  localmente: renderização dos dois fluxos (novo vs. booker), guarda de
+  autenticação em `/cadastro/preparar` e `/cadastro/plano` (redirecionam
+  pra `/login?next=...` sem sessão), e o hidden field de intenção de
+  plano. Não dá pra testar o fluxo de `signUp()` → confirmação de
+  e-mail → resume ponta a ponta neste sandbox (sem caixa de e-mail de
+  teste) — pedir pro usuário testar criando uma conta de verdade.
+
+## 22. Camada humana — escalonamento de exceções (Home)
+
+- ✅ Bloco curto dentro de "Como funciona", depois dos 3 passos
+  principais — não é seção nova, não alonga a Home. "Tem coisa que
+  pede uma pessoa. A Doopla sabe disso." + duas frases curtas sobre
+  escalonamento pro time humano quando os canais normais não resolvem.
+  Visualmente discreto (texto menor, separador sutil), sem competir
+  com os 3 passos.
+- ✅ FAQ: pergunta "A Doopla fala com o cliente por mim?" adaptada pra
+  "E se o cliente não quiser falar com uma IA?" (mesma posição na
+  lista); nova pergunta "E se o cliente parar de responder ou atrasar
+  um pagamento?" adicionada logo após "Como funciona o pagamento?".
+  FAQ agora com 8 itens.
+- ✅ Nenhuma promessa de resposta garantida do cliente, recebimento de
+  cachê garantido, ou humano acompanhando cada artista/booking — só a
+  copy exata fornecida. `npm run build`/`eslint` limpos, testado com
+  Playwright (screenshot do bloco + lista de perguntas do FAQ
+  conferida).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { eyebrowClass } from '@/app/auth/ui';
 import type { PlanId } from '@/lib/market';
+import { CreateAccountForm } from './CreateAccountForm';
 import { SignupForm } from './signup-form';
 
 export const metadata: Metadata = {
@@ -44,11 +45,17 @@ export default async function CadastroPage({
     : isSignupRole(params.role)
       ? params.role
       : 'artista';
-  // O funil público (Home → Começar grátis) nunca pergunta Artista ou
-  // Booker antes de mais nada — o seletor só aparece pra quem chegou
-  // por um link explícito de booker (ex: convite de agência antigo).
-  const showRolePicker = params.tipo === 'booker' || params.role === 'booker';
+  const isBooker = params.tipo === 'booker' || params.role === 'booker';
   const planIntent = isPlanId(params.plano) ? params.plano : undefined;
+
+  // Funil público (Home → Começar grátis, sem convite, sem link
+  // explícito de booker): fluxo novo — cria a conta primeiro, sem
+  // perguntar Artista/Booker, e continua "Preparar sua Doopla" /
+  // "Escolher plano" já autenticado (ver /cadastro/preparar e
+  // /cadastro/plano). Booker e artista convidado por agência continuam
+  // no wizard antigo, que já resolve os dois casos corretamente e não
+  // precisava ser reconstruído agora.
+  const useNewFlow = !isBooker && !params.invite;
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">
@@ -68,13 +75,17 @@ export default async function CadastroPage({
           </p>
         </div>
 
-        <SignupForm
-          defaultRole={defaultRole}
-          referralCode={params.ref}
-          inviteToken={params.invite}
-          showRolePicker={showRolePicker}
-          planIntent={planIntent}
-        />
+        {useNewFlow ? (
+          <CreateAccountForm referralCode={params.ref} artistPlan={planIntent} />
+        ) : (
+          <SignupForm
+            defaultRole={defaultRole}
+            referralCode={params.ref}
+            inviteToken={params.invite}
+            showRolePicker={isBooker}
+            planIntent={planIntent}
+          />
+        )}
 
         {!params.invite && (
           <p className="text-center text-[12px] text-[var(--ink)]/45">

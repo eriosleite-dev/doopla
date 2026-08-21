@@ -167,6 +167,11 @@
   #home-marketing .flow-step .n{ font-family:'Anton',sans-serif; font-size:1.6rem; color:var(--red); display:block; margin-bottom:8px; }
   #home-marketing .flow-step p{ font-size:.85rem; color:rgba(251,249,242,.72); line-height:1.5; }
   #home-marketing .flow-note{ margin-top:28px; font-size:.92rem; color:rgba(251,249,242,.75); line-height:1.6; max-width:560px; }
+  /* camada humana: destaque curto, não uma seção nova — responde "e se só
+     a IA não bastar?" sem virar protagonista nem explicação longa. */
+  #home-marketing .human-layer{ margin-top:24px; padding-top:24px; border-top:1px solid rgba(251,249,242,.14); max-width:560px; }
+  #home-marketing .human-layer-title{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:.92rem; color:var(--off); margin-bottom:8px; }
+  #home-marketing .human-layer p{ font-size:.82rem; color:rgba(251,249,242,.62); line-height:1.55; margin-top:4px; }
 
   /* segurança */
   #home-marketing .security{ background:var(--black); color:var(--off); }
