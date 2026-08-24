@@ -47,13 +47,11 @@ export default async function PrepararPage() {
       initialStageName={artistProfile.stage_name ?? ''}
       initialProfession={artistProfile.category ?? ''}
       initialLocal={artistProfile.local ?? ''}
-      initialRegions={artistProfile.regions ?? []}
       initialBio={artistProfile.bio ?? ''}
       initialLink={artistProfile.other_links ?? ''}
       initialFeeCents={artistProfile.base_fee_cents}
-      initialFeeVaries={artistProfile.fee_varies_by_job_type}
+      initialPricingNotes={artistProfile.pricing_notes ?? ''}
       initialIssuesInvoice={artistProfile.issues_invoice}
-      initialDuration={artistProfile.typical_job_duration ?? ''}
       initialNegotiationNotes={artistProfile.negotiation_notes ?? ''}
       initialChannel={artistProfile.attention_channel}
     />

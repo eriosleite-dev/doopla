@@ -62,6 +62,11 @@ export type ArtistProfile = {
   typical_job_duration: string | null;
   negotiation_notes: string | null;
   attention_channel: 'whatsapp' | 'painel' | 'ambos' | null;
+  // Onboarding reescrito (migration 0038) — "como você costuma definir
+  // seus valores?", só quando a etapa Valores escolhe "Depende do
+  // trabalho" em vez de um valor fixo. Diferente de bio e de
+  // negotiation_notes — nunca concatenar.
+  pricing_notes: string | null;
   created_at: string;
   updated_at: string;
 };

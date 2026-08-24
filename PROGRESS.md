@@ -2081,6 +2081,63 @@ branch (migration `0018`).
 - ⏳ Indique e ganhe R$5 (dashboard) não foi tocado por essa mudança —
   vive inteiramente em `src/app/dashboard/`, fora do `/cadastro`.
 
+## 26. Onboarding — fonte de verdade final: qualquer profissional independente, não só DJ/artista
+
+- ✅ **Reescrita da Etapa 3 e simplificação geral**, alinhada ao
+  documento final do usuário. Mudanças principais em relação ao item
+  25:
+  - Etapa 3 renomeada de "Cachê" pra **"Valores"**: "Você tem um valor
+    de referência para seu trabalho?" com opções **R$ [valor]** ou
+    **Depende do trabalho** (nunca mais "ainda não tenho um valor
+    definido" — o enquadramento agora é sempre "referência pra Doopla
+    entender como você trabalha comercialmente", nunca autorização de
+    fechamento). Escolhendo "Depende do trabalho" abre uma pergunta
+    aberta opcional ("Como você costuma definir seus valores?") em vez
+    da antiga pergunta fechada "cachê varia por tipo de trabalho?".
+  - **Removida a etapa "Onde você trabalha" inteira** (chips de
+    cidade/estados/internacional/remoto) — cidade-base já basta como
+    contexto inicial; alcance geográfico é aprendizado progressivo,
+    não pergunta de onboarding.
+  - **Removida "duração típica do trabalho"** (Etapa 4) — fazia sentido
+    só pra um subconjunto de profissões.
+  - **Toggle "Escrever/Falar por áudio" virou um único input
+    conversacional com ícone de microfone embutido**
+    (`ConversationalField`, usado em "conte sobre seu trabalho" e nas
+    duas perguntas abertas de Valores/Como você trabalha) — nunca dois
+    modos separados. Áudio de verdade continua não existindo: clicar
+    no microfone mostra um aviso honesto (`.mic-note`) sem esconder o
+    campo de texto.
+  - **"Nome artístico" virou "Nome profissional"** e o placeholder de
+    profissão trocou de "DJ" fixo pra "Ex.: DJ, fotógrafo, maquiador,
+    creator..." — sem nenhum valor pré-preenchido, pra não sugerir que
+    o produto é feito só pra DJ.
+  - **Etapa 6 (Conclusão) reescrita**: sem lista "o que falta"
+    (Riders/Materiais/Links/...), que soava como "cadastro incompleto".
+    Texto novo comunica aprendizado progressivo: "Isso é só o começo...
+    Sua Doopla também vai perguntar quando precisar aprender algo
+    novo." + "Quanto mais vocês trabalham juntos, mais sua Doopla
+    conhece você."
+  - Coluna nova **`pricing_notes`** (migration 0038) pra "como você
+    costuma definir seus valores" — semanticamente diferente de `bio`
+    e de `negotiation_notes`, nunca concatenada com nenhuma das duas.
+    `fee_varies_by_job_type`/`typical_job_duration` (migration 0037)
+    saem do onboarding mas continuam existindo no banco, sem escrita —
+    não é destrutivo remover uma pergunta.
+  - `src/lib/artist-categories.ts` removido (WORK_REGIONS não é mais
+    usado por nada, já que a etapa de regiões saiu do onboarding).
+- ⏳ **Explicitamente fora deste bloco, por pedido direto**: a barra
+  "Sua Doopla aprende com você" no painel (input único com
+  texto/áudio/anexo interpretado por IA), perguntas proativas da
+  Doopla quando falta uma informação, e a evolução do gerador de
+  contrato pra aceitar contrato próprio do profissional como
+  referência — tudo isso depende de integração real de IA (backend +
+  OpenAI/Anthropic), que é um bloco técnico separado, ainda não
+  iniciado. Comecei uma auditoria técnica da arquitetura atual (stack,
+  schema, auth, segurança, gaps) como pré-requisito desse bloco, a
+  pedido do usuário — pausada a meio de caminho pra terminar o
+  onboarding primeiro; retomo quando ele pedir.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

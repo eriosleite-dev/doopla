@@ -2,7 +2,6 @@
 
 import { useActionState, useState } from 'react';
 
-import { WORK_REGIONS } from '@/lib/artist-categories';
 import { OnboardingShell } from '../OnboardingShell';
 import { savePrepareAction, type OnboardingFormState } from '../actions';
 import '../onboarding.css';
@@ -10,52 +9,53 @@ import '../onboarding.css';
 const initialState: OnboardingFormState = {};
 const SUBSTEPS = 5; // Etapas 2 a 6 (globais) = índices 0 a 4 aqui
 
-function toggle(list: string[], value: string): string[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
 function formatCentsToInput(cents: number | null): string {
   if (cents === null) return '';
   return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-// Toggle "Escrever / Falar por áudio" do mockup. Captura de áudio ainda
-// não existe de verdade — em vez de fingir uma gravação que descartaria
-// a resposta da pessoa, o texto continua sendo o único jeito real de
-// responder; o botão de áudio só avisa isso, honestamente, sem esconder
-// o textarea nem construir uma UI de gravação falsa.
-function TextOrAudioToggle({
-  mode,
-  onModeChange,
+// Input conversacional único (textarea + microfone embutido), nunca dois
+// modos separados de "escrever"/"falar por áudio". Captura de áudio de
+// verdade ainda não existe — clicar no microfone só avisa isso
+// honestamente, sem esconder o textarea nem simular uma gravação que
+// descartaria a resposta da pessoa.
+function ConversationalField({
+  id,
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
 }: {
-  mode: 'texto' | 'audio';
-  onModeChange: (mode: 'texto' | 'audio') => void;
+  id?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  rows?: number;
 }) {
+  const [showMicNote, setShowMicNote] = useState(false);
   return (
-    <>
-      <div className="input-toggle">
-        <button
-          type="button"
-          className={`toggle-btn${mode === 'texto' ? ' active' : ''}`}
-          onClick={() => onModeChange('texto')}
-        >
-          ✎ Escrever
-        </button>
-        <button
-          type="button"
-          className={`toggle-btn${mode === 'audio' ? ' active' : ''}`}
-          onClick={() => onModeChange('audio')}
-        >
-          ◉ Falar por áudio
-        </button>
-      </div>
-      {mode === 'audio' && (
-        <div className="audio-note">
-          Resposta por áudio ainda não está disponível — por enquanto, continue escrevendo aqui
-          embaixo.
-        </div>
+    <div className="conv-field">
+      <textarea
+        id={id}
+        rows={rows}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      <button
+        type="button"
+        className="mic-btn"
+        aria-label="Falar por áudio"
+        onClick={() => setShowMicNote(true)}
+      >
+        🎙
+      </button>
+      {showMicNote && (
+        <p className="mic-note">
+          Áudio ainda não está disponível — continue escrevendo aqui por enquanto.
+        </p>
       )}
-    </>
+    </div>
   );
 }
 
@@ -63,26 +63,22 @@ export function PrepareForm({
   initialStageName,
   initialProfession,
   initialLocal,
-  initialRegions,
   initialBio,
   initialLink,
   initialFeeCents,
-  initialFeeVaries,
+  initialPricingNotes,
   initialIssuesInvoice,
-  initialDuration,
   initialNegotiationNotes,
   initialChannel,
 }: {
   initialStageName: string;
   initialProfession: string;
   initialLocal: string;
-  initialRegions: string[];
   initialBio: string;
   initialLink: string;
   initialFeeCents: number | null;
-  initialFeeVaries: boolean | null;
+  initialPricingNotes: string;
   initialIssuesInvoice: boolean | null;
-  initialDuration: string;
   initialNegotiationNotes: string;
   initialChannel: 'whatsapp' | 'painel' | 'ambos' | null;
 }) {
@@ -92,21 +88,17 @@ export function PrepareForm({
   const [stageName, setStageName] = useState(initialStageName);
   const [profession, setProfession] = useState(initialProfession);
   const [local, setLocal] = useState(initialLocal);
-  const [regions, setRegions] = useState<string[]>(initialRegions);
   const [bio, setBio] = useState(initialBio);
-  const [bioMode, setBioMode] = useState<'texto' | 'audio'>('texto');
   const [link, setLink] = useState(initialLink);
 
-  const [hasCache, setHasCache] = useState<'sim' | 'ainda-nao' | null>(
-    initialFeeCents !== null ? 'sim' : null
+  const [priceChoice, setPriceChoice] = useState<'valor' | 'depende' | null>(
+    initialFeeCents !== null ? 'valor' : initialPricingNotes ? 'depende' : null
   );
   const [feeValue, setFeeValue] = useState(formatCentsToInput(initialFeeCents));
-  const [feeVaries, setFeeVaries] = useState<boolean | null>(initialFeeVaries);
+  const [pricingNotes, setPricingNotes] = useState(initialPricingNotes);
 
   const [issuesInvoice, setIssuesInvoice] = useState<boolean | null>(initialIssuesInvoice);
-  const [duration, setDuration] = useState(initialDuration);
   const [negotiationNotes, setNegotiationNotes] = useState(initialNegotiationNotes);
-  const [notesMode, setNotesMode] = useState<'texto' | 'audio'>('texto');
 
   const [channel, setChannel] = useState<'whatsapp' | 'painel' | 'ambos' | null>(initialChannel);
 
@@ -115,7 +107,7 @@ export function PrepareForm({
       return Boolean(stageName.trim() && profession.trim() && local.trim() && bio.trim());
     }
     if (s === 1) {
-      return hasCache === 'ainda-nao' || (hasCache === 'sim' && feeValue.trim().length > 0);
+      return priceChoice === 'depende' || (priceChoice === 'valor' && feeValue.trim().length > 0);
     }
     if (s === 3) {
       return Boolean(channel);
@@ -137,20 +129,16 @@ export function PrepareForm({
       <input type="hidden" name="stageName" value={stageName} />
       <input type="hidden" name="profession" value={profession} />
       <input type="hidden" name="local" value={local} />
-      {regions.map((r) => (
-        <input key={r} type="hidden" name="regions" value={r} />
-      ))}
       <input type="hidden" name="bio" value={bio} />
       <input type="hidden" name="link" value={link} />
-      <input type="hidden" name="hasCache" value={hasCache ?? ''} />
+      <input type="hidden" name="priceChoice" value={priceChoice ?? ''} />
       <input type="hidden" name="feeValue" value={feeValue} />
-      <input type="hidden" name="feeVaries" value={feeVaries === null ? '' : String(feeVaries)} />
+      <input type="hidden" name="pricingNotes" value={pricingNotes} />
       <input
         type="hidden"
         name="issuesInvoice"
         value={issuesInvoice === null ? '' : String(issuesInvoice)}
       />
-      <input type="hidden" name="duration" value={duration} />
       <input type="hidden" name="negotiationNotes" value={negotiationNotes} />
       <input type="hidden" name="channel" value={channel ?? ''} />
 
@@ -174,23 +162,29 @@ export function PrepareForm({
           )
         }
       >
-        <div className="steps-track" style={{ width: `${SUBSTEPS * 100}%`, transform: `translateX(-${sub * (100 / SUBSTEPS)}%)` }}>
+        <div
+          className="steps-track"
+          style={{ width: `${SUBSTEPS * 100}%`, transform: `translateX(-${sub * (100 / SUBSTEPS)}%)` }}
+        >
           {/* Etapa 2 — Prepare sua Doopla */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
             <div className="eyebrow">Etapa 2 de 7</div>
             <h1 className="headline">
               Vamos preparar <em>sua Doopla.</em>
             </h1>
-            <p className="sub">Conte um pouco sobre o seu trabalho para ela saber como representar você.</p>
+            <p className="sub">
+              Vamos começar pelo essencial. Sua Doopla vai conhecer melhor seu jeito de trabalhar
+              aos poucos.
+            </p>
 
             <div className="field">
-              <label htmlFor="f-artistico">Qual é o seu nome artístico?</label>
+              <label htmlFor="f-nome-prof">Qual é o seu nome profissional?</label>
               <input
                 type="text"
-                id="f-artistico"
+                id="f-nome-prof"
                 value={stageName}
                 onChange={(e) => setStageName(e.target.value)}
-                placeholder="Nome artístico"
+                placeholder="Nome profissional"
               />
             </div>
             <div className="field">
@@ -200,7 +194,7 @@ export function PrepareForm({
                 id="f-faz"
                 value={profession}
                 onChange={(e) => setProfession(e.target.value)}
-                placeholder="Ex.: DJ, fotógrafo, banda, creator..."
+                placeholder="Ex.: DJ, fotógrafo, maquiador, creator..."
               />
             </div>
             <div className="field">
@@ -214,34 +208,18 @@ export function PrepareForm({
               />
             </div>
             <div className="field">
-              <label>Onde você costuma trabalhar?</label>
-              <div className="chip-group">
-                {WORK_REGIONS.map((r) => (
-                  <div
-                    key={r}
-                    className={`chip${regions.includes(r) ? ' selected' : ''}`}
-                    onClick={() => setRegions((prev) => toggle(prev, r))}
-                  >
-                    {r}
-                  </div>
-                ))}
-              </div>
-              <p className="hint">Isso ajuda sua Doopla a entender o alcance geográfico da sua atuação.</p>
-            </div>
-            <div className="field">
               <label>Conte um pouco sobre o seu trabalho</label>
               <p className="hint" style={{ marginTop: '-4px', marginBottom: '10px' }}>
-                O que é importante sua Doopla saber sobre o que você faz?
+                Ajude sua Doopla a entender melhor como você trabalha.
               </p>
-              <TextOrAudioToggle mode={bioMode} onModeChange={setBioMode} />
-              <textarea
+              <ConversationalField
                 value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder="Ex: Sou DJ de house e disco e trabalho principalmente em clubes, eventos corporativos e marcas."
+                onChange={setBio}
+                placeholder="Ex.: conte o que você faz, como costuma trabalhar e o que considera importante..."
               />
             </div>
             <div className="field">
-              <label htmlFor="f-link">Tem um link profissional? (opcional)</label>
+              <label htmlFor="f-link">Tem algum link profissional? (opcional)</label>
               <input
                 type="text"
                 id="f-link"
@@ -252,37 +230,40 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 3 — Cachê */}
+          {/* Etapa 3 — Valores */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
             <div className="eyebrow">Etapa 3 de 7</div>
             <h1 className="headline">
-              Fale sobre <em>seu cachê.</em>
+              Seus <em>valores.</em>
             </h1>
-            <p className="sub">Isso ajuda sua Doopla a negociar dentro da realidade do seu trabalho.</p>
+            <p className="sub">
+              O valor informado é uma referência para sua Doopla entender como você trabalha
+              comercialmente — não é autorização pra fechar automaticamente nesse valor.
+            </p>
 
             <div className="field">
-              <label>Você já tem um cachê de referência?</label>
+              <label>Você tem um valor de referência para seu trabalho?</label>
               <div
-                className={`option-card${hasCache === 'sim' ? ' selected' : ''}`}
-                onClick={() => setHasCache('sim')}
+                className={`option-card${priceChoice === 'valor' ? ' selected' : ''}`}
+                onClick={() => setPriceChoice('valor')}
               >
                 <div className="option-radio" />
                 <div>
-                  <div className="option-title">Sim</div>
+                  <div className="option-title">R$ [valor]</div>
                 </div>
               </div>
               <div
-                className={`option-card${hasCache === 'ainda-nao' ? ' selected' : ''}`}
-                onClick={() => setHasCache('ainda-nao')}
+                className={`option-card${priceChoice === 'depende' ? ' selected' : ''}`}
+                onClick={() => setPriceChoice('depende')}
               >
                 <div className="option-radio" />
                 <div>
-                  <div className="option-title">Ainda não</div>
+                  <div className="option-title">Depende do trabalho</div>
                 </div>
               </div>
             </div>
 
-            {hasCache === 'sim' && (
+            {priceChoice === 'valor' && (
               <div className="field">
                 <label htmlFor="f-valor">Qual valor, aproximadamente?</label>
                 <input
@@ -295,30 +276,16 @@ export function PrepareForm({
               </div>
             )}
 
-            <div className="field">
-              <label>Seu cachê varia dependendo do trabalho?</label>
-              <div className="chip-group">
-                <div
-                  className={`chip${feeVaries === true ? ' selected' : ''}`}
-                  onClick={() => setFeeVaries(true)}
-                >
-                  Sim
-                </div>
-                <div
-                  className={`chip${feeVaries === false ? ' selected' : ''}`}
-                  onClick={() => setFeeVaries(false)}
-                >
-                  Não
-                </div>
+            {priceChoice === 'depende' && (
+              <div className="field">
+                <label>Como você costuma definir seus valores? (opcional)</label>
+                <ConversationalField
+                  value={pricingNotes}
+                  onChange={setPricingNotes}
+                  placeholder="Ex.: depende do cliente, duração, complexidade ou tipo de trabalho..."
+                />
               </div>
-              <p className="hint">Dá pra detalhar isso depois, no painel.</p>
-            </div>
-
-            <div className="disabled-note">
-              Sua Doopla começa no modo Conservador: conduz a conversa e a negociação, mas sempre
-              te consulta antes de fechar qualquer valor. Dá pra dar mais autonomia a ela depois,
-              dentro de Minha Doopla.
-            </div>
+            )}
           </div>
 
           {/* Etapa 4 — Como você trabalha */}
@@ -327,7 +294,10 @@ export function PrepareForm({
             <h1 className="headline">
               Como <em>você trabalha.</em>
             </h1>
-            <p className="sub">Só o essencial pra sua Doopla conduzir um booking sem te interromper à toa.</p>
+            <p className="sub">
+              Contexto comercial e regras básicas que podem afetar como sua Doopla representa
+              você.
+            </p>
 
             <div className="field">
               <label>Você emite nota fiscal?</label>
@@ -348,34 +318,25 @@ export function PrepareForm({
             </div>
 
             <div className="field">
-              <label htmlFor="f-duracao">Qual costuma ser a duração do seu trabalho?</label>
-              <input
-                type="text"
-                id="f-duracao"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                placeholder="Ex: 2 horas"
-              />
-            </div>
-
-            <div className="field">
               <label>Tem algo que sua Doopla sempre deve saber antes de negociar por você?</label>
-              <TextOrAudioToggle mode={notesMode} onModeChange={setNotesMode} />
-              <textarea
+              <p className="hint" style={{ marginTop: '-4px', marginBottom: '10px' }}>
+                Pode ser uma preferência, condição ou algo que você sempre faz questão de aprovar.
+              </p>
+              <ConversationalField
                 value={negotiationNotes}
-                onChange={(e) => setNegotiationNotes(e.target.value)}
-                placeholder="Ex: Em clube posso negociar mais. Para corporativo tenho outro valor."
+                onChange={setNegotiationNotes}
+                placeholder="Ex.: preferências, condições ou algo que você sempre faz questão de aprovar..."
               />
             </div>
           </div>
 
-          {/* Etapa 5 — Canal de atenção */}
+          {/* Etapa 5 — Como falar com você */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
             <div className="eyebrow">Etapa 5 de 7</div>
             <h1 className="headline">
               Como sua Doopla <em>fala com você.</em>
             </h1>
-            <p className="sub">Onde você prefere receber coisas que precisam da sua atenção.</p>
+            <p className="sub">Quando sua Doopla precisar de você, como prefere ser avisado?</p>
 
             <div
               className={`option-card${channel === 'whatsapp' ? ' selected' : ''}`}
@@ -384,7 +345,6 @@ export function PrepareForm({
               <div className="option-radio" />
               <div>
                 <div className="option-title">WhatsApp</div>
-                <div className="option-desc">Aprovações e alertas chegam direto na conversa com sua Doopla.</div>
               </div>
             </div>
             <div
@@ -394,7 +354,6 @@ export function PrepareForm({
               <div className="option-radio" />
               <div>
                 <div className="option-title">Painel</div>
-                <div className="option-desc">Você confere quando abrir o app.</div>
               </div>
             </div>
             <div
@@ -404,7 +363,6 @@ export function PrepareForm({
               <div className="option-radio" />
               <div>
                 <div className="option-title">WhatsApp + Painel</div>
-                <div className="option-desc">O melhor dos dois. Muda quando quiser, no painel.</div>
               </div>
             </div>
           </div>
@@ -418,36 +376,24 @@ export function PrepareForm({
               <br />
               necessário para <em>começar.</em>
             </h1>
-            <p className="sub">O resto você completa quando fizer sentido, direto no painel.</p>
+            <p className="sub">
+              Isso é só o começo. No painel, você pode contar mais sobre seus valores,
+              preferências, contratos, materiais e seu jeito de trabalhar. Sua Doopla também vai
+              perguntar quando precisar aprender algo novo.
+            </p>
 
             {state.error && <div className="error">{state.error}</div>}
 
-            <ul className="summary-list">
-              <li>
-                <span className="eyedot" />
-                Riders (inclusive mais de um)
-              </li>
-              <li>
-                <span className="eyedot" />
-                Materiais e press kit
-              </li>
-              <li>
-                <span className="eyedot" />
-                Links e redes sociais
-              </li>
-              <li>
-                <span className="eyedot" />
-                Informações profissionais adicionais
-              </li>
-              <li>
-                <span className="eyedot" />
-                Preferências avançadas
-              </li>
-              <li>
-                <span className="eyedot" />
-                Dados de pagamento, quando surgir um booking
-              </li>
-            </ul>
+            <p
+              style={{
+                color: 'var(--offwhite)',
+                fontWeight: 700,
+                fontSize: '14.5px',
+                lineHeight: 1.4,
+              }}
+            >
+              Quanto mais vocês trabalham juntos, mais sua Doopla conhece você.
+            </p>
           </div>
         </div>
       </OnboardingShell>

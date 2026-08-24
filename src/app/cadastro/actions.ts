@@ -40,13 +40,12 @@ function parseFeeToCents(raw: string): number | null {
 
 // Etapas 2 a 6 ("Prepare sua Doopla" até "Conclusão") são um carrossel
 // só, dentro de uma página só — grava tudo de uma vez, no fim. Sem
-// lógica de profissão → tipos de trabalho: "profissão" é texto livre
-// (coluna category), e o contexto que antes viria de uma seleção de
-// categorias agora vem inteiro da resposta aberta "Conte um pouco
-// sobre o seu trabalho" (bio). negotiation_notes (etapa Como você
-// trabalha) é uma regra de representação/negociação, semanticamente
-// diferente de bio (que descreve quem o artista é e como trabalha) —
-// nunca concatenar os dois.
+// taxonomia de profissão nenhuma (produto não é nichado em DJ/artista):
+// "o que você faz" é texto livre (coluna category), e o contexto que a
+// Doopla precisa vem inteiro da resposta aberta "Conte um pouco sobre o
+// seu trabalho" (bio). pricing_notes (etapa Valores, só quando o valor
+// "depende do trabalho") e negotiation_notes (etapa Como você trabalha)
+// são semanticamente diferentes entre si e de bio — nunca concatenados.
 export async function savePrepareAction(
   _prevState: OnboardingFormState,
   formData: FormData
@@ -56,21 +55,19 @@ export async function savePrepareAction(
   const stageName = String(formData.get('stageName') ?? '').trim();
   const profession = String(formData.get('profession') ?? '').trim();
   const local = String(formData.get('local') ?? '').trim();
-  const regions = formData.getAll('regions').map(String).filter(Boolean);
   const bio = String(formData.get('bio') ?? '').trim();
   const link = String(formData.get('link') ?? '').trim();
 
-  const hasCache = String(formData.get('hasCache') ?? '');
+  const priceChoice = String(formData.get('priceChoice') ?? '');
   const feeValueRaw = String(formData.get('feeValue') ?? '').trim();
-  const feeVariesRaw = String(formData.get('feeVaries') ?? '');
+  const pricingNotes = String(formData.get('pricingNotes') ?? '').trim();
   const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
-  const duration = String(formData.get('duration') ?? '').trim();
   const negotiationNotes = String(formData.get('negotiationNotes') ?? '').trim();
   const channel = String(formData.get('channel') ?? '');
 
   if (!stageName || !profession || !local || !bio) {
     return {
-      error: 'Preencha nome artístico, o que você faz, cidade-base e conte sobre seu trabalho.',
+      error: 'Preencha nome profissional, o que você faz, cidade-base e conte sobre seu trabalho.',
     };
   }
   if (channel !== 'whatsapp' && channel !== 'painel' && channel !== 'ambos') {
@@ -78,10 +75,10 @@ export async function savePrepareAction(
   }
 
   let feeCents: number | null = null;
-  if (hasCache === 'sim') {
+  if (priceChoice === 'valor') {
     feeCents = parseFeeToCents(feeValueRaw);
     if (feeCents === null) {
-      return { error: 'Informe um valor de cachê válido, ou marque "Ainda não".' };
+      return { error: 'Informe um valor válido, ou marque "Depende do trabalho".' };
     }
   }
 
@@ -91,13 +88,11 @@ export async function savePrepareAction(
       stage_name: stageName,
       category: profession,
       local,
-      regions,
       bio,
       other_links: link || null,
       base_fee_cents: feeCents,
-      fee_varies_by_job_type: feeVariesRaw === '' ? null : feeVariesRaw === 'true',
+      pricing_notes: priceChoice === 'depende' ? pricingNotes || null : null,
       issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
-      typical_job_duration: duration || null,
       negotiation_notes: negotiationNotes || null,
       attention_channel: channel as 'whatsapp' | 'painel' | 'ambos',
     })

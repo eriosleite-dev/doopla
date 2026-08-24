@@ -66,10 +66,16 @@
 #onboarding .option-card.selected .option-desc{ color:var(--cream-mute); }
 
 #onboarding .disabled-note{ display:flex; gap:9px; padding:12px 14px; border:2px dashed var(--cream-faint); border-radius:var(--radius-sm); color:var(--cream-mute); font-size:12.5px; line-height:1.45; margin-top:4px; font-weight:500; flex-shrink:0; }
-#onboarding .input-toggle{ display:flex; gap:8px; margin-bottom:10px; }
-#onboarding .toggle-btn{ flex:1; padding:9px; border-radius:var(--radius-sm); border:2px solid var(--ink); background:transparent; color:var(--cream); font-size:12.5px; font-weight:700; cursor:pointer; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.03em; }
-#onboarding .toggle-btn.active{ background:var(--ink); }
-#onboarding .audio-note{ display:flex; gap:9px; padding:12px 14px; border:2px dashed var(--cream-faint); border-radius:var(--radius-sm); color:var(--cream-mute); font-size:12.5px; line-height:1.45; margin-bottom:10px; font-weight:500; }
+
+/* Input conversacional único (textarea + microfone embutido) — nunca
+   dois modos/botões separados de "escrever" vs "falar por áudio".
+   Captura de áudio de verdade ainda não existe: o botão do microfone
+   só avisa isso honestamente (mic-note), sem esconder o textarea nem
+   simular uma gravação que descartaria a resposta da pessoa. */
+#onboarding .conv-field{ position:relative; }
+#onboarding .conv-field textarea{ padding-right:46px; }
+#onboarding .mic-btn{ position:absolute; right:8px; bottom:8px; width:30px; height:30px; border-radius:50%; border:2px solid var(--ink); background:var(--ink); color:var(--cream); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; line-height:1; }
+#onboarding .mic-note{ display:flex; gap:9px; padding:10px 12px; border:2px dashed var(--cream-faint); border-radius:var(--radius-sm); color:var(--cream-mute); font-size:12px; line-height:1.4; margin-top:8px; font-weight:500; }
 
 #onboarding .summary-list{ list-style:none; padding:0; margin:0; }
 #onboarding .summary-list li{ display:flex; gap:11px; align-items:center; padding:10px 0; border-bottom:2px dashed var(--cream-faint); font-size:14px; color:var(--cream-mute); font-weight:600; font-family:'Inter'; }
