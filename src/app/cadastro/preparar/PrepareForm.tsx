@@ -147,11 +147,17 @@ export function PrepareForm({
         onBack={sub > 0 ? back : undefined}
         footer={
           sub === SUBSTEPS - 1 ? (
-            <button type="submit" className="btn-primary" disabled={pending || !canAdvance(sub)}>
+            <button
+              key="submit-btn"
+              type="submit"
+              className="btn-primary"
+              disabled={pending || !canAdvance(sub)}
+            >
               {pending ? 'Salvando…' : footerLabel}
             </button>
           ) : (
             <button
+              key="next-btn"
               type="button"
               className="btn-primary"
               disabled={!canAdvance(sub)}
