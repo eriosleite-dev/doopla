@@ -17,7 +17,3 @@ export const AI_MODEL = 'gpt-5-mini';
 // Nome de feature gravado em ai_usage_events — identifica que chamada
 // gerou aquele evento de uso.
 export const AI_FEATURE_INTELLIGENCE_TEST = 'intelligence_test_ping';
-
-// Quantas mensagens recentes da conversa entram no contexto mínimo do
-// teste.
-export const AI_TEST_RECENT_MESSAGES_LIMIT = 10;

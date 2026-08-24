@@ -23,14 +23,14 @@ import type { ActorContextResult, ActorTrigger, ActorType, Capability, MinimalCo
 export function resolveCapabilities(actorType: ActorType): Capability[] {
   switch (actorType) {
     case 'professional':
-      return ['read_professional_profile', 'read_opportunity', 'read_booking'];
+      return ['read_professional_profile', 'read_opportunity', 'read_booking', 'read_external_participant'];
     case 'authorized_collaborator':
       // Nenhum caminho real chega aqui em v1 (ver resolveActorContext) —
       // mantido vazio de propósito até o Booker Pro definir o conjunto
       // real de capacidades de um colaborador autorizado.
       return [];
     case 'system':
-      return ['read_professional_profile', 'read_opportunity', 'read_booking'];
+      return ['read_professional_profile', 'read_opportunity', 'read_booking', 'read_external_participant'];
   }
 }
 

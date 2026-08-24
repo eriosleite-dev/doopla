@@ -30,7 +30,11 @@ export type TriggerSource = 'dev_test_panel' | 'dashboard' | 'system_job';
 // Capacidades que um ActorContext carrega — hoje só leitura. Cada READ
 // tool exige uma capability específica; o pre-model gate filtra a
 // lista de tools elegíveis por isso.
-export type Capability = 'read_professional_profile' | 'read_opportunity' | 'read_booking';
+export type Capability =
+  | 'read_professional_profile'
+  | 'read_opportunity'
+  | 'read_booking'
+  | 'read_external_participant';
 
 export type ActorContext = {
   representedProfessionalId: string;
@@ -82,7 +86,12 @@ export type RiskLevel = 'low' | 'medium' | 'high';
 // Fontes de contexto que o pre-model gate pode liberar — a lista
 // elegível depende de a conversa ter (ou não) oportunidade/booking
 // relacionados.
-export type ContextSource = 'professional_profile' | 'conversation_messages' | 'opportunity' | 'booking';
+export type ContextSource =
+  | 'professional_profile'
+  | 'conversation_messages'
+  | 'opportunity'
+  | 'booking'
+  | 'external_participant';
 
 export type ToolContext = {
   representedProfessionalId: string;

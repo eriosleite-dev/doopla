@@ -2468,6 +2468,101 @@ implementado cedo demais.
 - ✅ **Bloco 1 aprovado pelo usuário e PR #3 mesclado** em
   `claude/doopla-backend-login-db-fj5j3y` (merge commit `d7e22d5`).
 
+## 31. Doopla Intelligence Core v1 — Bloco 2: Context Builder v1
+
+Fundação do Context Builder (não "completo" — outras fontes ficam
+para etapas futuras: approvals, Professional Brain estruturado,
+histórico relacional enriquecido, materiais/documentos, agenda,
+preferências de ator, memória episódica, portfolio de
+collaborator/booker). Escopo revisado em 2 rodadas antes do código
+(estrutura do `ContextPackage`, provenance, budget/janela, tratamento
+de texto/áudio/attachment, missing context, testes, confirmação de
+"sem migration" — depois `external_participant` incorporado como
+quarto papel fundamental antes de qualquer código).
+
+- ✅ **4ª READ tool: `get_external_participant`** — mesma disciplina
+  das outras 3 (read-only, `sideEffects:false`, LOW risk, nunca
+  recebe um id arbitrário: resolve sempre
+  `ctx.conversation.external_participant_id`, filtra sempre por
+  `professional_id = ctx.representedProfessionalId`). Participant de
+  outro representado → `found:false`, igual ao padrão de
+  `get_opportunity`/`get_booking`.
+- ✅ **`src/lib/intelligence/context-builder/`** — `types.ts`
+  (`ContextPackage`, `ContextFact`, seções, `MessageContextItem`),
+  `budget.ts` (limites centralizados + `truncateText`), `sections.ts`
+  (profissional/oportunidade/booking/participante externo),
+  `messages.ts` (janela de mensagens), `build.ts`
+  (`buildContextPackage`, orquestrador), `render.ts`
+  (`renderContextForPrompt`, `resolveProfessionalDisplayName`),
+  `index.ts` (barrel).
+- ✅ **Data / provenance / rendering separados de verdade**:
+  `ContextPackage` é 100% estruturado (nunca uma string como fonte de
+  verdade) — cada `ContextFact` já carrega a própria proveniência
+  (`sourceType`, `sourceId`, `field`, `factType`, `loadedAt`).
+  `renderContextForPrompt()` é uma função pura separada que só LÊ o
+  pacote — nunca decide autorização/tenant/elegibilidade/risco.
+  `test-call.ts` agora usa as duas etapas em sequência, uma única
+  implementação de contexto (a lógica própria antiga foi removida).
+- ✅ **4 estados por seção** (`loaded`/`not_allowed`/`no_link`/`not_found`)
+  para profissional/oportunidade/booking/participante externo — nunca
+  tratados como erro. **`not_found` é deliberadamente opaco**: nunca
+  diferencia "não existe" de "é de outro representado" — testado
+  explicitamente pra nunca virar canal lateral de descoberta
+  cross-tenant.
+- ✅ **`factType: 'structured' | 'derived'`** already no contrato;
+  neste bloco **100% dos fatos são `structured`** — nenhum derivado
+  criado (verificado por teste, não só por não ter escrito código
+  derivado).
+- ✅ **Janela de mensagens = quantidade + recência**, nunca só um
+  limite numérico (`CONTEXT_MAX_MESSAGES=10` + `CONTEXT_MESSAGE_WINDOW_DAYS=30`,
+  ambas as condições juntas) — testado que uma mensagem antiga de uma
+  conversa reaberta não entra mesmo estando sob o limite de
+  quantidade. `buildContextPackage` aceita um `now` injetável só pra
+  testes determinísticos de janela, sem complicar a API pública.
+- ✅ **Texto/áudio/attachment tratados com disciplina**: texto usa
+  `body`; áudio só vira texto quando `transcription_status==='done'`
+  (nunca `audio_url`); attachment nunca vira conteúdo nesta etapa
+  (decisão explícita: nem metadado mínimo, até haver necessidade
+  concreta). Tudo truncado por budget quando longo, sempre marcado
+  `truncated:true`.
+- ✅ **`ActorContext`/isolamento preservados por construção**: o
+  Builder só consome `allowedContextSources`/`eligibleTools` já
+  calculados pelo pre-model gate — nunca os recalcula, nunca os
+  amplia, nunca resolve colaborador sozinho. Nenhum contrato assume
+  `actor_profile_id === represented_professional_id` como regra
+  estrutural (o Builder só enxerga representado + `ActorContext` +
+  conversa + fontes permitidas).
+- ✅ **`test-call.ts` refatorado** — não monta mais contexto por conta
+  própria; consome só `buildContextPackage()` +
+  `renderContextForPrompt()`. Mudança de comportamento registrada: o
+  teste antigo abortava se `get_professional_profile` falhasse; agora
+  segue em frente com o pacote parcial (`professional: not_found`),
+  coerente com "ausência não é erro" — decisão deliberada, não
+  descuido.
+- ✅ **Testes**: os 17 do escopo + os 7 específicos de
+  `external_participant` — todos rodados como lógica pura (client
+  Supabase simulado, incluindo simulação de `.gte()`/`.order()`/`.limit()`
+  pra reproduzir a query real de mensagens) **e** uma bateria real
+  contra Postgres local (RLS de `external_participants` sozinha vs. o
+  filtro explícito da tool — mesma prova adversarial do Bloco 1: RLS
+  aqui já é estrita, mas o filtro é obrigatório de qualquer forma;
+  tentativa de IDOR com id exato de B; opacidade de inexistente vs.
+  cross-tenant; `anon` bloqueado; regressão de isolamento de
+  `opportunities` num rebuild fresco). Regressão completa do Bloco 1
+  (14 testes + 5 adversariais) re-executada sem falha real (1 asserção
+  desatualizada no teste antigo, corrigida — não era uma regressão de
+  comportamento).
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ✅ **Nenhuma migration** — usa só as 4 READ tools e
+  `conversation_messages`, como planejado.
+- ⏳ Continua fora: Intent Classifier, Competence Router completo,
+  `CoreDecision`, Response Planner, Post-model Policy Gate, Approval
+  Engine, nova State Machine, tools de escrita/ação, resposta
+  automática, WhatsApp/e-mail, collaborator/booker, portfolio context,
+  Actor Preferences, painel, memória vetorial/embeddings,
+  interpretação de documentos/PDFs, histórico relacional enriquecido.
+  Parado aqui — aguardando auditoria/nova autorização pro Bloco 3.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
