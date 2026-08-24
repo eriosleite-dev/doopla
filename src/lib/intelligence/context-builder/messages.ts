@@ -51,14 +51,28 @@ export async function buildMessagesSection(
 
   const windowSince = new Date(now.getTime() - CONTEXT_MESSAGE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  const { data } = await toolCtx.supabase
+  const { data, error } = await toolCtx.supabase
     .from('conversation_messages')
     .select('*')
     .eq('conversation_id', toolCtx.conversation.id)
     .gte('created_at', windowSince.toISOString())
+    // Tiebreaker por `id` além de `created_at`: duas mensagens com o
+    // mesmo timestamp (raro, mas possível) não podem depender de uma
+    // ordem arbitrária do banco — sem uma segunda chave, o corte do
+    // `.limit()` deixaria de ser determinístico entre execuções.
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(CONTEXT_MAX_MESSAGES)
     .returns<ConversationMessage[]>();
+
+  // Erro real de consulta (rede/timeout/banco) nunca pode parecer
+  // "conversa sem mensagens ainda" — são coisas completamente
+  // diferentes pro que a Doopla pode concluir. Achado da auditoria
+  // adversarial do Bloco 2: `data ?? []` sozinho tratava as duas
+  // situações da mesma forma.
+  if (error) {
+    return { status: 'unavailable' };
+  }
 
   const rows = data ?? [];
   // mais antiga primeiro, pra leitura natural de thread.

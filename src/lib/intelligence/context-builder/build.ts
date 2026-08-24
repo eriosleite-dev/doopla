@@ -1,7 +1,7 @@
 import type { ContextSource, ToolContext } from '../types';
 import { buildMessagesSection } from './messages';
 import { buildBookingSection, buildExternalParticipantSection, buildOpportunitySection, buildProfessionalSection } from './sections';
-import type { ContextBuildResult } from './types';
+import type { ContextBuildResult, ContextPackageSectionName, UnavailableSource } from './types';
 
 // Doopla Intelligence Core v1 — Context Builder v1 (Bloco 2).
 //
@@ -18,20 +18,36 @@ export async function buildContextPackage(
 ): Promise<ContextBuildResult> {
   const now = opts.now ?? new Date();
   const calledTools: string[] = [];
+  const unavailableSources: UnavailableSource[] = [];
+
+  function noteIfUnavailable(
+    name: ContextPackageSectionName,
+    status: string,
+    reasonCode: UnavailableSource['reasonCode'] = 'query_error'
+  ) {
+    if (status === 'unavailable') unavailableSources.push({ source: name, reasonCode });
+  }
 
   const professional = await buildProfessionalSection(toolCtx, gate, now);
   if (professional.calledTool) calledTools.push(professional.calledTool);
+  noteIfUnavailable('professional', professional.section.status, professional.unavailableReason);
 
   const opportunity = await buildOpportunitySection(toolCtx, gate, now);
   if (opportunity.calledTool) calledTools.push(opportunity.calledTool);
+  noteIfUnavailable('opportunity', opportunity.section.status, opportunity.unavailableReason);
 
   const booking = await buildBookingSection(toolCtx, gate, now);
   if (booking.calledTool) calledTools.push(booking.calledTool);
+  noteIfUnavailable('booking', booking.section.status, booking.unavailableReason);
 
   const externalParticipant = await buildExternalParticipantSection(toolCtx, gate, now);
   if (externalParticipant.calledTool) calledTools.push(externalParticipant.calledTool);
+  noteIfUnavailable('externalParticipant', externalParticipant.section.status, externalParticipant.unavailableReason);
 
   const messages = await buildMessagesSection(toolCtx, gate, now);
+  // Sem outcome do Tool Registry pra desenrolar (mensagens não passam
+  // por lá) — 'query_error' já é o motivo real aqui, não um genérico.
+  noteIfUnavailable('messages', messages.status);
 
   return {
     contextPackage: {
@@ -45,5 +61,6 @@ export async function buildContextPackage(
       externalParticipant: externalParticipant.section,
     },
     calledTools,
+    unavailableSources,
   };
 }

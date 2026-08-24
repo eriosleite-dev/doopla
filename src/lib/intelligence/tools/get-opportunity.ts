@@ -35,7 +35,7 @@ type Output = z.infer<typeof outputSchema>;
 async function execute(input: Input, ctx: ToolContext): Promise<ToolExecutionOutcome<Output>> {
   const { supabase } = ctx;
 
-  const { data: opportunity } = await supabase
+  const { data: opportunity, error } = await supabase
     .from('opportunities')
     .select('id, description, status, cache_amount_cents, commission_percent, work_type, category, location, event_date')
     .eq('id', input.opportunityId)
@@ -55,6 +55,14 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolExecutionOut
       >
     >();
 
+  // Erro de fato na consulta (rede/timeout/banco) NUNCA vira
+  // found:false — "não consegui verificar" é uma coisa, "verifiquei e
+  // não achei" é outra. Achado da auditoria adversarial do Bloco 2:
+  // este `if` não existia, e um erro real acabava indistinguível de
+  // uma oportunidade inexistente/de outro tenant.
+  if (error) {
+    return { ok: false, error: 'execution_failed', detail: 'opportunities_query_error' };
+  }
   if (!opportunity) {
     return { ok: true, output: { found: false } };
   }

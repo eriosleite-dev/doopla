@@ -63,15 +63,24 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
   });
 
   let calledTools: string[] = [];
+  // Fontes que ficaram 'unavailable' nesta execução (falha
+  // operacional real, nunca ausência normal) — registradas aqui só
+  // como código sanitizado, nunca a mensagem técnica original (essa
+  // fica só dentro da tool, descartada; ver context-builder/sections.ts).
+  let unavailableSources: string[] = [];
 
   async function finishRun(status: 'completed' | 'failed', error: string | null) {
     if (!run) return;
+    const fallbackUsed = unavailableSources.length > 0;
+    const combinedError = fallbackUsed
+      ? [error, `context_sources_unavailable:${unavailableSources.join(',')}`].filter(Boolean).join(' | ')
+      : error;
     await finishOrchestratorRun(supabase, {
       runId: run.id,
       status,
       calledTools,
-      error,
-      fallbackUsed: false,
+      error: combinedError,
+      fallbackUsed,
     });
   }
 
@@ -84,6 +93,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
 
   const buildResult = await buildContextPackage(toolCtx, { allowedContextSources, eligibleTools });
   calledTools = buildResult.calledTools;
+  unavailableSources = buildResult.unavailableSources.map((u) => u.source);
   const { contextPackage } = buildResult;
 
   const representedName = resolveProfessionalDisplayName(contextPackage);

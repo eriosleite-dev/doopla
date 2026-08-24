@@ -6,10 +6,12 @@ export type {
   ContextFactSourceType,
   ContextFactType,
   ContextPackage,
+  ContextPackageSectionName,
   ContextSection,
   MessageContextItem,
   MessageProvenance,
   MessagesSection,
+  UnavailableSource,
 } from './types';
 export {
   CONTEXT_MAX_MESSAGE_TEXT_CHARS,

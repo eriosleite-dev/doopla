@@ -31,7 +31,7 @@ type Output = z.infer<typeof outputSchema>;
 async function execute(input: Input, ctx: ToolContext): Promise<ToolExecutionOutcome<Output>> {
   const { supabase } = ctx;
 
-  const { data: booking } = await supabase
+  const { data: booking, error } = await supabase
     .from('bookings')
     .select('id, status, commission_percent, cache_amount_cents, description, event_date, event_location')
     .eq('id', input.bookingId)
@@ -43,6 +43,11 @@ async function execute(input: Input, ctx: ToolContext): Promise<ToolExecutionOut
       >
     >();
 
+  // Mesmo achado do get-opportunity.ts: erro real de consulta nunca
+  // vira found:false.
+  if (error) {
+    return { ok: false, error: 'execution_failed', detail: 'bookings_query_error' };
+  }
   if (!booking) {
     return { ok: true, output: { found: false } };
   }

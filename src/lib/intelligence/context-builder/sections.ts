@@ -1,5 +1,5 @@
 import { executeTool } from '../tool-registry';
-import type { ContextSource, ToolContext } from '../types';
+import type { ContextSource, ToolContext, ToolExecutionError } from '../types';
 import { CONTEXT_MAX_PROFILE_FIELD_CHARS, truncateText } from './budget';
 import type { ContextFact, ContextSection } from './types';
 
@@ -13,9 +13,19 @@ import type { ContextFact, ContextSection } from './types';
 // (3) tool elegível, (4) a tool confirma isolamento (found:true).
 // Qualquer uma falhando, a seção reflete isso — nunca um fallback
 // tentando outro caminho.
+//
+// Distinção crítica (achado da auditoria adversarial): uma tool pode
+// falhar de duas formas MUITO diferentes —
+//   (a) outcome.ok === false → a consulta em si falhou (erro de
+//       banco/rede/parsing/registro). Não sabemos se o dado existe.
+//       Vira status 'unavailable'.
+//   (b) outcome.ok === true && output.found === false → a consulta
+//       rodou normalmente e não achou nada (ou achou de outro
+//       tenant — deliberadamente indistinguível). Vira 'not_found'.
+// As duas nunca podem colapsar na mesma branch.
 
 type Gate = { allowedContextSources: ContextSource[]; eligibleTools: string[] };
-type SectionOutcome = { section: ContextSection<ContextFact>; calledTool: string | null };
+type SectionOutcome = { section: ContextSection<ContextFact>; calledTool: string | null; unavailableReason?: ToolExecutionError };
 
 function pushFact(
   facts: ContextFact[],
@@ -36,28 +46,29 @@ export async function buildProfessionalSection(toolCtx: ToolContext, gate: Gate,
     return { section: { status: 'not_allowed' }, calledTool: null };
   }
 
-  const outcome = await executeTool<{
-    fullName: string;
-    stageName: string | null;
-    category: string | null;
-    bio: string | null;
-  }>(toolName, {}, toolCtx, gate.eligibleTools);
+  const outcome = await executeTool<
+    | { found: true; profile: { fullName: string; stageName: string | null; category: string | null; bio: string | null } }
+    | { found: false }
+  >(toolName, {}, toolCtx, gate.eligibleTools);
 
-  // Discipline "opaca" aplicada de forma consistente: qualquer
-  // resultado que não seja um outcome ok vira not_found — nunca
-  // diferenciamos o motivo aqui.
+  // (a) consulta falhou de verdade — "não consegui verificar".
   if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+  // (b) consulta rodou, não achou — "verifiquei e não existe".
+  if (outcome.output.found === false) {
     return { section: { status: 'not_found' }, calledTool: toolName };
   }
 
+  const { profile } = outcome.output;
   const sourceId = toolCtx.representedProfessionalId;
   const loadedAt = now.toISOString();
   const facts: ContextFact[] = [];
-  pushFact(facts, 'professional_profile', sourceId, 'fullName', outcome.output.fullName, loadedAt);
-  pushFact(facts, 'professional_profile', sourceId, 'stageName', outcome.output.stageName, loadedAt);
-  pushFact(facts, 'professional_profile', sourceId, 'category', outcome.output.category, loadedAt);
-  if (outcome.output.bio) {
-    const bio = truncateText(outcome.output.bio, CONTEXT_MAX_PROFILE_FIELD_CHARS);
+  pushFact(facts, 'professional_profile', sourceId, 'fullName', profile.fullName, loadedAt);
+  pushFact(facts, 'professional_profile', sourceId, 'stageName', profile.stageName, loadedAt);
+  pushFact(facts, 'professional_profile', sourceId, 'category', profile.category, loadedAt);
+  if (profile.bio) {
+    const bio = truncateText(profile.bio, CONTEXT_MAX_PROFILE_FIELD_CHARS);
     pushFact(facts, 'professional_profile', sourceId, 'bio', bio.value, loadedAt, bio.truncated);
   }
 
@@ -78,7 +89,10 @@ export async function buildOpportunitySection(toolCtx: ToolContext, gate: Gate, 
     | { found: false }
   >(toolName, { opportunityId: toolCtx.conversation.related_opportunity_id }, toolCtx, gate.eligibleTools);
 
-  if (!outcome.ok || outcome.output.found === false) {
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+  if (outcome.output.found === false) {
     return { section: { status: 'not_found' }, calledTool: toolName };
   }
 
@@ -111,7 +125,10 @@ export async function buildBookingSection(toolCtx: ToolContext, gate: Gate, now:
     | { found: false }
   >(toolName, { bookingId: toolCtx.conversation.related_booking_id }, toolCtx, gate.eligibleTools);
 
-  if (!outcome.ok || outcome.output.found === false) {
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+  if (outcome.output.found === false) {
     return { section: { status: 'not_found' }, calledTool: toolName };
   }
 
@@ -142,7 +159,10 @@ export async function buildExternalParticipantSection(toolCtx: ToolContext, gate
     | { found: false }
   >(toolName, {}, toolCtx, gate.eligibleTools);
 
-  if (!outcome.ok || outcome.output.found === false) {
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+  if (outcome.output.found === false) {
     return { section: { status: 'not_found' }, calledTool: toolName };
   }
 

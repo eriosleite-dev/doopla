@@ -16,5 +16,13 @@ export function truncateText(value: string, maxChars: number): { value: string; 
   if (value.length <= maxChars) {
     return { value, truncated: false };
   }
-  return { value: value.slice(0, maxChars), truncated: true };
+  let sliced = value.slice(0, maxChars);
+  // Nunca corta no meio de um par substituto UTF-16 (emoji e outros
+  // caracteres fora do BMP são 2 code units) — um surrogate alto
+  // sozinho no fim vira texto malformado antes de chegar no model.
+  const lastCode = sliced.charCodeAt(sliced.length - 1);
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    sliced = sliced.slice(0, -1);
+  }
+  return { value: sliced, truncated: true };
 }

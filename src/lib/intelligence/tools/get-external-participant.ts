@@ -35,13 +35,18 @@ async function execute(_input: Input, ctx: ToolContext): Promise<ToolExecutionOu
     return { ok: true, output: { found: false } };
   }
 
-  const { data: participant } = await supabase
+  const { data: participant, error } = await supabase
     .from('external_participants')
     .select('id, name, phone, email')
     .eq('id', ctx.conversation.external_participant_id)
     .eq('professional_id', ctx.representedProfessionalId)
     .maybeSingle<Pick<ExternalParticipant, 'id' | 'name' | 'phone' | 'email'>>();
 
+  // Mesmo achado das outras 3 tools: erro real de consulta nunca vira
+  // found:false.
+  if (error) {
+    return { ok: false, error: 'execution_failed', detail: 'external_participants_query_error' };
+  }
   if (!participant) {
     return { ok: true, output: { found: false } };
   }

@@ -2561,7 +2561,76 @@ quarto papel fundamental antes de qualquer código).
   automática, WhatsApp/e-mail, collaborator/booker, portfolio context,
   Actor Preferences, painel, memória vetorial/embeddings,
   interpretação de documentos/PDFs, histórico relacional enriquecido.
-  Parado aqui — aguardando auditoria/nova autorização pro Bloco 3.
+
+### Auditoria adversarial do Bloco 2 — achado real corrigido
+
+Antes de aprovar, auditoria focada especificamente em "ausência de
+informação" vs. "falha ao consultar informação" — a distinção que
+`not_found` (opaco de propósito, entre "não existe" e "é de outro
+representado") não podia carregar mais um terceiro significado sem
+virar perigoso.
+
+- ⚠️→✅ **Achado real, não hipotético**: nenhuma das 4 READ tools
+  checava o campo `error` da resposta do Supabase — todas tratavam
+  `data === null` como "não encontrado", sem distinguir "consultei e
+  não achei" de "a consulta falhou de verdade" (rede/timeout/banco).
+  Um erro real de banco ao buscar um `booking` virava silenciosamente
+  `not_found`, e a Doopla podia concluir "não existe booking" quando
+  na real só não deu pra checar. Mesmo bug nas 4 tools e na query
+  direta de mensagens do Builder.
+- ✅ **Corrigido**: as 4 tools agora checam `error` explicitamente
+  (`execution_failed` sanitizado, nunca a mensagem crua do
+  Supabase/SDK) antes de tratar ausência como `found:false`.
+  `get_professional_profile` ganhou o mesmo formato discriminado
+  `{found:true, profile}|{found:false}` das outras 3 (antes era
+  assimétrica — só ela não distinguia as duas coisas). Novo estado
+  `'unavailable'` em `ContextSection`/`MessagesSection` — nunca
+  colapsa com `not_found`/`loaded`. `renderContextForPrompt()` nunca
+  silencia nem afirma "não existe" pra uma seção `unavailable`; avisa
+  explicitamente "não foi possível consultar — não presuma" sem
+  vazar detalhe técnico. `buildContextPackage()` agora também devolve
+  `unavailableSources` (seção + `reasonCode` sanitizado, tipado a
+  partir de `ToolExecutionError`) pra quem chama decidir o que fazer
+  — `test-call.ts` já usa isso pra marcar `fallback_used`/anotar
+  `orchestrator_runs.error` de forma sanitizada.
+- ✅ **Outros achados corrigidos na mesma auditoria**: `truncateText()`
+  podia cortar no meio de um par substituto UTF-16 (emoji), deixando
+  texto malformado — corrigido pra nunca deixar um surrogate alto
+  sozinho no fim. Query de mensagens sem tiebreaker determinístico
+  (duas mensagens com o mesmo `created_at` podiam ordenar de forma
+  não-determinística entre execuções) — corrigido com `order by id`
+  como segunda chave.
+- ✅ **Provenance resistiu à tentativa de quebra**: nenhum fato de uma
+  seção aparece com `sourceType` de outra, mensagem de outra
+  conversa nunca aparece na lista, truncamento preserva
+  `sourceType`/`sourceId`/`field` intactos, nenhum campo duplicado
+  dentro de uma seção, renderer comprovadamente somente-leitura
+  (nunca muta o `ContextPackage`).
+- ✅ **Casos de anomalia de dado tratados com segurança**: áudio
+  `done` com transcript vazio → sem texto (nunca string vazia como
+  conteúdo); `pending` com transcript preenchido por engano → ignorado
+  (só confia no par status+transcript, nunca um sozinho); attachment
+  com `body` preenchido por engano → ignorado (content_type sempre
+  manda).
+- ✅ **68 checks de lógica pura + 13 checks reais contra Postgres
+  local** (incluindo re-teste de `external_participant` com o cenário
+  extra "mesmo telefone em profissionais diferentes" — RLS/tool
+  continuam escopando por `professional_id`, nunca por telefone) —
+  todos PASS. Regressão completa (Bloco 1 + adversariais do Bloco 1 +
+  Bloco 2 original) re-executada sem falha real — as 3 falhas que
+  apareceram no meio do processo eram todas asserções de teste
+  desatualizadas contra uma mudança de contrato desta própria rodada
+  (`get_professional_profile` virou discriminado; `context_inconsistent`
+  virou `unavailable` em vez de `not_found`), nunca uma regressão de
+  comportamento. `npm run build`/`tsc`/`eslint` limpos.
+- ✅ **Matriz de contexto parcial confirmada**: `no_link`/`not_found`/
+  fonte opcional `not_allowed` seguem normalmente; falha operacional
+  de fonte não-crítica vira `unavailable` e o Builder continua (nunca
+  aborta o pacote inteiro por uma seção); tenant/identidade incertos
+  continuam falhando fechado — mas essa decisão já acontece ANTES do
+  Builder rodar (`resolveActorContext`/`evaluatePreModelGate`), o
+  Builder em si nunca decide isso, só consome o resultado.
+  Parado aqui — aguardando nova autorização pro Bloco 3.
 
 ## Como usar isso
 
