@@ -2630,7 +2630,8 @@ virar perigoso.
   continuam falhando fechado — mas essa decisão já acontece ANTES do
   Builder rodar (`resolveActorContext`/`evaluatePreModelGate`), o
   Builder em si nunca decide isso, só consome o resultado.
-  Parado aqui — aguardando nova autorização pro Bloco 3.
+- ✅ **Bloco 2 aprovado pelo usuário e PR #4 mesclado** em
+  `claude/doopla-backend-login-db-fj5j3y` (merge commit `e2689f4`).
 
 ## Como usar isso
 
