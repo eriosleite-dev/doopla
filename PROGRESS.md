@@ -2415,15 +2415,58 @@ itens do escopo combinado, parando aqui pra auditoria antes do Bloco 2.
   sistema de verdade vai precisar de um client com privilégio elevado
   (service-role ou equivalente) quando esse bloco futuro for
   construído.
-- ⚠️ **Migration 0042 ainda não rodou no Supabase de produção** —
-  entregue como arquivo pro usuário rodar manualmente.
+- ✅ **Migration 0042 rodada e confirmada em produção** (Supabase).
 - ⏳ **Nada além do escopo dos 8 itens** — sem Context Builder
   completo, sem Intent Classifier, sem Competence Router, sem
   `CoreDecision`, sem Response Planner, sem post-model gate, sem
   Approval Engine, sem state machine nova, sem tool de escrita/ação,
   sem resposta automática a cliente, sem WhatsApp/e-mail, sem
-  collaborator/booker. Parado aqui — Bloco 2 só começa com nova
-  autorização.
+  collaborator/booker.
+
+### Auditoria adversarial do Bloco 1 — aprovada
+
+Antes de aprovar o bloco, rodei uma autoauditoria adversarial (não só
+happy path) contra os 12 pontos da especificação: isolamento de
+tenant, spoof de `ActorContext`, tools fora de contexto, pre-model
+gate bloqueando a OpenAI, `eligibleTools`/`resolveRisk` não
+manipuláveis, `authorized_collaborator` só preparado, observability
+sem dado sensível, RLS/RPCs da 0042 já em produção, ausência de
+regressão nas migrations anteriores, ausência de acoplamento contra o
+modelo futuro de colaborador/booker, e nada de blocos futuros
+implementado cedo demais.
+
+- ⚠️→✅ **2 achados reais, corrigidos no mesmo commit
+  (`666134b`)**: `executeTool()` confiava cegamente no array
+  `eligibleTools` recebido do chamador em vez de re-derivar a
+  elegibilidade de `actorContext.capabilities` — um teste adversarial
+  provou que um `eligibleTools` forjado conseguia rodar uma tool fora
+  das capabilities reais do ator. Achado relacionado: `ToolContext`
+  carregava `representedProfessionalId` solto E dentro de
+  `actorContext`, sem checagem de consistência entre os dois. Nenhum
+  dos dois tinha exploração real em produção (só um chamador confiável
+  existe hoje), mas violavam o mesmo princípio já usado em toda RPC do
+  banco: nunca confiar num parâmetro sozinho. Corrigidos, testados
+  (testes adversariais A–E), sem regressão.
+- ✅ Confirmado por teste real (RLS + filtro): a RLS de
+  `opportunities`/`profiles` sozinha É permissiva o suficiente pra
+  vazar dado entre tenants (mural público, perfil público) — é o
+  filtro explícito de cada tool (`ctx.representedProfessionalId`) que
+  fecha isso, não a RLS. Confirmado também que uma FK composta em
+  `orchestrator_runs` bloqueia um INSERT direto com par
+  conversa/representado inconsistente mesmo bypassando a function
+  (defesa em profundidade real, não só de aplicação).
+- 📌 **Dívida de hardening registrada pro futuro (fora do escopo de
+  qualquer bloco atual)**: mensagens de erro externas (ex.: `err.message`
+  de uma falha da API da OpenAI) hoje podem, em tese, ecoar parte do
+  request numa mensagem de validação antes de cair em
+  `orchestrator_runs.error`/`ai_usage_events`. Nunca foi chain of
+  thought nem conteúdo de conversa, e não é um problema introduzido
+  neste bloco — mas fica registrado como algo a sanitizar
+  explicitamente (allowlist de códigos curtos em vez de repassar a
+  mensagem crua do SDK) quando algum bloco futuro tocar observability
+  de novo.
+- ✅ **Bloco 1 aprovado pelo usuário e PR #3 mesclado** em
+  `claude/doopla-backend-login-db-fj5j3y` (merge commit `d7e22d5`).
 
 ## Como usar isso
 
