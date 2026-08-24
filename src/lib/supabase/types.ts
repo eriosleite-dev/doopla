@@ -548,6 +548,13 @@ export type ConversationStateEvent = {
 export type OrchestratorRunActorType = 'professional' | 'authorized_collaborator' | 'system';
 export type OrchestratorRunStatus = 'running' | 'completed' | 'failed';
 
+// Doopla Intelligence Core v1 — Bloco 3 (migration 0043). Vocabulário
+// estável, com check constraint no banco.
+export type OrchestratorRunModelConfidence = 'high' | 'medium' | 'low';
+export type OrchestratorRunEffectiveConfidence = 'high' | 'medium' | 'low';
+export type OrchestratorRunContextCompleteness = 'complete' | 'partial_missing' | 'partial_unavailable';
+export type OrchestratorRunClassificationStatus = 'classified' | 'ambiguous' | 'invalid';
+
 export type OrchestratorRun = {
   id: string;
   conversation_id: string;
@@ -564,6 +571,19 @@ export type OrchestratorRun = {
   started_at: string;
   finished_at: string | null;
   latency_ms: number | null;
+  // Bloco 3 (migration 0043) — metadados de classificação
+  // (Intent Classifier + Competence Router). primary_intent/
+  // secondary_intents são texto livre de propósito (taxonomia
+  // extensível, validada em código — ver
+  // src/lib/intelligence/classification/intents.ts), nunca travados
+  // no banco.
+  primary_intent: string | null;
+  secondary_intents: string[];
+  competencies: string[];
+  model_confidence: OrchestratorRunModelConfidence | null;
+  effective_confidence: OrchestratorRunEffectiveConfidence | null;
+  context_completeness: OrchestratorRunContextCompleteness | null;
+  classification_status: OrchestratorRunClassificationStatus | null;
 };
 
 export type ArtistAvailability = {
@@ -1021,6 +1041,9 @@ export type Database = {
         };
         Returns: OrchestratorRun;
       };
+      // Bloco 3 (migration 0043) — Args estendido com metadados de
+      // classificação, todos opcionais (nulos pra runs que não
+      // classificam nada).
       finish_orchestrator_run: {
         Args: {
           p_run_id: string;
@@ -1028,6 +1051,13 @@ export type Database = {
           p_called_tools?: string[];
           p_error?: string | null;
           p_fallback_used?: boolean;
+          p_primary_intent?: string | null;
+          p_secondary_intents?: string[];
+          p_competencies?: string[];
+          p_model_confidence?: OrchestratorRunModelConfidence | null;
+          p_effective_confidence?: OrchestratorRunEffectiveConfidence | null;
+          p_context_completeness?: OrchestratorRunContextCompleteness | null;
+          p_classification_status?: OrchestratorRunClassificationStatus | null;
         };
         Returns: OrchestratorRun;
       };

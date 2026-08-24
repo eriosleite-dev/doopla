@@ -2633,6 +2633,72 @@ virar perigoso.
 - ✅ **Bloco 2 aprovado pelo usuário e PR #4 mesclado** em
   `claude/doopla-backend-login-db-fj5j3y` (merge commit `e2689f4`).
 
+## 32. Doopla Intelligence Core v1 — Bloco 3: Intent Classifier + Competence Router (implementado, aguardando auditoria)
+
+Primeira vez que uma chamada ao model participa de uma decisão real do
+Core (Blocos 1-2 são determinísticos, exceto o teste de infra
+isolado). Escopo estritamente PERCEPÇÃO — "o que está acontecendo" +
+"quais competências são relevantes" — nunca ação. Duas rodadas de
+revisão de escopo antes do código (separação intent/competência,
+`ClassificationContext` leve, `modelConfidence`/`effectiveConfidence`
+separados, `contextCompleteness` calculado por dependência de intent,
+`classificationStatus` com `invalid` só decidido em código).
+
+- ✅ **`src/lib/intelligence/classification/`** — `intents.ts` (14
+  intents + `outro`, taxonomia extensível sem check no banco),
+  `competencies.ts` (as 7 competências + `routeCompetencies()`
+  determinístico, união sempre na mesma ordem), `types.ts`
+  (`ClassificationContext`, `IntentClassification` — sem nenhum campo
+  de tool/action/approval/state/response/message, estrutural),
+  `classification-context.ts` (projeção leve do `ContextPackage` —
+  mensagem-gatilho + até 2 anteriores, identidade mínima dos dois
+  lados, tipo/estado da conversa, flags de status por seção; nunca
+  bio longa/booking inteiro), `completeness.ts` (tabela intent→fontes
+  dependentes, `not_allowed` nunca conta como incompletude),
+  `confidence.ts` (`effectiveConfidence` só pode descer, nunca subir
+  acima de `modelConfidence`), `prompt.ts`, `config.ts`
+  (`CLASSIFIER_MODEL='gpt-5-mini'`, mesma ressalva de "não é modelo
+  definitivo" do teste de infra), `classify.ts` (orquestrador —
+  Structured Outputs via `zodTextFormat`/`client.responses.parse`,
+  client model call injetável pra testes, retry único, nunca lança).
+- ✅ **Separação intent/competência real**: o schema que o model
+  preenche não tem campo de competência nenhum — `relevantCompetencies`
+  só é preenchido depois, em código, pelo `CompetenceRouter`. Testado
+  adversarialmente: um model call simulado que tenta forjar um campo
+  de competência extra na resposta tem esse campo simplesmente
+  ignorado.
+- ✅ **Migration 0043**: `orchestrator_runs` ganha 7 colunas aditivas
+  de classificação. `primary_intent`/`secondary_intents`/
+  `competencies` ficam como texto livre de propósito (taxonomia
+  extensível, validada em código) — só `model_confidence`/
+  `effective_confidence`/`context_completeness`/`classification_status`
+  (vocabulário arquitetural estável) ganham check constraint.
+  `finish_orchestrator_run()` estendido (drop+create, mesma disciplina
+  da 0042) com os 7 parâmetros novos, todos opcionais. `anon` já
+  nasce sem `EXECUTE`, confirmado por teste.
+- ✅ **`test-call.ts`** passa a classificar a intenção logo após montar
+  o `ContextPackage` — mas nunca decide nada a partir disso; o
+  resultado só é retornado (pro painel de teste) e registrado em
+  `orchestrator_runs`/`ai_usage_events`. `classifyIntent()` nunca
+  lança: qualquer falha cai num fallback determinístico
+  (`classificationStatus:'invalid'`, `primaryIntent:'outro'`,
+  `effectiveConfidence:'low'`).
+- ✅ **20 testes de lógica pura** (model call simulado, incluindo um
+  client Supabase "armadilha" que lança exceção em qualquer
+  `.from()`/`.rpc()` — prova que a classificação nunca toca o banco) +
+  **13 testes reais contra Postgres local** pra migration 0043 (grava
+  metadados corretamente, check constraint rejeita vocabulário
+  inválido, `primary_intent` aceita texto livre, `anon` bloqueado) —
+  todos PASS. Regressão completa dos Blocos 1 e 2 (14+5+29+34 checks)
+  sem falha. `npm run build`/`tsc`/`eslint` limpos.
+- ⏳ **Aguardando auditoria adversarial do usuário antes de aprovação
+  e merge** — mesmo processo dos Blocos 1 e 2. Não mesclado ainda.
+- ⏳ Continua fora: Response Planner, `CoreDecision` operacional,
+  Post-model Policy Gate completo, execução de tool a partir do
+  model, Approval Engine, nova State Machine, tools de escrita/ação,
+  resposta automática, WhatsApp/e-mail, collaborator/booker, Actor
+  Preferences, painel, memória vetorial/embeddings.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
