@@ -27,7 +27,6 @@ import {
   getOrcamentoLinkInfo,
   getPendingInvites,
   getRecentActivity,
-  getReferralSummary,
   getSubscription,
   getUserBookings,
   type ArtistCard,
@@ -36,7 +35,6 @@ import {
 } from './data';
 import { confirmInviteAction } from './actions';
 import { OrcamentoLinkCard } from './orcamento-link-card';
-import { ReferralCard } from './referral-card';
 import { getSessionProfile } from './session';
 import {
   accentButtonClass,
@@ -84,8 +82,6 @@ export default async function DashboardPage(props: {
       : new Map<string, string[]>();
   const officialProgress =
     profile.role === 'booker' ? await getOfficialBookerProgress(user.id, bookings, supabase) : null;
-  const referralSummary =
-    profile.role === 'artista' ? await getReferralSummary(user.id, profile.referral_code, supabase) : null;
   const orcamentoInfo =
     profile.role === 'artista' ? await getOrcamentoLinkInfo(user.id, supabase) : null;
   const matchingCompletion =
@@ -104,8 +100,7 @@ export default async function DashboardPage(props: {
           .sort((a, b) => a.date.localeCompare(b.date))
           .slice(0, 3)
       : [];
-  const origin = referralSummary || orcamentoInfo ? await siteOrigin() : null;
-  const referralUrl = referralSummary ? `${origin}/cadastro?ref=${referralSummary.referralCode}` : null;
+  const origin = orcamentoInfo ? await siteOrigin() : null;
   const orcamentoUrl =
     orcamentoInfo?.publicEnabled && profile.slug ? `${origin}/orcamento/${profile.slug}` : null;
 
@@ -395,14 +390,6 @@ export default async function DashboardPage(props: {
             </div>
           </section>
         </>
-      )}
-
-      {referralSummary && referralUrl && (
-        <ReferralCard
-          referralUrl={referralUrl}
-          referralCount={referralSummary.referrals.length}
-          qualifiedTotalCents={referralSummary.qualifiedTotalCents}
-        />
       )}
 
       {recentActivity.length > 0 && (

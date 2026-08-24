@@ -49,19 +49,16 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'intencao',
     'pontualDetalhe',
     'stageName',
-    'categoria',
     'bio',
     'local',
-    'mercados',
     'temBooker',
-    'workTypes',
     'regions',
     'careerStage',
-    'feeRange',
     'helpAreas',
     'pendingBookerInvite',
     'founderVoucherCode',
     'pendingInviteToken',
+    'artistPlan',
   ],
   booker: [
     'modoTrabalho',
@@ -86,6 +83,72 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
   ],
   agencia: ['agencia', 'roster', 'agentes', 'mercado'],
 };
+
+// Passo 1 do funil público de artista (Home → "Começar grátis"): cria a
+// conta ANTES de qualquer pergunta de perfil — sem seletor Artista/Booker
+// (esse fluxo é artista sempre; booker continua entrando pelo wizard
+// antigo via link explícito, ver cadastro/page.tsx). A trigger
+// handle_new_user já cria profile + artist_profile + subscription
+// (trial de 7 dias, artist_plan) na hora do signUp, então a conta já
+// existe de verdade mesmo antes da confirmação de e-mail — as etapas
+// seguintes (Preparar sua Doopla, Escolher plano) só fazem UPDATE nessas
+// linhas já existentes, autenticadas, nunca guardam estado importante só
+// no client.
+export async function createAccountAction(
+  _prevState: AuthFormState,
+  formData: FormData
+): Promise<AuthFormState> {
+  const fullName = String(formData.get('fullName') ?? '').trim();
+  const email = String(formData.get('email') ?? '').trim();
+  const whatsapp = String(formData.get('whatsapp') ?? '').trim();
+  const password = String(formData.get('password') ?? '');
+  const confirmPassword = String(formData.get('confirmPassword') ?? '');
+
+  if (!fullName || !email || !whatsapp || !password) {
+    return { error: 'Preencha todos os campos obrigatórios.' };
+  }
+  if (password.length < 8) {
+    return { error: 'A senha precisa ter pelo menos 8 caracteres.' };
+  }
+  if (password !== confirmPassword) {
+    return { error: 'As senhas não conferem.' };
+  }
+
+  const metadata: Record<string, string> = { role: 'artista', full_name: fullName, whatsapp };
+  const referralCode = String(formData.get('referralCode') ?? '').trim();
+  if (referralCode) metadata.referralCode = referralCode;
+  const artistPlan = String(formData.get('artistPlan') ?? '').trim();
+  if (artistPlan === 'doopla' || artistPlan === 'pro') metadata.artistPlan = artistPlan;
+
+  const supabase = await createClient();
+  const origin = await siteOrigin();
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: metadata,
+      // next aponta pra continuação do onboarding, não direto pro
+      // painel — só depois de "Escolher plano" o usuário chega lá.
+      emailRedirectTo: `${origin}/auth/confirm?next=/cadastro/preparar`,
+    },
+  });
+
+  if (error) {
+    if (error.message.toLowerCase().includes('already registered')) {
+      return { error: 'Já existe uma conta com este e-mail.' };
+    }
+    return { error: 'Não foi possível criar a conta. Tente novamente.' };
+  }
+
+  // Se o projeto Supabase não exige confirmação de e-mail, o signUp já
+  // volta com sessão ativa — segue direto pro resto do onboarding sem
+  // fazer o usuário esperar um e-mail que não vai bloquear nada.
+  if (data.session) {
+    redirect('/cadastro/preparar');
+  }
+  redirect('/cadastro/confirme-seu-email');
+}
 
 export async function signupAction(
   _prevState: AuthFormState,

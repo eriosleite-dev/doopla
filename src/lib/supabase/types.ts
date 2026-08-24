@@ -53,8 +53,38 @@ export type ArtistProfile = {
   career_stage: string | null;
   help_areas: string[];
   fee_range: string | null;
+  // Onboarding reconstruído (migration 0037) — etapas Cachê / Como você
+  // trabalha / Canal de atenção. negotiation_notes é regra de
+  // representação/negociação, semanticamente diferente de bio (que é
+  // intenção/preferência comercial) — nunca concatenar os dois.
+  fee_varies_by_job_type: boolean | null;
+  issues_invoice: boolean | null;
+  typical_job_duration: string | null;
+  negotiation_notes: string | null;
+  attention_channel: 'whatsapp' | 'painel' | 'ambos' | null;
+  // Onboarding reescrito (migration 0038) — "como você costuma definir
+  // seus valores?", só quando a etapa Valores escolhe "Depende do
+  // trabalho" em vez de um valor fixo. Diferente de bio e de
+  // negotiation_notes — nunca concatenar.
+  pricing_notes: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// Profissão → tipos de trabalho, como dado no banco (migration 0037) —
+// não lista fixa no componente de onboarding. Adicionar profissão nova
+// é inserir linhas nessas tabelas, nunca mexer no React.
+export type Profession = {
+  id: string;
+  label: string;
+  sort_order: number;
+};
+
+export type ProfessionJobType = {
+  id: string;
+  profession_id: string;
+  label: string;
+  sort_order: number;
 };
 
 export type BookerProfile = {
@@ -346,15 +376,194 @@ export type OpportunityTag = {
   created_at: string;
 };
 
+// success | error — se a chamada ao provider terminou com resposta ou
+// com falha (migration 0041).
+export type AiUsageEventStatus = 'success' | 'error';
+
 export type AiUsageEvent = {
   id: string;
   profile_id: string | null;
   opportunity_id: string | null;
+  // Doopla Intelligence OS v1 (migration 0039) — liga o evento à
+  // conversa que o originou, quando aplicável. Nullable: nem todo uso
+  // de IA nasce de uma conversa.
+  conversation_id: string | null;
   feature: string;
+  // migration 0041 — nome do modelo usado, sempre vindo de
+  // src/lib/intelligence/config.ts, nunca hardcoded no chamador.
+  model: string | null;
+  status: AiUsageEventStatus | null;
   input_tokens: number | null;
   output_tokens: number | null;
   cost_cents_estimate: number | null;
+  // migration 0042 — liga o evento ao orchestrator_run que o originou,
+  // quando aplicável. Nullable: nem todo evento de uso nasce de um run
+  // do Core.
+  run_id: string | null;
   created_at: string;
+};
+
+// ============================================================
+// Doopla Intelligence OS v1 — camada de conversação (migration 0039).
+// Nenhuma integração de IA ainda; só a fundação de dados sobre a qual
+// o Context Builder/Orchestrator vão rodar depois, como funcionalidade
+// própria. represented_professional_id é IMUTÁVEL — mudança legítima
+// de representado sempre nasce como conversa nova
+// (transferred_from_conversation_id), nunca um UPDATE na existente.
+// ============================================================
+
+export type ConversationChannel = 'public_link' | 'whatsapp' | 'email' | 'painel' | 'outro';
+export type ConversationType = 'external_inquiry' | 'professional_self';
+export type ConversationStatus = 'open' | 'closed' | 'archived';
+// Quem/o que disparou uma mudança de mandato ou de estado.
+export type ConversationEventActor = 'system' | 'professional' | 'admin' | 'ai';
+
+export type Conversation = {
+  id: string;
+  // IMUTÁVEL — definido uma única vez em create_conversation(), sem
+  // GRANT UPDATE pra nenhuma role. Mudar de representado é sempre uma
+  // conversa nova.
+  represented_professional_id: string;
+  external_participant_id: string | null;
+  origin: ConversationChannel;
+  origin_reference: string | null;
+  channel: ConversationChannel;
+  conversation_type: ConversationType;
+  // Escopo/status do mandato DENTRO da representação fixa acima —
+  // pode evoluir (ex.: 'active' -> 'suspended'), nunca troca quem é
+  // representado. Histórico completo em ConversationMandateEvent.
+  mandate: string;
+  mandate_created_at: string;
+  mandate_changed_at: string | null;
+  mandate_change_reason: string | null;
+  current_intent: string | null;
+  related_opportunity_id: string | null;
+  related_booking_id: string | null;
+  // Placeholder pra state machine futura — histórico completo em
+  // ConversationStateEvent.
+  current_state: string;
+  previous_state: string | null;
+  status: ConversationStatus;
+  state_updated_at: string;
+  expected_next_step: string | null;
+  last_activity_at: string;
+  // Só linhagem/auditoria — nenhuma RLS policy usa este vínculo pra
+  // conceder acesso à conversa anterior.
+  transferred_from_conversation_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Contato externo (cliente) de UM profissional específico — nunca
+// identidade global entre profissionais.
+export type ExternalParticipant = {
+  id: string;
+  professional_id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Como uma identidade de canal foi associada a um external_participant
+// — nunca 'inferido pela IA'. A primeira identidade de um participante
+// novo nasce 'first_contact'; uma segunda identidade só entra por
+// mecanismo determinístico.
+export type ExternalParticipantLinkedVia =
+  | 'first_contact'
+  | 'professional_confirmed'
+  | 'authenticated_session';
+
+export type ExternalParticipantChannelIdentity = {
+  id: string;
+  external_participant_id: string;
+  professional_id: string;
+  channel: ConversationChannel;
+  identifier: string;
+  linked_via: ExternalParticipantLinkedVia;
+  created_at: string;
+};
+
+export type ConversationMessageDirection = 'inbound' | 'outbound';
+// Quem de fato autorou o conteúdo — nunca um "role" de LLM.
+// direction/author_type/channel são eixos independentes.
+export type ConversationMessageAuthorType = 'external_participant' | 'professional' | 'ai' | 'system';
+export type ConversationMessageContentType = 'text' | 'audio' | 'attachment';
+export type ConversationMessageTranscriptionStatus = 'pending' | 'done' | 'failed';
+export type ConversationMessageGeneratedBy = 'human' | 'ai';
+
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  direction: ConversationMessageDirection;
+  author_type: ConversationMessageAuthorType;
+  author_profile_id: string | null;
+  author_external_participant_id: string | null;
+  channel: ConversationChannel;
+  content_type: ConversationMessageContentType;
+  // Conteúdo textual ORIGINAL — nunca a transcrição de um áudio (ver
+  // transcript).
+  body: string | null;
+  audio_url: string | null;
+  // Conteúdo DERIVADO de audio_url por transcrição — nunca confundir
+  // com body.
+  transcript: string | null;
+  transcription_status: ConversationMessageTranscriptionStatus | null;
+  attachment_url: string | null;
+  attachment_metadata: Record<string, unknown> | null;
+  generated_by: ConversationMessageGeneratedBy;
+  created_at: string;
+};
+
+// Append-only. previous_mandate null = linha de nascimento da
+// conversa (create_conversation grava o primeiro evento, não só
+// mudanças posteriores).
+export type ConversationMandateEvent = {
+  id: string;
+  conversation_id: string;
+  previous_mandate: string | null;
+  new_mandate: string;
+  reason: string | null;
+  changed_by: ConversationEventActor;
+  changed_by_profile_id: string | null;
+  created_at: string;
+};
+
+// Append-only. previous_state null = linha de nascimento da conversa.
+export type ConversationStateEvent = {
+  id: string;
+  conversation_id: string;
+  previous_state: string | null;
+  new_state: string;
+  reason: string | null;
+  changed_by: ConversationEventActor;
+  changed_by_profile_id: string | null;
+  created_at: string;
+};
+
+// Doopla Intelligence Core v1 — um registro por execução do Core
+// (migration 0042). Só metadados de execução — nunca chain of
+// thought, nunca conteúdo de conversation_messages duplicado aqui.
+export type OrchestratorRunActorType = 'professional' | 'authorized_collaborator' | 'system';
+export type OrchestratorRunStatus = 'running' | 'completed' | 'failed';
+
+export type OrchestratorRun = {
+  id: string;
+  conversation_id: string;
+  represented_professional_id: string;
+  actor_type: OrchestratorRunActorType;
+  actor_profile_id: string | null;
+  external_participant_id: string | null;
+  trigger_source: string;
+  status: OrchestratorRunStatus;
+  eligible_tools: string[];
+  called_tools: string[];
+  error: string | null;
+  fallback_used: boolean;
+  started_at: string;
+  finished_at: string | null;
+  latency_ms: number | null;
 };
 
 export type ArtistAvailability = {
@@ -380,6 +589,9 @@ export type AgendaEntry = {
 export type SubscriptionStatus = 'trialing' | 'active' | 'canceled';
 export type SubscriptionPriceRule = 'standard_launch' | 'founder_locked';
 export type BookerPlan = 'basic' | 'pro';
+// Plano do artista (Doopla / Doopla Pro) — coluna separada de
+// booker_plan, que é exclusivo do booker (migration 0036).
+export type ArtistPlan = 'doopla' | 'pro';
 
 export type Subscription = {
   id: string;
@@ -391,6 +603,7 @@ export type Subscription = {
   founder_voucher_id: string | null;
   trial_ends_at: string | null;
   booker_plan: BookerPlan;
+  artist_plan: ArtistPlan | null;
   active_artist_profile_id: string | null;
   active_artist_pending_choice: boolean;
   pro_period_ends_at: string | null;
@@ -502,6 +715,18 @@ export type Database = {
         Update: Partial<ArtistProfile>;
         Relationships: [];
       };
+      professions: {
+        Row: Profession;
+        Insert: Profession;
+        Update: Partial<Profession>;
+        Relationships: [];
+      };
+      profession_job_types: {
+        Row: ProfessionJobType;
+        Insert: Partial<ProfessionJobType> & Pick<ProfessionJobType, 'profession_id' | 'label'>;
+        Update: Partial<ProfessionJobType>;
+        Relationships: [];
+      };
       booker_profiles: {
         Row: BookerProfile;
         Insert: Partial<BookerProfile> & Pick<BookerProfile, 'profile_id'>;
@@ -607,6 +832,59 @@ export type Database = {
         Update: Partial<AiUsageEvent>;
         Relationships: [];
       };
+      // Doopla Intelligence OS v1 (migration 0039). Insert/Update
+      // `never` nas tabelas onde o banco de fato não concede escrita
+      // direta pra authenticated — reflete a garantia real (privilégio
+      // de coluna/tabela + RLS), não só uma preferência de código:
+      // conversations/conversation_mandate_events/conversation_state_events
+      // só são escritas pelas RPCs create_conversation/
+      // set_conversation_mandate/advance_conversation_state.
+      external_participants: {
+        Row: ExternalParticipant;
+        Insert: Partial<ExternalParticipant> & Pick<ExternalParticipant, 'professional_id'>;
+        Update: Partial<ExternalParticipant>;
+        Relationships: [];
+      };
+      external_participant_channel_identities: {
+        Row: ExternalParticipantChannelIdentity;
+        Insert: Partial<ExternalParticipantChannelIdentity> &
+          Pick<ExternalParticipantChannelIdentity, 'external_participant_id' | 'professional_id' | 'channel' | 'identifier'>;
+        Update: never;
+        Relationships: [];
+      };
+      conversations: {
+        Row: Conversation;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      conversation_messages: {
+        Row: ConversationMessage;
+        Insert: Partial<ConversationMessage> &
+          Pick<ConversationMessage, 'conversation_id' | 'direction' | 'author_type' | 'channel' | 'content_type'>;
+        Update: never;
+        Relationships: [];
+      };
+      conversation_mandate_events: {
+        Row: ConversationMandateEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      conversation_state_events: {
+        Row: ConversationStateEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      // Doopla Intelligence Core v1 (migration 0042). Mesmo padrão:
+      // só escrita via start_orchestrator_run/finish_orchestrator_run.
+      orchestrator_runs: {
+        Row: OrchestratorRun;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       artist_availability: {
         Row: ArtistAvailability;
         Insert: Partial<ArtistAvailability> &
@@ -672,6 +950,87 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      // Doopla Intelligence OS v1 (migration 0039) — únicos caminhos
+      // de escrita pra conversations/conversation_mandate_events/
+      // conversation_state_events. Cada uma valida o chamador
+      // internamente (auth.uid()), nunca confia nos parâmetros como
+      // prova de identidade.
+      create_conversation: {
+        Args: {
+          p_represented_professional_id: string;
+          p_conversation_type?: ConversationType;
+          p_external_participant_id?: string | null;
+          p_origin?: ConversationChannel;
+          p_origin_reference?: string | null;
+          p_channel?: ConversationChannel | null;
+          p_initial_mandate?: string;
+          p_initial_state?: string;
+          p_transferred_from_conversation_id?: string | null;
+        };
+        Returns: Conversation;
+      };
+      set_conversation_mandate: {
+        Args: {
+          p_conversation_id: string;
+          p_new_mandate: string;
+          p_reason?: string | null;
+          p_changed_by?: ConversationEventActor;
+          p_changed_by_profile_id?: string | null;
+        };
+        Returns: Conversation;
+      };
+      advance_conversation_state: {
+        Args: {
+          p_conversation_id: string;
+          p_new_state: string;
+          p_reason?: string | null;
+          p_changed_by?: ConversationEventActor;
+          p_changed_by_profile_id?: string | null;
+        };
+        Returns: Conversation;
+      };
+      // Doopla Intelligence OS v1 (migration 0041, Args estendido na
+      // 0042 com p_run_id) — único caminho de INSERT em ai_usage_events
+      // pra authenticated. profile_id é sempre auth.uid() dentro da
+      // function, nunca um parâmetro.
+      log_ai_usage_event: {
+        Args: {
+          p_feature: string;
+          p_model: string;
+          p_status: AiUsageEventStatus;
+          p_conversation_id?: string | null;
+          p_input_tokens?: number | null;
+          p_output_tokens?: number | null;
+          p_run_id?: string | null;
+        };
+        Returns: AiUsageEvent;
+      };
+      // Doopla Intelligence Core v1 (migration 0042) — únicos caminhos
+      // de escrita em orchestrator_runs. actor_type só aceita
+      // 'professional' em v1 (validado dentro da function, nunca
+      // confiado do parâmetro sozinho).
+      start_orchestrator_run: {
+        Args: {
+          p_conversation_id: string;
+          p_represented_professional_id: string;
+          p_actor_type: OrchestratorRunActorType;
+          p_actor_profile_id: string | null;
+          p_external_participant_id: string | null;
+          p_trigger_source: string;
+          p_eligible_tools?: string[];
+        };
+        Returns: OrchestratorRun;
+      };
+      finish_orchestrator_run: {
+        Args: {
+          p_run_id: string;
+          p_status: OrchestratorRunStatus;
+          p_called_tools?: string[];
+          p_error?: string | null;
+          p_fallback_used?: boolean;
+        };
+        Returns: OrchestratorRun;
+      };
       select_booker_for_opportunity: {
         Args: { p_opportunity_id: string; p_booker_profile_id: string };
         Returns: Opportunity;

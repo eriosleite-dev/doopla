@@ -1210,6 +1210,1221 @@ branch (migration `0018`).
 - PR #2 fechado como redundante — o schema dele (e os achados que só
   existiam lá) já estão absorvidos aqui.
 
+## 11. Home pública — pivot pra Doopla AI-first (`src/app/_home`)
+
+- ✅ Home reconstruída em cima do HTML aprovado `doopla-home-ai-first`
+  (hero cinematográfico com os dois olhos encolhendo até o wordmark,
+  olhos seguindo o cursor, paleta e tipografia próprias do
+  posicionamento novo). Depois reestruturada e reduzida de 15 pra 8
+  seções por diretriz explícita (vender a ideia primeiro, não exigir
+  que o usuário "estude" a Doopla antes de confiar): Hero → O que sua
+  Doopla faz (com a demonstração de conversa incorporada, não mais
+  seção própria) → Feita com quem entende de booking (substitui "Não é
+  IA genérica" + dobra a menção de representante humano) → Como
+  funciona (3 passos, controle/autonomia dobrado numa frase) → Planos →
+  Segurança (checklist enxuto) → FAQ (6 objeções de conversão) → CTA
+  final + rodapé. Removidas de vez (não é reorganização com nome novo):
+  Dor, a interação "Você × Sua Doopla" (JS/CSS junto), Ciclo do
+  booking, Para quem, os 3 blocos de autonomia, e os nomes internos
+  (Doopla Core/Playbook/Minha Doopla).
+- ✅ GSAP/ScrollTrigger (motor da timeline do hero) servidos de
+  `public/vendor/gsap` em vez de CDN externo — o próprio sandbox de
+  build bloqueou `cdnjs.cloudflare.com` por política de rede durante o
+  teste, então não faz sentido depender de terceiro fora do controle
+  da doopla em produção.
+- 🔜 **Pendência obrigatória da próxima etapa**: `/login`, `/sobre`,
+  `/cadastro`, `/seguranca` e demais páginas públicas ainda refletem o
+  modelo antigo de marketplace (bookers, matching, comissão). Por isso
+  os links da Home pra essas páginas (nav "Sobre"/"Entrar", footer
+  "Termos"/"Privacidade"/"Segurança"/"Pagamentos e
+  cancelamentos"/"Contato/Suporte", CTAs "Começar agora") continuam
+  como `#` de propósito — não apontar pra telas que ainda contradizem o
+  que a Home promete agora. Quando essas páginas forem revisadas pro
+  posicionamento AI-first, trocar os `#` pelos destinos reais. A Home
+  nova é a fonte de verdade de posicionamento pra essa revisão, não o
+  conteúdo antigo dessas páginas.
+- 🔜 Mesma pendência acima **também cobre** o rodapé: o da Home já usa
+  a logo real (`.foot-logo` com os olhos, clonado via JS do hero), mas
+  `legal-page.tsx` (usado por `/sobre`, `/termos`, `/privacidade`) só
+  tem "doopla" em texto puro sem logo nem rodapé de verdade, e
+  `dashboard-footer.tsx` também é só texto e ainda diz "Plataforma de
+  representação para artistas independentes" (copy do modelo antigo).
+  Corrigir junto quando essas páginas forem revisadas.
+
+## 12. Home — duas correções de diretriz (humano/booker 1.0 + Home geral)
+
+- ✅ **Humano/Booker não é feature comercial do 1.0.** Removido da Home
+  tudo que tratava intervenção humana como unidade comercial fixa:
+  "Atendimento humano avulso: R$49" (plano Doopla), "1 atendimento
+  humano incluído/mês" (Doopla Pro), o card "Precisa de uma pessoa de
+  verdade?" em "Feita com quem entende de booking", e a pergunta
+  "Existe atendimento humano?" do FAQ. A Doopla 1.0 é IA-first: a
+  hipótese a testar é se ela sozinha consegue conduzir o booking de
+  ponta a ponta. Humano vira backup operacional/aprendizado de beta,
+  não produto vendido — por isso não aparece mais na Home. Bookers
+  continuam existindo no ecossistema (não foram removidos como
+  conceito), só não são mais assumidos como destino automático de todo
+  booking.
+- ✅ **Home geral corrigida** (não é Home exclusiva de artista): hero
+  trocado pra "Toda carreira merece sua Doopla." (headline em
+  destaque/uppercase visual, `.hero-copy h1` novo) + subtexto "Um novo
+  jeito de cuidar dos seus bookings, sem precisar cuidar de tudo
+  sozinho. Do primeiro contato ao contrato fechado, tudo em um só
+  lugar.". Seção "O que sua Doopla faz" reescrita como "Tem booking pra
+  resolver? Manda pra Doopla." — abre com situações reais (precisa
+  negociar? cliente pediu desconto? etc.), repete "Manda pra Doopla."
+  como frase de marca, e troca os 6 cards por verbo por 7 cards por
+  situação (Negociação, Respostas e propostas, Follow up, Organização,
+  Contratos, Cobranças, Representação — este último reintroduz, de
+  forma leve, a ideia de conectar pessoas pra representação, sem
+  reconstruir o "quem é você"/matching do modelo antigo). Demonstração
+  de conversa continua incorporada na mesma seção, inalterada. Não
+  criada nenhuma comunicação que diminua agências — o texto não fala
+  de agências ainda, mantém a diretriz como guardrail pra copy futura.
+
+## 13. Referral "Indique e ganhe R$5" — chip global no header do painel
+
+- ✅ Saiu do card grande no meio do dashboard (`referral-card.tsx`,
+  removido) e virou um chip compacto no header, dentro do
+  `DashboardLayout` (`src/app/dashboard/layout.tsx`) — aparece em
+  qualquer rota de `/dashboard/*` de uma vez só, sem duplicar
+  componente por tela. Mesmo critério de elegibilidade de antes: só
+  artista com `referral_code` (bookers nunca tiveram esse programa).
+  Clique abre modal (`ReferralModal` + `ReferralModalContext`, mesmo
+  padrão arquitetural do `BookerProModal`/`ProModalContext` já
+  existente) com link de indicação, copiar/compartilhar (Web Share API
+  com fallback silencioso pra quem não suporta), quanto já foi ganho, e
+  a regra de liberação **exatamente como fechada em DECISOES.md**: o
+  bônus só libera quando a pessoa indicada vira cliente pagante, sem
+  inventar prazo, saldo ou condição que ainda não existe no backend
+  (`qualifiedTotalCents` continua sempre 0 até o sistema de assinatura
+  real existir).
+- ✅ Não foi pra Home pública, não criou banner/pop-up, não mudou
+  nenhuma regra financeira do programa — só o posicionamento/UX.
+- ⚠️ Não verificado visualmente num navegador: rota de `/dashboard` só
+  renderiza com sessão Supabase real autenticada, que não existe neste
+  ambiente sandbox. Validado por build de produção limpo, ESLint limpo
+  e checagem manual de tipos/fluxo de dados linha a linha — mas vale
+  uma conferência visual real antes de confiar 100%.
+
+## 14. Home — bug crítico de tela em branco + segunda passada de limpeza
+
+- ✅ **Bug real, reportado em produção**: depois de rolar a página, uma
+  tela inteira aparecia em branco. Causa raiz: `#home-marketing` tinha
+  `overflow-x:hidden` — e por regra do próprio CSS, declarar só
+  overflow-x != visible faz o overflow-y computar pra `auto`
+  implicitamente, o que transforma o elemento num novo container de
+  scroll. Isso quebra a cadeia de `position:sticky` do `.stage-pin`
+  (o pin do hero), que soltava bem antes da hora, revelando a seção
+  seguinte com a animação de entrada travada pela metade. Corrigido
+  movendo `overflow-x:hidden` pro `body` (global, sem risco) — body/
+  html têm uma exceção no spec que propaga o overflow pro viewport em
+  vez de criar esse container. Removido também `scroll-behavior:smooth`
+  do html (documentadamente incompatível com o cálculo de posição do
+  GSAP ScrollTrigger). Verificado com scroll gradual real via Playwright
+  pixel a pixel: sem gap em nenhum lugar da página.
+- ✅ **"O que sua Doopla faz" simplificado outra vez**: removida a
+  grade de 7 cards (Negociação/Respostas e propostas/Follow up/
+  Organização/Contratos/Cobranças/**Representação** — este último
+  removido também por reintroduzir de leve o resquício do modelo
+  antigo). A demonstração de conversa vira o elemento visual principal
+  da seção (não mais um apêndice depois dos cards), com copy nova que
+  mostra a Doopla coletando informação faltante antes de negociar
+  (capacidade que a demo antiga não mostrava).
+- ✅ **FAQ**: estava com `max-width` e `margin:auto` na própria
+  `<section>` (sem wrapper), criando um retângulo branco estreito
+  centralizado com margens bege dos dois lados — quebrava o grid do
+  resto do site. Corrigido: a seção agora é full-width (como todas as
+  outras), com o conteúdo dentro de um `<div class="narrow">`.
+- ✅ **CTA final**: reduzido de `padding:100px` + h2 `clamp(32px,6vw,
+  64px)` (quase uma segunda hero section) pra `padding:56px` + h2 do
+  mesmo tamanho-padrão usado pelos outros headlines de seção.
+- ✅ **Footer**: 5 links (Termos/Privacidade/Segurança/Pagamentos e
+  cancelamentos/Contato-Suporte) reduzidos pra 4, com nomenclatura mais
+  direta (Segurança/Termos/Privacidade/Contato), tratamento mono/
+  uppercase igual ao resto do design system, logo um pouco maior — pra
+  não parecer uma barra utilitária esquecida. Destinos continuam `#`
+  de propósito (mesma pendência de sempre: páginas internas ainda não
+  revisadas pro posicionamento novo).
+- ✅ Varredura completa por resquício do modelo antigo (booker como
+  necessidade, comissão, split, repasse, intervenção humana, níveis de
+  autonomia antigos, marketplace, pagamento processado pela doopla):
+  único hit foi o texto já aprovado da Segurança, que nega
+  explicitamente essas coisas ("sem split, sem comissão de booker...").
+  Nada mais encontrado.
+
+## 15. Home — correção consolidada final (remove conversa fictícia + blinda fallback do GSAP)
+
+- ✅ **"Sua Doopla em ação" removida por completo.** Instrução anterior
+  pedia pra manter uma demonstração de conversa; documento consolidado
+  reverteu isso explicitamente ("DESCONSIDERAR ESSA INSTRUÇÃO... NÃO
+  TER CONVERSA FICTÍCIA NA HOME"). Removido título, as 6 bolhas
+  (cliente/doopla/você), wrapper e o CSS associado (`.chat`,
+  `.chat-row`, `.chat-who`, `.bubble`, `.chat-eyebrow`) — nenhum
+  espaço residual, a seção "O que sua Doopla faz" agora termina em
+  "Manda pra Doopla." direto.
+- ✅ **Segurança**: removida a menção literal a "split" e "comissão de
+  booker" (mesmo em negação) — item novo do documento consolidado que
+  pede eliminar esses termos mesmo quando usados pra negar. Reescrito
+  preservando o mesmo fato ("a Doopla nunca processa nem retém esse
+  valor") sem invocar o vocabulário do modelo antigo.
+- ✅ Limpeza de CSS morta: `.cuida-grid` no media query (código órfão
+  desde a remoção dos cards, ninguém tinha limpado essa referência).
+- ✅ **Fallback de robustez pro GSAP** (achado durante a investigação,
+  não pedido explicitamente, mas endereça um risco real): todo o
+  conteúdo do hero (wordmark, nav, kicker, hero-copy/CTA) nasce com
+  `opacity:0` no CSS e só fica visível através da timeline do GSAP. Se
+  `/vendor/gsap/*.js` falhar em carregar por qualquer motivo (rede do
+  usuário, bloqueio, etc.), esse conteúdo ficava invisível pra sempre.
+  Agora `home.js` roda um watcher independente do `boot()`: se o GSAP
+  não carregar em 4s, aplica a classe `gsap-fallback` em
+  `#home-marketing`, que força esse conteúdo visível numa versão
+  estática (sem a entrada cinematográfica, mas nunca em branco).
+  Testado de propósito bloqueando as requisições do GSAP via
+  Playwright: fallback ativa corretamente, conteúdo aparece.
+- 🔜 **Pendente, aguardando decisão do usuário**: pedido separado pra
+  restaurar a animação de pulo dos olhos ("Você × Sua Doopla", removida
+  na passada de 15→8 seções) dentro de "O que sua Doopla faz", com
+  hover-retrigger novo (não existia no mecanismo original). Não
+  implementado ainda — o documento consolidado final (mesma mensagem,
+  tratado como fonte de verdade) não lista esse elemento na estrutura
+  de 9 seções e pede reduzir ao máximo essa seção especificamente,
+  então esperando confirmação de encaixe antes de construir.
+
+## 16. Interação "Você × Sua Doopla" — restaurada como seção própria compacta
+
+- ✅ Usuário escolheu (pergunta feita via AskUserQuestion): seção
+  própria e compacta entre "O que sua Doopla faz" e "Feita com quem
+  entende de booking" — não dentro da primeira, não como uma segunda
+  hero. Padding reduzido de 100px pra 64px, olhos de 150px pra 120px
+  (90px no mobile), gap do `.eyes-stage` ajustado pra ficar mais perto
+  da mesma proporção olho/distância dos olhos do logo grande do hero.
+- ✅ Mecânica original restaurada (posição sempre absoluta, nunca
+  incremento relativo — a mesma trava anti-deriva de sempre): entrada
+  com pulos largos convergindo pro distanciamento fixo, depois loop
+  contínuo de pulinhos no lugar com pausa de 0.7s entre repetições.
+  Verificado programaticamente via Playwright: a posição X das duas
+  colunas fica em exatamente 0 em 8 amostras ao longo de 4s de loop —
+  zero deriva confirmada, não só por inspeção visual.
+- ✅ **Novo**: hover no bloco dos olhos cancela qualquer timeline ativa
+  e a pausa pendente, e dispara o pulo de entrada de novo na hora —
+  funciona mesmo com o loop automático no meio da pausa. Testado
+  disparando um hover programático e capturando o frame: confirma o
+  pulo em andamento (squash-and-stretch visível nos dois olhos).
+
+## 17. CTAs e nav apontando pro cadastro/login de verdade
+
+- ✅ Os dois botões "Começar agora" (hero e CTA final) apontam pra
+  `/cadastro` — antes eram `href="#"`.
+- ✅ Adicionado "Criar conta" na nav, ao lado de "Entrar" (que já
+  apontava pro `/login`), como botão preto sólido (`.btn.btn-primary`
+  com modificador `.nav-cta` pra caber no tamanho da barra). Testado
+  via Playwright nos dois estados da nav (sobre o hero vermelho e
+  depois de rolar, com fundo claro) — botão aparece sólido e legível
+  nos dois.
+- ✅ Verificado com Playwright: `getAttribute('href')` dos três links
+  confirma `/cadastro` (hero), `/cadastro` (CTA final) e presença do
+  novo link "Criar conta" na nav.
+- Não mexi em nenhuma página interna (`/login`, `/cadastro`, etc) além
+  de apontar os links pra elas — só a Home foi alterada, como
+  combinado.
+
+## 18. Hero em preto (não branco) + unificação "Tem booking pra resolver?" + marquee + FAQ nova
+
+- ✅ **Texto do hero de branco/creme pra preto**: kicker, wordmark (letras
+  "d"/"pla"), h1, parágrafo, edge-labels, index-count, scroll-hint e o
+  selo (seal SVG) — tudo passou de `var(--off)`/creme pra preto
+  (`var(--black)`). Motivo apontado: vermelho + texto branco lembrava a
+  paleta do iFood. A nav também passou a usar o estado "on-light" (texto
+  preto) enquanto está sobre o hero (`data-navlight` de "0" pra "1" na
+  `.stage`), pra não sobrar nenhum texto branco na primeira tela. Os
+  círculos do logo (olho preto + pupila creme) não são "texto", são o
+  ícone da marca — não mudaram, é o mesmo mark usado em todo o site.
+- ✅ **Seção "Tem booking pra resolver?" unificada com a interação dos
+  olhos**: as duas seções separadas (`.cuida` preta com a lista de
+  perguntas, e `.eyes-section` vermelha com "Você e sua Doopla, em
+  sintonia.") viraram uma seção só (`.manda`), vermelha, duas colunas:
+  headline "Tem booking / pra / resolver?" + lista de 6 perguntas com
+  ícone circular outline (mesmos ícones Lucide do mockup aprovado) à
+  esquerda, olhos grandes + kicker "Representação, não automação" à
+  direita. Removido o texto "Manda pra Doopla." (ficava implícito).
+  Tudo em preto sobre vermelho, sem nenhuma cor nova inventada — reusa
+  a paleta já existente.
+- ✅ **Motion dos olhos reaproveitado, não recriado — duas vezes**: extraí
+  a coreografia (pulo com squash-and-stretch, sombra, olhar, blink) pra
+  uma função genérica (`makeEyesMotion`), com o alcance dos movimentos
+  calculado a partir do tamanho real de cada par de olhos (não
+  hardcoded) em vez de duplicar números fixos. Ela agora roda em **dois
+  lugares com o mesmo código**: nos olhos grandes do hero (que antes só
+  seguiam o cursor e ganhavam vida ao carregar a página, sem depender
+  de scroll) e na seção "Tem booking pra resolver?" (dispara quando a
+  seção entra na tela, como antes). Os olhos pequenos clonados
+  (wordmark, nav, rodapé) continuam com o comportamento antigo de
+  seguir o cursor — não foram tocados.
+- ✅ **Barra corrida (marquee) fixa debaixo da nav**: fundo preto, texto
+  creme mono, "Artistas independentes • Representação • Toda carreira
+  merece sua Doopla" em loop infinito via CSS puro (não depende do
+  GSAP carregar — funciona mesmo no fallback). Nav e marquee agora
+  vivem dentro de um wrapper (`.nav-wrap`) fixo no topo; a marquee fica
+  sempre visível desde o carregamento da página, a nav em si continua
+  com a mesma entrada cinematográfica de antes.
+- ✅ **FAQ**: adicionada a pergunta "A Doopla fala com o cliente por
+  mim?" logo após a primeira, respondida ("Sim. Ela conduz a conversa,
+  negocia, faz follow-up e organiza o booking. Quando houver uma
+  decisão comercial importante, ela consulta você antes de seguir.").
+- ✅ Footer: reconferido de novo (terceira vez) — `#footSlotL`/`#footSlotR`
+  continuam recebendo o clone real do olho (`<div class="eye">` com
+  `<div class="pupil">` dentro, com `transform` aplicado pelo
+  rastreamento de cursor), não texto estático. Nenhuma mudança foi
+  necessária aqui.
+- ✅ `npm run build` e `npx eslint src/app/_home` limpos. Testado com
+  Playwright local (build de produção): screenshot do hero mostrando
+  os olhos já pulando ao carregar a página (sem depender de scroll),
+  screenshot da seção unificada mostrando layout de duas colunas com
+  os 6 ícones certos e os olhos em pleno pulo, cores confirmadas via
+  `getComputedStyle` (preto em toda a primeira tela e na seção
+  unificada), marquee confirmado no DOM, footer reconferido.
+
+## 19. Correções de nav/marquee reportadas pelo usuário + logo dentro da frase da CTA final
+
+- ✅ **Nav com fundo "rosa desbotado"**: bug real desta sessão — ao marcar
+  o hero e a seção "Tem booking" como `data-navlight="1"` (pra deixar o
+  texto deles preto), a nav passou a usar o estado "on-light" (fundo
+  branco/creme só 78% opaco) por cima do vermelho, e a mistura virava um
+  rosa lavado, não o vermelho sólido da marca. Troquei o sistema inteiro
+  de "vidro translúcido" por fundo **sólido**: cada seção agora declara
+  `data-nav="red|black|cream|redcream"` com a combinação exata de
+  cor+texto que ela usa (vermelho+preto no hero/"Tem booking", preto+creme
+  em Como funciona/Segurança, creme+preto em Feita/Planos/FAQ,
+  vermelho+creme na CTA final), e a nav pega literalmente essa cor —
+  nunca mistura opacidade com o que está atrás. Confirmado com Playwright
+  rolando a página inteira e conferindo a classe/cor da nav em cada seção.
+- ✅ **Barra corrida "flutuando" na primeira tela**: primeiro ajuste foi
+  sincronizar a entrada da marquee com a da nav (mesmo timing do GSAP).
+  Depois o usuário esclareceu o pedido real: a marquee é **exclusiva da
+  tela do hero** — não pode ficar fixa acompanhando o scroll pelo resto
+  da página (a nav continua fixa e trocando de cor normalmente, isso não
+  mudou). Implementado com um ScrollTrigger próprio: `onLeave` do hero
+  esconde a marquee (fade), `onEnterBack` (voltando pra cima) traz ela de
+  volta. Testado: marquee visível durante o hero, some ao passar pra
+  "Feita"/"Tem booking" em diante, nav permanece visível o tempo todo.
+- ✅ **"Doopla" com o logo dentro da frase da CTA final**: na seção "Toda
+  carreira merece sua Doopla." (a que fica logo acima do rodapé de
+  links, não o rodapé em si), os dois "o" de Doopla agora são os olhos
+  animados de verdade (mesmo componente clonado do nav/rodapé/wordmark —
+  segue o cursor, vaga sozinho, pisca), mantendo a fonte Anton do resto
+  da frase. Bug pego e corrigido no processo: a palavra quebrava no meio
+  entre os dois olhos ao virar linha (um olho ficava numa linha, o outro
+  na de baixo) — corrigido envolvendo "d + olhos + pla" num
+  `white-space:nowrap` pra nunca quebrar ali.
+- ✅ CTA da nav renomeado de "Criar conta" pra "Começar agora" (mesmo link
+  pro `/cadastro`) — padronização de copy pedida pelo usuário: "Começar
+  agora" é o CTA de aquisição em todo o site, "Criar conta" fica restrito
+  ao fluxo de cadastro em si.
+- ✅ `npm run build`/`npx eslint` limpos. Tudo verificado com Playwright
+  local (build de produção): scroll completo da página conferindo classe
+  da nav seção a seção, opacidade da marquee em cada trecho, screenshot
+  da frase da CTA final com os olhos alinhados na mesma linha.
+- ⏳ **Pendência grande, ainda não iniciada**: o pedido de reconstruir
+  Header (overlay de MENU fullscreen) + páginas institucionais completas
+  (`/sobre`, `/seguranca`, `/contato` nova, `/termos`, `/privacidade`) +
+  padronizar CTA "Começar agora" nessas páginas também. Ficou de fora
+  desta sessão por limite de orçamento/sessão — precisa de uma sessão
+  nova dedicada a isso.
+
+## 20. Páginas institucionais (Sobre, Segurança, Contato, Termos, Privacidade) + Header/Footer compartilhados + ajustes de copy na Home
+
+- ✅ **Header + Footer + overlay de MENU compartilhados**, novos, escopados
+  em `src/app/_home/` (`SiteHeader.tsx`, `SiteFooter.tsx`, `PageShell.tsx`,
+  `EyeLogo.tsx`, `site-chrome.css`) — usados pelas 5 páginas institucionais
+  abaixo. Mesma identidade visual da Home (vermelho/preto/creme, Anton/
+  Familjen Grotesk/IBM Plex Mono), mas implementado em React puro (sem
+  GSAP), separado do sistema vanilla-JS da Home por decisão de escopo:
+  não mexi na Home's própria nav pra não arriscar quebrar a timeline
+  cinematográfica já testada — só corrigi os placeholders de link dela.
+  MENU abre um overlay fullscreen (não dropdown) com: Como funciona, O que
+  sua Doopla faz, Planos, Segurança, FAQ, Sobre — sem "Entrar" (removido
+  por correção do usuário) — mais CTA "Começar agora" e "Quero minha
+  Doopla" como legenda de apoio (não label de botão). Fecha com Esc, trava
+  scroll do body enquanto aberto.
+- ✅ **`/sobre`**: reescrita do zero (era conteúdo do modelo antigo de
+  marketplace) — Hero + composição única com os 3 conceitos
+  (Representação / Com você no controle / Independência) + CTA final,
+  sem virar uma página longa.
+- ✅ **`/seguranca`**: reescrita do zero — Hero + 3 princípios (Você
+  aprova / Você acompanha / Seus dados são protegidos, com link discreto
+  pra Política de Privacidade) + seção final com "Falar com a Doopla"
+  (→ `/contato`) e link pra Política de Privacidade.
+- ✅ **`/contato`**: página nova — Hero + e-mail (`contato@doopla.pro`) e
+  formulário (nome/e-mail/assunto/mensagem) lado a lado no desktop,
+  empilhado no mobile. Sem backend de envio (não existe ainda) — o botão
+  "Enviar mensagem" abre um `mailto:` pré-preenchido pro
+  contato@doopla.pro, não finge enviar algo que não seria realmente
+  entregue.
+- ✅ **`/termos` e `/privacidade`**: reescritas com o texto legal completo
+  fornecido, layout editorial (largura de leitura confeitável, hierarquia
+  tipográfica), mesmos Header/Footer das outras. Bug pego e corrigido:
+  as listas com marcador (`<ul>`) da Política de Privacidade não
+  mostravam os bullets (herdavam `list-style:none` de algum reset
+  global) — corrigido com `list-style:disc` explícito no escopo de
+  `.legal-content`.
+- ✅ Footer da Home: os 4 links (Segurança/Termos/Privacidade/Contato),
+  antes `href="#"`, agora apontam pras páginas reais. Nav da Home:
+  "Sobre" também corrigido de `#` pra `/sobre`.
+- ✅ Ajustes de copy na Home pedidos nesta sessão: kicker do hero mudou
+  pra "Mais que automação. Representação."; seção "O que sua Doopla faz"
+  ganhou novo headline ("Você faz seu trabalho. Sua Doopla cuida do
+  booking.") e nota abaixo das perguntas ("Sua Doopla resolve."); "Como
+  funciona" mudou pra "Tem booking? Tem Doopla."; a seção final antes do
+  footer voltou a ter texto preto (era branco, o usuário apontou o
+  erro); "Toda carreira merece sua Doopla" perdeu o ponto final em todo
+  lugar que aparece como título; CTA da nav voltou de "Começar agora"
+  pra "Criar conta" (reversão explícita do usuário — só na nav da Home,
+  as páginas institucionais continuam com "Começar agora" no header,
+  que foi o padrão pedido antes dessa reversão pontual).
+- ✅ **Planos reescritos** com a estrutura de negócio atualizada (o
+  usuário reverteu a diretriz anterior de "zero intervenção humana no
+  1.0"): plano Doopla (R$29,90, até 5 novos bookings/mês) e Doopla Pro
+  (R$59,90, bookings ilimitados, "Especialista humano quando uma
+  negociação precisar", "Em breve: acesso à rede de bookers humanos
+  Doopla"). Isso substitui o que estava documentado no item 1 deste
+  arquivo sobre não construir infraestrutura de humano — a diretriz
+  vigente agora é a desta seção.
+- ✅ `npm run build`, `npx eslint` e `npx tsc --noEmit` limpos em todo o
+  projeto (não só nos arquivos tocados). Testado com Playwright local:
+  todas as 5 páginas institucionais renderizando (screenshot completo de
+  cada uma), overlay de menu abrindo/fechando (Esc funciona), links do
+  overlay com os hrefs certos, todas as seções editadas da Home
+  conferidas visualmente uma a uma.
+- ⏳ Pendência técnica: o formulário de contato não tem envio real (usa
+  `mailto:` como alternativa honesta, já que não existe serviço de
+  e-mail configurado no projeto). Se quiser um envio de verdade
+  (ex.: Resend, API route), isso é trabalho novo, não builicado aqui.
+
+## 21. Correções pós-institucionais: marquee com buraco preto, menu piscando, copy de Planos/Sobre
+
+- ✅ **Marquee com espaço preto vazio em telas largas**: o loop infinito
+  usava só 2 cópias do conteúdo (6 spans); em monitores largos o trecho
+  repetido não cobria 2x a largura da viewport, sobrando um vão preto
+  depois do texto. Aumentado pra 6 cópias (18 spans) — testado num
+  viewport de 2200px confirmando que a trilha renderizada sempre fica
+  mais larga que 2x a viewport, sem vão.
+- ✅ **Overlay do MENU abrindo/fechando sozinho nas páginas
+  institucionais**: causa raiz provável identificada — `PageShell` lia
+  `site-chrome.css` com `fs.readFileSync` e injetava num `<style>`
+  inline a cada mount de página; como as páginas institucionais navegam
+  entre si via `next/link` (navegação client-side), esse `<style>`
+  inline desaparecia e reaparecia a cada troca de página, causando um
+  flash sem estilo bem na hora em que o overlay poderia estar montando/
+  desmontando. Trocado por `import './site-chrome.css'` direto (CSS
+  real, buildado uma vez, sem re-injeção a cada navegação). Testado com
+  Playwright: 4 ciclos de abrir o menu → navegar por um link do overlay
+  → voltar, overlay abriu 100% das vezes e o fundo do header continuou
+  sólido depois de cada navegação (sem flash detectado nas amostras).
+- ✅ Planos (Pro): lista revisada — "Especialista humano quando uma
+  negociação precisar" virou "Especialista humano se precisar"; removido
+  o item "Radar de clientes e oportunidades".
+- ✅ Kicker "Mais que automação. Representação." com ponto final.
+- ✅ Sobre: hero reescrito duas vezes seguindo correção do usuário —
+  versão final: h1 "Toda carreira merece sua Doopla." + novo parágrafo
+  ("...a estrutura que existe por trás de uma carreira profissional...
+  continuar no controle da sua carreira."). Meta description atualizada
+  junto pra bater com o texto visível.
+- ⏳ Ainda pendente (fora do escopo técnico resolvível aqui): envio real
+  do formulário de contato (ver item 20) — segue precisando de um
+  serviço de e-mail configurado (usuário confirmou que já tem o domínio/
+  e-mail pago, então isso pode ser um próximo passo natural).
+- ✅ `npm run build`/`npx eslint` limpos em cada rodada.
+
+## 22. Marquee presa visível em link direto pra âncora depois do hero
+
+- ✅ Bug real reportado com screenshot: chegando na Home direto numa
+  âncora depois do hero (ex.: `/#o-que-sua-doopla-faz`, que é exatamente
+  o link do item "O que sua Doopla faz" no overlay do menu), a marquee
+  ficava presa visível, sobrepondo o título da seção "Tem booking pra
+  resolver?". Causa: o `onLeave` do ScrollTrigger que esconde a marquee
+  só dispara numa TRANSIÇÃO de scroll — se a página já carrega com o
+  scroll direto além do hero, o ScrollTrigger nasce já no estado "depois
+  do fim", sem nenhuma transição pra disparar o callback. Corrigido
+  checando `st.isActive` logo após criar o ScrollTrigger e aplicando o
+  estado escondido manualmente se necessário. Testado reproduzindo
+  exatamente o cenário (`goto('/#o-que-sua-doopla-faz')` direto, sem
+  scroll gradual antes): antes do fix a marquee ficava visível
+  sobrepondo o título; depois do fix ela nasce corretamente escondida.
+
+## 20. Marquee: fim do "descolamento" do ponto certo (Começar agora) + copy de Planos/Pro
+
+- ✅ **Bug real, achado pelo usuário via vídeo**: a marquee continuava
+  visível ~100vh (uma altura de viewport inteira) depois do botão
+  "Começar agora" já ter aparecido, sobrepondo a seção seguinte
+  enquanto ela já rolava por baixo. Causa: o ScrollTrigger que esconde
+  a marquee usava `end:"bottom top"` enquanto o `stageTl` (que solta o
+  pin do hero) usa `end:"bottom bottom"` — são pontos de scroll
+  diferentes, um viewport inteiro de distância um do outro. Corrigido
+  igualando os dois `end`, então a marquee agora some exatamente
+  quando o pin do hero solta (que é também quando "Começar agora" já
+  terminou de aparecer), não 100vh depois. Verificado programaticamente:
+  botão CTA aparece em scrollY≈2000, marquee some em scrollY≈2300 (gap
+  pequeno, não mais ~100vh), zero sobreposição detectada com o título
+  da seção seguinte durante um scroll gradual completo.
+- ✅ **Regressão pega e corrigida no mesmo processo**: a correção anterior
+  pro bug do link direto (`st.isActive` medido logo após criar o
+  ScrollTrigger) dava falso negativo mesmo em carregamento normal do
+  topo da página — a medição acontecia cedo demais, antes do layout
+  assentar, escondendo a marquee por engano mesmo em scrollY 0.
+  Trocado por uma checagem direta de `window.scrollY > 20`, sem
+  depender de medição do GSAP nesse instante específico. Testado os
+  dois cenários (carregamento normal do topo E link direto pra âncora
+  depois do hero) — os dois corretos agora.
+- ✅ Marquee: aumentado de 2 pra 6 repetições do conteúdo, pra não deixar
+  buraco preto vazio em telas muito largas (reportado com print).
+- ✅ Copy: kicker da seção "Tem booking" agora é "Mais que automação.
+  Representação." (era "Representação, não automação"); headline virou
+  "Você faz seu trabalho. Sua Doopla cuida do booking." com "Sua Doopla
+  resolve." embaixo da lista; "Como funciona" agora é "Tem booking? Tem
+  Doopla."; Planos agora é "Mais estrutura. Sem comissão por booking.";
+  lista do Doopla Pro atualizada (Especialista humano se precisar,
+  Inteligência sobre cachês/clientes/negociações, Materiais
+  profissionais, Benefícios com parceiros, rede de bookers "Em breve").
+  CTA final "Toda carreira merece sua Doopla" (sem ponto final) agora
+  em preto (era creme/branco); nav do header voltou a dizer "Criar
+  conta" (revertendo a padronização "Começar agora" só pra esse botão
+  específico, por pedido explícito do usuário).
+- ✅ `npm run build`/`npx eslint` limpos em cada rodada. Tudo testado
+  com Playwright local reproduzindo os cenários exatos reportados
+  (scroll gradual completo, link direto pra âncora, carregamento
+  normal do topo).
+
+## 21. Footer legal (CNPJ) + copy de teste grátis na Home
+
+- ✅ Rodapé (Home e páginas institucionais): adicionada a linha discreta
+  "Doopla © 2026 · CNPJ: 68.636.132/0001-48" junto aos links de
+  Segurança/Termos/Privacidade/Contato, mesma família/tamanho de fonte,
+  só com opacidade reduzida pra ficar visivelmente secundária — mesmo
+  padrão em desktop e mobile (`flex-wrap` já existente).
+- ✅ Mensagem de teste grátis incorporada na Home, como argumento de
+  conversão (não como mensagem principal da marca):
+  - Hero: CTA "Começar grátis" + nota "7 dias grátis. Sem cartão."
+    abaixo do botão.
+  - Cards de Planos (Doopla e Doopla Pro): adicionada a linha "7 dias
+    grátis" e um botão "Começar grátis" próprio em cada card (nenhum
+    dos dois tinha CTA antes). Link do Pro usa `.btn-invert` (fundo
+    claro) pra não ficar preto-sobre-preto no card escuro.
+  - CTA final: virou "Pronto para ter sua d[olhos]pla?" + "Comece
+    grátis por 7 dias." + botão "Começar grátis" — manteve o logo
+    animado embutido na palavra "Doopla" (mesmo recurso já
+    implementado antes).
+  - FAQ: nova pergunta "Como funcionam os 7 dias grátis?" (a lista já
+    tinha 6 perguntas de rodadas anteriores; virou 7 — a regra de
+    "só 3 perguntas" foi explicitamente dispensada pelo usuário).
+- ⚠️ **Pendência grande, propositalmente não implementada**: o fluxo
+  novo de onboarding (`Criar conta → Preparar sua Doopla → Escolher
+  plano → Iniciar teste grátis → Painel`) e a persistência da intenção
+  de plano (sobreviver a refresh, voltar etapas, retomar depois de
+  criar a conta) **não existem ainda**. Os CTAs de plano hoje apontam
+  pra `/cadastro?plano=doopla` e `/cadastro?plano=pro` — o parâmetro
+  `plano` é só um sinal simples pra um onboarding futuro ler; a página
+  `/cadastro` atual (fluxo antigo Artista/Booker) não lê nem usa esse
+  parâmetro hoje. Construir o onboarding novo de verdade (telas,
+  estado, persistência em banco) é trabalho separado, maior, que não
+  cabe nesta sessão.
+- ✅ `npm run build`/`npx tsc --noEmit`/`npx eslint` limpos. Testado com
+  Playwright: texto e `href` de cada CTA conferidos, FAQ com 7 itens
+  confirmado, screenshot dos cards de planos e da CTA final.
+
+## 22. Onboarding: sem cachê, sem lista fixa de profissão (finalmente mexendo no /cadastro real)
+
+- ✅ Primeira vez nesta sessão que uma mudança de conteúdo toca o
+  `/cadastro` de verdade (antes só os *links* pra ele eram alterados,
+  nunca o conteúdo — instrução explícita e antiga do usuário). O pedido
+  desta vez foi explícito e específico o suficiente pra justificar:
+  duas correções concretas no wizard de onboarding do artista.
+- ✅ **Removida a pergunta de cachê** ("Qual sua faixa de cachê ou
+  ticket médio?", já opcional mas ainda perguntada). Passa a ser
+  aprendida depois, no contexto de um booking real — continua editável
+  em Minha Doopla (perfil), o campo já existe lá.
+- ✅ **Removidas as listas fixas que deixavam o onboarding "cara de
+  DJ"**: categoria (DJ/Músico/Modelo/Ator/Fotógrafo/...), tipos de
+  trabalho (Shows/Casamentos/Festas corporativas/...) e nichos fixos
+  (Marcas/Eventos sociais/Festivais/...). Substituídas por uma pergunta
+  aberta só: "Fale sobre o seu trabalho. O que você faz?" — reaproveita
+  o campo `bio` já existente (mesmo texto usado no perfil público),
+  então nada quebra a jusante.
+- ⚠️ **Fora do escopo desta sessão, documentado explicitamente**: a
+  interpretação por IA da resposta livre (extrair profissão/segmento/
+  tipo de cliente como contexto estruturado) e a opção de responder por
+  áudio. Os dois exigem trabalho novo de verdade (chamada a um modelo,
+  schema pra guardar o contexto estruturado, gravação/transcrição de
+  áudio) — a resposta hoje só é salva como texto livre em `bio`, igual
+  já funcionava antes.
+- ✅ Conferido que `categoria`/`workTypes`/`mercados`/`feeRange` do
+  artista não têm nenhuma dependência quebrada: `ONBOARDING_FIELDS`
+  em `auth/actions.ts` só encaminha o que veio preenchido (nenhum é
+  campo obrigatório no banco), e `totalSteps` no wizard é calculado
+  dinamicamente a partir do tamanho do array de perguntas — não tem
+  contagem fixa pra corrigir.
+- ✅ `npm run build`/`npx tsc --noEmit`/`npx eslint` limpos. **Não
+  consegui automatizar um clique-a-clique completo do wizard aqui no
+  sandbox** (fricção do Playwright com o form multi-etapa client-side,
+  não indício de bug real) — recomendo abrir `/cadastro`, escolher
+  Artista e conferir manualmente que a pergunta de cachê e as listas
+  antigas não aparecem mais, e que "Fale sobre o seu trabalho" aparece
+  no lugar certo.
+- ✅ Bônus pequeno resolvido no caminho: os dois botões "Começar
+  grátis" dos cards de Planos estavam desalinhados (um mais alto que o
+  outro, por causa dos cards terem tamanhos de conteúdo diferentes).
+  Corrigido ancorando os dois no fim do card via `margin-top:auto`.
+- ✅ Também removida a nota "7 dias grátis. Sem cartão." do hero (pedido
+  explícito pra tirar só dali) — continua nos cards de planos e na CTA
+  final.
+
+## 23. Cadastro reconstruído: sem escolha Artista/Booker, plano real, trial exposto direito
+
+- ✅ O usuário deixou claro (três vezes, cada vez mais explícito) que a
+  remoção parcial de perguntas do onboarding antigo (item 22) não
+  bastava — o problema estrutural era o `/cadastro` continuar abrindo
+  com "Tipo de conta: Artista / Booker/Assistente" como primeira
+  pergunta, resquício do produto de marketplace antigo. Corrigido de
+  verdade: o funil público (Home → Começar grátis) nunca mais mostra
+  esse seletor. `role` fica sempre `'artista'`. O seletor só existe
+  pra quem chega por um link explícito de booker (`?tipo=booker`), o
+  que preserva o cadastro de booker funcionando sem apagar essa parte
+  do produto/banco (dashboard de booker continua 100% intacto).
+- ✅ **Escolha de plano de verdade**: o `PlanStep` antigo (tier único
+  desatualizado, "R$19,90 no 1º mês → R$39,90/mês") virou dois cards
+  selecionáveis — Doopla R$29,90 e Doopla Pro R$59,90 — usando o preço
+  de `src/lib/market.ts` (o arquivo central criado no item de
+  internacionalização), não mais número solto no componente.
+  "7 dias grátis, sem cartão" nos dois. Pré-seleção vem de `?plano=` (o
+  mesmo parâmetro que os cards de planos da Home já mandam desde o
+  item 21), com fallback em `localStorage` pra sobreviver a um refresh
+  no meio do formulário, e fica gravada em `subscriptions.artist_plan`
+  (coluna nova, migration 0036) assim que a conta é criada — não
+  depende só do parâmetro da URL depois disso.
+- ✅ **O trial de 7 dias sem cartão já existia de verdade** — descoberto
+  ao investigar o schema antes de mexer: a trigger `handle_new_user`
+  (migration 0031) já cria toda assinatura de artista em
+  `status: 'trialing'` com `trial_ends_at = agora + 7 dias`, sem
+  processador de pagamento nenhum envolvido. Não foi inventado agora,
+  só exposto corretamente na tela nova (antes o `PlanStep` nem
+  mencionava isso claramente).
+- ✅ Adicionado um passo informativo (não é pergunta, não bloqueia
+  continuar) explicando o modo Conservador — "Você continua no
+  controle. Sua Doopla começa no modo Conservador e consulta você
+  antes de decisões comerciais importantes. Depois, se quiser, você
+  pode dar mais autonomia a ela em Minha Doopla." — na conclusão das
+  perguntas de perfil, como pedido explicitamente (não dentro de uma
+  etapa de cachê, que já não existe mais).
+- ⚠️ **Pendências que continuam fora desta sessão, agora com o motivo
+  técnico documentado**:
+  - **Interpretação por IA da resposta "Fale sobre o seu trabalho"**:
+    precisa de uma chamada real a um modelo de IA + um lugar pra
+    guardar o contexto estruturado extraído (profissão/segmento/tipo
+    de cliente) — hoje a resposta só é salva como texto livre em
+    `bio`, igual antes.
+  - **Resposta por áudio**: precisa de gravação/upload/transcrição —
+    infraestrutura nova, não existe nada disso no produto hoje.
+  - **"Criar conta" como primeira tela visual de verdade**: o
+    e-mail/senha continua sendo tecnicamente o ÚLTIMO passo do wizard
+    (a conta só é criada de fato nesse envio final, como sempre foi —
+    os passos anteriores só acumulam estado local no navegador). Não
+    reordenei isso porque mexe na wiring central de submissão do
+    formulário — risco alto pra um ganho de UX que não foi o ponto
+    central do pedido (o ponto central, resolvido, era não perguntar
+    Artista/Booker).
+  - **Persistência de onboarding entre sessões** (retomar depois que a
+    conta já existe, fechar e voltar dias depois): não existe nada
+    assim em nenhuma parte do produto hoje — exigiria um sistema de
+    sessão de onboarding resumível no servidor, trabalho novo e maior.
+- ✅ `npm run build`/`npx tsc --noEmit`/`npx eslint` limpos. Verificado
+  com Playwright: `/cadastro` sem seletor de tipo de conta (confirmado
+  programaticamente), `/cadastro?tipo=booker` com o seletor presente
+  (confirmado), e o primeiro passo real do fluxo do artista avançando
+  corretamente ("Pergunta 2 de 12: Qual é seu nome artístico?").
+  **Não consegui automatizar o clique-a-clique completo até a tela de
+  planos aqui no sandbox** (mesma fricção do Playwright com esse
+  formulário multi-etapa já relatada no item 22, não indício de bug) —
+  recomendo fortemente abrir `/cadastro?plano=pro` no navegador e
+  conferir visualmente que o card "Doopla Pro" aparece pré-selecionado
+  na etapa de planos.
+
+## 21. Reconstrução real do cadastro — Criar conta é a primeira etapa, progresso salvo no banco
+
+- ✅ **Isso estava pendente, não implementado** — no fim da rodada
+  anterior eu tinha só analisado a arquitetura (schema, trigger
+  `handle_new_user`, exigência de confirmação de e-mail do Supabase)
+  sem chegar a escrever o código novo, e não deixei isso claro. O
+  usuário testou em produção, viu que "Criar conta"/"Começar grátis"
+  continuavam caindo no wizard antigo (pergunta "O que você está
+  buscando?" primeiro) e cobrou corretamente. Está implementado agora,
+  de verdade, testado localmente.
+- ✅ **Novo funil público do artista** (`/cadastro`, sem `?tipo=booker`
+  nem `?invite=`): passo 1 é só "Criar conta" (nome, e-mail, senha) —
+  sem seletor Artista/Booker. `role` fica sempre `'artista'` no
+  server action, nunca perguntado. Testado: os campos renderizados em
+  `/cadastro` são só `fullName/email/password/confirmPassword`, sem
+  fieldset de tipo de conta.
+- ✅ **Conta já existe antes das próximas perguntas**: `createAccountAction`
+  (novo, em `auth/actions.ts`) chama `supabase.auth.signUp()` já no
+  passo 1 — a trigger `handle_new_user` cria profile + artist_profile +
+  subscription (trial de 7 dias, `artist_plan`) na hora, mesmo antes da
+  confirmação de e-mail. As etapas seguintes só fazem `UPDATE` nessas
+  linhas já existentes (autenticado, via RLS `auth.uid() = profile_id`)
+  — nunca ficam só em estado local do componente.
+- ✅ **Dois passos novos, autenticados, com resume real**:
+  `/cadastro/preparar` (nome artístico, "fale sobre seu trabalho", 
+  cidade/estado — a resposta aberta continua sendo coletada
+  normalmente, pronta pra quando a interpretação por IA for
+  implementada) e `/cadastro/plano` (escolha Doopla/Doopla Pro,
+  reaproveitando os preços de `src/lib/market.ts`). Cada página busca o
+  estado atual no banco no carregamento e pré-preenche o formulário —
+  se o usuário atualizar a página, fechar o navegador ou voltar depois
+  (já com a conta existindo), o progresso está lá, não depende de
+  localStorage. Se uma etapa já foi preenchida antes, a página pula
+  direto pra próxima (`/cadastro/preparar` → `/cadastro/plano` se
+  `stage_name`/`bio` já existem).
+- ✅ **Intenção de plano sem localStorage depois que a conta existe**: o
+  card clicado na Home (`?plano=doopla` ou `?plano=pro`) vira campo
+  oculto no passo 1, vai como metadata no `signUp()`, e a trigger já
+  grava em `subscriptions.artist_plan` — quando o usuário chega em
+  "Escolher plano", o valor pré-selecionado vem de uma leitura real do
+  banco, não de localStorage. Testado: `?plano=pro` → campo oculto
+  `artistPlan=pro` confirmado no DOM do passo 1.
+- ✅ **Booker e artista convidado por agência preservados**: `?tipo=booker`
+  (ou `?role=booker`) e `?invite=...` continuam caindo no wizard antigo
+  (`SignupForm`), sem nenhuma mudança de comportamento — só o funil
+  público padrão (Home → Começar grátis) foi reconstruído. Testado:
+  `/cadastro?tipo=booker` ainda mostra o fieldset "Tipo de conta".
+  `PlanStep`/`PLAN_CARDS` do wizard antigo foram extraídos pra um
+  componente compartilhado (`PlanPicker.tsx`) reaproveitado pelos dois
+  fluxos, sem duplicar preço/feature em dois lugares.
+- ✅ Nova coluna `subscriptions.artist_plan` (migration 0036) — usuário
+  já rodou no Supabase, confirmado.
+- ⏳ **Pendências explicitamente mantidas como próxima implementação, não
+  refinamento futuro indefinido** (conforme o usuário pediu): interpretação
+  por IA da resposta aberta sobre o trabalho (já coletada, ainda não
+  processada), resposta por áudio nessa mesma etapa, e detecção
+  automática de região/idioma + seletor PT/EN + integração real com
+  Stripe (fundação central já existe em `src/lib/market.ts`, nada
+  disso está ligado ainda).
+- ✅ `npm run build`, `npx tsc --noEmit` e `npx eslint` limpos. Testado
+  localmente: renderização dos dois fluxos (novo vs. booker), guarda de
+  autenticação em `/cadastro/preparar` e `/cadastro/plano` (redirecionam
+  pra `/login?next=...` sem sessão), e o hidden field de intenção de
+  plano.
+- ✅ **Confirmado ponta a ponta pelo usuário, em produção** (não dava pra
+  testar `signUp()` → e-mail de confirmação → resume neste sandbox, sem
+  caixa de e-mail real): criou conta de teste, recebeu o e-mail de
+  confirmação, clicou no link, passou por `/cadastro/preparar` e
+  `/cadastro/plano`, e chegou no painel normalmente. Fluxo novo
+  validado como funcionando de verdade, não só em teoria.
+
+## 22. Camada humana — escalonamento de exceções (Home)
+
+- ✅ Bloco curto dentro de "Como funciona", depois dos 3 passos
+  principais — não é seção nova, não alonga a Home. "Tem coisa que
+  pede uma pessoa. A Doopla sabe disso." + duas frases curtas sobre
+  escalonamento pro time humano quando os canais normais não resolvem.
+  Visualmente discreto (texto menor, separador sutil), sem competir
+  com os 3 passos.
+- ✅ FAQ: pergunta "A Doopla fala com o cliente por mim?" adaptada pra
+  "E se o cliente não quiser falar com uma IA?" (mesma posição na
+  lista); nova pergunta "E se o cliente parar de responder ou atrasar
+  um pagamento?" adicionada logo após "Como funciona o pagamento?".
+  FAQ agora com 8 itens.
+- ✅ Nenhuma promessa de resposta garantida do cliente, recebimento de
+  cachê garantido, ou humano acompanhando cada artista/booking — só a
+  copy exata fornecida. `npm run build`/`eslint` limpos, testado com
+  Playwright (screenshot do bloco + lista de perguntas do FAQ
+  conferida).
+
+## 23. "Prepare sua Doopla" reconstruído — de 2 perguntas pra contexto de verdade
+
+- ✅ **Problema real apontado pelo usuário**: depois de escolher o plano,
+  o passo 2 só perguntava profissão (texto livre) e cidade — insuficiente
+  pra Doopla ter contexto mínimo pra representar alguém quando um
+  cliente aparecer. Reconstruído do zero, sem voltar ao cadastro longo
+  do modelo antigo de matching.
+- ✅ **5 perguntas curtas, uma tela por vez, com barra de progresso**
+  (client-side, `/cadastro/preparar` continua sendo uma página só —
+  submete tudo junto no fim, como o wizard antigo já fazia): nome
+  artístico + profissão (chips: DJ, Banda, Cantor(a), Fotógrafo(a),
+  Videomaker, Influenciador(a)/creator, Outro) → cidade + onde trabalha
+  (chips múltiplos: minha região, outros estados, Brasil inteiro,
+  internacional, remoto) → tipos de trabalho (chips múltiplos,
+  **específicos da profissão escolhida** — DJ vê "Clubes e festas,
+  Festivais, Restaurantes/hotéis...", fotógrafo vê "Ensaios, Moda e
+  campanhas, Produtos...") → presença profissional (Instagram/site/
+  portfólio/outro, pelo menos um) → contexto aberto ("que tipo de
+  trabalho você mais faz ou gostaria de receber", a mesma resposta
+  aberta de antes, pronta pra interpretação por IA quando for
+  implementada).
+- ✅ **Arquitetura extensível por categoria**: `src/lib/artist-categories.ts`
+  — `WORK_TYPES_BY_CATEGORY` é um `Record<categoria, opções[]>` com
+  fallback genérico pra categoria sem lista própria ainda. Adicionar
+  uma profissão nova = uma entrada nesse arquivo, não mexe no
+  formulário.
+- ✅ Todos os campos gravam em colunas que já existiam em
+  `artist_profiles` (`category`, `regions`, `work_types`,
+  `instagram_url`, `portfolio_url`, `website_url`, `other_links`,
+  `local`, `bio`, `stage_name`) — nenhuma migration nova precisou.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos. **Não deu
+  pra testar visualmente no navegador** (a página exige sessão real,
+  autenticação já validada pelo usuário na rodada anterior) — validado
+  por revisão cuidadosa de código em vez de Playwright desta vez.
+  Pedir pro usuário conferir criando uma conta de teste nova.
+- ⏳ **Explicitamente fora desta rodada** (é a próxima peça, não este
+  ajuste): a área no painel pra continuar configurando a representação
+  progressivamente depois do onboarding (referência de cachê, nota
+  fiscal, rider, forma de pagamento, "nunca aceitar sem me perguntar"
+  etc.) — não existe ainda, precisa ser construída como funcionalidade
+  própria do painel.
+
+## 24. Onboarding 7 etapas — arquitetura de dados feita, UI aguardando mockup
+
+- ⚠️ **Bloqueado esperando o mockup**: o usuário pediu pra reconstruir
+  `/cadastro` completo em 7 etapas (Criar conta → Prepare sua Doopla →
+  Cachê → Como você trabalha → Canal de atenção → Conclusão → Planos),
+  citando "te enviei o mockup do layout e design do cadastro" — esse
+  arquivo não chegou nesta sessão (nenhum anexo visível). Perguntei e
+  fiquei esperando. Enquanto isso, adiantei só a parte que não depende
+  de layout nenhum:
+- ✅ **`profession_job_types` como dado real no banco, não mais arquivo
+  TS** (era um requisito explícito de arquitetura, não front) —
+  migration 0037 cria as tabelas `professions` e `profession_job_types`
+  (profissão → lista de tipos de trabalho), com RLS de leitura pública,
+  seedadas com as 7 profissões já usadas (DJ, Banda, Cantor(a),
+  Fotógrafo(a), Videomaker, Influenciador(a)/creator, Outro) e os
+  tipos de trabalho de cada uma. Adicionar profissão nova agora é um
+  `insert`, nunca mexer no componente React. `/cadastro/preparar`
+  busca essas tabelas no carregamento da página e passa como prop pro
+  formulário — `src/lib/artist-categories.ts` foi limpo, só guarda
+  `WORK_REGIONS` (lista pequena e estável, não precisa ser tabela).
+- ✅ **WhatsApp na Etapa 1** (Criar conta): campo novo, obrigatório,
+  grava em `profiles.phone` (coluna que já existia, só a trigger nunca
+  preenchia — corrigido).
+- ✅ **Colunas novas em `artist_profiles`** pras etapas Cachê / Como você
+  trabalha / Canal de atenção, prontas pro backend quando as telas
+  forem construídas: `fee_varies_by_job_type` (bool), `issues_invoice`
+  (bool, emite nota fiscal), `typical_job_duration` (text),
+  `negotiation_notes` (text — **campo separado de `bio`, de propósito**:
+  `bio` é intenção/preferência comercial da Etapa 2 ("quero mais
+  eventos de marca"), `negotiation_notes` é regra de representação da
+  Etapa 4 ("nunca aceite exclusividade sem falar comigo") — nunca
+  concatenados, exatamente como pedido), `attention_channel` (enum
+  whatsapp/painel/ambos). `base_fee_cents` (já existia) reaproveitado
+  como cachê de referência.
+- ⏳ **Não construído ainda, esperando o mockup**: as telas de Cachê,
+  Como você trabalha, Canal de atenção e Conclusão (Etapas 3-6) — as
+  colunas existem, os server actions e a UI ainda não. "Prepare sua
+  Doopla" (Etapa 2) continua com a versão da rodada anterior (5
+  perguntas), ainda não reestruturada pra bater exatamente com a nova
+  numeração de etapas do usuário — só o profession_job_types dela foi
+  atualizado pra vir do banco.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⚠️ **Migration 0037 ainda não rodou no Supabase** — preciso mandar
+  pro usuário rodar antes de `/cadastro/preparar` funcionar em
+  produção (senão a query em `professions`/`profession_job_types`
+  falha silenciosamente e a etapa 1 do formulário fica sem opções).
+
+## 25. Onboarding 7 etapas — reconstrução completa no visual do mockup
+
+- ✅ **`/cadastro` reconstruído de verdade, não ajustado** — as 7 etapas
+  (Criar conta → Prepare sua Doopla → Cachê → Como você trabalha →
+  Canal de atenção → Conclusão → Planos) agora existem com o visual do
+  mockup enviado (vermelho/ink/cream, Anton/Familjen Grotesk/IBM Plex
+  Mono, cards e chips, nunca `<select>` longo), barra de progresso
+  segmentada sempre visível e o logo com olhos que seguem o cursor
+  (`OnboardingShell.tsx`, `onboarding.css` escopado sob `#onboarding`
+  pra não vazar pro resto do produto). Em nenhum ponto do funil público
+  aparece "Sou Artista / Sou Booker" — isso continua isolado no wizard
+  antigo, só acessível por `?tipo=booker`/`?role=booker` ou `?invite=`.
+- ⚠️ **Correção de escopo a meio da implementação**: a primeira versão
+  do item 24 tinha criado `professions`/`profession_job_types` como
+  tabelas no banco pra alimentar chips de "tipos de trabalho" por
+  profissão. O usuário reverteu essa decisão explicitamente: sem
+  taxonomia de profissão → tipos de trabalho nenhuma, nem no banco nem
+  na tela. "O que você faz?" voltou a ser texto livre (grava direto em
+  `artist_profiles.category`), e o contexto que a taxonomia tentava
+  capturar agora vem inteiro da resposta aberta "Conte um pouco sobre
+  o seu trabalho" (`bio`). As tabelas `professions`/`profession_job_types`
+  continuam existindo no Supabase (migration 0037 já tinha rodado) mas
+  não são mais lidas por nada — podem ser removidas depois num cleanup,
+  não é bloqueante.
+- ✅ **Etapa 3 (Cachê)** — "tem cachê de referência" (sim/ainda não) +
+  valor, e "cachê varia por trabalho" (sim/não, sem detalhar categoria
+  aqui). Reaproveita `base_fee_cents`/`fee_varies_by_job_type`, que já
+  existiam — sem nova migration pra essa etapa.
+- ✅ **Etapa 4 (Como você trabalha)** — nota fiscal, duração típica do
+  trabalho (pergunta genérica, não específica de DJ), e "tem algo que
+  sua Doopla sempre deve saber antes de negociar por você"
+  (`negotiation_notes`) — **campo separado de `bio`**, nunca
+  concatenado, como já era o requisito.
+- ✅ **Etapa 5 (Canal de atenção)** — WhatsApp/Painel/Ambos, sem
+  qualquer menção a receber oportunidades.
+- ✅ **Áudio honesto, não fingido**: os dois campos abertos (contexto na
+  Etapa 2, regras na Etapa 4) têm o toggle "Escrever/Falar por áudio"
+  do mockup, mas clicar em "Falar por áudio" não esconde o textarea
+  nem mostra uma gravação falsa — só avisa que áudio ainda não está
+  disponível e mantém o texto como única forma real de responder, pra
+  nunca descartar silenciosamente o que a pessoa digitou.
+- ✅ **`PlanPicker` ganhou `variant` (`onboarding` | `legacy`)** — mesmo
+  componente, mesmos `PLAN_CARDS`, mas dois visuais: o novo
+  vermelho/cream pra Etapa 7, e o antigo `--paper/--ink` continua
+  servindo o wizard do booker sem duplicar preço/feature em dois
+  lugares.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos. Etapa 1
+  verificada visualmente com Playwright (bate com o mockup). Etapas
+  2-7 exigem sessão autenticada — não dá pra testar ao vivo neste
+  sandbox; revisão foi por leitura cuidadosa do código, validação real
+  fica por conta do usuário em produção.
+- ⏳ Indique e ganhe R$5 (dashboard) não foi tocado por essa mudança —
+  vive inteiramente em `src/app/dashboard/`, fora do `/cadastro`.
+
+## 26. Onboarding — fonte de verdade final: qualquer profissional independente, não só DJ/artista
+
+- ✅ **Reescrita da Etapa 3 e simplificação geral**, alinhada ao
+  documento final do usuário. Mudanças principais em relação ao item
+  25:
+  - Etapa 3 renomeada de "Cachê" pra **"Valores"**: "Você tem um valor
+    de referência para seu trabalho?" com opções **R$ [valor]** ou
+    **Depende do trabalho** (nunca mais "ainda não tenho um valor
+    definido" — o enquadramento agora é sempre "referência pra Doopla
+    entender como você trabalha comercialmente", nunca autorização de
+    fechamento). Escolhendo "Depende do trabalho" abre uma pergunta
+    aberta opcional ("Como você costuma definir seus valores?") em vez
+    da antiga pergunta fechada "cachê varia por tipo de trabalho?".
+  - **Removida a etapa "Onde você trabalha" inteira** (chips de
+    cidade/estados/internacional/remoto) — cidade-base já basta como
+    contexto inicial; alcance geográfico é aprendizado progressivo,
+    não pergunta de onboarding.
+  - **Removida "duração típica do trabalho"** (Etapa 4) — fazia sentido
+    só pra um subconjunto de profissões.
+  - **Toggle "Escrever/Falar por áudio" virou um único input
+    conversacional com ícone de microfone embutido**
+    (`ConversationalField`, usado em "conte sobre seu trabalho" e nas
+    duas perguntas abertas de Valores/Como você trabalha) — nunca dois
+    modos separados. Áudio de verdade continua não existindo: clicar
+    no microfone mostra um aviso honesto (`.mic-note`) sem esconder o
+    campo de texto.
+  - **"Nome artístico" virou "Nome profissional"** e o placeholder de
+    profissão trocou de "DJ" fixo pra "Ex.: DJ, fotógrafo, maquiador,
+    creator..." — sem nenhum valor pré-preenchido, pra não sugerir que
+    o produto é feito só pra DJ.
+  - **Etapa 6 (Conclusão) reescrita**: sem lista "o que falta"
+    (Riders/Materiais/Links/...), que soava como "cadastro incompleto".
+    Texto novo comunica aprendizado progressivo: "Isso é só o começo...
+    Sua Doopla também vai perguntar quando precisar aprender algo
+    novo." + "Quanto mais vocês trabalham juntos, mais sua Doopla
+    conhece você."
+  - Coluna nova **`pricing_notes`** (migration 0038) pra "como você
+    costuma definir seus valores" — semanticamente diferente de `bio`
+    e de `negotiation_notes`, nunca concatenada com nenhuma das duas.
+    `fee_varies_by_job_type`/`typical_job_duration` (migration 0037)
+    saem do onboarding mas continuam existindo no banco, sem escrita —
+    não é destrutivo remover uma pergunta.
+  - `src/lib/artist-categories.ts` removido (WORK_REGIONS não é mais
+    usado por nada, já que a etapa de regiões saiu do onboarding).
+- ⏳ **Explicitamente fora deste bloco, por pedido direto**: a barra
+  "Sua Doopla aprende com você" no painel (input único com
+  texto/áudio/anexo interpretado por IA), perguntas proativas da
+  Doopla quando falta uma informação, e a evolução do gerador de
+  contrato pra aceitar contrato próprio do profissional como
+  referência — tudo isso depende de integração real de IA (backend +
+  OpenAI/Anthropic), que é um bloco técnico separado, ainda não
+  iniciado. Comecei uma auditoria técnica da arquitetura atual (stack,
+  schema, auth, segurança, gaps) como pré-requisito desse bloco, a
+  pedido do usuário — pausada a meio de caminho pra terminar o
+  onboarding primeiro; retomo quando ele pedir.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+
+## 27. Doopla Intelligence OS v1 — primeira migration: camada de conversação
+
+- ✅ **Migration 0039** aplicada (localmente, contra as 38 migrations
+  reais + role `authenticated` simulado — não rodou ainda no Supabase
+  de produção, precisa ser executada pelo usuário). Três rodadas de
+  desenho aprovadas antes de qualquer SQL: auditoria da arquitetura
+  atual → desenho v1 → revisão v2 (consistência mandato/tenant) →
+  revisão v3 (`represented_professional_id` imutável — decisão que
+  transforma a ética de representação da Doopla em garantia de banco,
+  não instrução que se espera que a IA respeite).
+- ✅ **Tabelas novas**: `conversations` (entidade central — mandato,
+  origem, canal, estado, vínculo opcional com oportunidade/booking,
+  linhagem de transferência), `external_participants` +
+  `external_participant_channel_identities` (contato externo, escopado
+  por profissional, nunca identidade global), `conversation_messages`
+  (author_type/direction/channel separados, nunca um `role` de LLM;
+  `body` vs `transcript` nunca misturados), `conversation_mandate_events`
+  e `conversation_state_events` (append-only, a linha de nascimento da
+  conversa já é o primeiro evento). `ai_usage_events` ganhou
+  `conversation_id` (aditivo, nullable).
+- ✅ **`represented_professional_id` é imutável de verdade**: sem
+  `GRANT UPDATE` pra `authenticated` em nenhum caminho — mudar de
+  representado é sempre uma `conversation` nova
+  (`transferred_from_conversation_id`), nunca um `UPDATE` na
+  existente. Isso é o que faz as FKs compostas de isolamento de tenant
+  (participante/oportunidade/booking do mesmo profissional) funcionarem
+  sem risco de o ponto de ancoragem se mover.
+- ✅ **Três functions `security definer`**, únicas portas de escrita
+  privilegiada: `create_conversation()` (cria a conversa + os dois
+  eventos de nascimento atomicamente — nunca existe conversa "crua"),
+  `set_conversation_mandate()` (só mandato, nunca identidade),
+  `advance_conversation_state()` (só estado). As três validam o
+  chamador via `auth.uid()` internamente — nenhuma confia em
+  `professional_id` vindo de parâmetro como prova de identidade.
+- ✅ **13 testes de RLS pedidos, rodados de verdade** contra Postgres
+  16 local com role `authenticated` simulado (mesmo método do
+  `AUDITORIA_BLOCO_4_5.md`) — os 13 passaram. Mais 8 verificações
+  extras (FK de booking, tentativa de impersonar outro profissional em
+  `create_conversation`, `professional_self` com participante externo
+  rejeitado, eventos de nascimento existem, as duas functions de
+  mandato/estado funcionam ponta a ponta). Detalhe encontrado durante
+  a implementação: `psql` não interpola variáveis `:'var'` dentro de
+  blocos `do $$ ... $$` — os 5 testes que dependiam disso precisaram
+  ser reescritos como statements soltos (erro = bloqueado = PASS) em
+  vez de blocos com `exception when others`.
+- ✅ **Tipos atualizados** em `src/lib/supabase/types.ts` — `Insert`/
+  `Update` marcados como `never` nas tabelas que o banco de fato não
+  deixa `authenticated` escrever direto (`conversations`,
+  `conversation_mandate_events`, `conversation_state_events`), pra o
+  TypeScript reforçar a mesma regra que o banco já garante.
+  Recomendação de migrar `types.ts` inteiro pra `supabase gen types`
+  documentada, não aplicada (fora do escopo desta etapa).
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos. Nenhuma
+  mudança em `/dashboard`, Home, ou qualquer funcionalidade existente.
+- ⏳ **Nada de IA integrada** — sem SDK, sem Orchestrator, sem Context
+  Builder, sem Tool Registry, sem Approval Engine, sem WhatsApp/e-mail,
+  sem transcrição, sem a barra "Sua Doopla aprende com você". Só a
+  fundação de dados. Parado aqui, aguardando auditoria do usuário
+  antes de qualquer próximo passo.
+- ✅ **Migration 0039 rodou em produção** (confirmado pelo usuário).
+
+## 28. Doopla Intelligence OS v1 — trigger de `last_activity_at` (correção pequena, fecha a fase)
+
+- ✅ **Migration 0040**: trigger `after insert on conversation_messages`
+  atualiza `conversations.last_activity_at` da conversa correspondente
+  pra bater com o `created_at` da mensagem — determinístico, no banco,
+  não depende de nenhuma integração futura lembrar de fazer isso.
+  Function `security definer` (mesmo padrão das outras três da 0039,
+  necessário porque `last_activity_at` está fora do alcance de
+  `UPDATE` direto de `authenticated`), só toca essa uma coluna, só na
+  linha correspondente.
+- ✅ Testado localmente contra os 40 migrations + role `authenticated`
+  simulado: `last_activity_at` inicial bate com `created_at` da
+  conversa; depois de inserir mensagem, bate com o `created_at` da
+  mensagem; nenhum outro campo da conversa muda (comparação campo a
+  campo via snapshot antes/depois); RLS de `conversations` continua
+  intacta (dono lê, `anon` não lê); `authenticated` continua sem
+  conseguir `UPDATE` direto em `last_activity_at` (só o trigger
+  escreve).
+- ⚠️ **Achado durante a re-verificação, corrigido**: o script de teste
+  original (item 27) tinha uma falha de metodologia — ao trocar de
+  role autenticado direto pra `anon` sem limpar `request.jwt.claims`,
+  a GUC de sessão anterior "vazava" pro contexto seguinte (isso nunca
+  acontece na Supabase real, onde cada request é uma conexão nova,
+  mas acontecia no script porque reusava a mesma sessão `psql`). Nos
+  testes 5/6 originais isso não gerou falso-positivo por coincidência
+  (o UUID que vazou não batia com a linha testada), mas o teste do
+  trigger expôs o problema de verdade. Corrigido limpando
+  `request.jwt.claims` antes de cada troca pra `anon`, e **os 13
+  testes originais + as 8 verificações extras foram re-rodados do
+  zero** com a correção — todos continuam PASS, agora com garantia
+  real, não coincidência.
+- ✅ Nenhum caminho de escrita novo pra `current_intent`,
+  `expected_next_step`, `channel`, `related_opportunity_id`,
+  `related_booking_id` — mantidos fora do escopo, como pedido.
+  `professions`/`profession_job_types` não tocadas.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⚠️ **Migration 0040 ainda não rodou no Supabase de produção.**
+- **Fase encerrada aqui** — Doopla Intelligence OS v1 tem sua fundação
+  de dados completa e testada. Próximo passo (Context
+  Builder/Orchestrator/integração de IA) é um bloco novo, não
+  iniciado, aguardando decisão do usuário.
+
+## 29. Primeiro teste de infraestrutura — Doopla ↔ OpenAI (não é o Orchestrator)
+
+- ✅ **`src/lib/intelligence/`** ganhou 3 arquivos: `config.ts` (nome do
+  modelo/feature centralizados — `AI_MODEL = 'gpt-5-mini'`, nunca
+  string solta pelo código), `openai-client.ts` (abstração mínima do
+  provider — único lugar que lê `process.env.OPENAI_API_KEY`, nunca
+  `NEXT_PUBLIC_...`), `test-call.ts` (`runIntelligenceTestCall`, a
+  função de teste em si). SDK oficial `openai` (^7.5.0) instalado —
+  nenhum outro pacote novo.
+- ✅ **Responses API** (`client.responses.create`), confirmada via
+  pesquisa como a recomendada pra integrações novas hoje (Chat
+  Completions continua suportada, mas novos recursos como tools/MCP só
+  chegam na Responses). `gpt-5-mini` escolhido pelo custo (bem mais
+  barato que o gpt-5.5 "flagship") — adequado pra um teste de
+  infraestrutura, não é o modelo definitivo do Orchestrator.
+- ✅ **Migration 0041**: `ai_usage_events` ganha `model`/`status`
+  (aditivo) + function `log_ai_usage_event()` — `authenticated` nunca
+  teve INSERT direto nessa tabela (só service_role, desde o Bloco
+  4.5), então a function segue o mesmo modelo de confiança das outras
+  do Intelligence OS (security definer, profile_id sempre `auth.uid()`,
+  nunca parâmetro; valida que a conversa, quando informada, pertence a
+  quem chama).
+- ⚠️ **Achado real durante o teste local, corrigido na mesma
+  migration**: `revoke all on function ... from public` (usado nas
+  quatro functions do Intelligence OS, inclusive as três já aplicadas
+  na 0039) não removia o `EXECUTE` que a configuração padrão do
+  Supabase concede direto pra `anon`/`authenticated` em toda function
+  nova (via `alter default privileges`, não via o role `PUBLIC`). O
+  comportamento de segurança nunca dependeu disso — cada function já
+  valida `auth.uid()` como primeira linha, `anon` sempre foi barrado
+  na prática — mas a trava de privilégio documentada como "só
+  authenticated pode nem tentar chamar" não estava de fato em vigor.
+  Migration 0041 fecha isso nas quatro functions (`revoke execute ...
+  from anon`), retroativamente pras três da 0039 também.
+- ✅ **Rota de teste** `/dev/intelligence-test` (fora de `/dashboard`
+  de propósito, chrome próprio mínimo, com aviso "ferramenta
+  interna") — mesma checagem de sessão (`getUser()` + redirect) que
+  qualquer página autenticada do projeto já usa. Sem link em nenhuma
+  navegação — só acessível por URL direta. Cria uma conversa
+  `professional_self` de teste e roda `runIntelligenceTestCall`
+  contra ela.
+- ✅ **Minimização de contexto**: só nome/nome artístico, categoria,
+  bio, `negotiation_notes` (quando existir) e até 10 mensagens
+  recentes da conversa — nunca o `artist_profiles` inteiro, nunca dado
+  de outro profissional.
+- ✅ **Nenhum side effect comercial**: a resposta do modelo nunca é
+  gravada em `conversation_messages`, nunca chama
+  `set_conversation_mandate`/`advance_conversation_state`, nunca toca
+  `opportunity`/`booking`, não existe tool call nenhum no código.
+- ✅ Testado localmente (Postgres real + role `authenticated`/`anon`
+  simulados, mesmo processo de sempre): posse de conversa validada
+  (RLS + filtro explícito), `anon` bloqueado tanto por RLS quanto
+  agora por privilégio de function, `profile_id` sempre `auth.uid()`
+  mesmo tentando registrar evento em conversa de outro profissional
+  (bloqueado), ausência de `OPENAI_API_KEY` gera erro controlado sem
+  vazar nada (verificado isoladamente, sem rede). **Não verificado por
+  mim**: uma chamada real à OpenAI de ponta a ponta — este sandbox não
+  tem `OPENAI_API_KEY` (só existe no ambiente Preview da Vercel);
+  fica para o usuário confirmar clicando "rodar teste" em produção.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⏳ **Nada além disso** — sem Orchestrator, sem Context Builder
+  definitivo, sem Tool Registry, sem Approval Engine, sem streaming,
+  sem memória vetorial. Parado aqui, como pedido.
+- ✅ **Migrations 0039–0041 rodadas e confirmadas em produção** (Supabase)
+  — usuário confirmou; a chamada real à OpenAI em Preview também foi
+  validada com sucesso (item que ficara pendente de verificação acima).
+
+## 30. Doopla Intelligence Core v1 — Bloco 1: fundações técnicas do Core
+
+Primeiro bloco do Core de verdade (Orchestrator ainda não existe —
+isto é só a base sobre a qual ele vai rodar). Arquitetura completa foi
+aprovada antes, em 2 rodadas de revisão; este bloco implementa só os 8
+itens do escopo combinado, parando aqui pra auditoria antes do Bloco 2.
+
+- ✅ **`src/lib/intelligence/types.ts`** — todos os tipos compartilhados
+  do Core: `ActorType`/`ActorTrigger`/`ActorContext` (representado ≠
+  ator ≠ interlocutor externo, nunca colapsados num `professional_id`
+  solto), `Capability`, `RiskLevel`, `ContextSource`,
+  `ToolDefinition`/`ToolContext`/`ToolExecutionOutcome`,
+  `PolicyGateContext`/`PolicyGateResult`, `RepresentationEthicsFlag`,
+  tipos de observabilidade (`OrchestratorRunStart`/`Finish`).
+- ✅ **`actor-context.ts`** — `resolveActorContext(supabase,
+  conversationId, trigger)`: único jeito de obter um `ActorContext`.
+  Nunca recebe identidade pronta de quem chama — `actor_profile_id`
+  pra um trigger autenticado vem sempre de `supabase.auth.getUser()`
+  internamente. v1: um usuário autenticado só é ator válido quando é
+  ele mesmo o `represented_professional_id` da conversa (senão
+  `actor_not_authorized_for_conversation`); trigger `system` é
+  recusado neste bloco (`system_trigger_not_supported` — sem caminho
+  real de disparo ainda, ver "pontos em aberto" abaixo);
+  `authorized_collaborator` fica só no tipo, sem nenhum código que o
+  produza (prepara o Booker Pro sem abrir spoofing de identidade
+  agora).
+- ✅ **`tool-registry.ts`** — contrato final aprovado
+  (`name/description/inputSchema/outputSchema/sideEffects/idempotent/
+  baseRiskLevel/resolveRisk/retryPolicy/timeoutMs/auditFields/execute`),
+  validação tipada via `zod` (dependência nova). `executeTool(name,
+  input, ctx, eligibleTools)` recusa tool não registrada
+  (`tool_not_registered`) e tool não elegível
+  (`tool_not_eligible` — elegibilidade sempre calculada pelo
+  pre-model gate, nunca declarada por quem chama). Risco final nunca
+  fica abaixo do `baseRiskLevel` mesmo se `resolveRisk()` tentasse
+  devolver algo menor — o registry corrige pro piso.
+- ✅ **3 READ tools** (`get_professional_profile`, `get_opportunity`,
+  `get_booking`) — todas `sideEffects:false`, `idempotent:true`,
+  `baseRiskLevel:'low'`. Nenhuma aceita um id de profissional vindo de
+  fora: o filtro é sempre `ctx.representedProfessionalId`.
+  `get_opportunity`/`get_booking` filtram por
+  `artist_profile_id = ctx.representedProfessionalId` — oportunidade/
+  booking de outro tenant sempre volta `found:false`, nunca a linha
+  errada nem um erro que revele que ela existe em outro tenant.
+- ✅ **`policy-gate.ts`** — `evaluatePreModelGate()`: primeira barreira
+  determinística antes de qualquer chamada ao model. Valida
+  representado=conversa (defensivo, redundante com
+  `resolveActorContext` de propósito), `mandate==='active'`, calcula
+  `allowedContextSources` (só inclui `opportunity`/`booking` quando a
+  conversa de fato tem `related_opportunity_id`/`related_booking_id`)
+  e `eligibleTools` (interseção tool registry × `actorContext.
+  capabilities`). `evaluateRepresentationEthics()` existe como função
+  real e nomeada (as 5 regras já aprovadas na arquitetura), hoje
+  sempre `[]` porque v1 é mono-profissional — mantida pronta pro
+  Discovery multi-profissional futuro, não "resolvida por omissão".
+- ✅ **Migration 0042 (`orchestrator_runs`)** — depois de avaliar,
+  optei por tabela nova dedicada em vez de inchar `ai_usage_events`
+  (que precisa continuar focada em medir uso/custo de IA, não estado
+  de execução do Core). Um run por execução: `run_id`, conversa,
+  representado, ator, interlocutor externo, trigger, tools elegíveis
+  x tools chamadas, status, erro técnico, latência — nunca chain of
+  thought, nunca conteúdo de `conversation_messages` duplicado.
+  `start_orchestrator_run()`/`finish_orchestrator_run()` (par de
+  functions, não uma só, porque `ai_usage_events.run_id` — aditivo —
+  precisa referenciar um run já existente no meio do fluxo). Mesmo
+  padrão de confiança das migrations anteriores (security definer,
+  `auth.uid()` validado internamente, nunca identidade de parâmetro) —
+  desta vez já nasce com `revoke execute ... from anon` nas duas
+  functions novas, sem repetir o achado da 0041.
+  `log_ai_usage_event()` ganhou parâmetro opcional `p_run_id` (exigiu
+  `drop function` da assinatura antiga antes de recriar — `create or
+  replace` sozinho teria virado uma sobrecarga nova em vez de
+  substituir, por causa do argumento extra).
+- ✅ **`observability.ts`** — wrapper fino
+  `startOrchestratorRun`/`finishOrchestratorRun` sobre as duas RPCs.
+- ✅ **`test-call.ts` refatorado** pra usar o Core em vez de lógica
+  própria duplicada: `resolveActorContext` → `evaluatePreModelGate` →
+  `startOrchestratorRun` → `executeTool('get_professional_profile', …)`
+  → chamada à OpenAI → `finishOrchestratorRun`. Mesmo comportamento
+  externo de antes (resposta pro painel de teste), agora exercitando o
+  Bloco 1 de ponta a ponta antes de qualquer token gasto com a OpenAI.
+- ✅ **Ajuste feito durante a implementação, fora do escopo descrito
+  originalmente**: as 3 READ tools passaram a receber o client
+  Supabase por injeção (`ctx.supabase`) em vez de cada uma chamar
+  `createClient()` internamente. Um único client por run (não um por
+  tool), e é o que tornou possível testar as tools de verdade sem
+  rede/cookies (client simulado em memória cumprindo a mesma
+  interface).
+- ✅ **15 testes obrigatórios** — 14 rodados como testes de lógica pura
+  (`resolveActorContext`/`evaluatePreModelGate`/tools/tool-registry com
+  um client Supabase simulado, sem rede — script descartável, não
+  commitado) + 1 (run_id auditável) rodado contra Postgres local real
+  junto com uma bateria extra de testes de segurança de banco
+  (spoof de `actor_profile_id`, run de outro tenant, `anon` sem
+  `EXECUTE`, `finish` só por quem abriu, `run_id` de outro dono em
+  `log_ai_usage_event`) — todos passando, incluindo um rebuild completo
+  do zero rodando TODA a suíte das migrations 0039–0042 juntas sem
+  regressão. Detalhe completo na entrega desta rodada.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⚠️ **Ponto em aberto, sinalizado na entrega**: o ramo `system` de
+  `resolveActorContext` fica implementado e testado isoladamente, mas
+  sem nenhum caminho real que o acione neste bloco (sem infraestrutura
+  de followup agendado ainda) — e mesmo que existisse, RLS não dá pra
+  `anon` acesso de leitura a `conversations`, então um disparo de
+  sistema de verdade vai precisar de um client com privilégio elevado
+  (service-role ou equivalente) quando esse bloco futuro for
+  construído.
+- ⚠️ **Migration 0042 ainda não rodou no Supabase de produção** —
+  entregue como arquivo pro usuário rodar manualmente.
+- ⏳ **Nada além do escopo dos 8 itens** — sem Context Builder
+  completo, sem Intent Classifier, sem Competence Router, sem
+  `CoreDecision`, sem Response Planner, sem post-model gate, sem
+  Approval Engine, sem state machine nova, sem tool de escrita/ação,
+  sem resposta automática a cliente, sem WhatsApp/e-mail, sem
+  collaborator/booker. Parado aqui — Bloco 2 só começa com nova
+  autorização.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

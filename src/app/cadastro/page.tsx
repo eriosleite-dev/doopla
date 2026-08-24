@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { eyebrowClass } from '@/app/auth/ui';
+import type { PlanId } from '@/lib/market';
+import { CreateAccountForm } from './CreateAccountForm';
 import { SignupForm } from './signup-form';
 
 export const metadata: Metadata = {
@@ -18,10 +20,20 @@ function isSignupRole(value: string | undefined): value is SignupRole {
   return VALID_ROLES.includes(value as SignupRole);
 }
 
+function isPlanId(value: string | undefined): value is PlanId {
+  return value === 'doopla' || value === 'pro';
+}
+
 export default async function CadastroPage({
   searchParams,
 }: {
-  searchParams: Promise<{ role?: string; tipo?: string; ref?: string; invite?: string }>;
+  searchParams: Promise<{
+    role?: string;
+    tipo?: string;
+    ref?: string;
+    invite?: string;
+    plano?: string;
+  }>;
 }) {
   const params = await searchParams;
   // `tipo` é o nome pedido pela especificação de preços pros CTAs da
@@ -33,6 +45,25 @@ export default async function CadastroPage({
     : isSignupRole(params.role)
       ? params.role
       : 'artista';
+  const isBooker = params.tipo === 'booker' || params.role === 'booker';
+  const planIntent = isPlanId(params.plano) ? params.plano : undefined;
+
+  // Funil público (Home → Começar grátis, sem convite, sem link
+  // explícito de booker): fluxo novo — cria a conta primeiro, sem
+  // perguntar Artista/Booker, e continua "Preparar sua Doopla" /
+  // "Escolher plano" já autenticado (ver /cadastro/preparar e
+  // /cadastro/plano). Booker e artista convidado por agência continuam
+  // no wizard antigo, que já resolve os dois casos corretamente e não
+  // precisava ser reconstruído agora.
+  const useNewFlow = !isBooker && !params.invite;
+
+  // Fluxo novo tem chrome próprio (topbar/progresso/rodapé vermelho do
+  // onboarding, ver OnboardingShell) — não entra no <main> genérico de
+  // --paper usado pelo wizard antigo (booker / artista convidado por
+  // agência).
+  if (useNewFlow) {
+    return <CreateAccountForm referralCode={params.ref} artistPlan={planIntent} />;
+  }
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--paper)] px-6 py-12 font-doopla-sans text-[var(--ink)]">
@@ -52,7 +83,13 @@ export default async function CadastroPage({
           </p>
         </div>
 
-        <SignupForm defaultRole={defaultRole} referralCode={params.ref} inviteToken={params.invite} />
+        <SignupForm
+          defaultRole={defaultRole}
+          referralCode={params.ref}
+          inviteToken={params.invite}
+          showRolePicker={isBooker}
+          planIntent={planIntent}
+        />
 
         {!params.invite && (
           <p className="text-center text-[12px] text-[var(--ink)]/45">
