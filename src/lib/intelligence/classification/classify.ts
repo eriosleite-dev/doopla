@@ -126,14 +126,29 @@ export async function classifyIntent(
     };
   }
 
-  const contextCompleteness = computeContextCompleteness(parsed.primaryIntent, parsed.secondaryIntents, contextPackage);
+  // Achado de auditoria adversarial: o model pode devolver
+  // secondaryIntents com duplicatas, ou repetindo o próprio
+  // primaryIntent como se fosse secundário — nem o zod nem o schema
+  // impedem isso (é uma lista solta de enum, sem exigir unicidade).
+  // Sem sanear isso, três coisas quebravam: a união de competências
+  // (inofensiva, já deduplicada pelo Set) escondia o problema real —
+  // a heurística "muitos secondaryIntents" em confidence.ts contava
+  // duplicatas como sinal de ambiguidade genuína (um model
+  // repetindo/travando no mesmo valor N vezes derrubava a confiança
+  // por um motivo que não existiu), e o registro em observability
+  // ficava com ruído redundante. Sempre saneado ANTES de qualquer
+  // outro cálculo — nunca o array cru do model chega a
+  // completeness/confidence/competências/observability.
+  const secondaryIntents = Array.from(new Set(parsed.secondaryIntents)).filter((i) => i !== parsed.primaryIntent);
+
+  const contextCompleteness = computeContextCompleteness(parsed.primaryIntent, secondaryIntents, contextPackage);
   const effectiveConfidence = computeEffectiveConfidence({
     modelConfidence: parsed.modelConfidence,
     classificationStatus: parsed.classificationStatus,
     contextCompleteness,
     requiredRetry,
     primaryIntent: parsed.primaryIntent,
-    secondaryIntents: parsed.secondaryIntents,
+    secondaryIntents,
     triggerHasUsableText,
   });
 
@@ -141,13 +156,13 @@ export async function classifyIntent(
     classification: {
       classificationStatus: parsed.classificationStatus,
       primaryIntent: parsed.primaryIntent,
-      secondaryIntents: parsed.secondaryIntents,
+      secondaryIntents,
       modelConfidence: parsed.modelConfidence,
       effectiveConfidence,
       contextCompleteness,
       // Único lugar que preenche relevantCompetencies — sempre código,
       // nunca o model (o schema dele nem tem esse campo).
-      relevantCompetencies: routeCompetencies([parsed.primaryIntent, ...parsed.secondaryIntents]),
+      relevantCompetencies: routeCompetencies([parsed.primaryIntent, ...secondaryIntents]),
     },
     inputTokens,
     outputTokens,
