@@ -42,10 +42,24 @@ export async function executeTool<TOutput = unknown>(
     return { ok: false, error: 'tool_not_registered' };
   }
 
+  // Achado de auditoria adversarial: ToolContext carrega
+  // representedProfessionalId tanto solto quanto dentro de
+  // actorContext — os dois SEMPRE precisam ser o mesmo valor. Nunca
+  // confia que quem montou o ToolContext manteve isso sincronizado;
+  // se divergir, recusa fechado em vez de deixar a tool decidir
+  // sozinha qual dos dois usar.
+  if (ctx.representedProfessionalId !== ctx.actorContext.representedProfessionalId) {
+    return { ok: false, error: 'context_inconsistent' };
+  }
+
   // eligibleTools vem sempre do pre-model gate (calculado a partir de
   // actorContext.capabilities) — nunca de uma lista declarada pelo
-  // chamador ou pelo model.
-  if (!eligibleTools.includes(toolName)) {
+  // chamador ou pelo model. Ainda assim, o registry nunca confia
+  // cegamente nesse array: re-deriva a elegibilidade direto de
+  // actorContext.capabilities, o mesmo padrão de "nunca confiar num
+  // parâmetro sozinho" usado nas RPCs do banco. As duas checagens
+  // precisam concordar.
+  if (!eligibleTools.includes(toolName) || !ctx.actorContext.capabilities.includes(tool.requiredCapability)) {
     return { ok: false, error: 'tool_not_eligible' };
   }
 

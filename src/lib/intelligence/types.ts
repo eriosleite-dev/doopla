@@ -121,7 +121,12 @@ export type ToolDefinition<TInput = unknown, TOutput = unknown> = {
   execute: (input: TInput, ctx: ToolContext) => Promise<ToolExecutionOutcome<TOutput>>;
 };
 
-export type ToolExecutionError = 'tool_not_registered' | 'tool_not_eligible' | 'invalid_input' | 'execution_failed';
+export type ToolExecutionError =
+  | 'tool_not_registered'
+  | 'tool_not_eligible'
+  | 'invalid_input'
+  | 'execution_failed'
+  | 'context_inconsistent';
 
 export type ToolExecutionResult<TOutput = unknown> =
   | { ok: true; output: TOutput; riskLevel: RiskLevel }
