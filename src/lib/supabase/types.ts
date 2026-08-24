@@ -376,6 +376,10 @@ export type OpportunityTag = {
   created_at: string;
 };
 
+// success | error — se a chamada ao provider terminou com resposta ou
+// com falha (migration 0041).
+export type AiUsageEventStatus = 'success' | 'error';
+
 export type AiUsageEvent = {
   id: string;
   profile_id: string | null;
@@ -385,6 +389,10 @@ export type AiUsageEvent = {
   // de IA nasce de uma conversa.
   conversation_id: string | null;
   feature: string;
+  // migration 0041 — nome do modelo usado, sempre vindo de
+  // src/lib/intelligence/config.ts, nunca hardcoded no chamador.
+  model: string | null;
+  status: AiUsageEventStatus | null;
   input_tokens: number | null;
   output_tokens: number | null;
   cost_cents_estimate: number | null;
@@ -944,6 +952,20 @@ export type Database = {
           p_changed_by_profile_id?: string | null;
         };
         Returns: Conversation;
+      };
+      // Doopla Intelligence OS v1 (migration 0041) — único caminho de
+      // INSERT em ai_usage_events pra authenticated. profile_id é
+      // sempre auth.uid() dentro da function, nunca um parâmetro.
+      log_ai_usage_event: {
+        Args: {
+          p_feature: string;
+          p_model: string;
+          p_status: AiUsageEventStatus;
+          p_conversation_id?: string | null;
+          p_input_tokens?: number | null;
+          p_output_tokens?: number | null;
+        };
+        Returns: AiUsageEvent;
       };
       select_booker_for_opportunity: {
         Args: { p_opportunity_id: string; p_booker_profile_id: string };

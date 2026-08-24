@@ -2241,6 +2241,71 @@ branch (migration `0018`).
   Builder/Orchestrator/integração de IA) é um bloco novo, não
   iniciado, aguardando decisão do usuário.
 
+## 29. Primeiro teste de infraestrutura — Doopla ↔ OpenAI (não é o Orchestrator)
+
+- ✅ **`src/lib/intelligence/`** ganhou 3 arquivos: `config.ts` (nome do
+  modelo/feature centralizados — `AI_MODEL = 'gpt-5-mini'`, nunca
+  string solta pelo código), `openai-client.ts` (abstração mínima do
+  provider — único lugar que lê `process.env.OPENAI_API_KEY`, nunca
+  `NEXT_PUBLIC_...`), `test-call.ts` (`runIntelligenceTestCall`, a
+  função de teste em si). SDK oficial `openai` (^7.5.0) instalado —
+  nenhum outro pacote novo.
+- ✅ **Responses API** (`client.responses.create`), confirmada via
+  pesquisa como a recomendada pra integrações novas hoje (Chat
+  Completions continua suportada, mas novos recursos como tools/MCP só
+  chegam na Responses). `gpt-5-mini` escolhido pelo custo (bem mais
+  barato que o gpt-5.5 "flagship") — adequado pra um teste de
+  infraestrutura, não é o modelo definitivo do Orchestrator.
+- ✅ **Migration 0041**: `ai_usage_events` ganha `model`/`status`
+  (aditivo) + function `log_ai_usage_event()` — `authenticated` nunca
+  teve INSERT direto nessa tabela (só service_role, desde o Bloco
+  4.5), então a function segue o mesmo modelo de confiança das outras
+  do Intelligence OS (security definer, profile_id sempre `auth.uid()`,
+  nunca parâmetro; valida que a conversa, quando informada, pertence a
+  quem chama).
+- ⚠️ **Achado real durante o teste local, corrigido na mesma
+  migration**: `revoke all on function ... from public` (usado nas
+  quatro functions do Intelligence OS, inclusive as três já aplicadas
+  na 0039) não removia o `EXECUTE` que a configuração padrão do
+  Supabase concede direto pra `anon`/`authenticated` em toda function
+  nova (via `alter default privileges`, não via o role `PUBLIC`). O
+  comportamento de segurança nunca dependeu disso — cada function já
+  valida `auth.uid()` como primeira linha, `anon` sempre foi barrado
+  na prática — mas a trava de privilégio documentada como "só
+  authenticated pode nem tentar chamar" não estava de fato em vigor.
+  Migration 0041 fecha isso nas quatro functions (`revoke execute ...
+  from anon`), retroativamente pras três da 0039 também.
+- ✅ **Rota de teste** `/dev/intelligence-test` (fora de `/dashboard`
+  de propósito, chrome próprio mínimo, com aviso "ferramenta
+  interna") — mesma checagem de sessão (`getUser()` + redirect) que
+  qualquer página autenticada do projeto já usa. Sem link em nenhuma
+  navegação — só acessível por URL direta. Cria uma conversa
+  `professional_self` de teste e roda `runIntelligenceTestCall`
+  contra ela.
+- ✅ **Minimização de contexto**: só nome/nome artístico, categoria,
+  bio, `negotiation_notes` (quando existir) e até 10 mensagens
+  recentes da conversa — nunca o `artist_profiles` inteiro, nunca dado
+  de outro profissional.
+- ✅ **Nenhum side effect comercial**: a resposta do modelo nunca é
+  gravada em `conversation_messages`, nunca chama
+  `set_conversation_mandate`/`advance_conversation_state`, nunca toca
+  `opportunity`/`booking`, não existe tool call nenhum no código.
+- ✅ Testado localmente (Postgres real + role `authenticated`/`anon`
+  simulados, mesmo processo de sempre): posse de conversa validada
+  (RLS + filtro explícito), `anon` bloqueado tanto por RLS quanto
+  agora por privilégio de function, `profile_id` sempre `auth.uid()`
+  mesmo tentando registrar evento em conversa de outro profissional
+  (bloqueado), ausência de `OPENAI_API_KEY` gera erro controlado sem
+  vazar nada (verificado isoladamente, sem rede). **Não verificado por
+  mim**: uma chamada real à OpenAI de ponta a ponta — este sandbox não
+  tem `OPENAI_API_KEY` (só existe no ambiente Preview da Vercel);
+  fica para o usuário confirmar clicando "rodar teste" em produção.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⏳ **Nada além disso** — sem Orchestrator, sem Context Builder
+  definitivo, sem Tool Registry, sem Approval Engine, sem streaming,
+  sem memória vetorial. Parado aqui, como pedido.
+- ⚠️ **Migration 0041 ainda não rodou no Supabase de produção.**
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
