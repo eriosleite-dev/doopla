@@ -2304,7 +2304,126 @@ branch (migration `0018`).
 - ⏳ **Nada além disso** — sem Orchestrator, sem Context Builder
   definitivo, sem Tool Registry, sem Approval Engine, sem streaming,
   sem memória vetorial. Parado aqui, como pedido.
-- ⚠️ **Migration 0041 ainda não rodou no Supabase de produção.**
+- ✅ **Migrations 0039–0041 rodadas e confirmadas em produção** (Supabase)
+  — usuário confirmou; a chamada real à OpenAI em Preview também foi
+  validada com sucesso (item que ficara pendente de verificação acima).
+
+## 30. Doopla Intelligence Core v1 — Bloco 1: fundações técnicas do Core
+
+Primeiro bloco do Core de verdade (Orchestrator ainda não existe —
+isto é só a base sobre a qual ele vai rodar). Arquitetura completa foi
+aprovada antes, em 2 rodadas de revisão; este bloco implementa só os 8
+itens do escopo combinado, parando aqui pra auditoria antes do Bloco 2.
+
+- ✅ **`src/lib/intelligence/types.ts`** — todos os tipos compartilhados
+  do Core: `ActorType`/`ActorTrigger`/`ActorContext` (representado ≠
+  ator ≠ interlocutor externo, nunca colapsados num `professional_id`
+  solto), `Capability`, `RiskLevel`, `ContextSource`,
+  `ToolDefinition`/`ToolContext`/`ToolExecutionOutcome`,
+  `PolicyGateContext`/`PolicyGateResult`, `RepresentationEthicsFlag`,
+  tipos de observabilidade (`OrchestratorRunStart`/`Finish`).
+- ✅ **`actor-context.ts`** — `resolveActorContext(supabase,
+  conversationId, trigger)`: único jeito de obter um `ActorContext`.
+  Nunca recebe identidade pronta de quem chama — `actor_profile_id`
+  pra um trigger autenticado vem sempre de `supabase.auth.getUser()`
+  internamente. v1: um usuário autenticado só é ator válido quando é
+  ele mesmo o `represented_professional_id` da conversa (senão
+  `actor_not_authorized_for_conversation`); trigger `system` é
+  recusado neste bloco (`system_trigger_not_supported` — sem caminho
+  real de disparo ainda, ver "pontos em aberto" abaixo);
+  `authorized_collaborator` fica só no tipo, sem nenhum código que o
+  produza (prepara o Booker Pro sem abrir spoofing de identidade
+  agora).
+- ✅ **`tool-registry.ts`** — contrato final aprovado
+  (`name/description/inputSchema/outputSchema/sideEffects/idempotent/
+  baseRiskLevel/resolveRisk/retryPolicy/timeoutMs/auditFields/execute`),
+  validação tipada via `zod` (dependência nova). `executeTool(name,
+  input, ctx, eligibleTools)` recusa tool não registrada
+  (`tool_not_registered`) e tool não elegível
+  (`tool_not_eligible` — elegibilidade sempre calculada pelo
+  pre-model gate, nunca declarada por quem chama). Risco final nunca
+  fica abaixo do `baseRiskLevel` mesmo se `resolveRisk()` tentasse
+  devolver algo menor — o registry corrige pro piso.
+- ✅ **3 READ tools** (`get_professional_profile`, `get_opportunity`,
+  `get_booking`) — todas `sideEffects:false`, `idempotent:true`,
+  `baseRiskLevel:'low'`. Nenhuma aceita um id de profissional vindo de
+  fora: o filtro é sempre `ctx.representedProfessionalId`.
+  `get_opportunity`/`get_booking` filtram por
+  `artist_profile_id = ctx.representedProfessionalId` — oportunidade/
+  booking de outro tenant sempre volta `found:false`, nunca a linha
+  errada nem um erro que revele que ela existe em outro tenant.
+- ✅ **`policy-gate.ts`** — `evaluatePreModelGate()`: primeira barreira
+  determinística antes de qualquer chamada ao model. Valida
+  representado=conversa (defensivo, redundante com
+  `resolveActorContext` de propósito), `mandate==='active'`, calcula
+  `allowedContextSources` (só inclui `opportunity`/`booking` quando a
+  conversa de fato tem `related_opportunity_id`/`related_booking_id`)
+  e `eligibleTools` (interseção tool registry × `actorContext.
+  capabilities`). `evaluateRepresentationEthics()` existe como função
+  real e nomeada (as 5 regras já aprovadas na arquitetura), hoje
+  sempre `[]` porque v1 é mono-profissional — mantida pronta pro
+  Discovery multi-profissional futuro, não "resolvida por omissão".
+- ✅ **Migration 0042 (`orchestrator_runs`)** — depois de avaliar,
+  optei por tabela nova dedicada em vez de inchar `ai_usage_events`
+  (que precisa continuar focada em medir uso/custo de IA, não estado
+  de execução do Core). Um run por execução: `run_id`, conversa,
+  representado, ator, interlocutor externo, trigger, tools elegíveis
+  x tools chamadas, status, erro técnico, latência — nunca chain of
+  thought, nunca conteúdo de `conversation_messages` duplicado.
+  `start_orchestrator_run()`/`finish_orchestrator_run()` (par de
+  functions, não uma só, porque `ai_usage_events.run_id` — aditivo —
+  precisa referenciar um run já existente no meio do fluxo). Mesmo
+  padrão de confiança das migrations anteriores (security definer,
+  `auth.uid()` validado internamente, nunca identidade de parâmetro) —
+  desta vez já nasce com `revoke execute ... from anon` nas duas
+  functions novas, sem repetir o achado da 0041.
+  `log_ai_usage_event()` ganhou parâmetro opcional `p_run_id` (exigiu
+  `drop function` da assinatura antiga antes de recriar — `create or
+  replace` sozinho teria virado uma sobrecarga nova em vez de
+  substituir, por causa do argumento extra).
+- ✅ **`observability.ts`** — wrapper fino
+  `startOrchestratorRun`/`finishOrchestratorRun` sobre as duas RPCs.
+- ✅ **`test-call.ts` refatorado** pra usar o Core em vez de lógica
+  própria duplicada: `resolveActorContext` → `evaluatePreModelGate` →
+  `startOrchestratorRun` → `executeTool('get_professional_profile', …)`
+  → chamada à OpenAI → `finishOrchestratorRun`. Mesmo comportamento
+  externo de antes (resposta pro painel de teste), agora exercitando o
+  Bloco 1 de ponta a ponta antes de qualquer token gasto com a OpenAI.
+- ✅ **Ajuste feito durante a implementação, fora do escopo descrito
+  originalmente**: as 3 READ tools passaram a receber o client
+  Supabase por injeção (`ctx.supabase`) em vez de cada uma chamar
+  `createClient()` internamente. Um único client por run (não um por
+  tool), e é o que tornou possível testar as tools de verdade sem
+  rede/cookies (client simulado em memória cumprindo a mesma
+  interface).
+- ✅ **15 testes obrigatórios** — 14 rodados como testes de lógica pura
+  (`resolveActorContext`/`evaluatePreModelGate`/tools/tool-registry com
+  um client Supabase simulado, sem rede — script descartável, não
+  commitado) + 1 (run_id auditável) rodado contra Postgres local real
+  junto com uma bateria extra de testes de segurança de banco
+  (spoof de `actor_profile_id`, run de outro tenant, `anon` sem
+  `EXECUTE`, `finish` só por quem abriu, `run_id` de outro dono em
+  `log_ai_usage_event`) — todos passando, incluindo um rebuild completo
+  do zero rodando TODA a suíte das migrations 0039–0042 juntas sem
+  regressão. Detalhe completo na entrega desta rodada.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⚠️ **Ponto em aberto, sinalizado na entrega**: o ramo `system` de
+  `resolveActorContext` fica implementado e testado isoladamente, mas
+  sem nenhum caminho real que o acione neste bloco (sem infraestrutura
+  de followup agendado ainda) — e mesmo que existisse, RLS não dá pra
+  `anon` acesso de leitura a `conversations`, então um disparo de
+  sistema de verdade vai precisar de um client com privilégio elevado
+  (service-role ou equivalente) quando esse bloco futuro for
+  construído.
+- ⚠️ **Migration 0042 ainda não rodou no Supabase de produção** —
+  entregue como arquivo pro usuário rodar manualmente.
+- ⏳ **Nada além do escopo dos 8 itens** — sem Context Builder
+  completo, sem Intent Classifier, sem Competence Router, sem
+  `CoreDecision`, sem Response Planner, sem post-model gate, sem
+  Approval Engine, sem state machine nova, sem tool de escrita/ação,
+  sem resposta automática a cliente, sem WhatsApp/e-mail, sem
+  collaborator/booker. Parado aqui — Bloco 2 só começa com nova
+  autorização.
 
 ## Como usar isso
 

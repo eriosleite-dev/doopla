@@ -396,6 +396,10 @@ export type AiUsageEvent = {
   input_tokens: number | null;
   output_tokens: number | null;
   cost_cents_estimate: number | null;
+  // migration 0042 — liga o evento ao orchestrator_run que o originou,
+  // quando aplicável. Nullable: nem todo evento de uso nasce de um run
+  // do Core.
+  run_id: string | null;
   created_at: string;
 };
 
@@ -536,6 +540,30 @@ export type ConversationStateEvent = {
   changed_by: ConversationEventActor;
   changed_by_profile_id: string | null;
   created_at: string;
+};
+
+// Doopla Intelligence Core v1 — um registro por execução do Core
+// (migration 0042). Só metadados de execução — nunca chain of
+// thought, nunca conteúdo de conversation_messages duplicado aqui.
+export type OrchestratorRunActorType = 'professional' | 'authorized_collaborator' | 'system';
+export type OrchestratorRunStatus = 'running' | 'completed' | 'failed';
+
+export type OrchestratorRun = {
+  id: string;
+  conversation_id: string;
+  represented_professional_id: string;
+  actor_type: OrchestratorRunActorType;
+  actor_profile_id: string | null;
+  external_participant_id: string | null;
+  trigger_source: string;
+  status: OrchestratorRunStatus;
+  eligible_tools: string[];
+  called_tools: string[];
+  error: string | null;
+  fallback_used: boolean;
+  started_at: string;
+  finished_at: string | null;
+  latency_ms: number | null;
 };
 
 export type ArtistAvailability = {
@@ -849,6 +877,14 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      // Doopla Intelligence Core v1 (migration 0042). Mesmo padrão:
+      // só escrita via start_orchestrator_run/finish_orchestrator_run.
+      orchestrator_runs: {
+        Row: OrchestratorRun;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       artist_availability: {
         Row: ArtistAvailability;
         Insert: Partial<ArtistAvailability> &
@@ -953,9 +989,10 @@ export type Database = {
         };
         Returns: Conversation;
       };
-      // Doopla Intelligence OS v1 (migration 0041) — único caminho de
-      // INSERT em ai_usage_events pra authenticated. profile_id é
-      // sempre auth.uid() dentro da function, nunca um parâmetro.
+      // Doopla Intelligence OS v1 (migration 0041, Args estendido na
+      // 0042 com p_run_id) — único caminho de INSERT em ai_usage_events
+      // pra authenticated. profile_id é sempre auth.uid() dentro da
+      // function, nunca um parâmetro.
       log_ai_usage_event: {
         Args: {
           p_feature: string;
@@ -964,8 +1001,35 @@ export type Database = {
           p_conversation_id?: string | null;
           p_input_tokens?: number | null;
           p_output_tokens?: number | null;
+          p_run_id?: string | null;
         };
         Returns: AiUsageEvent;
+      };
+      // Doopla Intelligence Core v1 (migration 0042) — únicos caminhos
+      // de escrita em orchestrator_runs. actor_type só aceita
+      // 'professional' em v1 (validado dentro da function, nunca
+      // confiado do parâmetro sozinho).
+      start_orchestrator_run: {
+        Args: {
+          p_conversation_id: string;
+          p_represented_professional_id: string;
+          p_actor_type: OrchestratorRunActorType;
+          p_actor_profile_id: string | null;
+          p_external_participant_id: string | null;
+          p_trigger_source: string;
+          p_eligible_tools?: string[];
+        };
+        Returns: OrchestratorRun;
+      };
+      finish_orchestrator_run: {
+        Args: {
+          p_run_id: string;
+          p_status: OrchestratorRunStatus;
+          p_called_tools?: string[];
+          p_error?: string | null;
+          p_fallback_used?: boolean;
+        };
+        Returns: OrchestratorRun;
       };
       select_booker_for_opportunity: {
         Args: { p_opportunity_id: string; p_booker_profile_id: string };
