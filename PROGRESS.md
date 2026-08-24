@@ -2138,6 +2138,69 @@ branch (migration `0018`).
   onboarding primeiro; retomo quando ele pedir.
 - ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
 
+## 27. Doopla Intelligence OS v1 — primeira migration: camada de conversação
+
+- ✅ **Migration 0039** aplicada (localmente, contra as 38 migrations
+  reais + role `authenticated` simulado — não rodou ainda no Supabase
+  de produção, precisa ser executada pelo usuário). Três rodadas de
+  desenho aprovadas antes de qualquer SQL: auditoria da arquitetura
+  atual → desenho v1 → revisão v2 (consistência mandato/tenant) →
+  revisão v3 (`represented_professional_id` imutável — decisão que
+  transforma a ética de representação da Doopla em garantia de banco,
+  não instrução que se espera que a IA respeite).
+- ✅ **Tabelas novas**: `conversations` (entidade central — mandato,
+  origem, canal, estado, vínculo opcional com oportunidade/booking,
+  linhagem de transferência), `external_participants` +
+  `external_participant_channel_identities` (contato externo, escopado
+  por profissional, nunca identidade global), `conversation_messages`
+  (author_type/direction/channel separados, nunca um `role` de LLM;
+  `body` vs `transcript` nunca misturados), `conversation_mandate_events`
+  e `conversation_state_events` (append-only, a linha de nascimento da
+  conversa já é o primeiro evento). `ai_usage_events` ganhou
+  `conversation_id` (aditivo, nullable).
+- ✅ **`represented_professional_id` é imutável de verdade**: sem
+  `GRANT UPDATE` pra `authenticated` em nenhum caminho — mudar de
+  representado é sempre uma `conversation` nova
+  (`transferred_from_conversation_id`), nunca um `UPDATE` na
+  existente. Isso é o que faz as FKs compostas de isolamento de tenant
+  (participante/oportunidade/booking do mesmo profissional) funcionarem
+  sem risco de o ponto de ancoragem se mover.
+- ✅ **Três functions `security definer`**, únicas portas de escrita
+  privilegiada: `create_conversation()` (cria a conversa + os dois
+  eventos de nascimento atomicamente — nunca existe conversa "crua"),
+  `set_conversation_mandate()` (só mandato, nunca identidade),
+  `advance_conversation_state()` (só estado). As três validam o
+  chamador via `auth.uid()` internamente — nenhuma confia em
+  `professional_id` vindo de parâmetro como prova de identidade.
+- ✅ **13 testes de RLS pedidos, rodados de verdade** contra Postgres
+  16 local com role `authenticated` simulado (mesmo método do
+  `AUDITORIA_BLOCO_4_5.md`) — os 13 passaram. Mais 8 verificações
+  extras (FK de booking, tentativa de impersonar outro profissional em
+  `create_conversation`, `professional_self` com participante externo
+  rejeitado, eventos de nascimento existem, as duas functions de
+  mandato/estado funcionam ponta a ponta). Detalhe encontrado durante
+  a implementação: `psql` não interpola variáveis `:'var'` dentro de
+  blocos `do $$ ... $$` — os 5 testes que dependiam disso precisaram
+  ser reescritos como statements soltos (erro = bloqueado = PASS) em
+  vez de blocos com `exception when others`.
+- ✅ **Tipos atualizados** em `src/lib/supabase/types.ts` — `Insert`/
+  `Update` marcados como `never` nas tabelas que o banco de fato não
+  deixa `authenticated` escrever direto (`conversations`,
+  `conversation_mandate_events`, `conversation_state_events`), pra o
+  TypeScript reforçar a mesma regra que o banco já garante.
+  Recomendação de migrar `types.ts` inteiro pra `supabase gen types`
+  documentada, não aplicada (fora do escopo desta etapa).
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos. Nenhuma
+  mudança em `/dashboard`, Home, ou qualquer funcionalidade existente.
+- ⏳ **Nada de IA integrada** — sem SDK, sem Orchestrator, sem Context
+  Builder, sem Tool Registry, sem Approval Engine, sem WhatsApp/e-mail,
+  sem transcrição, sem a barra "Sua Doopla aprende com você". Só a
+  fundação de dados. Parado aqui, aguardando auditoria do usuário
+  antes de qualquer próximo passo.
+- ⚠️ **Migration 0039 ainda não rodou no Supabase de produção** —
+  precisa ser executada pelo usuário antes de qualquer código futuro
+  do Intelligence OS funcionar de verdade.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
