@@ -2197,9 +2197,49 @@ branch (migration `0018`).
   sem transcrição, sem a barra "Sua Doopla aprende com você". Só a
   fundação de dados. Parado aqui, aguardando auditoria do usuário
   antes de qualquer próximo passo.
-- ⚠️ **Migration 0039 ainda não rodou no Supabase de produção** —
-  precisa ser executada pelo usuário antes de qualquer código futuro
-  do Intelligence OS funcionar de verdade.
+- ✅ **Migration 0039 rodou em produção** (confirmado pelo usuário).
+
+## 28. Doopla Intelligence OS v1 — trigger de `last_activity_at` (correção pequena, fecha a fase)
+
+- ✅ **Migration 0040**: trigger `after insert on conversation_messages`
+  atualiza `conversations.last_activity_at` da conversa correspondente
+  pra bater com o `created_at` da mensagem — determinístico, no banco,
+  não depende de nenhuma integração futura lembrar de fazer isso.
+  Function `security definer` (mesmo padrão das outras três da 0039,
+  necessário porque `last_activity_at` está fora do alcance de
+  `UPDATE` direto de `authenticated`), só toca essa uma coluna, só na
+  linha correspondente.
+- ✅ Testado localmente contra os 40 migrations + role `authenticated`
+  simulado: `last_activity_at` inicial bate com `created_at` da
+  conversa; depois de inserir mensagem, bate com o `created_at` da
+  mensagem; nenhum outro campo da conversa muda (comparação campo a
+  campo via snapshot antes/depois); RLS de `conversations` continua
+  intacta (dono lê, `anon` não lê); `authenticated` continua sem
+  conseguir `UPDATE` direto em `last_activity_at` (só o trigger
+  escreve).
+- ⚠️ **Achado durante a re-verificação, corrigido**: o script de teste
+  original (item 27) tinha uma falha de metodologia — ao trocar de
+  role autenticado direto pra `anon` sem limpar `request.jwt.claims`,
+  a GUC de sessão anterior "vazava" pro contexto seguinte (isso nunca
+  acontece na Supabase real, onde cada request é uma conexão nova,
+  mas acontecia no script porque reusava a mesma sessão `psql`). Nos
+  testes 5/6 originais isso não gerou falso-positivo por coincidência
+  (o UUID que vazou não batia com a linha testada), mas o teste do
+  trigger expôs o problema de verdade. Corrigido limpando
+  `request.jwt.claims` antes de cada troca pra `anon`, e **os 13
+  testes originais + as 8 verificações extras foram re-rodados do
+  zero** com a correção — todos continuam PASS, agora com garantia
+  real, não coincidência.
+- ✅ Nenhum caminho de escrita novo pra `current_intent`,
+  `expected_next_step`, `channel`, `related_opportunity_id`,
+  `related_booking_id` — mantidos fora do escopo, como pedido.
+  `professions`/`profession_job_types` não tocadas.
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ⚠️ **Migration 0040 ainda não rodou no Supabase de produção.**
+- **Fase encerrada aqui** — Doopla Intelligence OS v1 tem sua fundação
+  de dados completa e testada. Próximo passo (Context
+  Builder/Orchestrator/integração de IA) é um bloco novo, não
+  iniciado, aguardando decisão do usuário.
 
 ## Como usar isso
 
