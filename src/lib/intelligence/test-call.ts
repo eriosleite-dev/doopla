@@ -1,11 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
-import type { ConversationMessage } from '@/lib/supabase/types';
 import { resolveActorContext } from './actor-context';
-import { AI_FEATURE_INTELLIGENCE_TEST, AI_MODEL, AI_TEST_RECENT_MESSAGES_LIMIT } from './config';
+import { AI_FEATURE_INTELLIGENCE_TEST, AI_MODEL } from './config';
+import { buildContextPackage, renderContextForPrompt, resolveProfessionalDisplayName } from './context-builder';
 import { getOpenAIClient } from './openai-client';
 import { finishOrchestratorRun, startOrchestratorRun } from './observability';
 import { evaluatePreModelGate } from './policy-gate';
-import { executeTool } from './tool-registry';
 import './tools';
 import type { ToolContext } from './types';
 
@@ -14,10 +13,10 @@ export type IntelligenceTestResult =
   | { ok: false; error: string; detail?: string };
 
 // Instrução mínima só pra provar a integração — NÃO é o system prompt
-// definitivo da Doopla (isso é trabalho do Response Planner/Context
-// Builder completos, ainda não construídos). Deixa explícito: modo de
-// teste, só usa o contexto dado, nunca inventa, sem autorização pra
-// agir, pede pro profissional quando falta informação.
+// definitivo da Doopla (isso é trabalho do Response Planner/Intent
+// Classifier, ainda não construídos). Deixa explícito: modo de teste,
+// só usa o contexto dado, nunca inventa, sem autorização pra agir,
+// pede pro profissional quando falta informação.
 function buildTestInstructions(representedName: string): string {
   return `Você é a Doopla, representando ${representedName}. Você está rodando em MODO DE TESTE de infraestrutura — isto não é uma conversa real com um cliente e sua resposta não será enviada a ninguém.
 
@@ -27,61 +26,14 @@ Regras deste modo de teste:
 - Se faltar uma informação importante pra responder bem, diga claramente que precisaria consultar o profissional antes, em vez de supor.`;
 }
 
-function formatMessage(message: Pick<ConversationMessage, 'author_type' | 'body' | 'transcript'>): string {
-  const author =
-    message.author_type === 'professional'
-      ? 'profissional'
-      : message.author_type === 'external_participant'
-        ? 'cliente'
-        : message.author_type;
-  const text = message.body ?? message.transcript ?? '(sem texto)';
-  return `[${author}] ${text}`;
-}
-
-// Minimização de contexto deliberada: só os campos realmente úteis pra
-// este teste — nunca o artist_profile inteiro. O perfil vem sempre da
-// tool get_professional_profile (nunca de uma query direta aqui), pra
-// já exercitar o Tool Registry/pre-model gate neste bloco.
-function buildMinimalContext({
-  fullName,
-  stageName,
-  category,
-  bio,
-  messages,
-}: {
-  fullName: string;
-  stageName: string | null;
-  category: string | null;
-  bio: string | null;
-  messages: ConversationMessage[];
-}): string {
-  const lines = [
-    `Profissional representado: ${stageName ?? fullName}`,
-    `Profissão/categoria: ${category ?? 'não informado'}`,
-    `Sobre o trabalho: ${bio ?? 'não informado'}`,
-  ];
-  lines.push('', 'Mensagens recentes desta conversa (mais antiga primeiro):');
-  if (messages.length === 0) {
-    lines.push('(nenhuma mensagem ainda)');
-  } else {
-    for (const message of [...messages].reverse()) {
-      lines.push(formatMessage(message));
-    }
-  }
-  lines.push(
-    '',
-    'Com base só nisso, escreva uma resposta breve confirmando que você entendeu esse contexto e, se fizer sentido, uma pergunta que você faria em seguida.'
-  );
-  return lines.join('\n');
-}
-
 // Função interna de teste — NÃO é o Orchestrator completo (sem Intent
 // Classifier, Competence Router, Response Planner, post-model gate).
-// Prova que o Bloco 1 do Core (ActorContext, pre-model gate, Tool
-// Registry, observability) já roda de ponta a ponta antes de qualquer
-// chamada à OpenAI. Resposta nunca é gravada em conversation_messages,
-// nunca altera state/mandate/opportunity/booking, e a única tool
-// chamada é get_professional_profile (READ).
+// Prova que ActorContext, pre-model gate, Context Builder v1 e
+// observability já rodam de ponta a ponta antes de qualquer chamada à
+// OpenAI. Resposta nunca é gravada em conversation_messages, nunca
+// altera state/mandate/opportunity/booking. Única fonte de contexto é
+// o Context Builder — nenhuma lógica de montagem de contexto própria
+// aqui (era assim antes do Bloco 2; agora há uma implementação só).
 export async function runIntelligenceTestCall(conversationId: string): Promise<IntelligenceTestResult> {
   const supabase = await createClient();
 
@@ -98,7 +50,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
   if (!gateResult.ok) {
     return { ok: false, error: gateResult.error };
   }
-  const { eligibleTools } = gateResult;
+  const { eligibleTools, allowedContextSources } = gateResult;
 
   const run = await startOrchestratorRun(supabase, {
     conversationId,
@@ -110,16 +62,25 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
     eligibleTools,
   });
 
-  const calledTools: string[] = [];
+  let calledTools: string[] = [];
+  // Fontes que ficaram 'unavailable' nesta execução (falha
+  // operacional real, nunca ausência normal) — registradas aqui só
+  // como código sanitizado, nunca a mensagem técnica original (essa
+  // fica só dentro da tool, descartada; ver context-builder/sections.ts).
+  let unavailableSources: string[] = [];
 
   async function finishRun(status: 'completed' | 'failed', error: string | null) {
     if (!run) return;
+    const fallbackUsed = unavailableSources.length > 0;
+    const combinedError = fallbackUsed
+      ? [error, `context_sources_unavailable:${unavailableSources.join(',')}`].filter(Boolean).join(' | ')
+      : error;
     await finishOrchestratorRun(supabase, {
       runId: run.id,
       status,
       calledTools,
-      error,
-      fallbackUsed: false,
+      error: combinedError,
+      fallbackUsed,
     });
   }
 
@@ -130,36 +91,13 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
     supabase,
   };
 
-  const profileOutcome = await executeTool<{
-    fullName: string;
-    stageName: string | null;
-    category: string | null;
-    bio: string | null;
-  }>('get_professional_profile', {}, toolCtx, eligibleTools);
-  calledTools.push('get_professional_profile');
+  const buildResult = await buildContextPackage(toolCtx, { allowedContextSources, eligibleTools });
+  calledTools = buildResult.calledTools;
+  unavailableSources = buildResult.unavailableSources.map((u) => u.source);
+  const { contextPackage } = buildResult;
 
-  if (!profileOutcome.ok) {
-    await finishRun('failed', profileOutcome.error);
-    return { ok: false, error: profileOutcome.error, detail: profileOutcome.detail };
-  }
-
-  const { data: messages } = await supabase
-    .from('conversation_messages')
-    .select('*')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: false })
-    .limit(AI_TEST_RECENT_MESSAGES_LIMIT)
-    .returns<ConversationMessage[]>();
-
-  const representedName = profileOutcome.output.stageName ?? profileOutcome.output.fullName;
-
-  const context = buildMinimalContext({
-    fullName: profileOutcome.output.fullName,
-    stageName: profileOutcome.output.stageName,
-    category: profileOutcome.output.category,
-    bio: profileOutcome.output.bio,
-    messages: messages ?? [],
-  });
+  const representedName = resolveProfessionalDisplayName(contextPackage);
+  const context = renderContextForPrompt(contextPackage);
 
   async function logUsage(status: 'success' | 'error', inputTokens: number | null, outputTokens: number | null) {
     await supabase.rpc('log_ai_usage_event', {
@@ -201,6 +139,13 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
     // corpo da resposta HTTP da API, que nunca ecoa a Authorization
     // header de volta) — segura pra devolver pro profissional testando
     // a própria chamada, e pra gravar em orchestrator_runs.error.
+    //
+    // Dívida de hardening registrada (não corrigida agora, fora do
+    // escopo deste bloco): em tese `err.message` de uma falha da API
+    // poderia ecoar um trecho do request numa mensagem de validação.
+    // Sanitizar isso (allowlist de códigos curtos em vez de repassar a
+    // mensagem crua do SDK) fica para quando um bloco futuro tocar
+    // observability de novo.
     const detail = err instanceof Error ? err.message : undefined;
     await logUsage('error', null, null);
     await finishRun('failed', detail ?? 'openai_call_failed');

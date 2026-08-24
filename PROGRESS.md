@@ -2415,15 +2415,222 @@ itens do escopo combinado, parando aqui pra auditoria antes do Bloco 2.
   sistema de verdade vai precisar de um client com privilégio elevado
   (service-role ou equivalente) quando esse bloco futuro for
   construído.
-- ⚠️ **Migration 0042 ainda não rodou no Supabase de produção** —
-  entregue como arquivo pro usuário rodar manualmente.
+- ✅ **Migration 0042 rodada e confirmada em produção** (Supabase).
 - ⏳ **Nada além do escopo dos 8 itens** — sem Context Builder
   completo, sem Intent Classifier, sem Competence Router, sem
   `CoreDecision`, sem Response Planner, sem post-model gate, sem
   Approval Engine, sem state machine nova, sem tool de escrita/ação,
   sem resposta automática a cliente, sem WhatsApp/e-mail, sem
-  collaborator/booker. Parado aqui — Bloco 2 só começa com nova
-  autorização.
+  collaborator/booker.
+
+### Auditoria adversarial do Bloco 1 — aprovada
+
+Antes de aprovar o bloco, rodei uma autoauditoria adversarial (não só
+happy path) contra os 12 pontos da especificação: isolamento de
+tenant, spoof de `ActorContext`, tools fora de contexto, pre-model
+gate bloqueando a OpenAI, `eligibleTools`/`resolveRisk` não
+manipuláveis, `authorized_collaborator` só preparado, observability
+sem dado sensível, RLS/RPCs da 0042 já em produção, ausência de
+regressão nas migrations anteriores, ausência de acoplamento contra o
+modelo futuro de colaborador/booker, e nada de blocos futuros
+implementado cedo demais.
+
+- ⚠️→✅ **2 achados reais, corrigidos no mesmo commit
+  (`666134b`)**: `executeTool()` confiava cegamente no array
+  `eligibleTools` recebido do chamador em vez de re-derivar a
+  elegibilidade de `actorContext.capabilities` — um teste adversarial
+  provou que um `eligibleTools` forjado conseguia rodar uma tool fora
+  das capabilities reais do ator. Achado relacionado: `ToolContext`
+  carregava `representedProfessionalId` solto E dentro de
+  `actorContext`, sem checagem de consistência entre os dois. Nenhum
+  dos dois tinha exploração real em produção (só um chamador confiável
+  existe hoje), mas violavam o mesmo princípio já usado em toda RPC do
+  banco: nunca confiar num parâmetro sozinho. Corrigidos, testados
+  (testes adversariais A–E), sem regressão.
+- ✅ Confirmado por teste real (RLS + filtro): a RLS de
+  `opportunities`/`profiles` sozinha É permissiva o suficiente pra
+  vazar dado entre tenants (mural público, perfil público) — é o
+  filtro explícito de cada tool (`ctx.representedProfessionalId`) que
+  fecha isso, não a RLS. Confirmado também que uma FK composta em
+  `orchestrator_runs` bloqueia um INSERT direto com par
+  conversa/representado inconsistente mesmo bypassando a function
+  (defesa em profundidade real, não só de aplicação).
+- 📌 **Dívida de hardening registrada pro futuro (fora do escopo de
+  qualquer bloco atual)**: mensagens de erro externas (ex.: `err.message`
+  de uma falha da API da OpenAI) hoje podem, em tese, ecoar parte do
+  request numa mensagem de validação antes de cair em
+  `orchestrator_runs.error`/`ai_usage_events`. Nunca foi chain of
+  thought nem conteúdo de conversa, e não é um problema introduzido
+  neste bloco — mas fica registrado como algo a sanitizar
+  explicitamente (allowlist de códigos curtos em vez de repassar a
+  mensagem crua do SDK) quando algum bloco futuro tocar observability
+  de novo.
+- ✅ **Bloco 1 aprovado pelo usuário e PR #3 mesclado** em
+  `claude/doopla-backend-login-db-fj5j3y` (merge commit `d7e22d5`).
+
+## 31. Doopla Intelligence Core v1 — Bloco 2: Context Builder v1
+
+Fundação do Context Builder (não "completo" — outras fontes ficam
+para etapas futuras: approvals, Professional Brain estruturado,
+histórico relacional enriquecido, materiais/documentos, agenda,
+preferências de ator, memória episódica, portfolio de
+collaborator/booker). Escopo revisado em 2 rodadas antes do código
+(estrutura do `ContextPackage`, provenance, budget/janela, tratamento
+de texto/áudio/attachment, missing context, testes, confirmação de
+"sem migration" — depois `external_participant` incorporado como
+quarto papel fundamental antes de qualquer código).
+
+- ✅ **4ª READ tool: `get_external_participant`** — mesma disciplina
+  das outras 3 (read-only, `sideEffects:false`, LOW risk, nunca
+  recebe um id arbitrário: resolve sempre
+  `ctx.conversation.external_participant_id`, filtra sempre por
+  `professional_id = ctx.representedProfessionalId`). Participant de
+  outro representado → `found:false`, igual ao padrão de
+  `get_opportunity`/`get_booking`.
+- ✅ **`src/lib/intelligence/context-builder/`** — `types.ts`
+  (`ContextPackage`, `ContextFact`, seções, `MessageContextItem`),
+  `budget.ts` (limites centralizados + `truncateText`), `sections.ts`
+  (profissional/oportunidade/booking/participante externo),
+  `messages.ts` (janela de mensagens), `build.ts`
+  (`buildContextPackage`, orquestrador), `render.ts`
+  (`renderContextForPrompt`, `resolveProfessionalDisplayName`),
+  `index.ts` (barrel).
+- ✅ **Data / provenance / rendering separados de verdade**:
+  `ContextPackage` é 100% estruturado (nunca uma string como fonte de
+  verdade) — cada `ContextFact` já carrega a própria proveniência
+  (`sourceType`, `sourceId`, `field`, `factType`, `loadedAt`).
+  `renderContextForPrompt()` é uma função pura separada que só LÊ o
+  pacote — nunca decide autorização/tenant/elegibilidade/risco.
+  `test-call.ts` agora usa as duas etapas em sequência, uma única
+  implementação de contexto (a lógica própria antiga foi removida).
+- ✅ **4 estados por seção** (`loaded`/`not_allowed`/`no_link`/`not_found`)
+  para profissional/oportunidade/booking/participante externo — nunca
+  tratados como erro. **`not_found` é deliberadamente opaco**: nunca
+  diferencia "não existe" de "é de outro representado" — testado
+  explicitamente pra nunca virar canal lateral de descoberta
+  cross-tenant.
+- ✅ **`factType: 'structured' | 'derived'`** already no contrato;
+  neste bloco **100% dos fatos são `structured`** — nenhum derivado
+  criado (verificado por teste, não só por não ter escrito código
+  derivado).
+- ✅ **Janela de mensagens = quantidade + recência**, nunca só um
+  limite numérico (`CONTEXT_MAX_MESSAGES=10` + `CONTEXT_MESSAGE_WINDOW_DAYS=30`,
+  ambas as condições juntas) — testado que uma mensagem antiga de uma
+  conversa reaberta não entra mesmo estando sob o limite de
+  quantidade. `buildContextPackage` aceita um `now` injetável só pra
+  testes determinísticos de janela, sem complicar a API pública.
+- ✅ **Texto/áudio/attachment tratados com disciplina**: texto usa
+  `body`; áudio só vira texto quando `transcription_status==='done'`
+  (nunca `audio_url`); attachment nunca vira conteúdo nesta etapa
+  (decisão explícita: nem metadado mínimo, até haver necessidade
+  concreta). Tudo truncado por budget quando longo, sempre marcado
+  `truncated:true`.
+- ✅ **`ActorContext`/isolamento preservados por construção**: o
+  Builder só consome `allowedContextSources`/`eligibleTools` já
+  calculados pelo pre-model gate — nunca os recalcula, nunca os
+  amplia, nunca resolve colaborador sozinho. Nenhum contrato assume
+  `actor_profile_id === represented_professional_id` como regra
+  estrutural (o Builder só enxerga representado + `ActorContext` +
+  conversa + fontes permitidas).
+- ✅ **`test-call.ts` refatorado** — não monta mais contexto por conta
+  própria; consome só `buildContextPackage()` +
+  `renderContextForPrompt()`. Mudança de comportamento registrada: o
+  teste antigo abortava se `get_professional_profile` falhasse; agora
+  segue em frente com o pacote parcial (`professional: not_found`),
+  coerente com "ausência não é erro" — decisão deliberada, não
+  descuido.
+- ✅ **Testes**: os 17 do escopo + os 7 específicos de
+  `external_participant` — todos rodados como lógica pura (client
+  Supabase simulado, incluindo simulação de `.gte()`/`.order()`/`.limit()`
+  pra reproduzir a query real de mensagens) **e** uma bateria real
+  contra Postgres local (RLS de `external_participants` sozinha vs. o
+  filtro explícito da tool — mesma prova adversarial do Bloco 1: RLS
+  aqui já é estrita, mas o filtro é obrigatório de qualquer forma;
+  tentativa de IDOR com id exato de B; opacidade de inexistente vs.
+  cross-tenant; `anon` bloqueado; regressão de isolamento de
+  `opportunities` num rebuild fresco). Regressão completa do Bloco 1
+  (14 testes + 5 adversariais) re-executada sem falha real (1 asserção
+  desatualizada no teste antigo, corrigida — não era uma regressão de
+  comportamento).
+- ✅ `npm run build`, `npx tsc --noEmit`, `npx eslint` limpos.
+- ✅ **Nenhuma migration** — usa só as 4 READ tools e
+  `conversation_messages`, como planejado.
+- ⏳ Continua fora: Intent Classifier, Competence Router completo,
+  `CoreDecision`, Response Planner, Post-model Policy Gate, Approval
+  Engine, nova State Machine, tools de escrita/ação, resposta
+  automática, WhatsApp/e-mail, collaborator/booker, portfolio context,
+  Actor Preferences, painel, memória vetorial/embeddings,
+  interpretação de documentos/PDFs, histórico relacional enriquecido.
+
+### Auditoria adversarial do Bloco 2 — achado real corrigido
+
+Antes de aprovar, auditoria focada especificamente em "ausência de
+informação" vs. "falha ao consultar informação" — a distinção que
+`not_found` (opaco de propósito, entre "não existe" e "é de outro
+representado") não podia carregar mais um terceiro significado sem
+virar perigoso.
+
+- ⚠️→✅ **Achado real, não hipotético**: nenhuma das 4 READ tools
+  checava o campo `error` da resposta do Supabase — todas tratavam
+  `data === null` como "não encontrado", sem distinguir "consultei e
+  não achei" de "a consulta falhou de verdade" (rede/timeout/banco).
+  Um erro real de banco ao buscar um `booking` virava silenciosamente
+  `not_found`, e a Doopla podia concluir "não existe booking" quando
+  na real só não deu pra checar. Mesmo bug nas 4 tools e na query
+  direta de mensagens do Builder.
+- ✅ **Corrigido**: as 4 tools agora checam `error` explicitamente
+  (`execution_failed` sanitizado, nunca a mensagem crua do
+  Supabase/SDK) antes de tratar ausência como `found:false`.
+  `get_professional_profile` ganhou o mesmo formato discriminado
+  `{found:true, profile}|{found:false}` das outras 3 (antes era
+  assimétrica — só ela não distinguia as duas coisas). Novo estado
+  `'unavailable'` em `ContextSection`/`MessagesSection` — nunca
+  colapsa com `not_found`/`loaded`. `renderContextForPrompt()` nunca
+  silencia nem afirma "não existe" pra uma seção `unavailable`; avisa
+  explicitamente "não foi possível consultar — não presuma" sem
+  vazar detalhe técnico. `buildContextPackage()` agora também devolve
+  `unavailableSources` (seção + `reasonCode` sanitizado, tipado a
+  partir de `ToolExecutionError`) pra quem chama decidir o que fazer
+  — `test-call.ts` já usa isso pra marcar `fallback_used`/anotar
+  `orchestrator_runs.error` de forma sanitizada.
+- ✅ **Outros achados corrigidos na mesma auditoria**: `truncateText()`
+  podia cortar no meio de um par substituto UTF-16 (emoji), deixando
+  texto malformado — corrigido pra nunca deixar um surrogate alto
+  sozinho no fim. Query de mensagens sem tiebreaker determinístico
+  (duas mensagens com o mesmo `created_at` podiam ordenar de forma
+  não-determinística entre execuções) — corrigido com `order by id`
+  como segunda chave.
+- ✅ **Provenance resistiu à tentativa de quebra**: nenhum fato de uma
+  seção aparece com `sourceType` de outra, mensagem de outra
+  conversa nunca aparece na lista, truncamento preserva
+  `sourceType`/`sourceId`/`field` intactos, nenhum campo duplicado
+  dentro de uma seção, renderer comprovadamente somente-leitura
+  (nunca muta o `ContextPackage`).
+- ✅ **Casos de anomalia de dado tratados com segurança**: áudio
+  `done` com transcript vazio → sem texto (nunca string vazia como
+  conteúdo); `pending` com transcript preenchido por engano → ignorado
+  (só confia no par status+transcript, nunca um sozinho); attachment
+  com `body` preenchido por engano → ignorado (content_type sempre
+  manda).
+- ✅ **68 checks de lógica pura + 13 checks reais contra Postgres
+  local** (incluindo re-teste de `external_participant` com o cenário
+  extra "mesmo telefone em profissionais diferentes" — RLS/tool
+  continuam escopando por `professional_id`, nunca por telefone) —
+  todos PASS. Regressão completa (Bloco 1 + adversariais do Bloco 1 +
+  Bloco 2 original) re-executada sem falha real — as 3 falhas que
+  apareceram no meio do processo eram todas asserções de teste
+  desatualizadas contra uma mudança de contrato desta própria rodada
+  (`get_professional_profile` virou discriminado; `context_inconsistent`
+  virou `unavailable` em vez de `not_found`), nunca uma regressão de
+  comportamento. `npm run build`/`tsc`/`eslint` limpos.
+- ✅ **Matriz de contexto parcial confirmada**: `no_link`/`not_found`/
+  fonte opcional `not_allowed` seguem normalmente; falha operacional
+  de fonte não-crítica vira `unavailable` e o Builder continua (nunca
+  aborta o pacote inteiro por uma seção); tenant/identidade incertos
+  continuam falhando fechado — mas essa decisão já acontece ANTES do
+  Builder rodar (`resolveActorContext`/`evaluatePreModelGate`), o
+  Builder em si nunca decide isso, só consome o resultado.
+  Parado aqui — aguardando nova autorização pro Bloco 3.
 
 ## Como usar isso
 

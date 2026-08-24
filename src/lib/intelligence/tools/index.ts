@@ -5,7 +5,9 @@
 import './get-professional-profile';
 import './get-opportunity';
 import './get-booking';
+import './get-external-participant';
 
 export { getProfessionalProfileTool } from './get-professional-profile';
 export { getOpportunityTool } from './get-opportunity';
 export { getBookingTool } from './get-booking';
+export { getExternalParticipantTool } from './get-external-participant';

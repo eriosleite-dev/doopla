@@ -40,6 +40,9 @@ export function evaluatePreModelGate(ctx: PolicyGateContext): PolicyGateResult {
   if (conversation.related_booking_id) {
     allowedContextSources.push('booking');
   }
+  if (conversation.external_participant_id) {
+    allowedContextSources.push('external_participant');
+  }
 
   // Elegibilidade = interseção entre o que está registrado no Tool
   // Registry e o que actorContext.capabilities autoriza — nunca uma
