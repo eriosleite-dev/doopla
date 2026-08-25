@@ -3139,6 +3139,148 @@ consulta/aprovação.
 responsabilidades sem uma razão arquitetural demonstrável** — são
 responsabilidades do Gate, não do Planner.
 
+## 34. Doopla Intelligence Core v1 — Bloco 5: Approval Engine (implementado, aguardando auditoria adversarial da implementação)
+
+Camada que representa formalmente o que o profissional efetivamente
+APROVOU — não o que ele comunicou, não o que a contraparte aceitou.
+KNOW ≠ COMMUNICATED ≠ APPROVED ≠ COMMITTED. Fonte de verdade: SPEC
+CONSOLIDADA V3.10 (10 rodadas de revisão adversarial só de desenho,
+V1→V3.10, sem uma linha de código até a aprovação final do usuário).
+Não implementa Post-model Policy Gate, não habilita envio, não cria
+tool de escrita, não altera o Bloco 4 (congelado).
+
+- ✅ **Migration `0045_approval_engine.sql`**: `bookings.originated_from_opportunity_id`
+  (única coluna nova em tabela pré-existente — fecha a lacuna que a
+  0007 já descrevia em comentário e nunca implementou); 6 tabelas novas
+  (`approval_records` append-only versionado; `communicated_proposal_candidates`
+  com estados `open`/`possibly_superseded`/`structurally_closed` —
+  inferência nunca apaga, só rebaixa; `communicated_proposal_classifications`
+  e `approval_resolutions` pin-once; `approval_resolution_claims`
+  efêmero e `approval_resolution_backoff` persistente, fisicamente
+  separados); `resolve_commercial_root_id()` como função canônica
+  única de identidade comercial; 2 triggers determinísticos de
+  fechamento de candidato (status terminal negativo de booking/
+  opportunity; aprovação real commitada na mesma chain — nunca por
+  inferência); RPCs security definer (`try_acquire_approval_resolution_claim`,
+  `reserve_approval_dispatch_token`, `release_approval_resolution_claim`,
+  `commit_approval_resolution`, `try_classify_communicated_proposal`,
+  `get_active_approvals`, `get_communicated_proposal_candidates`); RLS
+  tenant-safe (posse via `professional_id = auth.uid()` direto, sem
+  join composto — lição da 0039) com deny-all pra `authenticated` nas
+  duas tabelas de estado interno do motor (claims/backoff).
+- ✅ **`src/lib/intelligence/approval/`**: `canonicalize.ts`
+  (canonicalização determinística única — mesma função em F1 e F2,
+  SHA-256 de 32 bytes, fisicamente separada do hash de 64 bits do
+  advisory lock); `resolution-context.ts` (bounded lineage real:
+  declaração do profissional + últimas 20 mensagens brutas + toda
+  mensagem-fonte de candidato aberto — nunca o histórico inteiro
+  desde a última resolução); `resolver.ts` (Approval Resolver,
+  closed-candidate-selection, model call injetável mesmo padrão de
+  `PlannerModelCall`); `orchestrator.ts` (encadeia claim → build
+  contexto F1 → reserve token → chamada externa → rebuild F2 → commit,
+  nunca segura transação Postgres aberta durante I/O externo);
+  `value-schemas.ts` (os 13 shapes de `approved_value`, reaproveitando
+  o enum do Bloco 4); `rate-limiter.ts` (espelho puro da matemática do
+  token bucket, pra teste sem depender de Postgres); `golden-suite.ts`
+  (6 casos semânticos).
+- ✅ **Validação real contra Postgres** (não simulada): apliquei a
+  migration `0045` no banco de teste `doopla_rls_test` (já com
+  `0001`–`0044`, incluindo `auth.uid()`/RLS reais) e rodei 4 baterias
+  de teste via `psql` — **36 asserções, todas PASS**: CHECK simétrico
+  de provenance (`cardinality()`, nunca `array_length()`); terminalidade
+  física (só `resolved` é único-terminal); ciclo completo
+  acquire→reserve→resolver→commit; retry pós-commit nunca reinfere;
+  stale context (F1≠F2) descarta sem escrever nada; token bucket (5
+  consumos imediatos + 6º bloqueado por `rate_limited`); backoff
+  exponencial sensível a `context_identity` (mesmo contexto respeita,
+  contexto novo ignora); proteção ABA de lease (`lease_token` errado
+  nunca commita, correto continua funcionando depois); candidato
+  comunicado nunca apagado por supersessão (só rebaixado, valor
+  original íntegro); os dois fechamentos determinísticos (booking
+  cancelado; aprovação real commitada); isolamento de tenant completo
+  (RLS + `not_authorized` nas functions). **Concorrência real** (dois
+  processos `psql` simultâneos, não simulação sequencial): duas
+  chamadas verdadeiramente concorrentes a `commit_approval_resolution`
+  na MESMA chain produziram versões `1` e `2` — nunca duplicata,
+  provando a serialização do advisory lock sob carga real, repetido
+  com sucesso; corrida de claim pela mesma mensagem rodada 10x, mutex
+  respeitado em toda tentativa com overlap real (as demais foram
+  `rate_limited`, achado tratado abaixo).
+- ✅ **2 bugs reais encontrados e corrigidos durante o próprio teste de
+  concorrência** (não achados de auditoria externa — acharam-se
+  testando):
+  1. `try_acquire_approval_resolution_claim` debitava o token do rate
+     limiter ANTES de saber se o claim seria concedido — perder a
+     corrida por outro worker (`claim_held_by_another_worker`) ainda
+     assim queimava orçamento, violando o V3.7 ponto 1 ("não pode
+     consumir cota sem representar chamada efetiva"). Corrigido:
+     débito movido pra uma function nova e separada,
+     `reserve_approval_dispatch_token` (a transação B de verdade),
+     chamada só depois de já ter vencido a corrida pelo claim.
+  2. Consequência do fix acima: quando `reserve_approval_dispatch_token`
+     nega por `rate_limited`, o claim ficava preso até `lease_expires_at`
+     mesmo sendo um bloqueio de custo, não de posse — bloqueando
+     retries por até 120s à toa. Corrigido com
+     `release_approval_resolution_claim`, liberação explícita e
+     idempotente chamada pelo worker sempre que desiste antes de
+     commitar.
+  Ambos corrigidos na migration, reaplicados do zero no banco de teste
+  e revalidados — as 36 asserções + as 2 corridas de concorrência
+  passam limpas na versão final.
+- ✅ **Testes determinísticos TS** (`npx tsx`, scratchpad
+  `bloco5-approval-tests.ts`, sem I/O/rede): **38 asserções, todas
+  PASS** — ordenação de chaves recursiva produz bytes idênticos
+  independente de ordem de inserção; `installments` (array
+  semanticamente ordenado) reordenado MUDA o digest; número
+  não-inteiro falha a canonicalização (fail-closed); `null` e campo
+  ausente equivalentes; qualquer campo semanticamente relevante muda o
+  digest; `contentDigest` muda quando transcrição passa de
+  `pending`→`done` mantendo o mesmo `messageId`; bound formal do token
+  bucket `N(T) ≤ C + r·T` e latência máxima `período/capacidade`
+  batendo com a fórmula; backoff exponencial com teto; os 13
+  `value-schemas` (inclusive rejeição de campo extra/float onde exige
+  inteiro).
+- ✅ `npx tsc --noEmit` e `npx eslint` limpos no projeto inteiro
+  (módulo novo + rota nova). `npx next build` completo sem erro, com
+  `/dev/approval-golden-suite` listada na build — rota deixada
+  pronta, não executada de verdade aqui (depende de `OPENAI_API_KEY`
+  real, só disponível em Preview).
+- ⚠️ **Divergência conhecida, não resolvida** (reportada, não decidida
+  sozinho): quando `buildResolutionContext` retorna `budgetExceeded`
+  (contexto grande demais pra construir), a spec V3.10 pede que o
+  outcome (`context_budget_exceeded`/`chain_candidate_overflow`) seja
+  PINADO em `approval_resolutions` — mas essa tabela exige
+  `context_identity` de 32 bytes, e por definição não é possível
+  calcular um `context_identity` real quando o `ResolutionContext`
+  nem chega a ser construído. A V3.10 nunca especificou qual
+  identidade usar nesse caso específico. `orchestrator.ts` deixa isso
+  explícito no código (comentário + early return) em vez de inventar
+  uma identidade sozinho — retorna `budget_exceeded` sem persistir
+  nada. Precisa de uma decisão sua antes de fechar esse caminho
+  (candidatos: hash de um marcador reduzido específico pra overflow;
+  ou tratar overflow como um `inconclusive_reason` que não exige
+  `context_identity` real, com ajuste de CHECK na migration).
+- ⚠️ **Riscos residuais** (declarados, não escondidos): taxonomia de
+  `subject_key` de `scope_change` continua a menos fundamentada das
+  quatro (herdada da V2, nunca revisada); rate limiting/quota global
+  de uso de IA por profissional/tenant não existe em bloco nenhum
+  (V3.8, registrado como requisito futuro, fora do escopo do Bloco 5);
+  `resolver.ts`/`orchestrator.ts` não foram exercitados contra OpenAI
+  de verdade nem contra um Supabase real vivo nesta sessão (só a
+  camada SQL, chamada diretamente via `psql`, e a camada TS pura,
+  sem I/O) — a golden suite fica pronta pra fechar essa lacuna no
+  Preview; `get_active_approvals`/`get_communicated_proposal_candidates`
+  não têm tipos gerados (`src/lib/supabase/types.ts` não foi
+  regenerado — precisa rodar `supabase gen types` contra o projeto
+  real depois que a migration for aplicada lá).
+- **Commit**: aguardando — implementação completa, testada
+  extensivamente contra Postgres real e TS puro, mas **não commitada
+  ainda** (ver próximo passo abaixo). Nenhum merge, nenhum avanço pro
+  Post-model Policy Gate.
+
+**Próximo passo**: Red Team adversarial da implementação real (não do
+desenho) antes de qualquer merge — igual ao padrão dos Blocos 1-4.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
