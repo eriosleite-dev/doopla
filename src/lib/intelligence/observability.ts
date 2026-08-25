@@ -31,12 +31,20 @@ export async function finishOrchestratorRun(
   supabase: SupabaseClient<Database>,
   params: OrchestratorRunFinish
 ): Promise<OrchestratorRun | null> {
+  const { classification } = params;
   const { data, error } = await supabase.rpc('finish_orchestrator_run', {
     p_run_id: params.runId,
     p_status: params.status,
     p_called_tools: params.calledTools,
     p_error: params.error,
     p_fallback_used: params.fallbackUsed,
+    p_primary_intent: classification?.primaryIntent ?? null,
+    p_secondary_intents: classification?.secondaryIntents ?? [],
+    p_competencies: classification?.competencies ?? [],
+    p_model_confidence: classification?.modelConfidence ?? null,
+    p_effective_confidence: classification?.effectiveConfidence ?? null,
+    p_context_completeness: classification?.contextCompleteness ?? null,
+    p_classification_status: classification?.classificationStatus ?? null,
   });
 
   if (error || !data) return null;

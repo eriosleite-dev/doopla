@@ -2630,7 +2630,298 @@ virar perigoso.
   continuam falhando fechado — mas essa decisão já acontece ANTES do
   Builder rodar (`resolveActorContext`/`evaluatePreModelGate`), o
   Builder em si nunca decide isso, só consome o resultado.
-  Parado aqui — aguardando nova autorização pro Bloco 3.
+- ✅ **Bloco 2 aprovado pelo usuário e PR #4 mesclado** em
+  `claude/doopla-backend-login-db-fj5j3y` (merge commit `e2689f4`).
+
+## 32. Doopla Intelligence Core v1 — Bloco 3: Intent Classifier + Competence Router (implementado, aguardando auditoria)
+
+Primeira vez que uma chamada ao model participa de uma decisão real do
+Core (Blocos 1-2 são determinísticos, exceto o teste de infra
+isolado). Escopo estritamente PERCEPÇÃO — "o que está acontecendo" +
+"quais competências são relevantes" — nunca ação. Duas rodadas de
+revisão de escopo antes do código (separação intent/competência,
+`ClassificationContext` leve, `modelConfidence`/`effectiveConfidence`
+separados, `contextCompleteness` calculado por dependência de intent,
+`classificationStatus` com `invalid` só decidido em código).
+
+- ✅ **`src/lib/intelligence/classification/`** — `intents.ts` (14
+  intents + `outro`, taxonomia extensível sem check no banco),
+  `competencies.ts` (as 7 competências + `routeCompetencies()`
+  determinístico, união sempre na mesma ordem), `types.ts`
+  (`ClassificationContext`, `IntentClassification` — sem nenhum campo
+  de tool/action/approval/state/response/message, estrutural),
+  `classification-context.ts` (projeção leve do `ContextPackage` —
+  mensagem-gatilho + até 2 anteriores, identidade mínima dos dois
+  lados, tipo/estado da conversa, flags de status por seção; nunca
+  bio longa/booking inteiro), `completeness.ts` (tabela intent→fontes
+  dependentes, `not_allowed` nunca conta como incompletude),
+  `confidence.ts` (`effectiveConfidence` só pode descer, nunca subir
+  acima de `modelConfidence`), `prompt.ts`, `config.ts`
+  (`CLASSIFIER_MODEL='gpt-5-mini'`, mesma ressalva de "não é modelo
+  definitivo" do teste de infra), `classify.ts` (orquestrador —
+  Structured Outputs via `zodTextFormat`/`client.responses.parse`,
+  client model call injetável pra testes, retry único, nunca lança).
+- ✅ **Separação intent/competência real**: o schema que o model
+  preenche não tem campo de competência nenhum — `relevantCompetencies`
+  só é preenchido depois, em código, pelo `CompetenceRouter`. Testado
+  adversarialmente: um model call simulado que tenta forjar um campo
+  de competência extra na resposta tem esse campo simplesmente
+  ignorado.
+- ✅ **Migration 0043**: `orchestrator_runs` ganha 7 colunas aditivas
+  de classificação. `primary_intent`/`secondary_intents`/
+  `competencies` ficam como texto livre de propósito (taxonomia
+  extensível, validada em código) — só `model_confidence`/
+  `effective_confidence`/`context_completeness`/`classification_status`
+  (vocabulário arquitetural estável) ganham check constraint.
+  `finish_orchestrator_run()` estendido (drop+create, mesma disciplina
+  da 0042) com os 7 parâmetros novos, todos opcionais. `anon` já
+  nasce sem `EXECUTE`, confirmado por teste.
+- ✅ **`test-call.ts`** passa a classificar a intenção logo após montar
+  o `ContextPackage` — mas nunca decide nada a partir disso; o
+  resultado só é retornado (pro painel de teste) e registrado em
+  `orchestrator_runs`/`ai_usage_events`. `classifyIntent()` nunca
+  lança: qualquer falha cai num fallback determinístico
+  (`classificationStatus:'invalid'`, `primaryIntent:'outro'`,
+  `effectiveConfidence:'low'`).
+- ✅ **20 testes de lógica pura** (model call simulado, incluindo um
+  client Supabase "armadilha" que lança exceção em qualquer
+  `.from()`/`.rpc()` — prova que a classificação nunca toca o banco) +
+  **13 testes reais contra Postgres local** pra migration 0043 (grava
+  metadados corretamente, check constraint rejeita vocabulário
+  inválido, `primary_intent` aceita texto livre, `anon` bloqueado) —
+  todos PASS. Regressão completa dos Blocos 1 e 2 (14+5+29+34 checks)
+  sem falha. `npm run build`/`tsc`/`eslint` limpos.
+- ⏳ Continua fora: Response Planner, `CoreDecision` operacional,
+  Post-model Policy Gate completo, execução de tool a partir do
+  model, Approval Engine, nova State Machine, tools de escrita/ação,
+  resposta automática, WhatsApp/e-mail, collaborator/booker, Actor
+  Preferences, painel, memória vetorial/embeddings.
+
+### Auditoria adversarial do Bloco 3 — achado real corrigido + 2 ajustes pós-aprovação
+
+Auditoria partindo do princípio de que output/confidence do model e
+texto do usuário são não confiáveis. Cobriu: 15 intents com exemplos
+adversariais, prompt injection, Competence Router, multi-intent,
+confidence (sweep exaustivo de 648 combinações), context completeness
+(os 5 estados + precedência + multi-intent), vazamento de
+`ClassificationContext`, provenance/imutabilidade, falhas da OpenAI,
+migration 0043 contra Postgres real (incl. tentativa de spoof
+cross-tenant via `finish_orchestrator_run`), concorrência, escala.
+
+- ⚠️→✅ **Achado real**: `secondaryIntents` do model não era
+  deduplicado nem tinha `primaryIntent` removido — um model repetindo
+  valores inflava artificialmente a heurística de confiança "muitos
+  secundários" e sujava `orchestrator_runs.secondary_intents` com
+  ruído. Corrigido em `classify.ts`: dedupe + remoção do primary antes
+  de qualquer cálculo posterior. Confirmado com array de 500
+  elementos/2 valores únicos.
+- ✅ **Lacuna real de taxonomia encontrada e documentada** (não
+  corrigida na hora, por instrução explícita da auditoria): nenhum
+  intent cobria "estado/acontecimento financeiro de um booking já
+  existente" (ex.: "Recebi metade.").
+- ✅ **Ajuste pós-aprovação 1 — taxonomia corrigida**: novo intent
+  `financeiro_booking` (15º), roteando deterministicamente só pra
+  `financeiro`. Fronteira explícita no prompt contra
+  `orcamento`/`desconto`/`condicao_pagamento`/`cobranca`/
+  `booking_update` (ex.: "fechei sábado por 3 mil" continua
+  `booking_update` — o preço do acordo não é um evento financeiro
+  separado; só vira `financeiro_booking` secundário quando a mensagem
+  relata um evento de dinheiro à parte, como "...já recebi o sinal").
+  **Nenhuma migration nova** — `primary_intent`/`secondary_intents`/
+  `competencies` já são texto livre sem check constraint na 0043,
+  exatamente pra isso; confirmado contra Postgres real com o valor
+  literal `financeiro_booking`, migration 0043 intocada. Red Team
+  dedicado da fronteira (21 checks) + regressão completa — sem falha.
+- ✅ **Ajuste pós-aprovação 2 — golden suite semântica**: adicionado
+  `src/lib/intelligence/classification/golden-suite.ts` (32 casos
+  reais: inequívocos, ambíguos, multi-intent, coloquiais, erro de
+  português, transcript de áudio imperfeito, inglês, mistura PT/EN,
+  sem intenção operacional, mudança de assunto no meio, dependente de
+  mensagem anterior, e os 6 casos financeiros novos) e uma rota dev
+  isolada (`/dev/classification-golden-suite`) que roda cada caso
+  contra o model REAL — `ContextPackage`/conversa sintéticos em
+  memória, zero gravação em banco, mesma abstração já auditada
+  (`getOpenAIClient()`, chave nunca sai do servidor). **Não executado
+  por mim** — este sandbox não tem `OPENAI_API_KEY` (só existe no
+  ambiente Preview); pronta pra o usuário rodar e reportar
+  input/esperado/retornado/confidences/status/PASS-FAIL por caso.
+- ✅ Regressão completa (Blocos 1–3 + todos os adversariais, ~130
+  checks de lógica + 20 reais contra Postgres) sem falha real.
+  `npm run build`/`tsc`/`eslint` limpos.
+- ✅ **Golden suite real rodada em Preview pelo usuário: 28/32.**
+  Causa raiz de cada FAIL/PASS suspeito investigada abaixo — sem
+  ajustar `expected` só pra fazer passar, sem criar intent novo
+  silenciosamente, sem tuning pra frases específicas.
+
+### Rodada 2 do Bloco 3 — correções pós-golden-suite real (28/32)
+
+**FAIL #9** ("Faz uma bio minha mais curta pro Instagram." → esperado
+`material_profissional`, recebido `outro`) **e a metade
+`rider`→`material_profissional` do FAIL #25**: causa raiz é a mesma —
+`material_profissional` (como a maioria dos 15 intents além de
+`booking_update`/`financeiro_booking`) não tinha NENHUMA definição
+semântica no prompt além do próprio nome do enum; o model precisava
+adivinhar o significado só pelo identificador. Corrigido com uma regra
+geral no prompt: `material_profissional` cobre materiais de
+apresentação/divulgação do próprio profissional (bio, press kit,
+portfólio, fotos/vídeos promocionais), com exclusão explícita de
+`rider` (documento técnico de produção, sempre `rider`, nunca vira
+"material" por ser um texto). Não é uma regra sobre "faz uma bio" —é
+sobre a categoria completa de autoapresentação profissional.
+
+**FAIL #13** ("Não quero mais lembrete no dia que eu vou tocar." →
+esperado `treinamento_profissional`, recebido `suporte`): mesma
+categoria de causa (zero definição no prompt) + a própria palavra
+"treinamento" soa mais como "ajuda/suporte" do que "o profissional
+calibrando o comportamento do assistente". Não renomeado (fora de
+escopo sem aprovação explícita — sinalizado como decisão futura
+opcional). Corrigido com regra geral no prompt distinguindo
+"profissional dando preferência/instrução sobre como a Doopla deve
+tratá-lo dali em diante" (`treinamento_profissional`) de "profissional
+relatando que algo não funciona na plataforma" (`suporte`).
+
+**FAIL #25** (metade `logistica` vs. `booking_update`): antes de
+corrigir, revisão conceitual da fronteira, decidida independente do
+caso de teste específico — a DATA/HORÁRIO em que o trabalho acontece é
+termo central do acordo, no mesmo grupo de "o trabalho existe"/"foi
+cancelado": mudar isso é sempre `booking_update`, nunca `logistica`.
+`logistica` fica reservada pra coordenação de EXECUÇÃO de um evento
+cujos termos centrais já estão fixados (endereço, acesso,
+estacionamento, horário de chegada pra montagem). Prompt atualizado
+com essa regra geral; `golden-suite.ts` corrigido para
+`['booking_update', 'rider']` (a regra foi decidida primeiro, o dado
+do teste corrigido depois pra refletir a regra — não o contrário).
+
+**FAIL #31** ("...vocês fazem eventos corporativos também?" →
+recebido `outro`): concluído que a resposta do model foi
+provavelmente correta e conservadora, e que o `expected` original do
+teste é que estava errado — o segundo tópico da mensagem é uma
+pergunta sobre ESCOPO/TIPO de serviço oferecido, e nenhum dos 15
+intents cobre isso (não é orçamento de um trabalho específico, não é
+disponibilidade, não é suporte técnico). **Lacuna real de taxonomia
+documentada, não implementada**: candidato a intent futuro tipo
+`consulta_servico`, decisão pendente do usuário. `golden-suite.ts`
+corrigido pra aceitar `outro` como resposta válida neste caso
+específico, com nota explicando a lacuna.
+
+**PASS suspeito #8** ("E a nota?" → `cobranca`, confidence HIGH sem
+contexto) **e #21** ("quanto?" → `orcamento`, o próprio teste descreve
+como genuinamente ambíguo, mas media/high "por sorte" contava como
+PASS): causa raiz estrutural — `confidence.ts` só tinha regra pra
+texto totalmente VAZIO, nenhuma regra pra mensagem CURTA sem
+contexto. Nova regra geral, em código (não no prompt — autoridade de
+confidence é sempre do código, nunca do model):
+`shortMessageWithoutContext` (gatilho ≤3 palavras E nenhuma mensagem
+anterior no recorte) nunca permite `effectiveConfidence` acima de
+`medium`, mesmo que `modelConfidence` tenha vindo `high`. Efeito
+colateral aceito e verificado explicitamente: também limita mensagens
+financeiras curtas e claras (“Entrou o restante.”, “Ainda faltam
+R$800.”) a `medium` — comportamento conservador consistente com a
+prioridade do projeto, não um bug a esconder.
+
+Adicionalmente, o próprio critério de PASS da golden suite era
+permissivo demais pra casos genuinamente ambíguos (bastava acertar UM
+valor da lista, mesmo que a classificação não tivesse reconhecido a
+própria incerteza). Novo campo `expectAmbiguous` em
+`GoldenSuiteCase` + critério de PASS mais estrito em
+`runGoldenSuiteAction()`: quando marcado, só passa se
+`classificationStatus === 'ambiguous'` OU `effectiveConfidence !==
+'high'`, além do intent bater. Aplicado aos 4 casos genuinamente
+ambíguos ("quanto?", "pode ser", "fechou", "sim, pode ser"). Revisão
+dos 32 casos completos não encontrou outros PASS-permissivos além
+destes.
+
+**Testes**: novo arquivo Red Team (rodado via `npx tsx`, nunca
+commitado) com casos positivos E negativos pra cada regra nova —
+`shortMessageWithoutContext` isolada em `confidence.ts`, o cálculo
+real em `classify.ts` (gatilho curto+sem histórico vs. gatilho
+curto+com histórico vs. gatilho longo vs. gatilho vazio), o critério
+`expectAmbiguous` da golden suite (incluindo o cenário exato do bug do
+PASS #21), e regressão estrutural do roteamento de competência pras
+fronteiras tocadas no prompt (`rider`/`material_profissional`,
+`treinamento_profissional`/`suporte`, `booking_update`/`logistica`) —
+a prova semântica das mudanças de PROMPT em si só é possível pela
+golden suite real (que já embute os casos negativos: o caso "rider"
+nunca deveria virar `material_profissional`, o caso "logística" nunca
+deveria virar `booking_update`, etc.). Regressão completa de todos os
+Blocos 1–3 (8 suítes, ~150 checks) sem falha. `npm run build`/`tsc`/
+`eslint` limpos. **Nenhuma migration alterada/criada** — mudanças são
+só texto de prompt + lógica de confidence em código + dados de teste;
+confirmado que 0043 continua a última migration.
+
+- ✅ **Segunda golden suite real rodada em Preview pelo usuário:
+  31/32.** Único FAIL analisado e corrigido abaixo.
+
+### Rodada 3 do Bloco 3 — hardening de ambiguidade pra respostas dependentes de contexto (31/32)
+
+**FAIL único**: "sim, pode ser" isolado (sem histórico) devolveu
+`disponibilidade` + `booking_update` + `orcamento`, com
+`classificationStatus`/`effectiveConfidence` corretamente
+conservadores (`ambiguous`/`low`) — o status/confidence já estavam
+certos; o problema era o CONTEÚDO fabricado: o model inventou 3
+leituras operacionais específicas pra uma frase que, isolada, não tem
+nenhum conteúdo temático próprio, só confirma algo fora dela mesma.
+
+**Causa raiz**: nenhuma regra no prompt distinguia "mensagem
+genuinamente ambígua com conteúdo próprio" (ex.: "quanto?" — é sobre
+preço, só não se sabe de qual dos 3 sentidos) de "confirmação solta
+sem conteúdo temático próprio, dependente inteiramente de uma
+mensagem anterior que não está disponível" (ex.: "sim, pode ser",
+"fechado", "beleza") — o model tratava as duas categorias do mesmo
+jeito, "chutando" leituras plausíveis pra ambas.
+
+**Correção — regra geral no prompt, sem hardcode/regex**: como pedido
+explicitamente, a correção NÃO é uma lista de palavras em código nem
+um filtro determinístico por contagem — é uma instrução de julgamento
+semântico geral, com exemplos só ilustrativos (mesmo padrão das
+outras regras do prompt):
+1. Resposta que só faz sentido em função de mensagem anterior, sem
+   conteúdo temático próprio, e sem essa mensagem anterior disponível
+   no contexto → `primaryIntent="outro"`, `classificationStatus=
+   "ambiguous"`, `modelConfidence="low"` — nunca fabricar uma leitura
+   operacional específica só porque seria plausível em abstrato.
+2. Mais geral ainda: mensagem curta sem contexto anterior cujo texto,
+   sozinho, não tem NENHUM elemento temático que distinga entre
+   leituras (ex.: "quanto?") → `classificationStatus="ambiguous"`,
+   não uma escolha única "confiante". Diferente de mensagem curta que
+   JÁ tem âncora temática própria (ex.: "E a nota?" tem "nota", que
+   aponta pra cobrança mesmo sem contexto) — essa continua com leitura
+   única, só com confiança reduzida (regra do round 2, inalterada).
+
+**Sobre "quanto?" especificamente**: avaliado e decidido NÃO forçar
+`ambiguous` deterministicamente em código por contagem de palavras —
+isso destruiria exatamente a distinção acima (uma regra de código não
+sabe diferenciar "quanto?" de "E a nota?"; ambas são curtas e sem
+contexto, mas só a primeira é genuinamente multi-referente). A
+correção é inteiramente de prompt/julgamento do model; validação real
+depende da golden suite ao vivo.
+
+**Golden suite**: 6 novos casos isolados ("sim", "fechado", "beleza",
+"isso", "pode", "acho que sim"), todos `expectAmbiguous`, mais um
+CONTROLE NEGATIVO — a mesma palavra ("fechado") mas agora com uma
+mensagem anterior suficiente no contexto (`previousMessages`, campo
+novo no tipo `GoldenSuiteCase`, suportado agora por
+`buildSyntheticContext` em `actions.ts`), esperando uma leitura
+específica (`booking_update`), não `outro` — prova que a regra não
+deveria disparar quando há contexto real. Casos #19/#24/#25/#31 (na
+numeração da rodada anterior) intencionalmente não tocados.
+
+**Testes**: novo Red Team estrutural (sem rede) provando que (a) o
+código NUNCA sobrescreve o conteúdo que o model devolve — a decisão
+semântica é sempre do model/prompt, nunca fabricada em código; (b) o
+contexto anterior fornecido pela golden suite chega corretamente até
+`ClassificationContext` (`buildClassificationContext`); (c) com
+contexto suficiente presente, a regra de confidence "mensagem curta
+sem contexto" (round 2) não dispara; (d) sem contexto, ela continua
+ativa; (e) sanidade dos novos casos da golden suite e confirmação de
+que os casos protegidos não foram alterados. Regressão completa de
+todos os Blocos 1–3 (9 suítes) sem falha. `tsc`/`eslint`/`build`
+limpos. **Nenhuma migration alterada/criada** — 0043 continua a
+última.
+
+- ⏳ **Aguardando você rodar a golden suite real de novo em Preview**
+  e reportar resultados antes do merge. PR ainda não criado. Não
+  avançar para o Bloco 4.
 
 ## Como usar isso
 

@@ -192,10 +192,28 @@ export type OrchestratorRunStart = {
   eligibleTools: string[];
 };
 
+// Bloco 3 — metadados de classificação a registrar num run, quando
+// aplicável. Tipado aqui de forma estrutural (nunca importa o módulo
+// de classification/) pra não inverter a dependência: types.ts é
+// fundação, classification/ é quem consome isto — nunca o contrário.
+// primaryIntent/secondaryIntents/competencies ficam como
+// string/string[] de propósito, espelhando a coluna do banco (texto
+// livre, taxonomia extensível — ver migration 0043).
+export type OrchestratorRunClassification = {
+  primaryIntent: string;
+  secondaryIntents: string[];
+  competencies: string[];
+  modelConfidence: 'high' | 'medium' | 'low';
+  effectiveConfidence: 'high' | 'medium' | 'low';
+  contextCompleteness: 'complete' | 'partial_missing' | 'partial_unavailable';
+  classificationStatus: 'classified' | 'ambiguous' | 'invalid';
+};
+
 export type OrchestratorRunFinish = {
   runId: string;
   status: OrchestratorRunStatus;
   calledTools: string[];
   error: string | null;
   fallbackUsed: boolean;
+  classification?: OrchestratorRunClassification;
 };

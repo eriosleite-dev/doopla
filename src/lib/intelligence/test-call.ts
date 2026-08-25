@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { resolveActorContext } from './actor-context';
+import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION } from './classification';
+import type { IntentClassification } from './classification';
 import { AI_FEATURE_INTELLIGENCE_TEST, AI_MODEL } from './config';
 import { buildContextPackage, renderContextForPrompt, resolveProfessionalDisplayName } from './context-builder';
 import { getOpenAIClient } from './openai-client';
@@ -9,14 +11,14 @@ import './tools';
 import type { ToolContext } from './types';
 
 export type IntelligenceTestResult =
-  | { ok: true; responseText: string; inputTokens: number | null; outputTokens: number | null }
+  | { ok: true; responseText: string; inputTokens: number | null; outputTokens: number | null; classification: IntentClassification }
   | { ok: false; error: string; detail?: string };
 
 // Instrução mínima só pra provar a integração — NÃO é o system prompt
-// definitivo da Doopla (isso é trabalho do Response Planner/Intent
-// Classifier, ainda não construídos). Deixa explícito: modo de teste,
-// só usa o contexto dado, nunca inventa, sem autorização pra agir,
-// pede pro profissional quando falta informação.
+// definitivo da Doopla (isso é trabalho do Response Planner, ainda
+// não construído). Deixa explícito: modo de teste, só usa o contexto
+// dado, nunca inventa, sem autorização pra agir, pede pro profissional
+// quando falta informação.
 function buildTestInstructions(representedName: string): string {
   return `Você é a Doopla, representando ${representedName}. Você está rodando em MODO DE TESTE de infraestrutura — isto não é uma conversa real com um cliente e sua resposta não será enviada a ninguém.
 
@@ -26,14 +28,16 @@ Regras deste modo de teste:
 - Se faltar uma informação importante pra responder bem, diga claramente que precisaria consultar o profissional antes, em vez de supor.`;
 }
 
-// Função interna de teste — NÃO é o Orchestrator completo (sem Intent
-// Classifier, Competence Router, Response Planner, post-model gate).
-// Prova que ActorContext, pre-model gate, Context Builder v1 e
-// observability já rodam de ponta a ponta antes de qualquer chamada à
-// OpenAI. Resposta nunca é gravada em conversation_messages, nunca
-// altera state/mandate/opportunity/booking. Única fonte de contexto é
-// o Context Builder — nenhuma lógica de montagem de contexto própria
-// aqui (era assim antes do Bloco 2; agora há uma implementação só).
+// Função interna de teste — NÃO é o Orchestrator completo (sem
+// Response Planner, post-model gate, Approval Engine). Prova que
+// ActorContext, pre-model gate, Context Builder v1, Intent
+// Classifier + Competence Router (Bloco 3) e observability já rodam
+// de ponta a ponta antes de qualquer chamada à OpenAI que produza
+// texto pro profissional testar. A classificação é só percepção — o
+// resultado é retornado/registrado, nunca consumido por nenhuma
+// decisão de ação aqui. Resposta nunca é gravada em
+// conversation_messages, nunca altera state/mandate/opportunity/
+// booking.
 export async function runIntelligenceTestCall(conversationId: string): Promise<IntelligenceTestResult> {
   const supabase = await createClient();
 
@@ -68,6 +72,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
   // como código sanitizado, nunca a mensagem técnica original (essa
   // fica só dentro da tool, descartada; ver context-builder/sections.ts).
   let unavailableSources: string[] = [];
+  let classification: IntentClassification | null = null;
 
   async function finishRun(status: 'completed' | 'failed', error: string | null) {
     if (!run) return;
@@ -81,6 +86,17 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
       calledTools,
       error: combinedError,
       fallbackUsed,
+      classification: classification
+        ? {
+            primaryIntent: classification.primaryIntent,
+            secondaryIntents: classification.secondaryIntents,
+            competencies: classification.relevantCompetencies,
+            modelConfidence: classification.modelConfidence,
+            effectiveConfidence: classification.effectiveConfidence,
+            contextCompleteness: classification.contextCompleteness,
+            classificationStatus: classification.classificationStatus,
+          }
+        : undefined,
     });
   }
 
@@ -95,6 +111,21 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
   calledTools = buildResult.calledTools;
   unavailableSources = buildResult.unavailableSources.map((u) => u.source);
   const { contextPackage } = buildResult;
+
+  // Percepção (Bloco 3) — só classifica, nunca decide nada a partir
+  // disso aqui. Nunca lança: classifyIntent() sempre resolve, mesmo
+  // em falha (cai em classificationStatus:'invalid').
+  const classifyResult = await classifyIntent(toolCtx, contextPackage);
+  classification = classifyResult.classification;
+  await supabase.rpc('log_ai_usage_event', {
+    p_feature: AI_FEATURE_INTENT_CLASSIFICATION,
+    p_model: AI_MODEL,
+    p_status: classification.classificationStatus === 'invalid' ? 'error' : 'success',
+    p_conversation_id: conversationId,
+    p_input_tokens: classifyResult.inputTokens,
+    p_output_tokens: classifyResult.outputTokens,
+    p_run_id: run?.id ?? null,
+  });
 
   const representedName = resolveProfessionalDisplayName(contextPackage);
   const context = renderContextForPrompt(contextPackage);
@@ -133,7 +164,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
     await logUsage('success', inputTokens, outputTokens);
     await finishRun('completed', null);
 
-    return { ok: true, responseText: response.output_text, inputTokens, outputTokens };
+    return { ok: true, responseText: response.output_text, inputTokens, outputTokens, classification };
   } catch (err) {
     // Mensagem de erro do SDK da OpenAI nunca inclui a chave (vem do
     // corpo da resposta HTTP da API, que nunca ecoa a Authorization
