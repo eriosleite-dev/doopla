@@ -3273,13 +3273,65 @@ tool de escrita, não altera o Bloco 4 (congelado).
   não têm tipos gerados (`src/lib/supabase/types.ts` não foi
   regenerado — precisa rodar `supabase gen types` contra o projeto
   real depois que a migration for aplicada lá).
-- **Commit**: aguardando — implementação completa, testada
-  extensivamente contra Postgres real e TS puro, mas **não commitada
-  ainda** (ver próximo passo abaixo). Nenhum merge, nenhum avanço pro
-  Post-model Policy Gate.
+- ✅ **Commit inicial**: `ac86f26`.
 
-**Próximo passo**: Red Team adversarial da implementação real (não do
-desenho) antes de qualquer merge — igual ao padrão dos Blocos 1-4.
+### Red Team adversarial da implementação (não do desenho) — PASS COM RESSALVAS, 4 achados reais corrigidos
+
+Auditoria contra o commit `ac86f26`, com ataques reais executados
+(nunca só teóricos) — SQL direto contra Postgres real e injeção de
+model call hostil em TS, cobrindo as 10 áreas obrigatórias pedidas
+(autorização acidental, provenance/grounding cross-tenant,
+idempotência/concorrência avançada, revalidação F1/F2 em lote,
+bounded lineage, rate limiter/backoff, tenant isolation nas 6 tabelas
+e 8 RPCs, outputs hostis do model, divergência de budget_exceeded,
+golden suite).
+
+**4 achados reais, corrigidos** (commit `0c2f7b8`, todos bugs
+inequívocos contra invariante já explícita na spec, nenhum exigiu
+decisão arquitetural):
+1. `resolver.ts` nunca verificava que `communicatedProposalMessageIds`
+   do model realmente pertencia ao `ResolutionContext` fornecido — um
+   model hostil/alucinado passava sem erro. Violava o
+   closed-candidate-selection principle (V2). Provado com um
+   `modelCall` injetado retornando um ID fora de contexto.
+2. Os 13 `value-schemas.ts` nunca eram consultados no pipeline real —
+   `approvedValue` malformado (campo ausente, tipo errado, extra)
+   passava sem validação. Provado com `amountCents: "trezentos reais"`
+   aceito sem erro.
+3. **Mais grave**: nada verificava `author_type='professional'` da
+   mensagem usada como `professional_statement_message_id` — a
+   mensagem do CLIENTE ("Pedem R$3.000?") virou, sem checagem nenhuma,
+   uma `approval_records` real atribuída ao profissional. Violação
+   direta de KNOW≠APPROVE. Provado com escrita real no banco,
+   corrigido nos dois pontos (`try_acquire_approval_resolution_claim` e
+   `commit_approval_resolution`, defesa em profundidade).
+4. `reserve_approval_dispatch_token`/`release_approval_resolution_claim`
+   nunca verificavam posse (`auth.uid()` contra o dono da mensagem) —
+   mitigado na prática pela entropia do `lease_token`, mas
+   inconsistente com toda outra function da migration.
+
+**1 achado real reportado, deliberadamente não corrigido** (exige
+decisão arquitetural, não decidida sozinho): `commit_approval_resolution`
+aceita `commercialRootId`/`communicatedProposalMessageIds` do caller
+sem revalidação cruzada contra a raiz comercial real da conversa — só
+protegido hoje pela confiabilidade do `orchestrator.ts`, não pela RPC
+em si contra uma chamada direta forjada (as RPCs `security definer`
+são chamáveis diretamente por qualquer `authenticated`, não só pelo
+orchestrator TS). Provado com escrita real de um `approval_records`
+apontando pro booking de outro profissional. Ver relatório completo
+entregue na conversa (seção E/decisão pendente).
+
+**Regressão completa revalidada após cada fix**: 43 asserções SQL
+contra Postgres real (regressão original + os novos ataques,
+incluindo mensagem composta com 2 decisões na mesma chain, takeover
+real de worker com lease expirado, descarte de lote inteiro em
+F1≠F2, varredura sistemática cross-tenant nos 8 RPCs) + 38 TS
+determinísticas + `tsc`/`eslint`/`next build` limpos.
+
+- ✅ **Commit de correção**: `0c2f7b8`.
+- 🔒 **Nenhum merge, nenhum PR, Post-model Policy Gate não iniciado.**
+  Aguardando decisão sobre o achado não corrigido antes de considerar
+  o Bloco 5 fechado.
 
 ## Como usar isso
 
