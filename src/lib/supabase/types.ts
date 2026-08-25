@@ -642,6 +642,26 @@ export type FounderVoucher = {
   created_at: string;
 };
 
+// Dados de recebimento (adendo WhatsApp/concierge, migration 0046).
+// Append-only versionado — status='active' é sempre a única linha
+// vigente por profile_id, o resto é histórico/auditoria.
+export type PaymentMethod = 'pix';
+export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria';
+export type PaymentDetailsStatus = 'active' | 'superseded';
+
+export type PaymentDetails = {
+  id: string;
+  profile_id: string;
+  method: PaymentMethod;
+  pix_key_type: PixKeyType | null;
+  pix_key: string | null;
+  holder_name: string | null;
+  status: PaymentDetailsStatus;
+  created_at: string;
+  created_by: string;
+  superseded_at: string | null;
+};
+
 export type PayoutRequestStatus = 'solicitado';
 
 export type PayoutRequest = {
@@ -940,6 +960,14 @@ export type Database = {
         Update: Partial<PayoutRequest>;
         Relationships: [];
       };
+      payment_details: {
+        Row: PaymentDetails;
+        // Sem Insert/Update reais — RLS não permite escrita direta,
+        // único caminho é a RPC set_payment_details (migration 0046).
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       reviews: {
         Row: Review;
         Insert: Partial<Review> &
@@ -1084,6 +1112,19 @@ export type Database = {
           p_offered_cents: number | null;
         };
         Returns: string;
+      };
+      set_payment_details: {
+        Args: {
+          p_method: PaymentMethod;
+          p_pix_key_type: PixKeyType | null;
+          p_pix_key: string | null;
+          p_holder_name: string | null;
+        };
+        Returns: PaymentDetails;
+      };
+      is_operationally_ready: {
+        Args: { p_profile_id: string };
+        Returns: boolean;
       };
       request_representation_link: {
         Args: { p_target_profile_id: string; p_message: string | null };

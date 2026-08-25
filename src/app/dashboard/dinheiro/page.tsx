@@ -11,7 +11,9 @@ import {
 } from '../data';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
+import { PaymentDetailsCard } from './payment-details-card';
 import { PayoutForm } from './payout-form';
+import type { PaymentDetails } from '@/lib/supabase/types';
 
 export const metadata: Metadata = {
   title: 'Pagamentos | Doopla',
@@ -36,6 +38,13 @@ export default async function DinheiroPage() {
     totalReceivedCents,
     supabase
   );
+
+  const { data: activePaymentDetails } = await supabase
+    .from('payment_details')
+    .select('id, pix_key_type, pix_key, holder_name')
+    .eq('profile_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle<Pick<PaymentDetails, 'id' | 'pix_key_type' | 'pix_key' | 'holder_name'>>();
 
   return (
     <main className="flex flex-col gap-8">
@@ -62,6 +71,19 @@ export default async function DinheiroPage() {
           <PayoutForm />
         </div>
       </section>
+
+      <PaymentDetailsCard
+        key={activePaymentDetails?.id ?? 'unset'}
+        active={
+          activePaymentDetails?.pix_key_type && activePaymentDetails.pix_key
+            ? {
+                pixKeyType: activePaymentDetails.pix_key_type,
+                pixKey: activePaymentDetails.pix_key,
+                holderName: activePaymentDetails.holder_name,
+              }
+            : null
+        }
+      />
 
       <section className={cardClass}>
         <p className={eyebrowClass}>Solicitações de saque</p>
