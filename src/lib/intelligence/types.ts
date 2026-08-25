@@ -209,6 +209,22 @@ export type OrchestratorRunClassification = {
   classificationStatus: 'classified' | 'ambiguous' | 'invalid';
 };
 
+// Bloco 4 — metadados do Response Planner a registrar num run, quando
+// aplicável. Mesmo raciocínio estrutural do comentário acima: nunca
+// importa o módulo planner/. professionalDecisionCategory fica como
+// string[] livre (espelha a coluna, sem CHECK — ver migration 0044).
+// Nunca carrega proposedResponse/missingInformation/evidenceUsed em
+// detalhe — só as contagens (ver counts abaixo).
+export type OrchestratorRunPlan = {
+  responsePlan: string;
+  commitmentNature: 'report_existing_fact' | 'new_or_changed_commitment' | 'not_applicable';
+  requiresProfessionalDecision: boolean;
+  professionalDecisionCategory: string[];
+  professionalDecisionSignal: 'none' | 'candidate_contextual' | 'candidate_ambiguous';
+  missingInformationCount: number;
+  evidenceUsedCount: number;
+};
+
 export type OrchestratorRunFinish = {
   runId: string;
   status: OrchestratorRunStatus;
@@ -216,4 +232,5 @@ export type OrchestratorRunFinish = {
   error: string | null;
   fallbackUsed: boolean;
   classification?: OrchestratorRunClassification;
+  plan?: OrchestratorRunPlan;
 };

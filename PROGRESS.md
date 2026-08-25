@@ -2919,9 +2919,225 @@ todos os Blocos 1–3 (9 suítes) sem falha. `tsc`/`eslint`/`build`
 limpos. **Nenhuma migration alterada/criada** — 0043 continua a
 última.
 
-- ⏳ **Aguardando você rodar a golden suite real de novo em Preview**
-  e reportar resultados antes do merge. PR ainda não criado. Não
-  avançar para o Bloco 4.
+- ✅ **Terceira golden suite real rodada em Preview pelo usuário:
+  39/39.** Bloco 3 aprovado e **mesclado** (PR #5, commit `bcbcc11`,
+  em `claude/doopla-backend-login-db-fj5j3y`).
+
+## 33. Doopla Intelligence Core v1 — Bloco 4: Structured Decision + Response Planner v1 (dry-run) (implementado, aguardando auditoria adversarial)
+
+Camada de PLANEJAMENTO do Core — depois da percepção (Bloco 3), antes
+de qualquer ação real (que ainda não existe). PERCEBER → PLANEJAR,
+nunca PLANEJAR → AGIR: nenhuma saída do Planner produz efeito
+colateral, nada é enviado, nenhuma tool de escrita executa, nenhuma
+approval é criada, nenhum state/booking/opportunity muda.
+`requiresProfessionalReviewBeforeSend` é literal `true`, reforçado em
+três camadas independentes (tipo TS, fora do schema do model, CHECK no
+banco).
+
+Três invariantes estruturais desenhadas com o usuário antes do código:
+**CONHECER ≠ APROVAR ≠ COMPROMETER**, **INTENÇÃO ≠ DECISÃO**,
+**CONHECER ≠ COMPARTILHAR** (disclosure é responsabilidade do
+Post-model Policy Gate futuro, não deste bloco).
+
+- `src/lib/intelligence/planner/`: `response-plan.ts` (8 valores de
+  `ResponsePlan`; só 6 disponíveis pro model — `wait_for_external_
+  participant`/`wait_for_professional` ficam no contrato mas são
+  estruturalmente impossíveis de o model v1 produzir, faltando Pending
+  Work real), `decision-categories.ts` (13 `ProfessionalDecisionCategory`
+  + `INTENT_MANDATORY_DECISION_CATEGORIES` — só pisos *realmente*
+  universais por intent; o resto o model propõe e o código só valida/
+  une, nunca remove), `types.ts` (`PlannerDecision`, `CommitmentNature`
+  — `report_existing_fact`/`new_or_changed_commitment`/`not_applicable`
+  — e `ProfessionalDecisionSignal`, sinal NÃO-autoritativo —
+  `candidate_contextual` nunca significa aprovação), `planner-context.ts`
+  (projeção do `ContextPackage` diferente da do Classifier: aqui
+  precisa dos FATOS de verdade, não só flags, pra poder citar
+  `EvidenceUsed` com provenance real), `invariants.ts` (autoridade
+  final do contrato — o model propõe, código só torna mais
+  conservador), `plan.ts` (`planResponse()`, mesmo padrão de DI de
+  `classifyIntent()`), `golden-suite.ts`, `prompt.ts`, `config.ts`.
+- `EvidenceUsed` (não só `ContextFact`): aponta pra fatos estruturados
+  OU pra uma `conversation_message` inteira (nunca fatiada por frase),
+  mesmo `sourceType` que o Context Builder já usa pra provenance de
+  mensagem.
+- `answer_with_known_information` só é permitido quando
+  `requiresProfessionalDecision === false` — que por sua vez só é
+  `true` quando `commitmentNature === 'new_or_changed_commitment'`
+  *e* isso ativou pelo menos uma categoria (mandatória ou proposta
+  pelo model e validada). "Qual foi mesmo o valor combinado?" com
+  booking existente → `report_existing_fact`, sem decisão nova. "Pode
+  fazer por R$2.500?" → `new_or_changed_commitment`, sempre consulta.
+- `commitmentNature='report_existing_fact'` só sobrevive com
+  `EvidenceUsed` grounded de verdade contra o `ContextPackage` — sem
+  lastro, código rebaixa pra `new_or_changed_commitment` (nunca o
+  contrário).
+- `professionalDecisionSignal`: força `'none'` pra qualquer autor que
+  não seja o profissional; `'candidate_contextual'` só sobrevive com
+  evidência grounded, senão vira `'candidate_ambiguous'` (→
+  `clarify_ambiguity`). "Fechado" do profissional com proposta
+  completa no contexto → `candidate_contextual`, nunca aprovação real;
+  sem contexto → `clarify_ambiguity` dirigido a ele.
+- `no_response_needed` reservado pra gatilho sem texto utilizável —
+  qualquer mensagem humana real (mesmo "Bom dia! Tudo bem?") vira no
+  mínimo `acknowledge`, nunca silêncio.
+- `wait_for_*` desabilitado estruturalmente no v1 (fora do schema do
+  model) — fica no enum só pro contrato futuro, quando Pending Work
+  existir.
+- Observability: migration `0044`, aditiva em `orchestrator_runs`
+  (mesmo padrão da 0043) — `response_plan`/`professional_decision_signal`
+  ganham CHECK (vocabulário estável), `professional_decision_category`
+  fica sem CHECK (array de vocabulário extensível, mesmo raciocínio de
+  `competencies`). Nunca persiste `proposedResponse`/
+  `missingInformation`/`evidenceUsed` em detalhe — só contagens.
+  `requires_professional_review_before_send` tem CHECK `= true` —
+  confirmado contra Postgres real que um `UPDATE` direto tentando
+  `false` é fisicamente rejeitado pelo banco, não só impedido em
+  TypeScript.
+- `test-call.ts` passa a chamar `planResponse()` depois de
+  `classifyIntent()` — resultado só registrado/retornado, nunca
+  consome a decisão do Planner pra decidir a resposta de teste em si.
+- Golden suite (`/dev/planner-golden-suite`, mesmo padrão seguro do
+  Bloco 3) com os casos exigidos: relato de fato existente (valor/
+  endereço) vs. novo compromisso (desconto/mudança de endereço que
+  compromete), social sempre com `acknowledge`, profissional
+  reportando fato vira `acknowledge`, "Fechado" com/sem contexto,
+  controle de que `requiresProfessionalReviewBeforeSend` nunca sai de
+  `true`. **Não executada por mim** — ambiente sem `OPENAI_API_KEY`,
+  mesma limitação honesta do Bloco 3.
+- Testes determinísticos/adversariais (40 checks): grounding de
+  `EvidenceUsed` contra `ContextPackage` real (positivo/negativo/
+  inventado), `resolveCommitmentNature` nunca promove sem lastro,
+  `computeDecisionCategories` prova INTENT≠DECISION e união-nunca-
+  subtração, `resolveProfessionalDecisionSignal`, todos os pisos de
+  `resolveResponsePlan`, fim-a-fim com `planResponse()` (incl. fato
+  inventado pelo model sendo pego, model "mentindo" sendo rebaixado,
+  falha total do model caindo em fallback conservador, draft
+  descartado quando o plano final diverge do proposto), concorrência.
+  "Trap" supabase prova estruturalmente que `planResponse()` nunca
+  toca `supabase.from()`/`.rpc()`. Regressão completa (10 suítes, ~190
+  checks) sem falha. `npm run build`/`tsc`/`eslint` limpos. Migration
+  0044 validada contra Postgres real, incluindo os dois `CHECK`
+  físicos (`requires_professional_review_before_send`/`response_plan`)
+  rejeitando update direto fora do contrato.
+- ✅ **Bloco 4 aprovado para freeze** — commit auditado `10c7154`.
+  Congelado: nenhuma alteração no código do Planner sem razão
+  arquitetural demonstrável. As 3 limitações documentadas na
+  auditoria viraram requisitos obrigatórios do Post-model Policy Gate
+  (seção abaixo). PR ainda não criado — merge aguardando confirmação
+  explícita.
+
+### Auditoria adversarial do Bloco 4 (commit `ede4a8b`) — PASS COM RESSALVAS, 5 achados reais corrigidos
+
+Objetivo explícito: provar que a arquitetura está errada, não confirmar
+que os testes passam. Cobriu os 18 pontos pedidos: INTENT≠DECISION
+(minimal pairs), KNOW≠SHARE (grep estrutural), KNOW≠APPROVE≠COMMIT
+(precedente histórico), coreferência de `professionalDecisionSignal`,
+quebra de `EvidenceUsed`, categorias propostas pelo model, draft
+adversarial, disponibilidade/corporativo-privado, `acknowledge` vs.
+silêncio, `wait_for_*`, falhas/indisponibilidade, tenant isolation
+(Postgres real, rebuild 0001–0044 do zero), observability/privacy,
+concorrência/determinismo, golden suite, regressão completa.
+
+**5 achados reais, todos corrigidos com teste de regressão**:
+1. `answer_with_known_information` (severidade alta) não exigia
+   NENHUMA evidência grounded — um model podia declarar essa resposta
+   com `evidenceUsed` vazio (nada citado, ou tudo descartado na
+   validação) e nada bloqueava um draft fabricado. Corrigido: piso
+   novo em `resolveResponsePlan` — sem evidência validada, rebaixa
+   pra `consult_professional`, mesmo com `requiresProfessionalDecision
+   =false`. Achado via cenário "booking `unavailable` + model
+   alucinando um fato".
+2. `orcamento`/`desconto` podiam virar `report_existing_fact` citando
+   evidência REAL mas do valor ANTIGO/errado (ex.: "Pode fazer por
+   R$2.500?" citando o cachê antigo de R$3.000 como se "confirmasse"
+   um relato). Corrigido: piso determinístico — esses dois intents,
+   por definição do Bloco 3, são sempre negociação prospectiva, nunca
+   relato, então nunca podem ser `report_existing_fact`, com ou sem
+   evidência.
+3. `professionalDecisionSignal="candidate_contextual"` só exigia
+   "alguma evidência", nunca uma evidência ANCORADA EM CONVERSA —
+   fatos estruturados de fundo sozinhos (sem nenhuma mensagem real)
+   não provam que uma proposta foi de fato comunicada. Corrigido:
+   exige pelo menos uma evidência `conversation_message` entre as
+   grounded.
+4. `wait_for_external_participant`/`wait_for_professional` eram
+   impossíveis só por estarem fora do schema do model — sem piso de
+   código redundante caso um bug futuro afrouxasse o schema.
+   Adicionada defesa em profundidade em `resolveResponsePlan`.
+5. Arrays controlados pelo model (`evidenceUsed`/`missingInformation`)
+   não tinham limite — um model quebrado podia devolver milhares de
+   itens (custo de token, ruído em observability). Adicionado
+   `MAX_EVIDENCE_USED`/`MAX_MISSING_INFORMATION` (corte determinístico,
+   preserva ordem).
+
+Prompt reforçado com 2 regras gerais (não caso-específicas): precedente
+histórico de outro trabalho/data nunca sustenta `report_existing_fact`
+("da última vez foi X" é sempre `new_or_changed_commitment`); o draft
+nunca pode afirmar mais do que os campos estruturados sustentam (nunca
+"podemos confirmar"/"está confirmado" quando não há decisão tomada).
+
+**Limitações documentadas, não fecháveis em código no Bloco 4** (ver
+relatório completo entregue ao usuário): (a) coreferência completa de
+`professionalDecisionSignal` — evidência ancorada prova que uma
+mensagem real existe, nunca que é A proposta vigente entre duas
+concorrentes; (b) draft adversarial — nenhum mecanismo determinístico
+pode validar que o TEXTO do draft não implica compromisso além do que
+os campos estruturados garantem; (c) `booking_update`/`condicao_pagamento`
+continuam dependendo do julgamento semântico do model pra distinguir
+relato de mudança (só `orcamento`/`desconto` têm piso determinístico
+por serem sempre prospectivos). Os três são riscos explícitos que o
+Post-model Policy Gate (ou uma verificação de conteúdo dedicada)
+precisa endereçar antes de qualquer capacidade de envio existir.
+
+Golden suite ampliada com 15 novos casos (minimal pairs READ vs.
+CHANGE, precedente histórico, corporativo vs. privado, fonte ausente,
+sinal em tópico errado). 80 checks determinísticos/adversariais novos
+(rebuild de Postgres do zero incl. isolamento de tenant específico do
+Planner, `anon` sem EXECUTE, runs antigos continuam válidos) +
+regressão completa (10 suítes, ~230 checks) sem falha. `build`/`tsc`/
+`eslint` limpos. **Nenhuma migration nova** — todas as correções são
+prompt/lógica de código/dados de teste; `0044` continua a última.
+
+### Post-model Policy Gate — requisitos obrigatórios de segurança (fixados na aprovação de freeze do Bloco 4)
+
+As 3 limitações documentadas na auditoria adversarial do Bloco 4 não
+são mais "riscos conhecidos" — são requisitos de entrada obrigatórios
+pro Post-model Policy Gate, definidos pelo usuário no momento da
+aprovação de freeze. Nenhuma capacidade real de envio/escrita pode ser
+habilitada antes destes três controles existirem:
+
+1. **Coreferência e proposta vigente**: uma `EvidenceUsed` do tipo
+   `conversation_message` grounded não é suficiente pra tratar uma
+   confirmação como válida. Antes de qualquer mensagem que produza
+   compromisso, o Gate precisa verificar semanticamente que o aceite
+   se refere inequivocamente à proposta/condição ATUALMENTE em
+   questão. Duas ou mais propostas, alterações sucessivas, referente
+   ambíguo ou escopo incerto → bloquear compromisso, consultar o
+   profissional.
+2. **Semantic Draft vs. Authorized Scope**: o Gate precisa verificar o
+   CONTEÚDO efetivamente redigido em `proposedResponse`, não só
+   `responsePlan`/`commitmentNature`/`professionalDecisionCategory`/
+   `evidenceUsed`. O draft não pode afirmar, aceitar, prometer ou
+   implicar nenhuma decisão comercial/operacional além do escopo
+   explicitamente autorizado e grounded. Exemplo crítico fixado pelo
+   usuário: "O cachê é R$3.000 e podemos confirmar" — mesmo com
+   R$3.000 grounded, "podemos confirmar" é compromisso adicional sem
+   aprovação correspondente e precisa ser bloqueado.
+3. **Relato vs. mudança**: pra `booking_update`/`condicao_pagamento`/
+   demais categorias mutáveis, o Gate NÃO pode confiar só na
+   classificação semântica do Planner (`commitmentNature`) pra
+   distinguir `report_existing_fact` de proposta/mudança — precisa
+   verificação própria de se o draft só relata estado já aprovado ou
+   introduz/altera condição.
+
+**Fail closed** é o princípio geral: em dúvida semântica, ambiguidade,
+conflito de evidência ou impossibilidade de provar autorização
+suficiente, nunca enviar como compromisso — sempre escalar pra
+consulta/aprovação.
+
+**Não alterar o Bloco 4 (congelado) pra absorver estas
+responsabilidades sem uma razão arquitetural demonstrável** — são
+responsabilidades do Gate, não do Planner.
 
 ## Como usar isso
 
