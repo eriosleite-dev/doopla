@@ -3333,6 +3333,57 @@ determinísticas + `tsc`/`eslint`/`next build` limpos.
   Aguardando decisão sobre o achado não corrigido antes de considerar
   o Bloco 5 fechado.
 
+## 35. Adendo WhatsApp/concierge — dados de recebimento + auditoria de plano (Bloco 5 intocado)
+
+Documento de produto grande (WhatsApp-first, e-mail de booking Pro,
+dados de recebimento). Antes de implementar, revisei a arquitetura
+real e reportei achados/conflitos (não repetidos aqui, ver histórico
+da conversa) — usuário decidiu os dois conflitos e autorizou só um
+subconjunto pra implementar agora.
+
+- ✅ **Mapeamento (sem alterar nada)**: `/orcamento/[slug]` e
+  `submit_orcamento_request()` (migration 0023) são a única porta
+  pública de cliente hoje, e criam `opportunities` diretamente — nunca
+  passam pela Intelligence Core (`create_conversation()` só é chamada
+  em `/dev/intelligence-test`, nunca em produção). URL construída em
+  exatamente 2 lugares (`dashboard/page.tsx`, `dashboard/perfil/page.tsx`),
+  exibida via `orcamento-link-card.tsx`/`link-routing-card.tsx`.
+  Decisão do usuário: isso vira, no futuro, um redirecionamento pro
+  WhatsApp — não implementado agora, de propósito.
+- ✅ **Achado que evitou uma migration desnecessária**: o plano público
+  "Doopla / Doopla Pro" (R$29,90/R$59,90) **já existe** —
+  `subscriptions.artist_plan` (migration 0036), preexistente a esta
+  sessão. `booker_plan` continua intocado, tratado como legado
+  conforme instruído. Adicionado `hasDooplaPro()` em
+  `src/lib/subscription.ts` — gate canônico, role-consciente, nunca
+  deriva de `booker_plan`. Booker ainda não tem equivalente — não
+  inventei um, fica como pergunta em aberto.
+- ✅ **Migration `0046_payment_details.sql`**: `payment_details`
+  (Pix, `method` extensível) append-only versionado — mesmo padrão de
+  `approval_records` do Bloco 5 (toda alteração insere linha nova,
+  marca a anterior `superseded`, nunca `UPDATE` in-place — auditoria
+  de quando/quem/vigente-em-T de graça). Escrita exclusiva via
+  `set_payment_details()` (security definer); RLS select-own,
+  deny-all pra escrita direta. `is_operationally_ready(profile_id)`
+  representa "Doopla pronta pra operar" (existe recebimento ativo),
+  sempre derivado da tabela real — nunca uma coluna denormalizada.
+  Testado com 9 asserções reais contra Postgres (prontidão
+  falsa→verdadeira, supersessão nunca duplica ativo, validação de
+  chave vazia/método não suportado, isolamento de tenant).
+- ✅ **Painel**: seção "Dados de recebimento" em `/dashboard/dinheiro`
+  — cadastro/edição de Pix, chave mascarada na exibição, cópia sem
+  jargão técnico ("Seus dados de recebimento ficam protegidos na sua
+  conta Doopla").
+- ✅ `tsc`/`eslint`/`next build` limpos.
+- ✅ **Commit**: `fb6ecd9`.
+- 🔒 **Deliberadamente fora desta rodada** (por instrução explícita):
+  integração real de WhatsApp, Resend, alias de e-mail
+  `booking.nome@doopla.pro`, lead reverso via WhatsApp, substituição
+  destrutiva de `/orcamento/[slug]`, qualquer wiring novo entre
+  Intelligence Core e fluxos reais do produto. Bloco 5 (Approval
+  Engine) não foi tocado nem referenciado por nenhuma linha desta
+  rodada.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
