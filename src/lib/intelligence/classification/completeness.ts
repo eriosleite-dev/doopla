@@ -24,6 +24,9 @@ const INTENT_DEPENDENCIES: Record<Intent, readonly ('opportunity' | 'booking' | 
   reclamacao: ['booking'],
   suporte: [],
   booking_update: ['booking'],
+  // Estado financeiro de um trabalho já existente — depende do booking
+  // (nunca opportunity, que é pré-fechamento).
+  financeiro_booking: ['booking'],
   treinamento_profissional: [],
   outro: [],
 };

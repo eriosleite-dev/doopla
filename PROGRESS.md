@@ -2691,13 +2691,65 @@ separados, `contextCompleteness` calculado por dependência de intent,
   inválido, `primary_intent` aceita texto livre, `anon` bloqueado) —
   todos PASS. Regressão completa dos Blocos 1 e 2 (14+5+29+34 checks)
   sem falha. `npm run build`/`tsc`/`eslint` limpos.
-- ⏳ **Aguardando auditoria adversarial do usuário antes de aprovação
-  e merge** — mesmo processo dos Blocos 1 e 2. Não mesclado ainda.
 - ⏳ Continua fora: Response Planner, `CoreDecision` operacional,
   Post-model Policy Gate completo, execução de tool a partir do
   model, Approval Engine, nova State Machine, tools de escrita/ação,
   resposta automática, WhatsApp/e-mail, collaborator/booker, Actor
   Preferences, painel, memória vetorial/embeddings.
+
+### Auditoria adversarial do Bloco 3 — achado real corrigido + 2 ajustes pós-aprovação
+
+Auditoria partindo do princípio de que output/confidence do model e
+texto do usuário são não confiáveis. Cobriu: 15 intents com exemplos
+adversariais, prompt injection, Competence Router, multi-intent,
+confidence (sweep exaustivo de 648 combinações), context completeness
+(os 5 estados + precedência + multi-intent), vazamento de
+`ClassificationContext`, provenance/imutabilidade, falhas da OpenAI,
+migration 0043 contra Postgres real (incl. tentativa de spoof
+cross-tenant via `finish_orchestrator_run`), concorrência, escala.
+
+- ⚠️→✅ **Achado real**: `secondaryIntents` do model não era
+  deduplicado nem tinha `primaryIntent` removido — um model repetindo
+  valores inflava artificialmente a heurística de confiança "muitos
+  secundários" e sujava `orchestrator_runs.secondary_intents` com
+  ruído. Corrigido em `classify.ts`: dedupe + remoção do primary antes
+  de qualquer cálculo posterior. Confirmado com array de 500
+  elementos/2 valores únicos.
+- ✅ **Lacuna real de taxonomia encontrada e documentada** (não
+  corrigida na hora, por instrução explícita da auditoria): nenhum
+  intent cobria "estado/acontecimento financeiro de um booking já
+  existente" (ex.: "Recebi metade.").
+- ✅ **Ajuste pós-aprovação 1 — taxonomia corrigida**: novo intent
+  `financeiro_booking` (15º), roteando deterministicamente só pra
+  `financeiro`. Fronteira explícita no prompt contra
+  `orcamento`/`desconto`/`condicao_pagamento`/`cobranca`/
+  `booking_update` (ex.: "fechei sábado por 3 mil" continua
+  `booking_update` — o preço do acordo não é um evento financeiro
+  separado; só vira `financeiro_booking` secundário quando a mensagem
+  relata um evento de dinheiro à parte, como "...já recebi o sinal").
+  **Nenhuma migration nova** — `primary_intent`/`secondary_intents`/
+  `competencies` já são texto livre sem check constraint na 0043,
+  exatamente pra isso; confirmado contra Postgres real com o valor
+  literal `financeiro_booking`, migration 0043 intocada. Red Team
+  dedicado da fronteira (21 checks) + regressão completa — sem falha.
+- ✅ **Ajuste pós-aprovação 2 — golden suite semântica**: adicionado
+  `src/lib/intelligence/classification/golden-suite.ts` (32 casos
+  reais: inequívocos, ambíguos, multi-intent, coloquiais, erro de
+  português, transcript de áudio imperfeito, inglês, mistura PT/EN,
+  sem intenção operacional, mudança de assunto no meio, dependente de
+  mensagem anterior, e os 6 casos financeiros novos) e uma rota dev
+  isolada (`/dev/classification-golden-suite`) que roda cada caso
+  contra o model REAL — `ContextPackage`/conversa sintéticos em
+  memória, zero gravação em banco, mesma abstração já auditada
+  (`getOpenAIClient()`, chave nunca sai do servidor). **Não executado
+  por mim** — este sandbox não tem `OPENAI_API_KEY` (só existe no
+  ambiente Preview); pronta pra o usuário rodar e reportar
+  input/esperado/retornado/confidences/status/PASS-FAIL por caso.
+- ✅ Regressão completa (Blocos 1–3 + todos os adversariais, ~130
+  checks de lógica + 20 reais contra Postgres) sem falha real.
+  `npm run build`/`tsc`/`eslint` limpos.
+- ⏳ **Aguardando você rodar a golden suite em Preview e reportar
+  resultados** antes do merge. PR ainda não criado.
 
 ## Como usar isso
 

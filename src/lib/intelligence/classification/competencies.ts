@@ -34,6 +34,10 @@ const INTENT_COMPETENCIES: Record<Intent, readonly Competency[]> = {
   reclamacao: ['relacionamento', 'suporte'],
   suporte: ['suporte'],
   booking_update: ['comercial_negociacao', 'producao'],
+  // Estado/acontecimento financeiro de um trabalho já existente — só
+  // financeiro, nunca comercial_negociacao (não há negociação
+  // acontecendo, só relato de fato) nem producao.
+  financeiro_booking: ['financeiro'],
   treinamento_profissional: ['suporte', 'relacionamento'],
   outro: [],
 };

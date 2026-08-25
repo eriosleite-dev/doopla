@@ -1,0 +1,121 @@
+import type { Intent } from './intents';
+
+// Doopla Intelligence Core v1 — Bloco 3: golden suite semântica.
+//
+// Não é um teste de engenharia (isso já é coberto por
+// bloco3-tests/bloco3-audit-tests, com model call simulado). Isto é
+// a lista de casos representativos de linguagem real de booking e
+// rotina profissional, com o(s) intent(s) esperado(s), pensada pra
+// rodar contra o model de verdade — hoje só em Preview (ver
+// src/app/dev/classification-golden-suite/).
+//
+// expectedIntents: qualquer um destes valores como primaryIntent
+// conta como PASS — pra casos genuinamente ambíguos, listar mais de
+// um é intencional (o objetivo não é forçar uma "resposta certa"
+// única, é confirmar que o model reconhece a leitura razoável em vez
+// de fabricar certeza sobre algo que não está nesta mensagem isolada).
+export type GoldenSuiteCase = {
+  name: string;
+  category: string;
+  input: string;
+  expectedIntents: Intent[];
+  note?: string;
+};
+
+export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
+  { name: 'orçamento inequívoco', category: 'orcamento', input: 'Quanto custa um show de 2 horas?', expectedIntents: ['orcamento'] },
+  { name: 'disponibilidade inequívoca', category: 'disponibilidade', input: 'Ela consegue sábado que vem?', expectedIntents: ['disponibilidade'] },
+  { name: 'desconto', category: 'desconto', input: 'Faz 2500 e fecha?', expectedIntents: ['desconto'] },
+  { name: 'condição de pagamento', category: 'condicao_pagamento', input: 'Pode ser 50% antes e 50% no dia do evento?', expectedIntents: ['condicao_pagamento'] },
+  { name: 'logística', category: 'logistica', input: 'Qual o endereço exato do evento?', expectedIntents: ['logistica'] },
+  { name: 'rider', category: 'rider', input: 'Manda o rider técnico pra galera da produção do local.', expectedIntents: ['rider'] },
+  {
+    name: 'contrato + pagamento',
+    category: 'contrato',
+    input: 'O contrato está certo, mas ainda não recebi o sinal.',
+    expectedIntents: ['contrato', 'financeiro_booking'],
+    note: 'multi-intent plausível: contrato (documento) + financeiro_booking (sinal não recebido)',
+  },
+  { name: 'cobrança curta', category: 'cobranca', input: 'E a nota?', expectedIntents: ['cobranca'], note: 'mensagem muito curta — atenção à confiança reportada' },
+  { name: 'material profissional', category: 'material_profissional', input: 'Faz uma bio minha mais curta pro Instagram.', expectedIntents: ['material_profissional'] },
+  { name: 'reclamação', category: 'reclamacao', input: 'Esse cliente está me enrolando, já é a terceira vez que ele muda o horário.', expectedIntents: ['reclamacao'] },
+  { name: 'suporte', category: 'suporte', input: 'Não estou conseguindo entrar no meu painel da Doopla.', expectedIntents: ['suporte'] },
+  { name: 'booking informado por fora', category: 'booking_update', input: 'Fechei um trabalho sábado por R$3000.', expectedIntents: ['booking_update'] },
+  { name: 'preferência do profissional', category: 'treinamento_profissional', input: 'Não quero mais lembrete no dia que eu vou tocar.', expectedIntents: ['treinamento_profissional'] },
+  { name: 'financeiro — pagamento parcial recebido', category: 'financeiro_booking', input: 'Recebi metade.', expectedIntents: ['financeiro_booking'] },
+  { name: 'financeiro — pagamento pendente', category: 'financeiro_booking', input: 'O pagamento ainda não caiu.', expectedIntents: ['financeiro_booking'] },
+  { name: 'financeiro — sinal pago', category: 'financeiro_booking', input: 'O sinal foi pago.', expectedIntents: ['financeiro_booking'] },
+  { name: 'financeiro — promessa de pagamento', category: 'financeiro_booking', input: 'Ele disse que paga amanhã.', expectedIntents: ['financeiro_booking'] },
+  { name: 'financeiro — saldo restante recebido', category: 'financeiro_booking', input: 'Entrou o restante.', expectedIntents: ['financeiro_booking'] },
+  { name: 'financeiro — saldo pendente com valor', category: 'financeiro_booking', input: 'Ainda faltam R$800.', expectedIntents: ['financeiro_booking'] },
+  {
+    name: 'fronteira: negociação, não relato financeiro',
+    category: 'desconto (fronteira)',
+    input: 'Consegue baixar pra 2 mil?',
+    expectedIntents: ['desconto'],
+    note: 'testa se o model NÃO confunde negociação prospectiva com financeiro_booking',
+  },
+  {
+    name: 'ambígua — extremamente curta',
+    category: 'ambígua',
+    input: 'quanto?',
+    expectedIntents: ['orcamento', 'desconto', 'cobranca'],
+    note: 'genuinamente ambígua sem mensagem anterior — o teste real é se classificationStatus vem "ambiguous"/confiança baixa, não acertar um único valor',
+  },
+  {
+    name: 'ambígua — "pode ser"',
+    category: 'ambígua',
+    input: 'pode ser',
+    expectedIntents: ['orcamento', 'disponibilidade', 'condicao_pagamento', 'outro'],
+    note: 'resposta a algo fora desta mensagem isolada',
+  },
+  {
+    name: 'ambígua — "fechou"',
+    category: 'ambígua',
+    input: 'fechou',
+    expectedIntents: ['booking_update', 'desconto', 'outro'],
+  },
+  {
+    name: 'multi-intent simples',
+    category: 'multi-intent',
+    input: 'Ela está livre sábado? Se estiver, quanto fica?',
+    expectedIntents: ['disponibilidade', 'orcamento'],
+    note: 'espera-se primary+secondary cobrindo os dois, nunca só um escolhido arbitrariamente',
+  },
+  {
+    name: 'multi-intent logística+rider',
+    category: 'multi-intent',
+    input: 'Preciso trocar o horário e mandar o rider.',
+    expectedIntents: ['logistica', 'rider'],
+  },
+  {
+    name: 'coloquial + erro de português',
+    category: 'coloquial',
+    input: 'oi mano cê ta ai? preciso sabe quanto fica um trampo de 3h',
+    expectedIntents: ['orcamento'],
+  },
+  { name: 'inglês', category: 'idioma', input: 'Hey, is she available next Saturday?', expectedIntents: ['disponibilidade'] },
+  { name: 'mistura PT/EN', category: 'idioma', input: 'Oi, just checking se ela tá free no sábado', expectedIntents: ['disponibilidade'] },
+  {
+    name: 'transcript de áudio imperfeito',
+    category: 'transcript imperfeito',
+    input: 'oi ce consegue fazer duzentos reais amenos pra fechar hoje mesmo',
+    expectedIntents: ['desconto'],
+    note: 'simula transcrição de áudio (sem pontuação/acentos, palavras coladas)',
+  },
+  { name: 'sem intenção operacional', category: 'sem intenção', input: 'Bom dia! Tudo bem com você?', expectedIntents: ['outro'] },
+  {
+    name: 'muda de assunto no meio',
+    category: 'muda de assunto',
+    input: 'Sobre o show de sábado, ah e outra coisa, vocês fazem eventos corporativos também?',
+    expectedIntents: ['booking_update', 'orcamento', 'suporte'],
+    note: 'dois tópicos genuinamente diferentes na mesma mensagem',
+  },
+  {
+    name: 'depende de mensagem anterior (fora desta simulação)',
+    category: 'depende do contexto',
+    input: 'sim, pode ser',
+    expectedIntents: ['outro'],
+    note: 'sentido real depende de uma mensagem anterior que não existe nesta simulação isolada — mede comportamento conservador sem contexto',
+  },
+];
