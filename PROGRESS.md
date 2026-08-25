@@ -2849,6 +2849,76 @@ Blocos 1–3 (8 suítes, ~150 checks) sem falha. `npm run build`/`tsc`/
 só texto de prompt + lógica de confidence em código + dados de teste;
 confirmado que 0043 continua a última migration.
 
+- ✅ **Segunda golden suite real rodada em Preview pelo usuário:
+  31/32.** Único FAIL analisado e corrigido abaixo.
+
+### Rodada 3 do Bloco 3 — hardening de ambiguidade pra respostas dependentes de contexto (31/32)
+
+**FAIL único**: "sim, pode ser" isolado (sem histórico) devolveu
+`disponibilidade` + `booking_update` + `orcamento`, com
+`classificationStatus`/`effectiveConfidence` corretamente
+conservadores (`ambiguous`/`low`) — o status/confidence já estavam
+certos; o problema era o CONTEÚDO fabricado: o model inventou 3
+leituras operacionais específicas pra uma frase que, isolada, não tem
+nenhum conteúdo temático próprio, só confirma algo fora dela mesma.
+
+**Causa raiz**: nenhuma regra no prompt distinguia "mensagem
+genuinamente ambígua com conteúdo próprio" (ex.: "quanto?" — é sobre
+preço, só não se sabe de qual dos 3 sentidos) de "confirmação solta
+sem conteúdo temático próprio, dependente inteiramente de uma
+mensagem anterior que não está disponível" (ex.: "sim, pode ser",
+"fechado", "beleza") — o model tratava as duas categorias do mesmo
+jeito, "chutando" leituras plausíveis pra ambas.
+
+**Correção — regra geral no prompt, sem hardcode/regex**: como pedido
+explicitamente, a correção NÃO é uma lista de palavras em código nem
+um filtro determinístico por contagem — é uma instrução de julgamento
+semântico geral, com exemplos só ilustrativos (mesmo padrão das
+outras regras do prompt):
+1. Resposta que só faz sentido em função de mensagem anterior, sem
+   conteúdo temático próprio, e sem essa mensagem anterior disponível
+   no contexto → `primaryIntent="outro"`, `classificationStatus=
+   "ambiguous"`, `modelConfidence="low"` — nunca fabricar uma leitura
+   operacional específica só porque seria plausível em abstrato.
+2. Mais geral ainda: mensagem curta sem contexto anterior cujo texto,
+   sozinho, não tem NENHUM elemento temático que distinga entre
+   leituras (ex.: "quanto?") → `classificationStatus="ambiguous"`,
+   não uma escolha única "confiante". Diferente de mensagem curta que
+   JÁ tem âncora temática própria (ex.: "E a nota?" tem "nota", que
+   aponta pra cobrança mesmo sem contexto) — essa continua com leitura
+   única, só com confiança reduzida (regra do round 2, inalterada).
+
+**Sobre "quanto?" especificamente**: avaliado e decidido NÃO forçar
+`ambiguous` deterministicamente em código por contagem de palavras —
+isso destruiria exatamente a distinção acima (uma regra de código não
+sabe diferenciar "quanto?" de "E a nota?"; ambas são curtas e sem
+contexto, mas só a primeira é genuinamente multi-referente). A
+correção é inteiramente de prompt/julgamento do model; validação real
+depende da golden suite ao vivo.
+
+**Golden suite**: 6 novos casos isolados ("sim", "fechado", "beleza",
+"isso", "pode", "acho que sim"), todos `expectAmbiguous`, mais um
+CONTROLE NEGATIVO — a mesma palavra ("fechado") mas agora com uma
+mensagem anterior suficiente no contexto (`previousMessages`, campo
+novo no tipo `GoldenSuiteCase`, suportado agora por
+`buildSyntheticContext` em `actions.ts`), esperando uma leitura
+específica (`booking_update`), não `outro` — prova que a regra não
+deveria disparar quando há contexto real. Casos #19/#24/#25/#31 (na
+numeração da rodada anterior) intencionalmente não tocados.
+
+**Testes**: novo Red Team estrutural (sem rede) provando que (a) o
+código NUNCA sobrescreve o conteúdo que o model devolve — a decisão
+semântica é sempre do model/prompt, nunca fabricada em código; (b) o
+contexto anterior fornecido pela golden suite chega corretamente até
+`ClassificationContext` (`buildClassificationContext`); (c) com
+contexto suficiente presente, a regra de confidence "mensagem curta
+sem contexto" (round 2) não dispara; (d) sem contexto, ela continua
+ativa; (e) sanidade dos novos casos da golden suite e confirmação de
+que os casos protegidos não foram alterados. Regressão completa de
+todos os Blocos 1–3 (9 suítes) sem falha. `tsc`/`eslint`/`build`
+limpos. **Nenhuma migration alterada/criada** — 0043 continua a
+última.
+
 - ⏳ **Aguardando você rodar a golden suite real de novo em Preview**
   e reportar resultados antes do merge. PR ainda não criado. Não
   avançar para o Bloco 4.

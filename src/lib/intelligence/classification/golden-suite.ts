@@ -1,3 +1,4 @@
+import type { ConversationMessageAuthorType } from '@/lib/supabase/types';
 import type { Intent } from './intents';
 
 // Doopla Intelligence Core v1 — Bloco 3: golden suite semântica.
@@ -27,6 +28,12 @@ export type GoldenSuiteCase = {
   // "Acertar por sorte" uma leitura plausível não prova que o
   // classifier reconheceu a ambiguidade real da mensagem.
   expectAmbiguous?: boolean;
+  // Mensagens anteriores opcionais, mais antiga primeiro — usadas
+  // pelos casos "negativos" da regra de resposta dependente de
+  // contexto: provam que, HAVENDO contexto suficiente, uma resposta
+  // curta continua resolvendo pra uma intenção específica em vez de
+  // cair em "outro"/ambiguous por reflexo.
+  previousMessages?: Array<{ authorType: ConversationMessageAuthorType; text: string }>;
 };
 
 export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
@@ -129,5 +136,61 @@ export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
     expectedIntents: ['outro'],
     note: 'sentido real depende de uma mensagem anterior que não existe nesta simulação isolada — mede comportamento conservador sem contexto',
     expectAmbiguous: true,
+  },
+  {
+    name: 'resposta dependente de contexto — "sim"',
+    category: 'depende do contexto',
+    input: 'sim',
+    expectedIntents: ['outro'],
+    note: 'confirmação solta sem conteúdo temático próprio e sem mensagem anterior disponível — não deve fabricar disponibilidade/orçamento/booking_update',
+    expectAmbiguous: true,
+  },
+  {
+    name: 'resposta dependente de contexto — "fechado"',
+    category: 'depende do contexto',
+    input: 'fechado',
+    expectedIntents: ['outro'],
+    note: 'variação de confirmação solta sem contexto — mesma regra geral de "fechou"/"sim, pode ser"',
+    expectAmbiguous: true,
+  },
+  {
+    name: 'resposta dependente de contexto — "beleza"',
+    category: 'depende do contexto',
+    input: 'beleza',
+    expectedIntents: ['outro'],
+    note: 'confirmação coloquial solta, sem conteúdo temático próprio e sem mensagem anterior disponível',
+    expectAmbiguous: true,
+  },
+  {
+    name: 'resposta dependente de contexto — "isso"',
+    category: 'depende do contexto',
+    input: 'isso',
+    expectedIntents: ['outro'],
+    note: 'confirmação solta sem antecedente disponível',
+    expectAmbiguous: true,
+  },
+  {
+    name: 'resposta dependente de contexto — "pode"',
+    category: 'depende do contexto',
+    input: 'pode',
+    expectedIntents: ['outro'],
+    note: 'confirmação solta sem antecedente disponível',
+    expectAmbiguous: true,
+  },
+  {
+    name: 'resposta dependente de contexto — "acho que sim"',
+    category: 'depende do contexto',
+    input: 'acho que sim',
+    expectedIntents: ['outro'],
+    note: 'confirmação hesitante solta, sem conteúdo temático próprio e sem mensagem anterior disponível',
+    expectAmbiguous: true,
+  },
+  {
+    name: 'CONTROLE NEGATIVO — resposta curta com contexto anterior suficiente',
+    category: 'depende do contexto (negativo)',
+    input: 'fechado',
+    previousMessages: [{ authorType: 'professional', text: 'Posso fechar o show de sábado às 20h por R$2000?' }],
+    expectedIntents: ['booking_update'],
+    note: 'mesma palavra do caso "fechado" isolado, mas agora com mensagem anterior que deixa claro do que se trata — a regra de resposta dependente de contexto NÃO deve se aplicar aqui; espera-se leitura específica (booking_update), não outro/ambiguous',
   },
 ];

@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
 import { classifyIntent, GOLDEN_SUITE_CASES } from '@/lib/intelligence/classification';
-import type { ContextPackage } from '@/lib/intelligence/context-builder';
+import type { GoldenSuiteCase } from '@/lib/intelligence/classification';
+import type { ContextPackage, MessageContextItem } from '@/lib/intelligence/context-builder';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
 import type { ActorContext, MinimalConversation, ToolContext } from '@/lib/intelligence/types';
 
@@ -48,7 +49,7 @@ async function requireProfessional() {
 }
 
 function buildSyntheticContext(
-  triggerText: string,
+  goldenCase: GoldenSuiteCase,
   professionalId: string
 ): { contextPackage: ContextPackage; conversation: MinimalConversation } {
   const conversation: MinimalConversation = {
@@ -64,6 +65,32 @@ function buildSyntheticContext(
   };
 
   const now = new Date().toISOString();
+  // Mensagens anteriores opcionais (goldenCase.previousMessages) vêm
+  // antes do gatilho, na ordem em que foram declaradas — só usadas
+  // pelos casos de controle negativo da regra de resposta dependente
+  // de contexto (ver golden-suite.ts).
+  const previousItems: MessageContextItem[] = (goldenCase.previousMessages ?? []).map((m, i) => ({
+    messageId: `golden-suite-previous-${i}`,
+    createdAt: now,
+    authorType: m.authorType,
+    direction: m.authorType === 'external_participant' ? 'inbound' : 'outbound',
+    contentType: 'text',
+    text: m.text,
+    truncated: false,
+    provenance: { sourceType: 'conversation_message', sourceId: `golden-suite-previous-${i}` },
+  }));
+  const triggerItem: MessageContextItem = {
+    messageId: 'golden-suite-trigger',
+    createdAt: now,
+    authorType: 'external_participant',
+    direction: 'inbound',
+    contentType: 'text',
+    text: goldenCase.input,
+    truncated: false,
+    provenance: { sourceType: 'conversation_message', sourceId: 'golden-suite-trigger' },
+  };
+  const items = [...previousItems, triggerItem];
+
   const contextPackage: ContextPackage = {
     conversationId: conversation.id,
     representedProfessionalId: professionalId,
@@ -71,19 +98,8 @@ function buildSyntheticContext(
     professional: { status: 'loaded', facts: [] },
     messages: {
       status: 'loaded',
-      items: [
-        {
-          messageId: 'golden-suite-trigger',
-          createdAt: now,
-          authorType: 'external_participant',
-          direction: 'inbound',
-          contentType: 'text',
-          text: triggerText,
-          truncated: false,
-          provenance: { sourceType: 'conversation_message', sourceId: 'golden-suite-trigger' },
-        },
-      ],
-      windowMessageCount: 1,
+      items,
+      windowMessageCount: items.length,
       windowSince: now,
     },
     opportunity: { status: 'no_link' },
@@ -119,7 +135,7 @@ export async function runGoldenSuiteAction(): Promise<{ results?: GoldenSuiteCas
   const results: GoldenSuiteCaseResult[] = [];
 
   for (const goldenCase of GOLDEN_SUITE_CASES) {
-    const { contextPackage, conversation } = buildSyntheticContext(goldenCase.input, user.id);
+    const { contextPackage, conversation } = buildSyntheticContext(goldenCase, user.id);
     const toolCtx: ToolContext = {
       representedProfessionalId: user.id,
       actorContext,
