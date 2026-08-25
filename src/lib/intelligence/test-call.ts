@@ -6,12 +6,21 @@ import { AI_FEATURE_INTELLIGENCE_TEST, AI_MODEL } from './config';
 import { buildContextPackage, renderContextForPrompt, resolveProfessionalDisplayName } from './context-builder';
 import { getOpenAIClient } from './openai-client';
 import { finishOrchestratorRun, startOrchestratorRun } from './observability';
+import { AI_FEATURE_RESPONSE_PLANNING, planResponse } from './planner';
+import type { PlannerDecision } from './planner';
 import { evaluatePreModelGate } from './policy-gate';
 import './tools';
 import type { ToolContext } from './types';
 
 export type IntelligenceTestResult =
-  | { ok: true; responseText: string; inputTokens: number | null; outputTokens: number | null; classification: IntentClassification }
+  | {
+      ok: true;
+      responseText: string;
+      inputTokens: number | null;
+      outputTokens: number | null;
+      classification: IntentClassification;
+      plan: PlannerDecision;
+    }
   | { ok: false; error: string; detail?: string };
 
 // Instrução mínima só pra provar a integração — NÃO é o system prompt
@@ -29,15 +38,17 @@ Regras deste modo de teste:
 }
 
 // Função interna de teste — NÃO é o Orchestrator completo (sem
-// Response Planner, post-model gate, Approval Engine). Prova que
-// ActorContext, pre-model gate, Context Builder v1, Intent
-// Classifier + Competence Router (Bloco 3) e observability já rodam
-// de ponta a ponta antes de qualquer chamada à OpenAI que produza
-// texto pro profissional testar. A classificação é só percepção — o
-// resultado é retornado/registrado, nunca consumido por nenhuma
-// decisão de ação aqui. Resposta nunca é gravada em
-// conversation_messages, nunca altera state/mandate/opportunity/
-// booking.
+// post-model gate, Approval Engine). Prova que ActorContext,
+// pre-model gate, Context Builder v1, Intent Classifier + Competence
+// Router (Bloco 3) e Response Planner (Bloco 4, dry-run) já rodam de
+// ponta a ponta antes de qualquer chamada à OpenAI que produza texto
+// pro profissional testar. Classificação e planejamento são
+// percepção/planejamento — o resultado é retornado/registrado, nunca
+// consumido por nenhuma decisão de ação aqui: proposedResponse do
+// Planner nunca é enviado, nunca substitui a resposta de teste abaixo
+// (que continua sendo só uma prova de integração, não o Planner de
+// verdade). Resposta nunca é gravada em conversation_messages, nunca
+// altera state/mandate/opportunity/booking.
 export async function runIntelligenceTestCall(conversationId: string): Promise<IntelligenceTestResult> {
   const supabase = await createClient();
 
@@ -73,6 +84,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
   // fica só dentro da tool, descartada; ver context-builder/sections.ts).
   let unavailableSources: string[] = [];
   let classification: IntentClassification | null = null;
+  let plan: PlannerDecision | null = null;
 
   async function finishRun(status: 'completed' | 'failed', error: string | null) {
     if (!run) return;
@@ -95,6 +107,17 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
             effectiveConfidence: classification.effectiveConfidence,
             contextCompleteness: classification.contextCompleteness,
             classificationStatus: classification.classificationStatus,
+          }
+        : undefined,
+      plan: plan
+        ? {
+            responsePlan: plan.responsePlan,
+            commitmentNature: plan.commitmentNature,
+            requiresProfessionalDecision: plan.requiresProfessionalDecision,
+            professionalDecisionCategory: plan.professionalDecisionCategory,
+            professionalDecisionSignal: plan.professionalDecisionSignal,
+            missingInformationCount: plan.missingInformation.length,
+            evidenceUsedCount: plan.evidenceUsed.length,
           }
         : undefined,
     });
@@ -124,6 +147,21 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
     p_conversation_id: conversationId,
     p_input_tokens: classifyResult.inputTokens,
     p_output_tokens: classifyResult.outputTokens,
+    p_run_id: run?.id ?? null,
+  });
+
+  // Planejamento (Bloco 4, dry-run) — só propõe, nunca executa. Nunca
+  // lança: planResponse() sempre resolve, mesmo em falha (cai no
+  // fallback determinístico consult_professional).
+  const planResult = await planResponse(toolCtx, contextPackage, classification);
+  plan = planResult.decision;
+  await supabase.rpc('log_ai_usage_event', {
+    p_feature: AI_FEATURE_RESPONSE_PLANNING,
+    p_model: AI_MODEL,
+    p_status: 'success',
+    p_conversation_id: conversationId,
+    p_input_tokens: planResult.inputTokens,
+    p_output_tokens: planResult.outputTokens,
     p_run_id: run?.id ?? null,
   });
 
@@ -164,7 +202,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
     await logUsage('success', inputTokens, outputTokens);
     await finishRun('completed', null);
 
-    return { ok: true, responseText: response.output_text, inputTokens, outputTokens, classification };
+    return { ok: true, responseText: response.output_text, inputTokens, outputTokens, classification, plan };
   } catch (err) {
     // Mensagem de erro do SDK da OpenAI nunca inclui a chave (vem do
     // corpo da resposta HTTP da API, que nunca ecoa a Authorization

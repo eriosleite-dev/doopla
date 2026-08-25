@@ -31,7 +31,7 @@ export async function finishOrchestratorRun(
   supabase: SupabaseClient<Database>,
   params: OrchestratorRunFinish
 ): Promise<OrchestratorRun | null> {
-  const { classification } = params;
+  const { classification, plan } = params;
   const { data, error } = await supabase.rpc('finish_orchestrator_run', {
     p_run_id: params.runId,
     p_status: params.status,
@@ -45,6 +45,13 @@ export async function finishOrchestratorRun(
     p_effective_confidence: classification?.effectiveConfidence ?? null,
     p_context_completeness: classification?.contextCompleteness ?? null,
     p_classification_status: classification?.classificationStatus ?? null,
+    p_response_plan: plan?.responsePlan ?? null,
+    p_commitment_nature: plan?.commitmentNature ?? null,
+    p_requires_professional_decision: plan?.requiresProfessionalDecision ?? null,
+    p_professional_decision_category: plan?.professionalDecisionCategory ?? [],
+    p_professional_decision_signal: plan?.professionalDecisionSignal ?? null,
+    p_missing_information_count: plan?.missingInformationCount ?? 0,
+    p_evidence_used_count: plan?.evidenceUsedCount ?? 0,
   });
 
   if (error || !data) return null;

@@ -2919,9 +2919,108 @@ todos os Blocos 1–3 (9 suítes) sem falha. `tsc`/`eslint`/`build`
 limpos. **Nenhuma migration alterada/criada** — 0043 continua a
 última.
 
-- ⏳ **Aguardando você rodar a golden suite real de novo em Preview**
-  e reportar resultados antes do merge. PR ainda não criado. Não
-  avançar para o Bloco 4.
+- ✅ **Terceira golden suite real rodada em Preview pelo usuário:
+  39/39.** Bloco 3 aprovado e **mesclado** (PR #5, commit `bcbcc11`,
+  em `claude/doopla-backend-login-db-fj5j3y`).
+
+## 33. Doopla Intelligence Core v1 — Bloco 4: Structured Decision + Response Planner v1 (dry-run) (implementado, aguardando auditoria adversarial)
+
+Camada de PLANEJAMENTO do Core — depois da percepção (Bloco 3), antes
+de qualquer ação real (que ainda não existe). PERCEBER → PLANEJAR,
+nunca PLANEJAR → AGIR: nenhuma saída do Planner produz efeito
+colateral, nada é enviado, nenhuma tool de escrita executa, nenhuma
+approval é criada, nenhum state/booking/opportunity muda.
+`requiresProfessionalReviewBeforeSend` é literal `true`, reforçado em
+três camadas independentes (tipo TS, fora do schema do model, CHECK no
+banco).
+
+Três invariantes estruturais desenhadas com o usuário antes do código:
+**CONHECER ≠ APROVAR ≠ COMPROMETER**, **INTENÇÃO ≠ DECISÃO**,
+**CONHECER ≠ COMPARTILHAR** (disclosure é responsabilidade do
+Post-model Policy Gate futuro, não deste bloco).
+
+- `src/lib/intelligence/planner/`: `response-plan.ts` (8 valores de
+  `ResponsePlan`; só 6 disponíveis pro model — `wait_for_external_
+  participant`/`wait_for_professional` ficam no contrato mas são
+  estruturalmente impossíveis de o model v1 produzir, faltando Pending
+  Work real), `decision-categories.ts` (13 `ProfessionalDecisionCategory`
+  + `INTENT_MANDATORY_DECISION_CATEGORIES` — só pisos *realmente*
+  universais por intent; o resto o model propõe e o código só valida/
+  une, nunca remove), `types.ts` (`PlannerDecision`, `CommitmentNature`
+  — `report_existing_fact`/`new_or_changed_commitment`/`not_applicable`
+  — e `ProfessionalDecisionSignal`, sinal NÃO-autoritativo —
+  `candidate_contextual` nunca significa aprovação), `planner-context.ts`
+  (projeção do `ContextPackage` diferente da do Classifier: aqui
+  precisa dos FATOS de verdade, não só flags, pra poder citar
+  `EvidenceUsed` com provenance real), `invariants.ts` (autoridade
+  final do contrato — o model propõe, código só torna mais
+  conservador), `plan.ts` (`planResponse()`, mesmo padrão de DI de
+  `classifyIntent()`), `golden-suite.ts`, `prompt.ts`, `config.ts`.
+- `EvidenceUsed` (não só `ContextFact`): aponta pra fatos estruturados
+  OU pra uma `conversation_message` inteira (nunca fatiada por frase),
+  mesmo `sourceType` que o Context Builder já usa pra provenance de
+  mensagem.
+- `answer_with_known_information` só é permitido quando
+  `requiresProfessionalDecision === false` — que por sua vez só é
+  `true` quando `commitmentNature === 'new_or_changed_commitment'`
+  *e* isso ativou pelo menos uma categoria (mandatória ou proposta
+  pelo model e validada). "Qual foi mesmo o valor combinado?" com
+  booking existente → `report_existing_fact`, sem decisão nova. "Pode
+  fazer por R$2.500?" → `new_or_changed_commitment`, sempre consulta.
+- `commitmentNature='report_existing_fact'` só sobrevive com
+  `EvidenceUsed` grounded de verdade contra o `ContextPackage` — sem
+  lastro, código rebaixa pra `new_or_changed_commitment` (nunca o
+  contrário).
+- `professionalDecisionSignal`: força `'none'` pra qualquer autor que
+  não seja o profissional; `'candidate_contextual'` só sobrevive com
+  evidência grounded, senão vira `'candidate_ambiguous'` (→
+  `clarify_ambiguity`). "Fechado" do profissional com proposta
+  completa no contexto → `candidate_contextual`, nunca aprovação real;
+  sem contexto → `clarify_ambiguity` dirigido a ele.
+- `no_response_needed` reservado pra gatilho sem texto utilizável —
+  qualquer mensagem humana real (mesmo "Bom dia! Tudo bem?") vira no
+  mínimo `acknowledge`, nunca silêncio.
+- `wait_for_*` desabilitado estruturalmente no v1 (fora do schema do
+  model) — fica no enum só pro contrato futuro, quando Pending Work
+  existir.
+- Observability: migration `0044`, aditiva em `orchestrator_runs`
+  (mesmo padrão da 0043) — `response_plan`/`professional_decision_signal`
+  ganham CHECK (vocabulário estável), `professional_decision_category`
+  fica sem CHECK (array de vocabulário extensível, mesmo raciocínio de
+  `competencies`). Nunca persiste `proposedResponse`/
+  `missingInformation`/`evidenceUsed` em detalhe — só contagens.
+  `requires_professional_review_before_send` tem CHECK `= true` —
+  confirmado contra Postgres real que um `UPDATE` direto tentando
+  `false` é fisicamente rejeitado pelo banco, não só impedido em
+  TypeScript.
+- `test-call.ts` passa a chamar `planResponse()` depois de
+  `classifyIntent()` — resultado só registrado/retornado, nunca
+  consome a decisão do Planner pra decidir a resposta de teste em si.
+- Golden suite (`/dev/planner-golden-suite`, mesmo padrão seguro do
+  Bloco 3) com os casos exigidos: relato de fato existente (valor/
+  endereço) vs. novo compromisso (desconto/mudança de endereço que
+  compromete), social sempre com `acknowledge`, profissional
+  reportando fato vira `acknowledge`, "Fechado" com/sem contexto,
+  controle de que `requiresProfessionalReviewBeforeSend` nunca sai de
+  `true`. **Não executada por mim** — ambiente sem `OPENAI_API_KEY`,
+  mesma limitação honesta do Bloco 3.
+- Testes determinísticos/adversariais (40 checks): grounding de
+  `EvidenceUsed` contra `ContextPackage` real (positivo/negativo/
+  inventado), `resolveCommitmentNature` nunca promove sem lastro,
+  `computeDecisionCategories` prova INTENT≠DECISION e união-nunca-
+  subtração, `resolveProfessionalDecisionSignal`, todos os pisos de
+  `resolveResponsePlan`, fim-a-fim com `planResponse()` (incl. fato
+  inventado pelo model sendo pego, model "mentindo" sendo rebaixado,
+  falha total do model caindo em fallback conservador, draft
+  descartado quando o plano final diverge do proposto), concorrência.
+  "Trap" supabase prova estruturalmente que `planResponse()` nunca
+  toca `supabase.from()`/`.rpc()`. Regressão completa (10 suítes, ~190
+  checks) sem falha. `npm run build`/`tsc`/`eslint` limpos. Migration
+  0044 validada contra Postgres real, incluindo os dois `CHECK`
+  físicos (`requires_professional_review_before_send`/`response_plan`)
+  rejeitando update direto fora do contrato.
+- ⏳ **Parado pra auditoria adversarial**, por instrução explícita.
+  Não avançar pro Post-model Policy Gate. PR ainda não criado.
 
 ## Como usar isso
 
