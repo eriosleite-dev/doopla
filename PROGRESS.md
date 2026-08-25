@@ -3019,8 +3019,12 @@ Post-model Policy Gate futuro, não deste bloco).
   0044 validada contra Postgres real, incluindo os dois `CHECK`
   físicos (`requires_professional_review_before_send`/`response_plan`)
   rejeitando update direto fora do contrato.
-- ⏳ **Parado pra auditoria adversarial**, por instrução explícita.
-  Não avançar pro Post-model Policy Gate. PR ainda não criado.
+- ✅ **Bloco 4 aprovado para freeze** — commit auditado `10c7154`.
+  Congelado: nenhuma alteração no código do Planner sem razão
+  arquitetural demonstrável. As 3 limitações documentadas na
+  auditoria viraram requisitos obrigatórios do Post-model Policy Gate
+  (seção abaixo). PR ainda não criado — merge aguardando confirmação
+  explícita.
 
 ### Auditoria adversarial do Bloco 4 (commit `ede4a8b`) — PASS COM RESSALVAS, 5 achados reais corrigidos
 
@@ -3093,6 +3097,47 @@ Planner, `anon` sem EXECUTE, runs antigos continuam válidos) +
 regressão completa (10 suítes, ~230 checks) sem falha. `build`/`tsc`/
 `eslint` limpos. **Nenhuma migration nova** — todas as correções são
 prompt/lógica de código/dados de teste; `0044` continua a última.
+
+### Post-model Policy Gate — requisitos obrigatórios de segurança (fixados na aprovação de freeze do Bloco 4)
+
+As 3 limitações documentadas na auditoria adversarial do Bloco 4 não
+são mais "riscos conhecidos" — são requisitos de entrada obrigatórios
+pro Post-model Policy Gate, definidos pelo usuário no momento da
+aprovação de freeze. Nenhuma capacidade real de envio/escrita pode ser
+habilitada antes destes três controles existirem:
+
+1. **Coreferência e proposta vigente**: uma `EvidenceUsed` do tipo
+   `conversation_message` grounded não é suficiente pra tratar uma
+   confirmação como válida. Antes de qualquer mensagem que produza
+   compromisso, o Gate precisa verificar semanticamente que o aceite
+   se refere inequivocamente à proposta/condição ATUALMENTE em
+   questão. Duas ou mais propostas, alterações sucessivas, referente
+   ambíguo ou escopo incerto → bloquear compromisso, consultar o
+   profissional.
+2. **Semantic Draft vs. Authorized Scope**: o Gate precisa verificar o
+   CONTEÚDO efetivamente redigido em `proposedResponse`, não só
+   `responsePlan`/`commitmentNature`/`professionalDecisionCategory`/
+   `evidenceUsed`. O draft não pode afirmar, aceitar, prometer ou
+   implicar nenhuma decisão comercial/operacional além do escopo
+   explicitamente autorizado e grounded. Exemplo crítico fixado pelo
+   usuário: "O cachê é R$3.000 e podemos confirmar" — mesmo com
+   R$3.000 grounded, "podemos confirmar" é compromisso adicional sem
+   aprovação correspondente e precisa ser bloqueado.
+3. **Relato vs. mudança**: pra `booking_update`/`condicao_pagamento`/
+   demais categorias mutáveis, o Gate NÃO pode confiar só na
+   classificação semântica do Planner (`commitmentNature`) pra
+   distinguir `report_existing_fact` de proposta/mudança — precisa
+   verificação própria de se o draft só relata estado já aprovado ou
+   introduz/altera condição.
+
+**Fail closed** é o princípio geral: em dúvida semântica, ambiguidade,
+conflito de evidência ou impossibilidade de provar autorização
+suficiente, nunca enviar como compromisso — sempre escalar pra
+consulta/aprovação.
+
+**Não alterar o Bloco 4 (congelado) pra absorver estas
+responsabilidades sem uma razão arquitetural demonstrável** — são
+responsabilidades do Gate, não do Planner.
 
 ## Como usar isso
 
