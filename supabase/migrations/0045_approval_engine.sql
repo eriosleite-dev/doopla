@@ -364,6 +364,7 @@ security definer set search_path = public
 as $$
 declare
   v_professional_id uuid;
+  v_author_type text;
   v_backoff public.approval_resolution_backoff;
   v_lease_token uuid;
   v_lease_expires_at timestamptz;
@@ -375,13 +376,23 @@ begin
     raise exception 'invalid_context_identity' using errcode = '22023';
   end if;
 
-  select c.represented_professional_id into v_professional_id
+  select c.represented_professional_id, cm.author_type into v_professional_id, v_author_type
   from public.conversation_messages cm
   join public.conversations c on c.id = cm.conversation_id
   where cm.id = p_message_id;
 
   if v_professional_id is null or auth.uid() is distinct from v_professional_id then
     raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
+  -- Achado real do Red Team da implementação: nada impedia usar a
+  -- mensagem de um PARTICIPANTE EXTERNO (o cliente) como
+  -- professional_statement_message_id — "Pedem R$3.000?" do cliente
+  -- virava, sem checagem nenhuma, uma "decisão do profissional"
+  -- gravada de verdade. Viola diretamente KNOW≠APPROVE, invariante
+  -- central e nunca ambígua em nenhuma rodada da spec.
+  if v_author_type <> 'professional' then
+    raise exception 'message_not_professional_statement' using errcode = '22023';
   end if;
 
   -- Já terminal (resolved)? Nunca reinfere.
@@ -464,6 +475,13 @@ begin
     raise exception 'not_authorized' using errcode = '42501';
   end if;
 
+  if not exists (
+    select 1 from public.conversation_messages cm join public.conversations c on c.id = cm.conversation_id
+    where cm.id = p_message_id and c.represented_professional_id = auth.uid()
+  ) then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
   select * into v_claim from public.approval_resolution_claims where professional_statement_message_id = p_message_id for update;
   if v_claim.professional_statement_message_id is null
      or v_claim.lease_token is distinct from p_lease_token
@@ -508,11 +526,20 @@ grant execute on function public.reserve_approval_dispatch_token to authenticate
 -- ============================================================
 create function public.release_approval_resolution_claim(p_message_id uuid, p_lease_token uuid)
 returns void
-language sql
+language plpgsql
 security definer set search_path = public
 as $$
+begin
+  if not exists (
+    select 1 from public.conversation_messages cm join public.conversations c on c.id = cm.conversation_id
+    where cm.id = p_message_id and c.represented_professional_id = auth.uid()
+  ) then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
   delete from public.approval_resolution_claims
   where professional_statement_message_id = p_message_id and lease_token = p_lease_token;
+end;
 $$;
 
 comment on function public.release_approval_resolution_claim is 'Bloco 5 — liberação antecipada e explícita de claim (ex.: apos reserve_approval_dispatch_token negar por rate_limited). Idempotente/no-op se o lease já não bate.';
@@ -545,6 +572,7 @@ as $$
 declare
   v_claim public.approval_resolution_claims;
   v_professional_id uuid;
+  v_author_type text;
   v_decision jsonb;
   v_new_ids uuid[] := '{}';
   v_new_id uuid;
@@ -571,12 +599,22 @@ begin
     return;
   end if;
 
-  select c.represented_professional_id into v_professional_id
+  select c.represented_professional_id, cm.author_type into v_professional_id, v_author_type
   from public.conversation_messages cm join public.conversations c on c.id = cm.conversation_id
   where cm.id = p_message_id;
 
   if auth.uid() is distinct from v_professional_id then
     raise exception 'not_authorized' using errcode = '42501';
+  end if;
+
+  -- Defesa em profundidade (o mesmo achado do Red Team corrigido em
+  -- try_acquire_approval_resolution_claim): revalidado de novo aqui,
+  -- nunca confiado só no acquire anterior — commit_approval_resolution
+  -- é o ponto que efetivamente escreve approval_records. Mesmo
+  -- tratamento (exceção, não deny_reason) do auth.uid() acima — é
+  -- indício de uso indevido, não um resultado esperado do fluxo normal.
+  if v_author_type <> 'professional' then
+    raise exception 'message_not_professional_statement' using errcode = '22023';
   end if;
 
   -- Já terminal? (corrida com outro commit já bem-sucedido)

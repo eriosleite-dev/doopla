@@ -6,7 +6,7 @@ import { APPROVAL_RESOLVER_MAX_RETRIES, APPROVAL_RESOLVER_MODEL } from './config
 import type { ResolutionContextV1 } from './canonicalize';
 import { OPERATION_TYPES, OPERATION_TYPES_REQUIRING_PROVENANCE } from './types';
 import type { ApprovalResolverOutput, OperationType, PendingDecision } from './types';
-import { PROFESSIONAL_DECISION_CATEGORIES } from './value-schemas';
+import { PROFESSIONAL_DECISION_CATEGORIES, validateApprovedValue } from './value-schemas';
 
 // Doopla Intelligence Core v1 — Bloco 5: Approval Resolver.
 //
@@ -75,6 +75,34 @@ function buildResolverInstructions(): string {
 // Deriva PendingDecision[] validado a partir da saída fechada do
 // model — CHECK simétrico de provenance (mesmo espelhado em SQL via
 // cardinality()) validado aqui também, fail-closed se divergir.
+//
+// closed-candidate-selection principle (V2, reafirmado em toda rodada
+// da spec): o model NUNCA pode referenciar uma mensagem que o código
+// não enumerou explicitamente. Isso era garantido só pelo texto do
+// prompt (buildResolverInstructions) — achado real do Red Team da
+// implementação: nada em código impedia o model de "alucinar" um
+// communicatedProposalMessageIds fora do ResolutionContext, e essa
+// referência forjada seguiria sem erro até commit_approval_resolution.
+// Corrigido aqui: todo id em communicatedProposalMessageIds precisa
+// pertencer ao universo fechado que o próprio código montou —
+// mensagens-fonte de candidatos comunicados OU o messageWindow — nunca
+// aceito só por vir do model.
+function validateClosedCandidateSelection(context: ResolutionContextV1, decisions: ApprovalResolverModelOutput['decisions']): void {
+  const closedMessageIdUniverse = new Set<string>([
+    ...context.communicatedProposalCandidates.map((c) => c.sourceMessageId),
+    ...context.messageWindow.map((m) => m.messageId),
+  ]);
+  for (const d of decisions) {
+    for (const referencedId of d.communicatedProposalMessageIds) {
+      if (!closedMessageIdUniverse.has(referencedId)) {
+        throw new Error(
+          `closed-candidate-selection violado: o model referenciou messageId="${referencedId}" que não existe em communicatedProposalCandidates nem em messageWindow do ResolutionContext fornecido`
+        );
+      }
+    }
+  }
+}
+
 function toPendingDecisions(commercialRootId: string, decisions: ApprovalResolverModelOutput['decisions']): PendingDecision[] {
   return decisions.map((d) => {
     const requiresProvenance = OPERATION_TYPES_REQUIRING_PROVENANCE.includes(d.operationType as OperationType);
@@ -87,12 +115,26 @@ function toPendingDecisions(commercialRootId: string, decisions: ApprovalResolve
     if (d.operationType === 'revocation' && d.approvedValue !== null) {
       throw new Error('revocation exige approvedValue null');
     }
+    // Achado real do Red Team da implementação: nada validava
+    // approvedValue contra o value-schema da própria decisionCategory
+    // (os 13 shapes de value-schemas.ts nunca eram consultados) — um
+    // amountCents ausente/tipo errado ou campo extra passava direto
+    // pro commit. Corrigido: todo approvedValue não-nulo precisa
+    // validar contra APPROVED_VALUE_SCHEMAS[decisionCategory].
+    let approvedValue = d.approvedValue;
+    if (approvedValue !== null) {
+      const validation = validateApprovedValue(d.decisionCategory, approvedValue);
+      if (!validation.valid) {
+        throw new Error(`approvedValue inválido para decisionCategory=${d.decisionCategory}: ${validation.error}`);
+      }
+      approvedValue = validation.parsed as typeof approvedValue;
+    }
     return {
       commercialRootId,
       decisionCategory: d.decisionCategory,
       subjectKey: d.subjectKey,
       operationType: d.operationType as OperationType,
-      approvedValue: d.approvedValue,
+      approvedValue,
       communicatedProposalMessageIds: d.communicatedProposalMessageIds,
       referredValue: d.referredValue,
     };
@@ -137,6 +179,7 @@ export async function resolveApproval(
   }
 
   try {
+    validateClosedCandidateSelection(context, parsed.decisions);
     const decisions = toPendingDecisions(context.commercialRootId, parsed.decisions);
     if (decisions.length === 0) {
       // resolved sem nenhuma decisão é uma saída inconsistente do
