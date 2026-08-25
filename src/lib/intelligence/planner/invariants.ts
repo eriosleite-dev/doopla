@@ -15,6 +15,30 @@ import type { CommitmentNature, EvidenceUsed, MissingInformationItem, PlannerCon
 // confiança. Nenhuma função aqui toca supabase — são todas puras,
 // função de (saída do model, PlannerContext) -> valor final.
 
+// Limites defensivos contra um model quebrado/adversarial devolvendo
+// arrays sem limite (custo de token, DoS, ruído em observability). Não
+// é uma regra de produto — é higiene estrutural, mesmo espírito do
+// "?? []" em competencies.ts: nunca deveria acontecer, mas se
+// acontecesse, nunca pode virar uma exceção nem um array sem limite
+// fluindo até persistência.
+export const MAX_EVIDENCE_USED = 20;
+export const MAX_MISSING_INFORMATION = 20;
+
+// Intents que, pela própria definição no Bloco 3 (ver
+// classification/prompt.ts), são SEMPRE negociação prospectiva — nunca
+// existe uma leitura válida de "isto é só o relato de um fato já
+// resolvido" pra eles. "orcamento" é explicitamente sobre um trabalho
+// NOVO/hipotético (nunca um já existente); "desconto" é explicitamente
+// negociação prospectiva, nunca relato. Por isso o código pode (e
+// deve) rejeitar commitmentNature="report_existing_fact" pra estes
+// dois SEM depender do model — mesmo que ele cite uma evidência real
+// (ex.: o valor antigo de um booking) pra "justificar" isso. Os
+// outros intents (booking_update/condicao_pagamento/etc.) legitimamente
+// podem ser um relato OU uma mudança, então essa distinção continua
+// dependendo do julgamento semântico do model pra eles — documentado
+// como risco residual, não escondido.
+const INTENT_ALWAYS_PROSPECTIVE = new Set<Intent>(['orcamento', 'desconto']);
+
 function factSection(ctx: PlannerContext, sourceType: EvidenceUsed['sourceType']): ContextSection<ContextFact> | null {
   switch (sourceType) {
     case 'professional_profile':
@@ -42,13 +66,16 @@ export function isEvidenceGrounded(evidence: EvidenceUsed, ctx: PlannerContext):
   return section.facts.some((f) => f.sourceId === evidence.sourceId && f.field === evidence.field);
 }
 
-// Saneia a lista do model: dedupe + só entradas de fato grounded.
-// Achado de precedente do Bloco 3 (secondaryIntents não deduplicado)
-// aplicado aqui de propósito antes de qualquer outro cálculo.
+// Saneia a lista do model: dedupe + só entradas de fato grounded +
+// bounded. Achado de precedente do Bloco 3 (secondaryIntents não
+// deduplicado) aplicado aqui de propósito antes de qualquer outro
+// cálculo. O corte de MAX_EVIDENCE_USED é determinístico (preserva a
+// ordem, sempre os primeiros) — nunca aleatório.
 export function validateEvidenceUsed(rawEvidence: readonly EvidenceUsed[], ctx: PlannerContext): EvidenceUsed[] {
   const seen = new Set<string>();
   const result: EvidenceUsed[] = [];
   for (const e of rawEvidence) {
+    if (result.length >= MAX_EVIDENCE_USED) break;
     if (!isEvidenceGrounded(e, ctx)) continue;
     const key = e.sourceType === 'conversation_message' ? `conversation_message:${e.sourceId}` : `${e.sourceType}:${e.sourceId}:${e.field}`;
     if (seen.has(key)) continue;
@@ -58,12 +85,21 @@ export function validateEvidenceUsed(rawEvidence: readonly EvidenceUsed[], ctx: 
   return result;
 }
 
+export function boundMissingInformation(raw: readonly MissingInformationItem[]): MissingInformationItem[] {
+  return raw.slice(0, MAX_MISSING_INFORMATION);
+}
+
 // commitmentNature reportado pelo model só é aceito como
-// 'report_existing_fact' se houver pelo menos uma evidência (já
-// validada) sustentando isso — sem lastro, cai pro lado mais
-// conservador ('new_or_changed_commitment'), nunca o contrário.
-export function resolveCommitmentNature(modelValue: CommitmentNature, groundedEvidenceCount: number): CommitmentNature {
-  if (modelValue === 'report_existing_fact' && groundedEvidenceCount === 0) return 'new_or_changed_commitment';
+// 'report_existing_fact' se: (a) o intent não for um dos que são
+// sempre prospectivos por definição (ver INTENT_ALWAYS_PROSPECTIVE —
+// piso determinístico, nunca depende do model), e (b) houver pelo
+// menos uma evidência (já validada) sustentando isso. Sem qualquer um
+// dos dois, cai pro lado mais conservador ('new_or_changed_commitment'),
+// nunca o contrário.
+export function resolveCommitmentNature(modelValue: CommitmentNature, groundedEvidenceCount: number, intents: readonly Intent[]): CommitmentNature {
+  if (modelValue !== 'report_existing_fact') return modelValue;
+  if (intents.some((i) => INTENT_ALWAYS_PROSPECTIVE.has(i))) return 'new_or_changed_commitment';
+  if (groundedEvidenceCount === 0) return 'new_or_changed_commitment';
   return modelValue;
 }
 
@@ -92,16 +128,27 @@ export function computeDecisionCategories(
 }
 
 // professionalDecisionSignal: nunca se aplica a mensagem de quem não
-// é o profissional (força 'none' incondicionalmente); 'candidate_contextual'
-// só sobrevive com lastro real (evidência grounded); sem lastro, cai
-// pra 'candidate_ambiguous' — nunca o contrário.
+// é o profissional (força 'none' incondicionalmente).
+// 'candidate_contextual' só sobrevive com lastro ANCORADO EM
+// CONVERSA — pelo menos uma evidência do tipo conversation_message
+// entre as grounded, nunca só fatos estruturados de fundo (professional_
+// profile/opportunity/booking sozinhos). Achado de auditoria
+// adversarial: "EvidenceUsed existe" não prova coreferência — o
+// código não consegue provar deterministicamente que um fato
+// estruturado citado É a mesma coisa que está sendo confirmada, então
+// o mínimo exigível é que exista uma mensagem real da conversa
+// ancorando a leitura. Isso NÃO resolve coreferência completa (duas
+// propostas concorrentes citando mensagens diferentes ainda passam
+// aqui) — ver limitação documentada no relatório de auditoria.
 export function resolveProfessionalDecisionSignal(
   modelValue: ProfessionalDecisionSignal,
   triggerAuthorType: string | undefined,
-  groundedEvidenceCount: number
+  groundedEvidence: readonly EvidenceUsed[]
 ): ProfessionalDecisionSignal {
   if (triggerAuthorType !== 'professional') return 'none';
-  if (modelValue === 'candidate_contextual' && groundedEvidenceCount === 0) return 'candidate_ambiguous';
+  if (modelValue !== 'candidate_contextual') return modelValue;
+  const hasMessageAnchor = groundedEvidence.some((e) => e.sourceType === 'conversation_message');
+  if (!hasMessageAnchor) return 'candidate_ambiguous';
   return modelValue;
 }
 
@@ -112,6 +159,13 @@ export type ResponsePlanFloorInput = {
   requiresProfessionalDecision: boolean;
   professionalDecisionSignal: ProfessionalDecisionSignal;
   triggerHasUsableText: boolean;
+  // Contagem de EvidenceUsed já validada (pós isEvidenceGrounded) —
+  // achado de auditoria adversarial: sem isto, um model podia declarar
+  // answer_with_known_information com evidenceUsed vazio (citando nada,
+  // ou citando algo que a validação descartou) pra um intent sem
+  // categoria mandatória, e nada bloqueava um draft fabricado de sair
+  // como "resposta com fato conhecido" sem NENHUM fato real por trás.
+  evidenceUsedCount: number;
 };
 
 // Piso final de responsePlan — cada regra só pode tornar o plano MAIS
@@ -124,9 +178,20 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
     return 'clarify_ambiguity';
   }
   let plan = input.modelPlan;
+  // Defesa em profundidade: wait_for_* nem existe no schema que o
+  // model preenche (impossibilidade estrutural), mas se um bug futuro
+  // afrouxar isso sem atualizar este arquivo, nunca deveria passar
+  // batido — mesmo raciocínio do "?? []" em competencies.ts.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const planAsAny = plan as any;
+  if (planAsAny === 'wait_for_external_participant') plan = 'ask_external_participant';
+  if (planAsAny === 'wait_for_professional') plan = 'consult_professional';
   // answer_with_known_information: nunca quando há decisão nova em
-  // jogo — "tenho o fato" nunca vira "posso confirmar/oferecer".
-  if (plan === 'answer_with_known_information' && input.requiresProfessionalDecision) {
+  // jogo — "tenho o fato" nunca vira "posso confirmar/oferecer". E
+  // nunca SEM nenhuma evidência grounded por trás — "responder com
+  // fato conhecido" sem fato nenhum validado é uma contradição em
+  // termos, não uma leitura permissiva.
+  if (plan === 'answer_with_known_information' && (input.requiresProfessionalDecision || input.evidenceUsedCount === 0)) {
     plan = 'consult_professional';
   }
   // no_response_needed reservado pra gatilho sem texto utilizável —

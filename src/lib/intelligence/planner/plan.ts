@@ -8,6 +8,7 @@ import type { ToolContext } from '../types';
 import { PLANNER_MAX_RETRIES, PLANNER_MODEL } from './config';
 import { PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import {
+  boundMissingInformation,
   computeDecisionCategories,
   missingInformationFallback,
   resolveCommitmentNature,
@@ -56,6 +57,11 @@ const modelOutputSchema = z.object({
   proposedResponse: z.string().nullable(),
 });
 export type PlannerModelOutput = z.infer<typeof modelOutputSchema>;
+// Exportado só pra auditoria/teste — prova estrutural (sem rede) de
+// que wait_for_external_participant/wait_for_professional/qualquer
+// valor fora do enum são rejeitados pelo próprio schema, não por uma
+// checagem em runtime que poderia ser esquecida num refactor futuro.
+export { modelOutputSchema as plannerModelOutputSchema };
 
 export type PlannerModelCallResult = {
   parsed: PlannerModelOutput | null;
@@ -148,13 +154,13 @@ export async function planResponse(
   }
 
   const evidenceUsed = validateEvidenceUsed(parsed.evidenceUsed, plannerContext);
-  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, evidenceUsed.length);
   const allIntents = [intentClassification.primaryIntent, ...intentClassification.secondaryIntents];
+  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, evidenceUsed.length, allIntents);
   const { categories, requiresProfessionalDecision } = computeDecisionCategories(allIntents, commitmentNature, parsed.proposedDecisionCategory);
   const professionalDecisionSignal = resolveProfessionalDecisionSignal(
     parsed.professionalDecisionSignal,
     plannerContext.triggerMessage?.authorType,
-    evidenceUsed.length
+    evidenceUsed
   );
   const responsePlan = resolveResponsePlan({
     modelPlan: parsed.responsePlan,
@@ -163,6 +169,7 @@ export async function planResponse(
     requiresProfessionalDecision,
     professionalDecisionSignal,
     triggerHasUsableText,
+    evidenceUsedCount: evidenceUsed.length,
   });
 
   // O draft do model foi escrito pensando no plano QUE ELE propôs — se
@@ -179,7 +186,7 @@ export async function planResponse(
       intentClassification,
       responsePlan,
       commitmentNature,
-      missingInformation: parsed.missingInformation,
+      missingInformation: boundMissingInformation(parsed.missingInformation),
       evidenceUsed,
       requiresProfessionalDecision,
       professionalDecisionCategory: categories,

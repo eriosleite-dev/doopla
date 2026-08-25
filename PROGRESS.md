@@ -3022,6 +3022,78 @@ Post-model Policy Gate futuro, não deste bloco).
 - ⏳ **Parado pra auditoria adversarial**, por instrução explícita.
   Não avançar pro Post-model Policy Gate. PR ainda não criado.
 
+### Auditoria adversarial do Bloco 4 (commit `ede4a8b`) — PASS COM RESSALVAS, 5 achados reais corrigidos
+
+Objetivo explícito: provar que a arquitetura está errada, não confirmar
+que os testes passam. Cobriu os 18 pontos pedidos: INTENT≠DECISION
+(minimal pairs), KNOW≠SHARE (grep estrutural), KNOW≠APPROVE≠COMMIT
+(precedente histórico), coreferência de `professionalDecisionSignal`,
+quebra de `EvidenceUsed`, categorias propostas pelo model, draft
+adversarial, disponibilidade/corporativo-privado, `acknowledge` vs.
+silêncio, `wait_for_*`, falhas/indisponibilidade, tenant isolation
+(Postgres real, rebuild 0001–0044 do zero), observability/privacy,
+concorrência/determinismo, golden suite, regressão completa.
+
+**5 achados reais, todos corrigidos com teste de regressão**:
+1. `answer_with_known_information` (severidade alta) não exigia
+   NENHUMA evidência grounded — um model podia declarar essa resposta
+   com `evidenceUsed` vazio (nada citado, ou tudo descartado na
+   validação) e nada bloqueava um draft fabricado. Corrigido: piso
+   novo em `resolveResponsePlan` — sem evidência validada, rebaixa
+   pra `consult_professional`, mesmo com `requiresProfessionalDecision
+   =false`. Achado via cenário "booking `unavailable` + model
+   alucinando um fato".
+2. `orcamento`/`desconto` podiam virar `report_existing_fact` citando
+   evidência REAL mas do valor ANTIGO/errado (ex.: "Pode fazer por
+   R$2.500?" citando o cachê antigo de R$3.000 como se "confirmasse"
+   um relato). Corrigido: piso determinístico — esses dois intents,
+   por definição do Bloco 3, são sempre negociação prospectiva, nunca
+   relato, então nunca podem ser `report_existing_fact`, com ou sem
+   evidência.
+3. `professionalDecisionSignal="candidate_contextual"` só exigia
+   "alguma evidência", nunca uma evidência ANCORADA EM CONVERSA —
+   fatos estruturados de fundo sozinhos (sem nenhuma mensagem real)
+   não provam que uma proposta foi de fato comunicada. Corrigido:
+   exige pelo menos uma evidência `conversation_message` entre as
+   grounded.
+4. `wait_for_external_participant`/`wait_for_professional` eram
+   impossíveis só por estarem fora do schema do model — sem piso de
+   código redundante caso um bug futuro afrouxasse o schema.
+   Adicionada defesa em profundidade em `resolveResponsePlan`.
+5. Arrays controlados pelo model (`evidenceUsed`/`missingInformation`)
+   não tinham limite — um model quebrado podia devolver milhares de
+   itens (custo de token, ruído em observability). Adicionado
+   `MAX_EVIDENCE_USED`/`MAX_MISSING_INFORMATION` (corte determinístico,
+   preserva ordem).
+
+Prompt reforçado com 2 regras gerais (não caso-específicas): precedente
+histórico de outro trabalho/data nunca sustenta `report_existing_fact`
+("da última vez foi X" é sempre `new_or_changed_commitment`); o draft
+nunca pode afirmar mais do que os campos estruturados sustentam (nunca
+"podemos confirmar"/"está confirmado" quando não há decisão tomada).
+
+**Limitações documentadas, não fecháveis em código no Bloco 4** (ver
+relatório completo entregue ao usuário): (a) coreferência completa de
+`professionalDecisionSignal` — evidência ancorada prova que uma
+mensagem real existe, nunca que é A proposta vigente entre duas
+concorrentes; (b) draft adversarial — nenhum mecanismo determinístico
+pode validar que o TEXTO do draft não implica compromisso além do que
+os campos estruturados garantem; (c) `booking_update`/`condicao_pagamento`
+continuam dependendo do julgamento semântico do model pra distinguir
+relato de mudança (só `orcamento`/`desconto` têm piso determinístico
+por serem sempre prospectivos). Os três são riscos explícitos que o
+Post-model Policy Gate (ou uma verificação de conteúdo dedicada)
+precisa endereçar antes de qualquer capacidade de envio existir.
+
+Golden suite ampliada com 15 novos casos (minimal pairs READ vs.
+CHANGE, precedente histórico, corporativo vs. privado, fonte ausente,
+sinal em tópico errado). 80 checks determinísticos/adversariais novos
+(rebuild de Postgres do zero incl. isolamento de tenant específico do
+Planner, `anon` sem EXECUTE, runs antigos continuam válidos) +
+regressão completa (10 suítes, ~230 checks) sem falha. `build`/`tsc`/
+`eslint` limpos. **Nenhuma migration nova** — todas as correções são
+prompt/lógica de código/dados de teste; `0044` continua a última.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
