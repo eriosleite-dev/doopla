@@ -106,6 +106,16 @@ export async function classifyIntent(
   }
 
   const triggerHasUsableText = !!classificationContext.triggerMessage?.text?.trim();
+  // Regra geral de confiança (não sobre nenhum caso específico): uma
+  // mensagem-gatilho curta (poucas palavras) sem nenhuma mensagem
+  // anterior no recorte é uma base textual fraca demais pra sustentar
+  // confiança alta, mesmo quando o model acerta uma leitura plausível —
+  // esse mesmo texto costuma admitir outras leituras igualmente
+  // razoáveis quando não há histórico que desambigue. "Curta" = até 3
+  // palavras no texto do gatilho.
+  const triggerWordCount = classificationContext.triggerMessage?.text?.trim().split(/\s+/).filter(Boolean).length ?? 0;
+  const shortMessageWithoutContext =
+    triggerHasUsableText && triggerWordCount > 0 && triggerWordCount <= 3 && classificationContext.recentMessages.length === 0;
 
   if (!parsed) {
     // Falha real de classificação (nunca "outro" legítimo confundido
@@ -150,6 +160,7 @@ export async function classifyIntent(
     primaryIntent: parsed.primaryIntent,
     secondaryIntents,
     triggerHasUsableText,
+    shortMessageWithoutContext,
   });
 
   return {

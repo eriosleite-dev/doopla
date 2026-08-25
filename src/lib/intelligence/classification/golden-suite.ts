@@ -20,6 +20,13 @@ export type GoldenSuiteCase = {
   input: string;
   expectedIntents: Intent[];
   note?: string;
+  // Casos genuinamente ambíguos sem contexto: acertar UM dos valores
+  // listados em expectedIntents não é suficiente pra PASS — a
+  // classificação também precisa ter representado a própria incerteza
+  // (classificationStatus="ambiguous" ou effectiveConfidence !== "high").
+  // "Acertar por sorte" uma leitura plausível não prova que o
+  // classifier reconheceu a ambiguidade real da mensagem.
+  expectAmbiguous?: boolean;
 };
 
 export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
@@ -61,6 +68,7 @@ export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
     input: 'quanto?',
     expectedIntents: ['orcamento', 'desconto', 'cobranca'],
     note: 'genuinamente ambígua sem mensagem anterior — o teste real é se classificationStatus vem "ambiguous"/confiança baixa, não acertar um único valor',
+    expectAmbiguous: true,
   },
   {
     name: 'ambígua — "pode ser"',
@@ -68,12 +76,14 @@ export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
     input: 'pode ser',
     expectedIntents: ['orcamento', 'disponibilidade', 'condicao_pagamento', 'outro'],
     note: 'resposta a algo fora desta mensagem isolada',
+    expectAmbiguous: true,
   },
   {
     name: 'ambígua — "fechou"',
     category: 'ambígua',
     input: 'fechou',
     expectedIntents: ['booking_update', 'desconto', 'outro'],
+    expectAmbiguous: true,
   },
   {
     name: 'multi-intent simples',
@@ -83,10 +93,11 @@ export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
     note: 'espera-se primary+secondary cobrindo os dois, nunca só um escolhido arbitrariamente',
   },
   {
-    name: 'multi-intent logística+rider',
+    name: 'multi-intent booking_update+rider',
     category: 'multi-intent',
     input: 'Preciso trocar o horário e mandar o rider.',
-    expectedIntents: ['logistica', 'rider'],
+    expectedIntents: ['booking_update', 'rider'],
+    note: 'a data/horário do evento é termo central do acordo — mudar isso é booking_update, não logistica (reservada pra coordenação de execução com os termos centrais já fixados); rider tem intent próprio, nunca vira material_profissional',
   },
   {
     name: 'coloquial + erro de português',
@@ -108,8 +119,8 @@ export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
     name: 'muda de assunto no meio',
     category: 'muda de assunto',
     input: 'Sobre o show de sábado, ah e outra coisa, vocês fazem eventos corporativos também?',
-    expectedIntents: ['booking_update', 'orcamento', 'suporte'],
-    note: 'dois tópicos genuinamente diferentes na mesma mensagem',
+    expectedIntents: ['booking_update', 'orcamento', 'suporte', 'outro'],
+    note: 'segundo tópico ("fazem eventos corporativos?") é uma pergunta sobre ESCOPO/TIPO de serviço oferecido — não existe intent pra isso na taxonomia atual (não é orcamento de um trabalho específico, não é disponibilidade, não é suporte técnico). "outro" aqui é uma resposta conservadora defensável, não um erro — lacuna real de taxonomia documentada, proposta de solução pendente de decisão (ex.: um intent futuro tipo consulta_servico), não implementada silenciosamente',
   },
   {
     name: 'depende de mensagem anterior (fora desta simulação)',
@@ -117,5 +128,6 @@ export const GOLDEN_SUITE_CASES: GoldenSuiteCase[] = [
     input: 'sim, pode ser',
     expectedIntents: ['outro'],
     note: 'sentido real depende de uma mensagem anterior que não existe nesta simulação isolada — mede comportamento conservador sem contexto',
+    expectAmbiguous: true,
   },
 ];

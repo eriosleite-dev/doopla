@@ -18,6 +18,7 @@ export function computeEffectiveConfidence(params: {
   primaryIntent: Intent;
   secondaryIntents: readonly Intent[];
   triggerHasUsableText: boolean;
+  shortMessageWithoutContext: boolean;
 }): ConfidenceLevel {
   let level = params.modelConfidence;
 
@@ -42,6 +43,13 @@ export function computeEffectiveConfidence(params: {
   // ambiguidade que o próprio model pode não ter reconhecido.
   if (params.secondaryIntents.length > 2) downgrade('medium');
   if (params.primaryIntent === 'outro' && params.secondaryIntents.length > 0) downgrade('medium');
+  // Mensagem curta (poucas palavras) sem nenhuma mensagem anterior no
+  // recorte: mesmo quando o model acerta uma leitura plausível, a base
+  // textual é fraca demais pra sustentar confiança alta — o mesmo texto
+  // curto costuma admitir mais de uma interpretação razoável quando não
+  // há histórico que a desambigue. Regra geral (não é sobre nenhuma
+  // frase específica): nunca 'high' nessas condições.
+  if (params.shortMessageWithoutContext) downgrade('medium');
 
   return level;
 }

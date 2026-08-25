@@ -130,7 +130,15 @@ export async function runGoldenSuiteAction(): Promise<{ results?: GoldenSuiteCas
     try {
       const { classification } = await classifyIntent(toolCtx, contextPackage);
       const returnedIntents = [classification.primaryIntent, ...classification.secondaryIntents];
-      const pass = goldenCase.expectedIntents.some((intent) => returnedIntents.includes(intent));
+      const intentMatch = goldenCase.expectedIntents.some((intent) => returnedIntents.includes(intent));
+      // Casos expectAmbiguous: acertar uma leitura plausível não basta —
+      // a classificação também precisa ter reconhecido a própria
+      // incerteza (status "ambiguous" ou confiança abaixo de "high").
+      // Sem isso, "acertar por sorte" um valor aceito mascararia uma
+      // classificação que assumiu certeza indevida.
+      const pass = goldenCase.expectAmbiguous
+        ? intentMatch && (classification.classificationStatus === 'ambiguous' || classification.effectiveConfidence !== 'high')
+        : intentMatch;
 
       results.push({
         name: goldenCase.name,

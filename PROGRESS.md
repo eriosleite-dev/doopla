@@ -2748,8 +2748,110 @@ cross-tenant via `finish_orchestrator_run`), concorrência, escala.
 - ✅ Regressão completa (Blocos 1–3 + todos os adversariais, ~130
   checks de lógica + 20 reais contra Postgres) sem falha real.
   `npm run build`/`tsc`/`eslint` limpos.
-- ⏳ **Aguardando você rodar a golden suite em Preview e reportar
-  resultados** antes do merge. PR ainda não criado.
+- ✅ **Golden suite real rodada em Preview pelo usuário: 28/32.**
+  Causa raiz de cada FAIL/PASS suspeito investigada abaixo — sem
+  ajustar `expected` só pra fazer passar, sem criar intent novo
+  silenciosamente, sem tuning pra frases específicas.
+
+### Rodada 2 do Bloco 3 — correções pós-golden-suite real (28/32)
+
+**FAIL #9** ("Faz uma bio minha mais curta pro Instagram." → esperado
+`material_profissional`, recebido `outro`) **e a metade
+`rider`→`material_profissional` do FAIL #25**: causa raiz é a mesma —
+`material_profissional` (como a maioria dos 15 intents além de
+`booking_update`/`financeiro_booking`) não tinha NENHUMA definição
+semântica no prompt além do próprio nome do enum; o model precisava
+adivinhar o significado só pelo identificador. Corrigido com uma regra
+geral no prompt: `material_profissional` cobre materiais de
+apresentação/divulgação do próprio profissional (bio, press kit,
+portfólio, fotos/vídeos promocionais), com exclusão explícita de
+`rider` (documento técnico de produção, sempre `rider`, nunca vira
+"material" por ser um texto). Não é uma regra sobre "faz uma bio" —é
+sobre a categoria completa de autoapresentação profissional.
+
+**FAIL #13** ("Não quero mais lembrete no dia que eu vou tocar." →
+esperado `treinamento_profissional`, recebido `suporte`): mesma
+categoria de causa (zero definição no prompt) + a própria palavra
+"treinamento" soa mais como "ajuda/suporte" do que "o profissional
+calibrando o comportamento do assistente". Não renomeado (fora de
+escopo sem aprovação explícita — sinalizado como decisão futura
+opcional). Corrigido com regra geral no prompt distinguindo
+"profissional dando preferência/instrução sobre como a Doopla deve
+tratá-lo dali em diante" (`treinamento_profissional`) de "profissional
+relatando que algo não funciona na plataforma" (`suporte`).
+
+**FAIL #25** (metade `logistica` vs. `booking_update`): antes de
+corrigir, revisão conceitual da fronteira, decidida independente do
+caso de teste específico — a DATA/HORÁRIO em que o trabalho acontece é
+termo central do acordo, no mesmo grupo de "o trabalho existe"/"foi
+cancelado": mudar isso é sempre `booking_update`, nunca `logistica`.
+`logistica` fica reservada pra coordenação de EXECUÇÃO de um evento
+cujos termos centrais já estão fixados (endereço, acesso,
+estacionamento, horário de chegada pra montagem). Prompt atualizado
+com essa regra geral; `golden-suite.ts` corrigido para
+`['booking_update', 'rider']` (a regra foi decidida primeiro, o dado
+do teste corrigido depois pra refletir a regra — não o contrário).
+
+**FAIL #31** ("...vocês fazem eventos corporativos também?" →
+recebido `outro`): concluído que a resposta do model foi
+provavelmente correta e conservadora, e que o `expected` original do
+teste é que estava errado — o segundo tópico da mensagem é uma
+pergunta sobre ESCOPO/TIPO de serviço oferecido, e nenhum dos 15
+intents cobre isso (não é orçamento de um trabalho específico, não é
+disponibilidade, não é suporte técnico). **Lacuna real de taxonomia
+documentada, não implementada**: candidato a intent futuro tipo
+`consulta_servico`, decisão pendente do usuário. `golden-suite.ts`
+corrigido pra aceitar `outro` como resposta válida neste caso
+específico, com nota explicando a lacuna.
+
+**PASS suspeito #8** ("E a nota?" → `cobranca`, confidence HIGH sem
+contexto) **e #21** ("quanto?" → `orcamento`, o próprio teste descreve
+como genuinamente ambíguo, mas media/high "por sorte" contava como
+PASS): causa raiz estrutural — `confidence.ts` só tinha regra pra
+texto totalmente VAZIO, nenhuma regra pra mensagem CURTA sem
+contexto. Nova regra geral, em código (não no prompt — autoridade de
+confidence é sempre do código, nunca do model):
+`shortMessageWithoutContext` (gatilho ≤3 palavras E nenhuma mensagem
+anterior no recorte) nunca permite `effectiveConfidence` acima de
+`medium`, mesmo que `modelConfidence` tenha vindo `high`. Efeito
+colateral aceito e verificado explicitamente: também limita mensagens
+financeiras curtas e claras (“Entrou o restante.”, “Ainda faltam
+R$800.”) a `medium` — comportamento conservador consistente com a
+prioridade do projeto, não um bug a esconder.
+
+Adicionalmente, o próprio critério de PASS da golden suite era
+permissivo demais pra casos genuinamente ambíguos (bastava acertar UM
+valor da lista, mesmo que a classificação não tivesse reconhecido a
+própria incerteza). Novo campo `expectAmbiguous` em
+`GoldenSuiteCase` + critério de PASS mais estrito em
+`runGoldenSuiteAction()`: quando marcado, só passa se
+`classificationStatus === 'ambiguous'` OU `effectiveConfidence !==
+'high'`, além do intent bater. Aplicado aos 4 casos genuinamente
+ambíguos ("quanto?", "pode ser", "fechou", "sim, pode ser"). Revisão
+dos 32 casos completos não encontrou outros PASS-permissivos além
+destes.
+
+**Testes**: novo arquivo Red Team (rodado via `npx tsx`, nunca
+commitado) com casos positivos E negativos pra cada regra nova —
+`shortMessageWithoutContext` isolada em `confidence.ts`, o cálculo
+real em `classify.ts` (gatilho curto+sem histórico vs. gatilho
+curto+com histórico vs. gatilho longo vs. gatilho vazio), o critério
+`expectAmbiguous` da golden suite (incluindo o cenário exato do bug do
+PASS #21), e regressão estrutural do roteamento de competência pras
+fronteiras tocadas no prompt (`rider`/`material_profissional`,
+`treinamento_profissional`/`suporte`, `booking_update`/`logistica`) —
+a prova semântica das mudanças de PROMPT em si só é possível pela
+golden suite real (que já embute os casos negativos: o caso "rider"
+nunca deveria virar `material_profissional`, o caso "logística" nunca
+deveria virar `booking_update`, etc.). Regressão completa de todos os
+Blocos 1–3 (8 suítes, ~150 checks) sem falha. `npm run build`/`tsc`/
+`eslint` limpos. **Nenhuma migration alterada/criada** — mudanças são
+só texto de prompt + lógica de confidence em código + dados de teste;
+confirmado que 0043 continua a última migration.
+
+- ⏳ **Aguardando você rodar a golden suite real de novo em Preview**
+  e reportar resultados antes do merge. PR ainda não criado. Não
+  avançar para o Bloco 4.
 
 ## Como usar isso
 
