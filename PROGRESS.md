@@ -3669,6 +3669,100 @@ escopo das decisões desta rodada).
   integração WhatsApp/Resend/pagamento iniciada. Nenhum bloco
   posterior iniciado. Nenhum merge, nenhum PR.
 
+## 39. Post-model Policy Gate — dependência entre categorias + resolução temporal (fechamento)
+
+Fecha os 2 riscos residuais reportados no fechamento do bloco 38.
+Usuário aprovou análise prévia (ver histórico) com 1 ajuste: timezone
+NUNCA hardcoded como verdade do domínio (Doopla pode expandir além do
+Brasil) — nenhuma migration de timezone criada nesta rodada, sem
+decisão de produto sobre onde ela pertence.
+
+- ✅ **Dependência entre categorias** (`dependencies.ts`): matriz
+  estática `CATEGORY_DEPENDENCIES` (`price_or_cache`/`accept_or_decline_work`
+  ← `date_change,time_change,duration_change,location_change,scope_change`;
+  `discount`/`payment_condition` ← `price_or_cache`; `logistics_commitment`
+  ← `date_change,location_change`), nunca ampliada por inferência.
+  `matcher.ts` ganhou checagem `stale_dependency`: depois do match de
+  valor passar, compara o `created_at` da approval usada contra a
+  approval mais recente de cada categoria-dependência (ambas já vêm
+  juntas de `get_active_approvals`, migration 0045 — **zero query
+  nova, zero migration no Bloco 5**). Comparação por instante real
+  (`Date.parse`, nunca lexicográfica de string). Empate (mesma
+  transação — commit composto) nunca invalida entre si. Categorias
+  fora da matriz (`contractual_exception`/`other_commitment_change`,
+  dependência não generalizável com segurança) nunca bloqueiam por
+  isso.
+- ✅ **Resolução temporal por closed-candidate-selection** (`temporal.ts`):
+  o extrator NUNCA calcula/inventa uma data — código gera lista fechada
+  de candidatos (hoje, amanhã, próxima E seguinte ocorrência de cada
+  dia da semana — cobre a ambiguidade real de "sábado" vs "sábado que
+  vem" como duas leituras distintas, nunca escolhendo uma sozinho —,
+  dia-do-mês 1..31 do mês corrente e do seguinte, mais a data
+  estrutural conhecida do commercial root quando fornecida) a partir
+  de `referenceTimestamp` (ISO, sempre de um dado estrutural real —
+  nunca `new Date()` implícito) + `timezone` (IANA explícito ou
+  `null` — sem coluna própria no schema hoje, decisão explícita de
+  não criar uma só pra isto); o model só ecoa um `label` da lista (ou
+  `null`); código revalida (`resolveTemporalCandidateLabel`) e aplica
+  um backstop de plausibilidade (`isDatePlausible`, ±730 dias) mesmo
+  pra datas absolutas já bem-formadas. `timezone=null` ou IANA
+  inválido → zero candidatos relativos → nunca adivinha. "depois das
+  22h" e formas de restrição/intervalo continuam deliberadamente fora
+  do schema (`time_change` exige horário exato) — não fabricamos
+  precisão que o schema não representa.
+- ✅ **`PostModelGateInput`/`ActiveApprovalForMatch` estendidos**:
+  `referenceTimestamp`/`timezone`/`knownEventDate` (todos explícitos,
+  fornecidos por quem chama — o Gate nunca busca sozinho) e
+  `createdAt` (já vinha na resposta de `get_active_approvals`, só
+  precisava ser mapeado).
+- ✅ **Migration `0050_policy_gate_dependencies_and_temporal.sql`**:
+  só estende o CHECK de `policy_gate_decisions.primary_block_reason`
+  pra incluir `stale_dependency` — nenhuma tabela/coluna/RPC nova
+  (dependência e resolução temporal são 100% TS).
+- ✅ **Testes**: SQL — CHECK novo aceita `stale_dependency`, suite
+  completa de `policy_gate_decisions` revalidada (script no
+  scratchpad). TS determinísticos — 34 novos cenários: os 10 de
+  dependência explicitamente pedidos (preço/2h→duração muda→bloqueia;
+  duração muda→preço aprovado depois→permite; aprovação conjunta
+  mesmo timestamp→não invalida entre si; múltiplas dependências, uma
+  só já bloqueia; ausência de approval na dependência ≠ mudança;
+  categoria fora da matriz nunca inventa invalidação; data/local
+  depois do aceite→aceite antigo não reutilizado; preço depois de
+  desconto/condição de pagamento→antigos não reutilizados); os 4 de
+  `subject_key` prometidos (2 approvals ativas + draft ambíguo; subject
+  válido sem approval correspondente; approval de outro commercial
+  root; label fora da taxonomia com 2+ candidatos); e os de resolução
+  temporal (virada de ano, fim/início de mês, fevereiro não-bissexto,
+  timezones diferentes explícitos divergindo corretamente, ambiguidade
+  de "sábado" sempre com 2 candidatos distintos, label alucinado nunca
+  resolve, timezone `null`/IANA inválido nunca adivinha,
+  `knownEventDate` funciona mesmo sem timezone, backstop de
+  plausibilidade rejeita datas absurdas mesmo bem-formadas,
+  `extractCommitments` fail-closed com label alucinado e resolve
+  corretamente com label real). Regressão dos 30 cenários da rodada
+  anterior revalidada sem alteração de regra de negócio. Todos PASS.
+  `tsc`/`eslint`/`next build` limpos.
+- ✅ **Golden suite atualizada**: 2 casos novos de data relativa
+  ("amanhã", "sábado" ambíguo) exercitando o mecanismo contra o model
+  real — rota dev usa um fixture de timezone EXPLICITAMENTE marcado
+  como fixture de teste (`GOLDEN_SUITE_FIXTURE_TIMEZONE`), nunca a
+  verdade do domínio.
+
+**Decisão de produto ainda em aberto, não resolvida aqui** (fora do
+escopo autorizado nesta rodada): onde `timezone` confiável deveria
+viver estruturalmente (coluna em `profiles`? por booking? por
+conversa?) — nenhuma migration criada pra isso agora. Até essa decisão
+existir, qualquer integração real precisa fornecer `timezone`
+explicitamente por fora (ou aceitar que expressões relativas de data
+ficam sempre não-resolvidas).
+
+- ✅ **Migration**: `0050_policy_gate_dependencies_and_temporal.sql`.
+- 🔒 **Confirmação**: nenhum wiring de produção, nenhuma integração
+  WhatsApp/Resend/pagamento, nenhum bloco posterior iniciado. Golden
+  Suite continua pendente de execução real (sem OpenAI/Preview neste
+  sandbox) — permanece como gate explícito antes de considerar o
+  Post-model Policy Gate validado com modelo real.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

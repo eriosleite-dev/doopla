@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getOpenAIClient } from '../openai-client';
 import { PROFESSIONAL_DECISION_CATEGORIES } from '../planner/decision-categories';
 import { MAX_EXTRACTED_COMMITMENTS, POLICY_GATE_EXTRACTOR_MAX_RETRIES, POLICY_GATE_EXTRACTOR_MODEL } from './config';
+import { generateTemporalCandidates, isDatePlausible, resolveTemporalCandidateLabel, type TemporalCandidate, type TemporalContext } from './temporal';
 import type { ExtractedCommitment } from './types';
 
 // Doopla Intelligence Core v1 — Post-model Policy Gate: extrator de
@@ -41,6 +42,16 @@ const extractedCommitmentModelSchema = z.object({
   // Não validado aqui — validateApprovedValue() (value-schemas.ts,
   // reusado) decide se o shape é aceitável pra decisionCategory.
   value: z.record(z.string(), z.unknown()).nullable(),
+  // Closed-candidate-selection temporal (decisão do usuário): só
+  // relevante pra decisionCategory='date_change' quando o texto usa
+  // uma expressão RELATIVA ("amanhã", "sábado", "dia 20") — o model
+  // ecoa o LABEL EXATO de um candidato já listado em temporalCandidates
+  // (nunca calcula/inventa uma data). null quando o texto já afirma
+  // uma data absoluta completa (nesse caso "value.date" já é
+  // suficiente) ou quando não há candidato correspondente com
+  // confiança — o código nunca aceita um label que não esteja
+  // literalmente na lista fornecida.
+  temporalCandidateLabel: z.string().nullable(),
 });
 
 const modelOutputSchema = z.object({
@@ -73,14 +84,24 @@ async function defaultModelCall({ instructions, input }: { instructions: string;
   };
 }
 
-function buildExtractorInstructions(): string {
-  return [
+function buildExtractorInstructions(hasTemporalCandidates: boolean): string {
+  const base = [
     'Você extrai, de um texto que a Doopla está PRESTES A ENVIAR a um cliente, quais compromissos comerciais estruturados esse texto comunica como certos/decididos — nunca o que ele SUGERE verificar, nunca o que ele pergunta.',
     'Você NUNCA decide se o compromisso é autorizado — só relata o que o texto, lido literalmente e por implicação direta, está confirmando.',
     'Se o texto só coleta informação, pede pra aguardar, diz que vai consultar o profissional, ou não confirma nenhum valor/condição concreta, devolva commitments vazio.',
     'Cada compromisso precisa de um valor CONCRETO no texto (um número, uma data, uma hora, uma descrição específica) — nunca infira um valor que o texto não afirma.',
     'subjectKey só é relevante pra categorias com múltiplas instâncias possíveis no mesmo trabalho (ex.: logistics_commitment pode ser sobre transporte OU hospedagem, separadamente) — descreva em uma palavra curta (ex.: "transport", "lodging") o que o texto especifica; null se a categoria for de instância única (preço, data, hora, duração, local, desconto, condição de pagamento, aceite, cancelamento) ou se o texto não deixar claro qual instância.',
-  ].join('\n');
+  ];
+  const temporal = hasTemporalCandidates
+    ? [
+        'Para decisionCategory="date_change": se o texto usa uma data JÁ ABSOLUTA e completa (ex.: "20/12/2026"), preencha value.date normalmente (formato YYYY-MM-DD) e deixe temporalCandidateLabel null.',
+        'Se o texto usa uma expressão RELATIVA de data (ex.: "amanhã", "sábado", "sábado que vem", "dia 20", "semana que vem"), você NUNCA calcula a data sozinho — em vez disso, escolha o "label" EXATO de um item da lista temporalCandidates (fornecida junto com o texto) que corresponda ao que o texto está dizendo, e devolva esse label em temporalCandidateLabel (deixe value.date null nesse caso).',
+        'Se houver mais de uma leitura plausível pra a expressão (ex.: "sábado" podendo ser o próximo sábado OU o seguinte) e o texto ao redor não deixar claro qual, ou se nenhum candidato da lista corresponder com confiança, devolva temporalCandidateLabel null e value null — nunca adivinhe.',
+      ]
+    : [
+        'Nenhum candidato temporal está disponível nesta chamada — se o texto usar uma expressão de data RELATIVA ("amanhã", "sábado", "dia 20"), você não pode resolvê-la: devolva value null e temporalCandidateLabel null pra esse compromisso (nunca invente uma data). Só preencha value.date quando o texto já afirma uma data absoluta completa.',
+      ];
+  return [...base, ...temporal].join('\n');
 }
 
 export type ExtractCommitmentsResult = {
@@ -97,13 +118,21 @@ export type ExtractCommitmentsResult = {
 // Único ponto de chamada ao model deste extrator. Nunca lança — falha
 // total vira unavailable=true, tratado como bloqueio pelo chamador
 // (fail-closed, nunca "assume que não há compromisso").
+//
+// temporal é OBRIGATÓRIO no contrato (nunca opcional/implícito) —
+// decisão do usuário: referenceTimestamp precisa vir de um dado
+// estrutural real (conversation_messages.created_at da mensagem-
+// gatilho), nunca de um relógio implícito deste processo.
 export async function extractCommitments(
   proposedResponse: string,
+  temporal: TemporalContext,
   opts: { modelCall?: PolicyGateExtractorModelCall; maxRetries?: number } = {}
 ): Promise<ExtractCommitmentsResult> {
   const modelCall = opts.modelCall ?? defaultModelCall;
   const maxRetries = opts.maxRetries ?? POLICY_GATE_EXTRACTOR_MAX_RETRIES;
-  const instructions = buildExtractorInstructions();
+  const candidates = generateTemporalCandidates(temporal);
+  const instructions = buildExtractorInstructions(candidates.length > 0);
+  const input = JSON.stringify({ proposedResponse, temporalCandidates: candidates.map((c) => c.label) });
 
   let parsed: PolicyGateExtractorModelOutput | null = null;
   let inputTokens: number | null = null;
@@ -111,7 +140,7 @@ export async function extractCommitments(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const result = await modelCall({ instructions, input: proposedResponse });
+      const result = await modelCall({ instructions, input });
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
       if (result.parsed) {
@@ -128,11 +157,41 @@ export async function extractCommitments(
     return { commitments: [], inputTokens, outputTokens, unavailable: true };
   }
 
-  const commitments: ExtractedCommitment[] = parsed.commitments.slice(0, MAX_EXTRACTED_COMMITMENTS).map((c) => ({
-    decisionCategory: c.decisionCategory,
-    rawSubjectKey: c.subjectKey,
-    rawValue: c.value,
-  }));
+  const commitments: ExtractedCommitment[] = parsed.commitments
+    .slice(0, MAX_EXTRACTED_COMMITMENTS)
+    .map((c) => ({
+      decisionCategory: c.decisionCategory,
+      rawSubjectKey: c.subjectKey,
+      rawValue: resolveDateValue(c, candidates, temporal.referenceTimestamp),
+    }));
 
   return { commitments, inputTokens, outputTokens, unavailable: false };
+}
+
+// Resolve o valor final de UM commitment quando a categoria é
+// date_change — nunca confia no model pra aritmética de calendário.
+// Caminho A (label): o label precisa bater EXATAMENTE com um
+// candidato REAL gerado pelo código (generateTemporalCandidates) —
+// um label alucinado/fora da lista nunca é aceito, vira null (o
+// commitment inteiro fica sem valor, o matcher bloqueia por
+// invalid_extracted_value). Caminho B (literal): o texto já afirmava
+// uma data absoluta — o valor passa como veio, mas ainda precisa
+// sobreviver ao backstop de plausibilidade (nunca só o regex de
+// formato). Qualquer outra categoria passa direto, sem alteração.
+function resolveDateValue(
+  c: { decisionCategory: string; value: Record<string, unknown> | null; temporalCandidateLabel: string | null },
+  candidates: readonly TemporalCandidate[],
+  referenceTimestamp: string
+): Record<string, unknown> | null {
+  if (c.decisionCategory !== 'date_change') return c.value;
+
+  if (c.temporalCandidateLabel) {
+    const resolvedDate = resolveTemporalCandidateLabel(c.temporalCandidateLabel, candidates);
+    if (!resolvedDate || !isDatePlausible(resolvedDate, referenceTimestamp)) return null;
+    return { date: resolvedDate };
+  }
+
+  const literalDate = typeof c.value?.date === 'string' ? c.value.date : null;
+  if (literalDate && !isDatePlausible(literalDate, referenceTimestamp)) return null;
+  return c.value;
 }

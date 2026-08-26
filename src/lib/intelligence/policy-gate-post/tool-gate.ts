@@ -35,6 +35,7 @@ type ApprovalRecordRow = {
   subject_key: string;
   approved_value: Record<string, unknown> | null;
   version: number;
+  created_at: string;
 };
 
 export async function evaluateToolCallGate(
@@ -73,6 +74,7 @@ export async function evaluateToolCallGate(
     subjectKey: r.subject_key,
     approvedValue: r.approved_value,
     version: r.version,
+    createdAt: r.created_at,
   }));
 
   const isTerminal = terminalRes.data === true;

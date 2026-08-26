@@ -21,6 +21,20 @@ export type PostModelGateInput = {
   bookingId: string | null;
   opportunityId: string | null;
   proposedResponse: string | null;
+  // Resolução temporal (decisão do usuário) — nenhum destes tem
+  // default implícito neste módulo. referenceTimestamp SEMPRE vem de
+  // um dado estrutural real (ex.: conversation_messages.created_at da
+  // mensagem-gatilho), nunca de new Date() do processo. timezone é
+  // IANA explícito ou null (sem fonte confiável — não existe hoje
+  // nenhuma coluna de timezone no schema; ver PROGRESS.md); null faz
+  // o extrator tratar toda expressão temporal relativa como não-
+  // resolvível, nunca assume um fuso. knownEventDate, quando o
+  // commercial root já tem uma data estrutural conhecida (ex.:
+  // bookings/opportunities.event_date), é fornecido por quem monta
+  // este input — o Gate não busca isso sozinho.
+  referenceTimestamp: string;
+  timezone: string | null;
+  knownEventDate: string | null;
 };
 
 type ApprovalRecordRow = {
@@ -29,6 +43,7 @@ type ApprovalRecordRow = {
   subject_key: string;
   approved_value: Record<string, unknown> | null;
   version: number;
+  created_at: string;
 };
 
 export async function evaluatePostModelGate(
@@ -60,7 +75,11 @@ export async function evaluatePostModelGate(
       p_opportunity_id: input.opportunityId,
     }),
     supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId }),
-    extractCommitments(input.proposedResponse, opts),
+    extractCommitments(
+      input.proposedResponse,
+      { referenceTimestamp: input.referenceTimestamp, timezone: input.timezone, knownEventDate: input.knownEventDate },
+      opts
+    ),
   ]);
 
   if (approvalsRes.error) throw new Error(`get_active_approvals falhou: ${approvalsRes.error.message}`);
@@ -80,6 +99,7 @@ export async function evaluatePostModelGate(
     subjectKey: r.subject_key,
     approvedValue: r.approved_value,
     version: r.version,
+    createdAt: r.created_at,
   }));
 
   const isTerminal = terminalRes.data === true;

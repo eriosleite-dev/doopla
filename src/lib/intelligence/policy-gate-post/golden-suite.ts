@@ -16,14 +16,14 @@ import type { ProfessionalDecisionCategory } from '../planner/decision-categorie
 // palavra-chave) — e, igualmente importante, reconhecer quando o
 // texto NÃO afirma nada concreto (itens 9/13/14).
 //
-// Limitação conhecida, documentada aqui de propósito: o extrator
-// trabalha só com o texto do proposedResponse, sem contexto de
-// calendário/conversa — datas relativas ("sábado que vem") não são
-// resolvíveis por ele. Os casos abaixo usam valores já concretos
-// (mesmo padrão do que o Planner realista produziria, citando um fato
-// já presente no ContextPackage), nunca termos relativos — cobrir
-// resolução de data relativa é responsabilidade de quem monta o
-// draft (Bloco 4), não deste extrator.
+// Resolução temporal (V2 desta rodada): datas relativas ("amanhã",
+// "sábado") agora são resolvíveis por closed-candidate-selection
+// (temporal.ts) — o código gera candidatos a partir de
+// referenceTimestamp/timezone, o model só seleciona um label, nunca
+// calcula. Esta rota dev usa um fixture EXCLUSIVO de teste pra
+// referenceTimestamp/timezone (ver GOLDEN_SUITE_FIXTURE_TIMEZONE em
+// actions.ts) — nunca a verdade permanente do domínio (não existe
+// hoje nenhuma coluna de timezone confiável no schema).
 
 export type PolicyGateGoldenSuiteCase = {
   name: string;
@@ -87,5 +87,17 @@ export const POLICY_GATE_GOLDEN_SUITE_CASES: PolicyGateGoldenSuiteCase[] = [
     name: 'confirmação de cancelamento',
     proposedResponse: 'Vamos cancelar esse compromisso conforme combinado.',
     expectedCommitments: [{ decisionCategory: 'cancellation' }],
+  },
+  {
+    name: 'data relativa resolvível — "amanhã"',
+    proposedResponse: 'Perfeito, nos vemos amanhã então!',
+    expectedCommitments: [{ decisionCategory: 'date_change' }],
+    note: 'closed-candidate-selection — precisa resolver via temporalCandidateLabel, nunca calcular sozinho',
+  },
+  {
+    name: 'data relativa ambígua — "sábado" sem mais contexto',
+    proposedResponse: 'Combinado, então fica pra sábado!',
+    expectedCommitments: [{ decisionCategory: 'date_change' }],
+    note: 'ambíguo entre next_sabado/following_sabado — model precisa escolher um dos dois candidatos reais, nunca inventar; qualquer um dos dois conta como PASS aqui (o teste de engenharia, não este, cobre a rejeição por ambiguidade genuína)',
   },
 ];

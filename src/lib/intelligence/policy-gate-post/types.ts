@@ -23,6 +23,11 @@ export const POLICY_GATE_BLOCK_REASONS = [
   'commercial_root_terminal',
   'invalid_extracted_value',
   'extraction_unavailable',
+  // Decisão do usuário (dependência entre categorias): a approval
+  // usada tem valor exato, mas uma categoria da qual ela depende
+  // (dependencies.ts) tem uma approval MAIS RECENTE — a premissa
+  // comercial sob a qual esta approval foi dada pode ter mudado.
+  'stale_dependency',
 ] as const;
 export type PolicyGateBlockReason = (typeof POLICY_GATE_BLOCK_REASONS)[number];
 
@@ -79,4 +84,10 @@ export type ActiveApprovalForMatch = {
   subjectKey: string;
   approvedValue: Record<string, unknown> | null;
   version: number;
+  // ISO-8601, ecoado direto de approval_records.created_at (get_active_approvals
+  // já retorna a linha inteira). Única base pra checagem de
+  // stale_dependency — version não é comparável ENTRE categorias
+  // diferentes (é por chain), created_at é o único sinal de ordem
+  // temporal cross-categoria disponível.
+  createdAt: string;
 };

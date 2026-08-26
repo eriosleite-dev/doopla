@@ -22,6 +22,11 @@ export type {
 
 export { valuesStructurallyEqual } from './value-equality';
 
+export { CATEGORY_DEPENDENCIES } from './dependencies';
+
+export { generateTemporalCandidates, resolveTemporalCandidateLabel, isDatePlausible, MAX_DATE_HORIZON_DAYS } from './temporal';
+export type { TemporalContext, TemporalCandidate } from './temporal';
+
 export { extractCommitments, policyGateExtractorModelOutputSchema } from './extractor';
 export type { PolicyGateExtractorModelCall, PolicyGateExtractorModelCallResult, PolicyGateExtractorModelOutput, ExtractCommitmentsResult } from './extractor';
 

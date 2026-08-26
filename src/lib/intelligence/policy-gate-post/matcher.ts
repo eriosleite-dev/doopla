@@ -1,6 +1,7 @@
 import { isMultiInstanceCategory, SINGULAR_SUBJECT_KEY, SUBJECT_KEY_TAXONOMY, validateApprovedValue } from '../approval/value-schemas';
 import type { ProfessionalDecisionCategory } from '../planner/decision-categories';
 import { POLICY_GATE_VERSION } from './config';
+import { CATEGORY_DEPENDENCIES } from './dependencies';
 import type { ActiveApprovalForMatch, CommitmentCheck, ExtractedCommitment, PostModelGateResult } from './types';
 import { valuesStructurallyEqual } from './value-equality';
 
@@ -38,6 +39,23 @@ export function resolveSubjectKey(
 
   if (activeApprovalsInCategory.length === 1) return activeApprovalsInCategory[0].subjectKey;
   return null;
+}
+
+// Decisão do usuário: uma approval só continua válida enquanto as
+// premissas comerciais sob as quais foi dada continuarem aplicáveis.
+// Compara o candidato MATCHED contra CATEGORY_DEPENDENCIES
+// (dependencies.ts, estática, nunca ampliada por inferência) — se
+// qualquer categoria da qual esta depende tiver uma approval ativa com
+// created_at ESTRITAMENTE posterior ao created_at do candidato, a
+// premissa pode ter mudado. Comparação por instante real (Date.parse),
+// nunca lexicográfica de string (formatos ISO podem diferir em
+// dígitos/offset). Empate (mesma transação/commit composto) NUNCA
+// invalida — só posterior estrito.
+function hasNewerDependency(matchedCategory: ProfessionalDecisionCategory, matchedCreatedAt: string, activeApprovals: readonly ActiveApprovalForMatch[]): boolean {
+  const deps = CATEGORY_DEPENDENCIES[matchedCategory];
+  if (!deps || deps.length === 0) return false;
+  const matchedTime = new Date(matchedCreatedAt).getTime();
+  return activeApprovals.some((a) => deps.includes(a.decisionCategory as ProfessionalDecisionCategory) && new Date(a.createdAt).getTime() > matchedTime);
 }
 
 // Match de UM commitment extraído contra o estado real. isCommercialRootTerminal
@@ -105,6 +123,17 @@ export function matchCommitment(
       subjectKey,
       result: 'blocked',
       blockReason: 'value_mismatch',
+      matchedApprovalRecordId: candidate.approvalRecordId,
+      extractedValueForDebug: extractedValue,
+    };
+  }
+
+  if (hasNewerDependency(extracted.decisionCategory, candidate.createdAt, activeApprovals)) {
+    return {
+      decisionCategory: extracted.decisionCategory,
+      subjectKey,
+      result: 'blocked',
+      blockReason: 'stale_dependency',
       matchedApprovalRecordId: candidate.approvalRecordId,
       extractedValueForDebug: extractedValue,
     };

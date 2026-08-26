@@ -30,6 +30,15 @@ export type PolicyGateGoldenSuiteCaseResult = {
   error?: string;
 };
 
+// Fixture EXCLUSIVA de teste (decisão do usuário) — nunca a verdade
+// permanente do domínio. Não existe hoje nenhuma coluna de timezone no
+// schema; esta rota dev usa um valor fixo só pra poder exercitar o
+// mecanismo de closed-candidate-selection contra o model real. Uma
+// integração de produção real precisa fornecer referenceTimestamp (de
+// conversation_messages.created_at) e timezone (de uma fonte real,
+// ainda a definir) explicitamente — nunca herdar este fixture.
+const GOLDEN_SUITE_FIXTURE_TIMEZONE = 'America/Sao_Paulo';
+
 async function requireProfessional() {
   const supabase = await createClient();
   const {
@@ -72,7 +81,11 @@ export async function runPolicyGateGoldenSuiteAction(): Promise<{ results?: Poli
 
   for (const goldenCase of POLICY_GATE_GOLDEN_SUITE_CASES) {
     try {
-      const { commitments } = await extractCommitments(goldenCase.proposedResponse);
+      const { commitments } = await extractCommitments(goldenCase.proposedResponse, {
+        referenceTimestamp: new Date().toISOString(),
+        timezone: GOLDEN_SUITE_FIXTURE_TIMEZONE,
+        knownEventDate: null,
+      });
       const pass = evaluateCase(goldenCase, commitments);
       results.push({
         name: goldenCase.name,
