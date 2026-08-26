@@ -3510,6 +3510,71 @@ aberto, como já reportado na rodada anterior.
   `payment_details`, WhatsApp, Resend, `/orcamento/[slug]` e legado de
   booker não foram tocados nesta rodada, conforme instruído.
 
+## 37. Bloco 5 — decisão final sobre os 2 riscos residuais (migration 0048)
+
+Fecha o risco residual #1 reportado no fechamento da migration 0047.
+Risco residual #2 permanece registrado como dívida técnica explícita
+(decisão do usuário: não introduzir infraestrutura de service-role
+nesta rodada).
+
+- ✅ **Backoff de overflow agora incondicional no boundary SQL**: nova
+  coluna `approval_resolution_backoff.next_eligible_reason`
+  (`'resolution_attempt' | 'overflow'`) marca qual mecanismo escreveu
+  por último `next_eligible_at`. `record_resolution_overflow()` marca
+  `'overflow'` (nunca toca `last_context_identity` — overflow não tem
+  identidade semântica real, por decisão explícita: "não fabricar
+  context_identity para overflow"). `commit_approval_resolution`
+  (branch `inconclusive`) marca `'resolution_attempt'` — comportamento
+  de bypass em contexto novo (V3.6) inalterado. `try_acquire_approval_resolution_claim`
+  ganhou um gate NOVO, checado ANTES do gate de backoff normal: quando
+  `next_eligible_reason='overflow'` e `now() < next_eligible_at`, nega
+  incondicionalmente (`deny_reason='backoff'`) — **nenhum
+  `context_identity`, por mais novo que seja, faz bypass**. Uma
+  chamada SQL direta ao RPC de claim, fora do `orchestrator.ts`, agora
+  respeita exatamente o mesmo backoff que o orchestrator já respeitava
+  por fora.
+- ✅ **Teste adversarial dedicado** (`42_redteam_overflow_backoff_sql_boundary.sql`,
+  script preservado no scratchpad): registra overflow com backoff
+  curto → confirma `next_eligible_at` futuro e `next_eligible_reason=overflow`
+  via `get_resolution_backoff_status` → chama o RPC de claim
+  DIRETAMENTE (sem orchestrator.ts) com um `context_identity` novo →
+  confirma recusa (`backoff`) → repete com um SEGUNDO `context_identity`
+  diferente do primeiro → confirma que continua recusado (bloqueio é
+  incondicional, não é coincidência de ter batido o mesmo contexto) →
+  confirma que nenhum claim foi gravado enquanto o backoff estava ativo
+  → aguarda a elegibilidade real (`pg_sleep`) → confirma claim concedido
+  normalmente depois → confirma que `commit_approval_resolution` e o
+  guard `already_resolved` continuam funcionando (idempotência/
+  context-identity preservados, nada quebrado pela mudança). Todos
+  PASS.
+- ✅ **Regressão completa revalidada**: as 33 asserções SQL antigas +
+  os 11 testes adversariais da rodada anterior (seção 36, incluindo os
+  2 workers de concorrência real) + este novo teste — todos PASS sem
+  alteração de regra de negócio. `tsc`/`eslint`/`next build` limpos.
+- 📋 **Dívida técnica / Beta Gate registrada explicitamente** (risco
+  residual #2, decisão deliberada de NÃO resolver agora): as RPCs
+  sensíveis do Intelligence OS continuam acessíveis a qualquer
+  `authenticated` (sem boundary de backend privilegiado) — aceitável
+  nesta fase porque (a) validação SQL fail-closed está completa
+  (provenance real, ownership real, cap de candidatos, backoff
+  incondicional — nenhum parâmetro do caller é tratado como autoridade
+  sem revalidação), (b) isolamento de tenant está intacto (RLS
+  deny-all nas tabelas sensíveis, ownership via `auth.uid()` em toda
+  function), (c) `anon` continua sem `execute` onde aplicável. **Antes
+  de produção aberta**: as RPCs sensíveis do Intelligence OS devem
+  deixar de depender de acesso genérico `authenticated` e passar por
+  um boundary de backend autorizado apropriado — decisão de arquitetura
+  a ser tomada de forma centralizada quando chegar a etapa de
+  integração real WhatsApp/backend do Intelligence OS. Explicitamente
+  não criar service-role client no frontend nem expor a service-role
+  key ao browser.
+- ✅ **Migration**: `0048_approval_engine_overflow_backoff_sql_boundary.sql`.
+- 🔒 **Confirmação**: nenhuma etapa do Post-model Policy Gate foi
+  iniciada. Nenhum merge, nenhum PR.
+- ⏳ **Golden Suite continua pendente** (sem acesso a OpenAI/Preview
+  neste sandbox) — permanece como gate explícito antes de considerar o
+  Approval Resolver validado com modelo real.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
