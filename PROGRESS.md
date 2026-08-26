@@ -3575,6 +3575,100 @@ nesta rodada).
   neste sandbox) — permanece como gate explícito antes de considerar o
   Approval Resolver validado com modelo real.
 
+## 38. Post-model Policy Gate — bloco novo (pós Bloco 5)
+
+Antes de implementar, fiz auditoria da arquitetura real (Blocos 1–5) e
+entreguei um desenho de 12 pontos na conversa — achado principal: o
+Response Planner (Bloco 4) já produz `proposedResponse` (o draft real),
+`commitmentNature`, `requiresProfessionalDecision` e
+`professionalDecisionCategory` (mesmo enum do Bloco 5), mas nunca teve
+acesso a `activeApprovalCandidates` — foi construído antes do Bloco 5
+existir. O Post-model Policy Gate é o bloco que fecha essa lacuna.
+Usuário aprovou o desenho com 2 decisões: implementar o extrator de
+valor estruturado, e analisar (sem implementar ainda) o gap de
+`subject_key` antes de decidir — análise concluiu que cabe inteira
+dentro do próprio extrator do Gate, sem tocar o Bloco 4 (frozen).
+Usuário autorizou a implementação completa em seguida.
+
+- ✅ **Módulo `src/lib/intelligence/policy-gate-post/`**: `extractor.ts`
+  (model call injetável, mesmo padrão de resolver.ts/plan.ts — extrai
+  compromissos estruturados de `proposedResponse`, no shape fechado de
+  `APPROVED_VALUE_SCHEMAS`/`SUBJECT_KEY_TAXONOMY` já existentes no
+  Bloco 5, reusados sem duplicar; nunca decide allow/block); `matcher.ts`
+  (100% código, puro — `resolveSubjectKey()`/`matchCommitment()`/
+  `evaluateCommitments()`, multidecisão sempre AND); `gate.ts`
+  (`evaluatePostModelGate`, orquestra leitura de `get_active_approvals`
+  + status terminal + extração); `tool-gate.ts` (`evaluateToolCallGate`,
+  mesmo matcher, deliberadamente desacoplado de `tool-registry.ts` —
+  Bloco 1 é frozen e nenhuma tool de escrita existe ainda, então não há
+  nada real pra encadear; quando uma existir, chama esta function
+  direto); `apply-outcome.ts` (`applyGateOutcome` — anti policy
+  laundering: bloqueio nunca retorna ao mesmo model call, só
+  transformação determinística pra `responsePlan='consult_professional'`
+  + `proposedResponse=null`, mesmo padrão de `draftStillValid` do
+  Bloco 4); `value-equality.ts` (igualdade estrutural self-contained,
+  não acopla aos internals não-exportados de `approval/canonicalize.ts`);
+  `log.ts`/`golden-suite.ts`/`config.ts`/`types.ts`/`index.ts`.
+- ✅ **Subject_key multi-instância resolvido sem tocar o Bloco 4**: pra
+  `scope_change`/`logistics_commitment`/`contractual_exception` (taxonomia
+  fechada já existente) o extrator propõe um `subjectKey`; se
+  inválido/ausente, fallback de cardinalidade — se existir EXATAMENTE
+  UMA approval ativa daquela categoria no commercial root, usa o
+  `subjectKey` dela (caso inambíguo); com 0 ou 2+, bloqueia
+  (`subject_key_unresolved`), nunca escolhe uma candidata arbitrária.
+  `other_commitment_change` (sem taxonomia fechada, V2 herdado) usa o
+  mesmo fallback.
+- ✅ **Migration `0049_post_model_policy_gate.sql`**: `is_commercial_root_terminal()`
+  (reusa `commercial_root_belongs_to_professional`, migration 0047, e a
+  MESMA lista de status terminal do trigger `close_candidates_on_structural_invalidation`
+  da migration 0045 — fecha o gap de `approval_records` nunca ser
+  invalidado automaticamente quando um booking/opportunity é cancelado,
+  sem alterar o Bloco 5); tabela `policy_gate_decisions` (append-only,
+  RLS select-own/deny-all-write, CHECK simétrico outcome↔primary_block_reason,
+  nunca duplica `proposedResponse` inteiro nem valores aprovados —
+  `matchedApprovalRecordId` referencia `approval_records`, `extractedValueForDebug`
+  só gravado quando `blocked`); RPC `record_policy_gate_decision()`
+  (único caminho de escrita, reusa `commercial_root_belongs_to_professional`
+  pra ownership).
+- ✅ **Testes SQL** (`43_policy_gate_sql.sql`, scratchpad): terminal
+  status muda corretamente e reverte; ownership cross-tenant bloqueada
+  (`not_authorized`/`invalid_provenance`); CHECK simétrico nos dois
+  sentidos (`blocked` sem motivo falha, `allowed` com motivo falha,
+  motivo fora do enum falha); tenant isolation (RLS select-own);
+  append-only (UPDATE direto não afeta nenhuma linha, sem policy).
+  Todos PASS. Regressão completa (33+11+1 asserções anteriores)
+  revalidada sem alteração de regra de negócio.
+- ✅ **30 testes determinísticos TS** (matcher/extractor com model call
+  injetado, script no scratchpad): os 20 cenários originais + os 8
+  específicos desta rodada (R$3000→R$2900 bloqueado; R$3000→R$3000+
+  transporte bloqueado por shape extra; multidecisão parcial; root/
+  instância errados; extrator `null`/fora-do-schema) + os de
+  `subject_key` da análise aprovada + `applyGateOutcome`
+  (anti-laundering). Todos PASS.
+- ✅ **Golden suite dev-only** (`/dev/policy-gate-golden-suite`, mesmo
+  padrão de `/dev/approval-golden-suite`): 10 casos, incluindo
+  confirmação implícita sem palavra-chave ("nos vemos sábado às 22h",
+  item 10 da spec) — só roda com `OPENAI_API_KEY`/Preview, ainda não
+  executada neste sandbox.
+- ✅ `tsc`/`eslint`/`next build` limpos (projeto inteiro).
+
+**Risco residual reportado, não corrigido** (limitação estrutural, não
+uma decisão adiável): o extrator opera só sobre o texto de
+`proposedResponse`, sem contexto de calendário/conversa — datas
+relativas ("sábado que vem") não são resolvíveis por ele; documentado
+diretamente no `golden-suite.ts`. Também documentado: dependência
+entre categorias continua não modelada (preço aprovado "pra 2h" não é
+invalidado automaticamente se a duração mudar) — mesma limitação já
+reportada no desenho, não resolvida nesta implementação (fora do
+escopo das decisões desta rodada).
+
+- ✅ **Migration**: `0049_post_model_policy_gate.sql`.
+- 🔒 **Nenhum wiring de produção real** — nenhuma integração com
+  `test-call.ts`/Orchestrator ainda (não existe um Orchestrator real
+  rodando 1→5 em produção hoje, confirmado na auditoria). Nenhuma
+  integração WhatsApp/Resend/pagamento iniciada. Nenhum bloco
+  posterior iniciado. Nenhum merge, nenhum PR.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
