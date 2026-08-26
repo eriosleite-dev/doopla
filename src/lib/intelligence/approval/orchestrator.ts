@@ -52,6 +52,26 @@ export async function runApprovalEngine(
     modelCall?: ApprovalResolverModelCall;
   }
 ): Promise<RunApprovalEngineResult> {
+  // Checa backoff (inclusive overflow, migration 0047) ANTES de montar
+  // F1 — nunca reconstrói ResolutionContext à toa numa mensagem
+  // cronicamente over-budget/over-limit: o mesmo next_eligible_at que
+  // já governa retry de resolução normal (try_acquire_approval_resolution_claim)
+  // agora também é escrito por record_resolution_overflow, então
+  // respeitá-lo aqui fecha o ciclo attempts/backoff pros dois casos.
+  const { data: backoffRows, error: backoffError } = await supabase.rpc('get_resolution_backoff_status', {
+    p_message_id: params.professionalStatementMessageId,
+  });
+  if (backoffError) throw new Error(`get_resolution_backoff_status falhou: ${backoffError.message}`);
+  const backoffStatus = (Array.isArray(backoffRows) ? backoffRows[0] : backoffRows) as {
+    next_eligible_at: string | null;
+    last_overflow_reason: string | null;
+    last_overflow_at: string | null;
+    attempt_count: number | null;
+  } | null;
+  if (backoffStatus?.next_eligible_at && new Date(backoffStatus.next_eligible_at).getTime() > Date.now()) {
+    return { status: 'not_eligible', reason: 'backoff' };
+  }
+
   // F1: contexto ANTES de qualquer chamada externa — determinístico,
   // sem I/O de rede, calculável mesmo antes de saber se o claim será
   // concedido (por isso a checagem de budget já pode ocorrer aqui,
@@ -66,20 +86,24 @@ export async function runApprovalEngine(
   });
 
   if (contextResultF1.budgetExceeded) {
-    // DIVERGÊNCIA CONHECIDA, NÃO RESOLVIDA (ver relatório final): a
-    // spec V3.10 define outcome=inconclusive/context_budget_exceeded
-    // e chain_candidate_overflow como saídas legítimas a serem
-    // PINADAS em approval_resolutions — mas approval_resolutions exige
-    // um context_identity de 32 bytes, e por definição não é possível
-    // construir o ResolutionContext completo quando o budget estoura
-    // (é exatamente essa impossibilidade que caracteriza o overflow).
-    // A spec nunca especificou qual identidade usar nesse caso
-    // (hash de um "marcador" reduzido? do estado que causou o
-    // overflow?). Decidir isso unilateralmente aqui seria fazer uma
-    // escolha arquitetural sem aprovação — por isso esta função
-    // deliberadamente NÃO chama acquire/commit no caminho de budget
-    // excedido e retorna sem persistir nada, em vez de inventar uma
-    // identidade. Ver "Divergências" no relatório final.
+    // Decisão do usuário (fechamento do Bloco 5, migration 0047):
+    // overflow é condição OPERACIONAL do resolver, nunca um outcome
+    // comercial — nunca pinado em approval_resolutions (que exige
+    // context_identity real de 32 bytes, por definição irrepresentável
+    // aqui). Registrado em approval_resolution_backoff via
+    // record_resolution_overflow, tratado como tentativa que não
+    // progrediu (mesmo backoff exponencial de uma resolução comum) —
+    // fecha o ciclo que get_resolution_backoff_status consulta acima
+    // antes de reconstruir contexto de novo.
+    const { error: overflowError } = await supabase.rpc('record_resolution_overflow', {
+      p_message_id: params.professionalStatementMessageId,
+      p_commercial_root_id: contextResultF1.commercialRootId,
+      p_reason: contextResultF1.reason,
+      p_decision_category: contextResultF1.decisionCategory ?? null,
+      p_subject_key: contextResultF1.subjectKey ?? null,
+      p_magnitude: contextResultF1.magnitude ?? null,
+    });
+    if (overflowError) throw new Error(`record_resolution_overflow falhou: ${overflowError.message}`);
     return { status: 'budget_exceeded', reason: contextResultF1.reason };
   }
 
@@ -134,8 +158,19 @@ export async function runApprovalEngine(
   if (contextResultF2.budgetExceeded) {
     // Contexto ficou over-budget entre F1 e F2 — trata como stale,
     // descarta e libera o claim (nunca commita sobre um F2 que nem é
-    // representável).
+    // representável). Mesmo registro de overflow operacional do ramo F1
+    // (nunca approval_resolutions) — o resolver já foi chamado aqui,
+    // mas nada do resultado é persistido como decisão comercial.
     await supabase.rpc('release_approval_resolution_claim', { p_message_id: params.professionalStatementMessageId, p_lease_token: leaseToken });
+    const { error: overflowError } = await supabase.rpc('record_resolution_overflow', {
+      p_message_id: params.professionalStatementMessageId,
+      p_commercial_root_id: contextResultF2.commercialRootId,
+      p_reason: contextResultF2.reason,
+      p_decision_category: contextResultF2.decisionCategory ?? null,
+      p_subject_key: contextResultF2.subjectKey ?? null,
+      p_magnitude: contextResultF2.magnitude ?? null,
+    });
+    if (overflowError) throw new Error(`record_resolution_overflow falhou: ${overflowError.message}`);
     return { status: 'budget_exceeded', reason: contextResultF2.reason };
   }
   const f2 = computeContextIdentity(contextResultF2.context);

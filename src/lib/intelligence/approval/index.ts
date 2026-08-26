@@ -29,6 +29,7 @@ export type {
   AcquireClaimResult,
   ReserveDispatchTokenResult,
   CommitResolutionResult,
+  ClassifyCommunicatedProposalResult,
 } from './types';
 
 export {

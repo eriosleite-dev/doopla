@@ -3384,6 +3384,132 @@ subconjunto pra implementar agora.
   Engine) não foi tocado nem referenciado por nenhuma linha desta
   rodada.
 
+## 36. Bloco 5 — fechamento do Approval Resolver (migration 0047)
+
+Fecha os 3 pontos que o Red Team sobre `ac86f26` (seção 34) deixou
+explicitamente em aberto, seguindo as decisões dadas pelo usuário pra
+cada um. Nenhuma arquitetura redesenhada — só o que as decisões
+pediram, no boundary SQL (nunca só TS, por instrução explícita).
+
+- ✅ **Achado 4 — `commercial_root_id`/provenance forjável**: nova
+  function `commercial_root_belongs_to_professional()` (ownership real,
+  booking OU opportunity) chamada em `commit_approval_resolution` logo
+  após validar `author_type='professional'`. Revalidação COMPLETA do
+  lote inteiro ANTES de qualquer lock/insert: todo `commercialRootId`
+  de cada decisão precisa bater com o root já validado; simetria de
+  provenance re-checada; todo `communicatedProposalMessageIds`
+  precisa apontar pra um candidato REAL, da MESMA chain (profissional
+  + root + categoria + subject), ainda `open`/`possibly_superseded` —
+  nunca um UUID arbitrário, nunca candidato de outra chain, nunca de
+  outro profissional. Qualquer falha descarta o LOTE INTEIRO
+  (`invalid_provenance`, claim liberado, nada gravado) — nunca corrige
+  por inferência. Limitação documentada no próprio comentário SQL:
+  não valida vínculo estrito conversa↔root (`conversations.related_*`
+  não é populado por nenhum caminho de escrita real hoje) — fecha o
+  ataque real demonstrado (tenant/ownership), não essa lacuna mais
+  ampla.
+- ✅ **Achado 5 — `MAX_CANDIDATES_PER_CHAIN` só na leitura**: teto
+  físico agora aplicado em `try_classify_communicated_proposal`, sob
+  `pg_advisory_xact_lock` por chain (seed distinto do lock de
+  versionamento do commit). Ao estourar: `RAISE WARNING` com
+  diagnóstico completo, retorna `limit_exceeded=true`, **nada é
+  inserido nem apagado, nenhuma escolha automática de candidato a
+  manter, classificação nunca pinada** — uma tentativa futura, depois
+  que a chain encolher, pode reclassificar normalmente.
+- ✅ **Ponto 3 — `context_budget_exceeded`/`chain_candidate_overflow`
+  sem `context_identity`**: `approval_resolutions` continua nunca
+  aceitando um outcome sem `context_identity` real (invariante
+  intocada). Overflow é tratado como condição OPERACIONAL do resolver,
+  nunca decisão comercial — reaproveita `approval_resolution_backoff`
+  (auditado antes: já era a camada de "attempts" certa, só faltavam
+  colunas de diagnóstico) via nova RPC `record_resolution_overflow()`
+  (aplica o mesmo backoff exponencial já usado pro resolver, tratando
+  overflow como tentativa que não progrediu) e `get_resolution_backoff_status()`
+  (leitura barata). `orchestrator.ts` foi religado: consulta o status
+  de backoff ANTES de montar `ResolutionContext` (evita reconstrução
+  cara numa mensagem cronicamente over-budget) e chama
+  `record_resolution_overflow` nos dois pontos onde `budgetExceeded`
+  já existia (F1 e F2) — o antigo comentário "DIVERGÊNCIA CONHECIDA,
+  NÃO RESOLVIDA" foi removido, pois esta é exatamente a resolução.
+- ✅ **Defesa em profundidade adicional**: `revoke execute ... from
+  anon` explícito nas 5 functions pré-existentes da 0045 que ainda não
+  tinham (lição já documentada na 0041 — Supabase real concede EXECUTE
+  a `anon` direto via `alter default privileges`, não via `PUBLIC`;
+  `revoke all from public` sozinho não bloqueia isso).
+- ✅ **TypeScript religado**: `CommitResolutionResult.discardReason`
+  ganhou `'invalid_provenance'`; novo tipo `ClassifyCommunicatedProposalResult`
+  documentando o contrato retornado por `try_classify_communicated_proposal`
+  (ainda sem caller real — só `resolveApproval()`, sem I/O, é chamado
+  hoje pela rota dev); `BuildResolutionContextResult` (overflow) ganhou
+  `commercialRootId`/`decisionCategory`/`subjectKey`/`magnitude` pra
+  alimentar `record_resolution_overflow` com diagnóstico real.
+- ✅ **Regressão completa revalidada**: as 33 asserções SQL antigas
+  (núcleo, backoff/candidatos, concorrência real, tenant isolation,
+  Red Team composto/takeover/tenant-RPCs/F1≠F2) + a sanidade de
+  `payment_details` continuam passando sem alteração de regra de
+  negócio — só 3 scripts de teste precisaram de fixtures atualizadas
+  (candidato real em vez de `message_id` solto, já que é exatamente
+  isso que a correção do achado 4 passou a exigir).
+- ✅ **11 testes adversariais novos** (`41_redteam_provenance_and_overflow.sql`,
+  script preservado no scratchpad da sessão): forja de
+  `commercial_root_id` de outro profissional bloqueada; UUID
+  inexistente rejeitado; candidato real de outra chain rejeitado;
+  candidato real de outro profissional rejeitado; chamada direta da
+  RPC (fora do `orchestrator.ts`) bloqueia igual — não existe atalho;
+  51ª candidata na mesma chain bloqueada deterministicamente (50
+  aceitas, 51ª nunca inserida, nunca pinada); **concorrência real**
+  (2 processos `psql` simultâneos contra a chain já saturada — nenhum
+  ultrapassa 50, advisory lock seguro sob concorrência de verdade);
+  overflow nunca cria linha em `approval_resolutions`, só em
+  `approval_resolution_backoff` (com backoff exponencial reaplicado
+  corretamente numa segunda ocorrência); backoff/attempt-control de
+  resolução normal (`inconclusive`) continua intacto após as colunas
+  novas na mesma tabela; tenant isolation intacto; guarda de ownership
+  de `0c2f7b8` (author_type/auth.uid()) continua em vigor. Todos PASS.
+- ✅ `tsc`/`eslint`/`next build` limpos (escopo completo do projeto).
+
+**Risco residual reportado, não corrigido sozinho** (decisão
+arquitetural, não decidida por conta própria): o gate de backoff
+dentro de `try_acquire_approval_resolution_claim` só nega retry
+(`deny_reason='backoff'`) quando o `context_identity` da tentativa
+repete o ÚLTIMO `context_identity` gravado na linha (`last_context_identity`)
+— comportamento correto e intencional pra backoff de resolução NORMAL
+(V3.6: contexto novo sempre merece tentativa nova). `record_resolution_overflow()`
+nunca escreve `last_context_identity` (overflow não tem um
+`context_identity` associável, por definição), então uma chamada
+DIRETA a `try_acquire_approval_resolution_claim` com um
+`context_identity` qualquer sempre passa pelo bypass de "contexto
+novo" e ignora o `next_eligible_at` escrito por overflow — o boundary
+SQL, sozinho, não impede isso. Na prática isso é fechado pelo
+`orchestrator.ts` (`get_resolution_backoff_status` é consultado ANTES
+de sequer tentar `try_acquire`, incondicional a qualquer
+`context_identity`), que é o único caminho real de chamada hoje — mas
+não é uma garantia no próprio boundary SQL, ao contrário do padrão
+"TS nunca é suficiente pra este boundary" usado no resto desta rodada
+(achado 4). Não alterei a semântica de `try_acquire_approval_resolution_claim`
+(função não tocada por esta migration) porque isso mexeria no
+comportamento já validado de backoff de resolução normal e não estava
+no escopo das 3 decisões desta rodada — reporto em vez de decidir
+sozinho.
+
+**Também não resolvido, mesmo escopo do achado 4 original**: a
+"restrição de acesso" (impedir chamada direta da RPC por qualquer
+`authenticated`, só permitir via caminho de aplicação) não foi
+implementada — o codebase inteiro não tem NENHUMA infraestrutura de
+service-role/admin client hoje (sem `SUPABASE_SERVICE_ROLE_KEY`, sem
+helper algum), e introduzir isso agora seria uma mudança de convenção
+que atinge toda a base (não só o Bloco 5), não verificável de ponta a
+ponta neste sandbox (Postgres de teste local não distingue
+`service_role` real de superuser bypass) e exigiria um secret novo do
+usuário provisionar. A revalidação de conteúdo (achado 4, acima) fecha
+o ataque demonstrado; a restrição de quem pode ligar continua em
+aberto, como já reportado na rodada anterior.
+
+- ✅ **Migration**: `0047_approval_engine_provenance_and_overflow.sql`.
+- 🔒 **Nenhum merge, nenhum PR, Post-model Policy Gate não iniciado.**
+  `payment_details`, WhatsApp, Resend, `/orcamento/[slug]` e legado de
+  booker não foram tocados nesta rodada, conforme instruído.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

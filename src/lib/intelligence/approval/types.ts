@@ -55,7 +55,22 @@ export type ReserveDispatchTokenResult = {
 
 export type CommitResolutionResult = {
   committed: boolean;
-  discardReason: 'lease_invalid_or_expired' | 'already_resolved' | 'stale_context_discarded' | null;
+  // invalid_provenance (migration 0047, achado 4 do Red Team): revalidação
+  // no próprio boundary SQL de commercial_root_id (ownership real) e de
+  // communicatedProposalMessageIds (candidato real, elegível, da mesma
+  // chain) — nunca só a checagem em TS. Todo o lote é descartado, nada
+  // é inferido/corrigido automaticamente.
+  discardReason: 'lease_invalid_or_expired' | 'already_resolved' | 'stale_context_discarded' | 'invalid_provenance' | null;
   approvalResolutionId: string | null;
   approvalRecordIds: string[];
+};
+
+// try_classify_communicated_proposal (migration 0047, achado 5): teto
+// físico MAX_CANDIDATES_PER_CHAIN aplicado no write boundary, sob
+// advisory lock — limitExceeded=true nunca insere/pina nada, permitindo
+// reavaliação futura depois que a chain encolher (fechamento estrutural).
+export type ClassifyCommunicatedProposalResult = {
+  alreadyClassified: boolean;
+  resultingCandidateId: string | null;
+  limitExceeded: boolean;
 };
