@@ -28,6 +28,15 @@ export const POLICY_GATE_BLOCK_REASONS = [
   // (dependencies.ts) tem uma approval MAIS RECENTE — a premissa
   // comercial sob a qual esta approval foi dada pode ter mudado.
   'stale_dependency',
+  // Fronteira do Runtime (migration 0051, decisão final do usuário):
+  // o draft afirma pelo menos um compromisso concreto (ExtractedCommitment
+  // não-vazio) endereçado a um external_participant, mas o profissional
+  // ainda não tem dados de recebimento configurados
+  // (public.is_operationally_ready). Nunca checado pra intake/discovery
+  // puro (extraction vazia) nem pra mensagens internas ao próprio
+  // profissional — só quando o texto já está pisando em território de
+  // negociação/compromisso.
+  'professional_not_operationally_ready',
 ] as const;
 export type PolicyGateBlockReason = (typeof POLICY_GATE_BLOCK_REASONS)[number];
 

@@ -3763,6 +3763,272 @@ ficam sempre não-resolvidas).
   sandbox) — permanece como gate explícito antes de considerar o
   Post-model Policy Gate validado com modelo real.
 
+## 38. Orchestrator / Runtime Integration Layer (migration 0051 + `src/lib/runtime/`)
+
+Fecha o bloco autorizado explicitamente pelo usuário: "inbound_events,
+lease por conversation, linking conversation↔commercial root,
+outbound_intents + state machine/claim de delivery, boundary
+server-side corrigido, wiring dos Blocos 1–6" — com a correção final
+de readiness incorporada antes de implementar (ver abaixo). WhatsApp/
+Meta/Resend continuam fora de escopo. Nenhum merge, nenhum PR.
+
+### Identidade de sistema — resolvido empiricamente antes de tocar RPC
+
+Testei em Postgres real (função `diagnose_caller_identity()` ad hoc,
+descartada depois) os valores observáveis dentro de uma `SECURITY
+DEFINER`: `current_user`/`current_role` são **sempre** o dono da
+function (`postgres`), nunca o caller, mesmo após `SET ROLE` do
+chamador — minha proposta original (`current_user = 'service_role'`)
+era estruturalmente impossível de satisfazer e foi descartada. O único
+sinal confiável é `request.jwt.claims` — a MESMA GUC que `auth.uid()`
+já lê pro claim `sub`. `is_system_caller()` (nova, migration 0051)
+checa `request.jwt.claims->>'role' = 'service_role'`. `service_role`
+já tinha `EXECUTE` em toda function via `ALTER DEFAULT PRIVILEGES` do
+bootstrap (mesma lição de `anon` nas migrations 0041/0047) — nenhuma
+mudança de GRANT foi necessária, só lógica de autorização interna.
+
+Escopo final da extensão (maior que a descrição inicial "create_conversation,
+persist_inbound_message, etc" — reportado como o pedido pedia, não
+decidido em silêncio): **9 functions** ganharam `v_is_system :=
+public.is_system_caller()` como condição ADICIONAL a `auth.uid()`,
+nunca substituindo — `create_conversation`, `try_acquire_approval_resolution_claim`,
+`reserve_approval_dispatch_token`, `release_approval_resolution_claim`
+(motivo: `boolean` real, mudança de tipo — `void`), `commit_approval_resolution`,
+`record_resolution_overflow`, `get_resolution_backoff_status`,
+`is_commercial_root_terminal` (ganhou `p_professional_id` opcional),
+`record_policy_gate_decision`. Em toda extensão, a condição de sistema
+só pula a comparação FINAL contra `auth.uid()` — a derivação estrutural
+do dono (via `conversation_messages`→`conversations` ou
+`commercial_root_belongs_to_professional`) nunca é pulada. Único par de
+parâmetros onde a responsabilidade de identidade correta passa a ser
+do Orchestrator (não mais provada criptograficamente): `p_represented_professional_id`
+em `create_conversation` e `p_professional_id` em
+`is_commercial_root_terminal` — inerente a rodar sem sessão de usuário.
+
+### Novo: `src/lib/supabase/service-role.ts`
+
+O codebase não tinha NENHUMA infraestrutura de service-role client
+(dívida explicitamente registrada na seção 37, deferida "pra quando
+chegar a etapa de integração real WhatsApp/backend do Intelligence
+OS" — exatamente esta rodada). `createServiceRoleClient()` usa
+`SUPABASE_SERVICE_ROLE_KEY` (nova env var, documentada em
+`.env.local.example`, nunca prefixada `NEXT_PUBLIC_`), sem cookies/sessão
+(não representa um usuário). Único consumidor pretendido:
+`src/lib/runtime/`, que roda exclusivamente server-side. Nenhum client
+component importa este arquivo.
+
+### `inbound_events` + `conversation_processing_leases`
+
+Mesmo padrão de claim/lease já validado em `approval_resolution_claims`
+(Bloco 5). `claim_inbound_event(channel, provider_event_id, ...)` —
+`unique(channel, provider_event_id)` é a idempotência física; reentrega
+do mesmo webhook nunca reprocessa (retorna `already_processed=true`
+quando já `processed`, ou nega quando outro worker já está com lease
+válido). Lease vencido (`failed` ou `claimed` expirado) é reclamável
+sem duplicar o `event_id`. `acquire_conversation_processing_lease`
+serializa por `conversation_id` (nunca lock global) — dois workers na
+mesma conversation, só um vence.
+
+### Linking conversation↔commercial root — corrigido, nunca usa Bloco 4
+
+`ensure_opportunity_for_conversation(conversation_id, primary_intent,
+classification_status)` roda logo após o Classifier (Bloco 3), NUNCA
+usa `commitmentNature`/`requiresProfessionalDecision` (Bloco 4) —
+correção explícita do usuário: opportunity pode nascer antes de
+qualquer compromisso ("queria saber valor pra tocar no meu casamento
+dia 20" já é uma oportunidade comercial, mesmo sem decisão nenhuma
+ainda). Sinal único: `classification_status='classified' AND
+primary_intent IN ('orcamento','disponibilidade')`. Idempotente (trava
+a conversation, `for update`); root terminal é SUBSTITUÍDO, nunca
+reaberto (histórico intacto). Deliberadamente NÃO reusa/refatora
+`submit_orcamento_request` (protegido por instrução de rodadas
+anteriores) — cria pela mesma tabela `opportunities`, com um `source`
+próprio (`'conversation'`, novo valor no CHECK), path paralelo e
+independente.
+
+### Intake dedicado — o caminho que a RLS de 0039 sempre previu
+
+`resolve_or_create_external_participant` + `persist_inbound_message`
+são o "caminho de intake dedicado, fora daquela migration" que o
+comentário original da RLS de `conversation_messages` (0039) já
+anunciava mas nunca implementava (a policy só permite insert de
+mensagem PRÓPRIA do profissional). `persist_inbound_message` nunca
+confia no parâmetro sozinho: `author_profile_id` (professional) tem
+que bater com `represented_professional_id` da conversa;
+`author_external_participant_id` (external_participant) tem que bater
+com o já vinculado (ou a conversa ainda não ter nenhum — primeiro
+contato, que também é quando `external_participant_id` da conversa é
+setado).
+
+### `outbound_intents` — state machine própria, nunca dependente de provider
+
+Decisão do usuário: "não assumir client-idempotency-key de provider
+como garantia arquitetural". `delivery_state`: `policy_allowed → queued
+→ sending → sent_unknown | sent_confirmed → delivered → read`, mais
+`failed_transient/failed_permanent/cancelled`. `sent_unknown`
+(provider aceitou mas a conexão caiu antes de confirmar) é TERMINAL
+PRA AUTOMAÇÃO — `claim_outbound_intent_for_send` nunca reclama
+(recuperação exige reconciliação real com o provider, ou um
+`outbound_intent` NOVO, nunca reenvio cego). Toda transição de estado
+guardada por `send_attempt_id` — um worker perdedor (claim antigo)
+nunca consegue marcar sucesso depois de um takeover.
+
+### `requiresProfessionalReviewBeforeSend` — teto do que o Runtime automatiza
+
+Achado arquitetural, não uma pergunta que precisasse de resposta do
+usuário: `PlannerDecision.requiresProfessionalReviewBeforeSend` (Bloco
+4) é um tipo literal `true`, sempre, fora do schema que o model
+preenche — nenhuma mensagem pode sair sem revisão humana antes do
+envio, por invariante já existente e testado. Resolução adotada: o
+Runtime cria o `outbound_intent` (prova de que o Post-model Gate já
+validou o draft, em `delivery_state='policy_allowed'`) e PARA
+exatamente aí. `claim_outbound_intent_for_send`/`mark_outbound_intent_*`
+ficam implementados e testados (ver testes SQL abaixo), mas SEM NENHUM
+CHAMADOR no pipeline — reservados pra um worker de envio real futuro,
+disparado por uma ação explícita (painel do profissional, ou uma
+política de auto-send que o usuário autorize depois). Consistente com
+"não implementar envio real" — de qualquer forma não existe canal.
+
+### Correção de readiness incorporada — a última antes da autorização
+
+`professional_not_operationally_ready` (novo `primary_block_reason`)
+é checado no Post-model Gate (`gate.ts`) SÓ quando: (a) o extrator
+(Bloco 6) já encontrou pelo menos um `ExtractedCommitment` concreto, E
+(b) o destinatário é `external_participant`. Nunca baseado em
+"conversation tem opportunity/booking" (rejeitado explicitamente pelo
+usuário), nunca em `requiresProfessionalDecision` (rejeitado numa
+rodada anterior por ser o eixo errado), nunca regex/palavra-chave —
+reusa só o sinal estrutural que o próprio Bloco 6 já calcula.
+`recipientType` (`'external_participant' | 'professional'`, novo campo
+de `PostModelGateInput`) é derivado de `conversation_type` (sinal
+estrutural já existente — `'external_inquiry'` sempre fala com o
+participante externo, `'professional_self'` nunca sai do app), nunca
+regex.
+
+### Bug real encontrado e corrigido DURANTE a implementação, não reportado como pendência
+
+Ao ligar o pipeline fim-a-fim percebi que minha primeira versão gateava
+TODO o Post-model Gate (e portanto todo `outbound_intent`) em "existe
+commercial root" — o que reproduziria exatamente o erro que a correção
+de readiness do usuário já tinha vetado: bloquear a Doopla de sequer
+responder no intake/discovery ("recebe o lead, responde, se apresenta,
+entende o trabalho... isso ainda é intake/discovery comercial e não
+deve ser bloqueado"), porque uma conversa nova não tem opportunity
+nenhuma até o Classifier detectar `orcamento`/`disponibilidade`.
+Corrigido na origem certa (`gate.ts`, não um remendo no Runtime): sem
+NENHUM commercial root, o Gate roda só o extrator (puro, sem
+`supabase`) — texto sem compromisso concreto passa livre (é
+exatamente o caso de saudação/coleta de contexto); qualquer compromisso
+extraído aqui é estruturalmente INGROUNDÁVEL (não pode haver approval
+real sem commercial root) e bloqueia fail-closed
+(`no_matching_approval`). `policy_gate_decisions.commercial_root_id`
+é `NOT NULL` (migration 0049) — sem root, o log append-only é pulado
+(mesmo raciocínio já usado pra `proposedResponse` vazio), mas o
+outcome/motivo continua no `RuntimeCycleOutcome` retornado.
+
+### Gap conhecido e reportado, não resolvido silenciosamente
+
+Não existe hoje nenhuma RPC pra persistir a resposta da Doopla direto
+em `conversation_messages` (`author_type='ai'`) fora do caminho de
+`outbound_intents` — que é só pra canais externos reais (WhatsApp/
+email/etc, via provider). Conversas `professional_self` (Doopla
+falando só com o profissional dentro do próprio app, nunca "entregue"
+por provider nenhum) não têm hoje um caminho de escrita: o pipeline
+detecta esse caso (`outboundSkippedReason: 'professional_self_not_implemented'`)
+e para, em vez de inventar uma migration nova fora do escopo desta
+rodada.
+
+### `src/lib/runtime/` — módulo TS novo
+
+`types.ts` (`InboundEvent`, `RuntimeCycleOutcome`), `inbound-events.ts`,
+`conversation-lease.ts`, `intake.ts`, `commercial-root.ts` (incluindo
+`resolveEffectiveCommercialRoot`, função pura extraída pra ser
+testável isoladamente — a RPC de linking devolve um id UNIFICADO que
+pode ser booking OU opportunity, coalesce estrutural; a derivação de
+qual é qual nunca adivinha, compara contra o que a conversation já
+tinha antes da chamada), `outbound.ts`, `system-actor.ts` (resolve
+`ActorContext` pro caminho de sistema — Bloco 1 está congelado,
+`resolveActorContext()` recusa `trigger.kind='system'` explicitamente;
+este é o "bloco futuro" que o comentário original de `actor-context.ts`
+previa, reusa só o tipo `ActorContext`/`resolveCapabilities()`, nunca
+duplica autorização — autoridade real vem de `is_system_caller()` do
+lado do banco), `structural-facts.ts`, `pipeline.ts`
+(`processInboundEvent` — ponto de entrada único), `index.ts` (barrel).
+
+Ordem do pipeline (auditada e implementada exatamente): claim do
+evento → lease da conversation → identidade de sistema (`ActorContext`)
+→ pre-model gate (Bloco 1, reusado sem alteração) → intake (resolve
+participante + persiste mensagem) → `start_orchestrator_run` → Context
+Builder (Bloco 2) → Classifier (Bloco 3) → linking comercial → Planner
+(Bloco 4) → Approval Engine (Bloco 5, só quando quem fala é o
+profissional E já existe commercial root — Approval Resolver nunca
+interpreta mensagem de cliente) → Post-model Gate (Bloco 6) →
+`outbound_intent` (só quando allowed) → `finish_orchestrator_run` →
+`finish_inbound_event` → release da lease.
+
+### Testes
+
+**SQL adversariais** (`51_runtime_orchestrator_adversarial.sql`,
+script preservado no scratchpad, não commitado): rebuild completo do
+zero (bootstrap + 51 migrations + seed, `ON_ERROR_STOP=1`) pra
+descartar qualquer resíduo de aplicação anterior — dois erros reais
+encontrados e corrigidos direto na migration 0051 (não reportados como
+pendência): `release_approval_resolution_claim` mudou de `void` pra
+`boolean` sem `drop function` explícito antes (Postgres recusa mudança
+de tipo de retorno em `create or replace`); `is_commercial_root_terminal`
+virou ambíguo entre a assinatura antiga (1 arg) e a nova (2 args com
+default) sem um `drop function` do 1-arg antes — ambos corrigidos com
+`drop function if exists ... ; create function ...` explícito. Depois
+da correção: rebuild limpo, regressão completa (todos os arquivos
+`02_*.sql`...`43_*.sql` acumulados desde Bloco 1) comparada linha a
+linha contra os baselines mais recentes de cada — só diffs de
+UUID/timestamp gerados aleatoriamente e uma diferença de contagem de
+linhas explicada por estado de DB acumulado num teste antigo (não uma
+regressão; `10_context_builder_external_participant.sql` bateu
+IDÊNTICO). **28 asserções PASS, 0 FAIL** nos 27 cenários novos: `is_system_caller()`
+nega `authenticated`/`anon` nas functions service_role-only (GRANT
+revogado — mesmo sem forjar a claim, a chamada já é negada);
+idempotência de `inbound_events` (reentrega nunca reprocessa, reclaim
+só após lease vencido ou `failed`, MESMO `event_id`); concorrência de
+`conversation_processing_leases` (dois workers, um vence; release com
+token errado é no-op; release correto libera pro próximo); `ensure_opportunity_for_conversation`
+idempotente + terminal substituído nunca reaberto (histórico
+preservado); `outbound_intents` completo (claim exclusivo, `stale
+send_attempt_id` nunca confirma, `sent_confirmed`/`sent_unknown`/
+`failed_permanent` nunca reclamados, `failed_transient` é retryable,
+tenant isolation via RLS `select own`).
+
+**TS determinístico** (tsx, model call simulado, scripts descartados
+depois de rodar — mesmo padrão de Blocos 1–6): `resolveEffectiveCommercialRoot`
+(5 casos, cobre as 4 combinações de created/reused × booking/opportunity);
+caminho sem commercial root do `gate.ts` (10 asserções: sem compromisso
+→ allowed sem NENHUMA chamada a `supabase.rpc` — mock que lança se
+qualquer RPC for chamada, prova que o caminho é 100% local; compromisso
+concreto → blocked/`no_matching_approval`; extrator indisponível →
+blocked/`extraction_unavailable`, fail-closed; `proposedResponse` vazio
+→ allowed sem chamar o extrator, não-regressão); fronteira de readiness
+fim-a-fim (8 asserções: não-pronto + `external_participant` + compromisso
+→ blocked/`professional_not_operationally_ready`; `recipientType='professional'`
+→ NUNCA consulta `is_operationally_ready`, nunca bloqueia por isso;
+extração vazia → NUNCA consulta `is_operationally_ready` — floor só
+quando há algo concreto; pronto + approval real correspondente →
+allowed).
+
+- ✅ `tsc --noEmit`, `eslint .` (limpo — únicos achados são
+  pré-existentes em `public/vendor/gsap/*.min.js`, vendor de terceiros
+  não tocado) e `next build` (32 rotas, sem erro) — todos limpos após
+  cada mudança.
+- ✅ **Migration**: `0051_runtime_orchestrator.sql`.
+- ✅ **Novo**: `src/lib/runtime/`, `src/lib/supabase/service-role.ts`,
+  `SUPABASE_SERVICE_ROLE_KEY` documentada em `.env.local.example`.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend/pagamento
+  real, nenhum wiring de envio de fato (só até `outbound_intent` em
+  `policy_allowed` — ver seção sobre `requiresProfessionalReviewBeforeSend`
+  acima), Blocos 1–4 não tocados, `/orcamento/[slug]`/`submit_orcamento_request`/
+  legado de booker não tocados. Nenhum merge, nenhum PR. Golden Suites
+  continuam pendentes de execução real (sem OpenAI/Preview neste
+  sandbox) — Beta Gate inalterado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

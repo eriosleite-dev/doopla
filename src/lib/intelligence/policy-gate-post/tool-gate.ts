@@ -79,5 +79,11 @@ export async function evaluateToolCallGate(
 
   const isTerminal = terminalRes.data === true;
 
-  return evaluateCommitments(input.commitments, activeApprovals, isTerminal);
+  // Fronteira de readiness (gate.ts) não se aplica aqui: uma tool call
+  // é uma ação estruturada do próprio pipeline, nunca um envio
+  // endereçado a um external_participant (nenhuma tool de escrita real
+  // existe ainda — ver comentário no topo do arquivo). Vacuously
+  // ready, mesmo raciocínio de recipientType='professional' em
+  // gate.ts — nunca uma query redundante a is_operationally_ready.
+  return evaluateCommitments(input.commitments, activeApprovals, isTerminal, true);
 }

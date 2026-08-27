@@ -66,7 +66,8 @@ function hasNewerDependency(matchedCategory: ProfessionalDecisionCategory, match
 export function matchCommitment(
   extracted: ExtractedCommitment,
   activeApprovals: readonly ActiveApprovalForMatch[],
-  isCommercialRootTerminal: boolean
+  isCommercialRootTerminal: boolean,
+  isProfessionalReady: boolean
 ): CommitmentCheck {
   const valueValidation = validateApprovedValue(extracted.decisionCategory, extracted.rawValue);
   if (!valueValidation.valid) {
@@ -80,6 +81,24 @@ export function matchCommitment(
     };
   }
   const extractedValue = valueValidation.parsed as Record<string, unknown> | null;
+
+  // Fronteira do Runtime, checada primeiro (decisão do usuário) — mais
+  // fundamental que o status do commercial root: se o profissional
+  // ainda não pode negociar de verdade (sem dados de recebimento), não
+  // importa qual o motivo específico do bloqueio individual seria —
+  // isProfessionalReady já vem calculado pelo gate.ts como
+  // vacuously-true quando a checagem nem se aplica (recipient !=
+  // external_participant), nunca uma query redundante por commitment.
+  if (!isProfessionalReady) {
+    return {
+      decisionCategory: extracted.decisionCategory,
+      subjectKey: null,
+      result: 'blocked',
+      blockReason: 'professional_not_operationally_ready',
+      matchedApprovalRecordId: null,
+      extractedValueForDebug: extractedValue,
+    };
+  }
 
   if (isCommercialRootTerminal) {
     return {
@@ -157,9 +176,10 @@ export function matchCommitment(
 export function evaluateCommitments(
   extracted: readonly ExtractedCommitment[],
   activeApprovals: readonly ActiveApprovalForMatch[],
-  isCommercialRootTerminal: boolean
+  isCommercialRootTerminal: boolean,
+  isProfessionalReady: boolean
 ): PostModelGateResult {
-  const checks = extracted.map((c) => matchCommitment(c, activeApprovals, isCommercialRootTerminal));
+  const checks = extracted.map((c) => matchCommitment(c, activeApprovals, isCommercialRootTerminal, isProfessionalReady));
   const firstBlocked = checks.find((c) => c.result === 'blocked');
   const outcome = firstBlocked ? 'blocked' : 'allowed';
   return { outcome, checks, policyVersion: POLICY_GATE_VERSION, primaryBlockReason: firstBlocked?.blockReason ?? null };

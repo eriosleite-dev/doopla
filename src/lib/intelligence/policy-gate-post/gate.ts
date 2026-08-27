@@ -21,6 +21,12 @@ export type PostModelGateInput = {
   bookingId: string | null;
   opportunityId: string | null;
   proposedResponse: string | null;
+  // Fronteira do Runtime (decisão final do usuário, migration 0051):
+  // quem recebe proposedResponse. is_operationally_ready() só é
+  // consultado quando 'external_participant' — mensagem endereçada ao
+  // próprio profissional nunca aciona a checagem de dados de
+  // recebimento (não é uma comunicação comercial externa).
+  recipientType: 'external_participant' | 'professional';
   // Resolução temporal (decisão do usuário) — nenhum destes tem
   // default implícito neste módulo. referenceTimestamp SEMPRE vem de
   // um dado estrutural real (ex.: conversation_messages.created_at da
@@ -57,6 +63,42 @@ export async function evaluatePostModelGate(
   // resolvido nos pisos determinísticos de planner/invariants.ts).
   if (!input.proposedResponse || !input.proposedResponse.trim()) {
     return { outcome: 'allowed', checks: [], policyVersion: POLICY_GATE_VERSION, primaryBlockReason: null };
+  }
+
+  // Sem NENHUM commercial root ainda (nem booking nem opportunity) —
+  // cenário real e esperado: intake/discovery puro, antes de o
+  // Classifier (Bloco 3) ter detectado orçamento/disponibilidade
+  // (fronteira do Runtime, decisão final do usuário: "a Doopla pode
+  // receber o lead, responder, se apresentar... isso ainda é
+  // intake/discovery comercial e não deve ser bloqueado"). Sem root
+  // não existe get_active_approvals pra consultar — resolve_commercial_root_id
+  // lançaria. Em vez de bloquear TUDO incondicionalmente (o que
+  // impediria a própria saudação/coleta de contexto), roda só o
+  // extrator (puro, sem supabase): texto sem nenhum compromisso
+  // concreto passa livre; qualquer compromisso extraído aqui é
+  // estruturalmente INGROUNDÁVEL (não pode haver approval real sem
+  // commercial root) — fail-closed, nunca "assume que está tudo bem".
+  if (!input.bookingId && !input.opportunityId) {
+    const extraction = await extractCommitments(
+      input.proposedResponse,
+      { referenceTimestamp: input.referenceTimestamp, timezone: input.timezone, knownEventDate: input.knownEventDate },
+      opts
+    );
+    if (extraction.unavailable) {
+      return { outcome: 'blocked', checks: [], policyVersion: POLICY_GATE_VERSION, primaryBlockReason: 'extraction_unavailable' };
+    }
+    if (extraction.commitments.length === 0) {
+      return { outcome: 'allowed', checks: [], policyVersion: POLICY_GATE_VERSION, primaryBlockReason: null };
+    }
+    const checks = extraction.commitments.map((c) => ({
+      decisionCategory: c.decisionCategory,
+      subjectKey: null,
+      result: 'blocked' as const,
+      blockReason: 'no_matching_approval' as const,
+      matchedApprovalRecordId: null,
+      extractedValueForDebug: c.rawValue,
+    }));
+    return { outcome: 'blocked', checks, policyVersion: POLICY_GATE_VERSION, primaryBlockReason: 'no_matching_approval' };
   }
 
   const { data: rootId, error: rootError } = await supabase.rpc('resolve_commercial_root_id', {
@@ -104,5 +146,17 @@ export async function evaluatePostModelGate(
 
   const isTerminal = terminalRes.data === true;
 
-  return evaluateCommitments(extraction.commitments, activeApprovals, isTerminal);
+  // Fronteira do Runtime (decisão final do usuário): is_operationally_ready
+  // só é consultado quando existe algo concreto pra checar (extração
+  // não-vazia) E o destinatário é externo — intake/discovery puro e
+  // mensagens internas ao próprio profissional nunca pagam essa query
+  // nem podem ser bloqueados por ela.
+  let isProfessionalReady = true;
+  if (extraction.commitments.length > 0 && input.recipientType === 'external_participant') {
+    const readyRes = await supabase.rpc('is_operationally_ready', { p_profile_id: input.professionalId });
+    if (readyRes.error) throw new Error(`is_operationally_ready falhou: ${readyRes.error.message}`);
+    isProfessionalReady = readyRes.data === true;
+  }
+
+  return evaluateCommitments(extraction.commitments, activeApprovals, isTerminal, isProfessionalReady);
 }
