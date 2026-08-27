@@ -12,9 +12,12 @@ import '../intelligence/tools';
 import type { ToolContext } from '../intelligence/types';
 import { ensureOpportunityForConversation, resolveEffectiveCommercialRoot } from './commercial-root';
 import { acquireConversationLease, releaseConversationLease } from './conversation-lease';
+import { resolveRuntimeDisposition } from './disposition';
 import { claimInboundEvent, finishInboundEvent } from './inbound-events';
 import { persistInboundMessage, resolveOrCreateExternalParticipant } from './intake';
 import { createOutboundIntent } from './outbound';
+import { persistAiMessage } from './professional-message';
+import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { buildStructuralFacts } from './structural-facts';
 import { resolveSystemActorContext } from './system-actor';
 import type { InboundEvent, RuntimeCycleOutcome } from './types';
@@ -186,12 +189,8 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
 
   const hasCommercialRoot = effectiveBookingId !== null || effectiveOpportunityId !== null;
 
-  // Aprovação (Bloco 5) — só quando a mensagem-gatilho DESTE ciclo é
-  // um enunciado do profissional sobre um commercial root já
-  // existente (Approval Engine resolve enunciados do profissional,
-  // nunca mensagens do cliente).
   let approvalOutcome: string | null = null;
-  if (event.authorType === 'professional' && hasCommercialRoot) {
+  if (shouldRunApprovalEngine(event.authorType, hasCommercialRoot)) {
     const { structuralFacts } = await buildStructuralFacts(supabase, { bookingId: effectiveBookingId, opportunityId: effectiveOpportunityId });
     const approvalResult = await runApprovalEngine(supabase, {
       professionalId: actorContext.representedProfessionalId,
@@ -210,15 +209,12 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
   // negociado ainda, nada a bloquear).
   let policyGateOutcome: 'allowed' | 'blocked' | 'not_applicable' = 'not_applicable';
   let policyGateBlockReason: string | null = null;
+  let recipientType: 'external_participant' | 'professional' | null = null;
   let outboundIntentId: string | null = null;
-  let outboundSkippedReason: 'professional_self_not_implemented' | null = null;
+  let aiMessageId: string | null = null;
 
   if (decision.proposedResponse) {
-    // recipientType estrutural (decisão do usuário: reusa sinal já
-    // existente, nunca regex/heurística): conversation_type='external_inquiry'
-    // sempre fala com o participante externo; 'professional_self'
-    // nunca sai do app, fala só com o próprio profissional.
-    const recipientType: 'external_participant' | 'professional' = conversation.conversation_type === 'external_inquiry' ? 'external_participant' : 'professional';
+    recipientType = resolveRecipientType(conversation.conversation_type, decision.responsePlan);
 
     // hasCommercialRoot=false é um caso REAL e esperado (intake/discovery
     // puro, antes de qualquer orçamento/disponibilidade classificado) —
@@ -271,29 +267,41 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       policyDecisionId = logResult?.id ?? null;
     }
 
-    if (gate.outcome === 'allowed' && decision.proposedResponse) {
-      if (recipientType === 'external_participant' && conversation.external_participant_id) {
-        const intent = await createOutboundIntent(supabase, {
-          conversationId: event.conversationId,
-          triggerMessageId: message.id,
-          runId: run?.id ?? null,
-          policyDecisionId,
-          channel: event.channel,
-          recipientExternalParticipantId: conversation.external_participant_id,
-          content: decision.proposedResponse,
-        });
-        outboundIntentId = intent.id;
-      } else if (recipientType === 'professional') {
-        // Gap conhecido e reportado (não uma omissão silenciosa): não
-        // existe hoje nenhuma RPC pra persistir a resposta da Doopla
-        // direto em conversation_messages (author_type='ai') fora do
-        // caminho de outbound_intents — que é só pra canais externos
-        // reais (WhatsApp/email), nunca aplicável a professional_self
-        // (conversa interna, nunca "entregue" por provider nenhum).
-        outboundSkippedReason = 'professional_self_not_implemented';
-      }
+    // Sempre cria o outbound_intent/persiste a mensagem quando o Gate
+    // permite, independente de disposition (auto_send_eligible ou
+    // professional_action_required) — o registro representa "o
+    // Post-model Gate já validou este draft", nunca "pode enviar sem
+    // revisão". Nenhum código deste bloco chama
+    // claim_outbound_intent_for_send (ver types.ts) — quem decidir usar
+    // disposition pra pular revisão é um worker de envio futuro, fora
+    // de escopo aqui.
+    const action = resolveOutboundAction(recipientType, gate.outcome, conversation.external_participant_id !== null);
+    if (action === 'create_outbound_intent' && decision.proposedResponse) {
+      const intent = await createOutboundIntent(supabase, {
+        conversationId: event.conversationId,
+        triggerMessageId: message.id,
+        runId: run?.id ?? null,
+        policyDecisionId,
+        channel: event.channel,
+        recipientExternalParticipantId: conversation.external_participant_id!,
+        content: decision.proposedResponse,
+      });
+      outboundIntentId = intent.id;
+    } else if (action === 'persist_ai_message' && decision.proposedResponse) {
+      // persist_ai_message (migration 0052) — mesma infraestrutura de
+      // conversations/conversation_messages, nunca outbound_intents
+      // (não há canal/provider real entre a Doopla e o próprio
+      // profissional dentro do app).
+      const aiMessage = await persistAiMessage(supabase, {
+        conversationId: event.conversationId,
+        contentType: 'text',
+        body: decision.proposedResponse,
+      });
+      aiMessageId = aiMessage.id;
     }
   }
+
+  const disposition = resolveRuntimeDisposition(policyGateOutcome, decision.requiresProfessionalReviewBeforeSend);
 
   await finishOrchestratorRun(supabase, {
     runId: run?.id ?? '',
@@ -318,6 +326,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       professionalDecisionSignal: decision.professionalDecisionSignal,
       missingInformationCount: decision.missingInformation.length,
       evidenceUsedCount: decision.evidenceUsed.length,
+      requiresProfessionalReviewBeforeSend: decision.requiresProfessionalReviewBeforeSend,
     },
   });
 
@@ -332,7 +341,9 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     approvalOutcome,
     policyGateOutcome,
     policyGateBlockReason,
+    disposition,
+    recipientType,
     outboundIntentId,
-    outboundSkippedReason,
+    aiMessageId,
   };
 }

@@ -223,6 +223,12 @@ export type OrchestratorRunPlan = {
   professionalDecisionSignal: 'none' | 'candidate_contextual' | 'candidate_ambiguous';
   missingInformationCount: number;
   evidenceUsedCount: number;
+  // Derivado do responsePlan final (resolveRequiresProfessionalReviewBeforeSend,
+  // planner/invariants.ts) — decisão do usuário (fechamento do
+  // Runtime): deixou de ser um literal `true` incondicional (migration
+  // 0044 original tinha CHECK físico forçando isso, relaxado na
+  // migration que introduz este campo como parâmetro real).
+  requiresProfessionalReviewBeforeSend: boolean;
 };
 
 export type OrchestratorRunFinish = {

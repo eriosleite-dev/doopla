@@ -5,7 +5,13 @@
 // comentário em types.ts sobre essa fronteira.
 
 export { processInboundEvent } from './pipeline';
-export type { InboundEvent, RuntimeCycleOutcome } from './types';
+export type { InboundEvent, RuntimeCycleOutcome, RuntimeDisposition } from './types';
+
+export { resolveRuntimeDisposition } from './disposition';
+export { persistAiMessage } from './professional-message';
+export { resolveRecipientType, resolveOutboundAction, shouldRunApprovalEngine } from './recipient';
+export type { OutboundAction } from './recipient';
+export { resolveEffectiveCommercialRoot } from './commercial-root';
 
 export { claimInboundEvent, finishInboundEvent } from './inbound-events';
 export type { ClaimInboundEventResult } from './inbound-events';

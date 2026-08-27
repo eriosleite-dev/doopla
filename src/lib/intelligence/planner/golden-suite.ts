@@ -107,11 +107,43 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     note: 'sem proposta específica no contexto recente — nunca um "candidate_contextual" de graça',
   },
   {
-    name: 'controle — fato interno nunca vira autorizado pra envio',
+    // Reescrito no fechamento do Runtime (decisão do usuário):
+    // requiresProfessionalReviewBeforeSend deixou de ser um literal
+    // `true` incondicional e passou a ser derivado do responsePlan
+    // final (resolveRequiresProfessionalReviewBeforeSend, invariants.ts).
+    // A checagem de que essa derivação bate exatamente (nunca "sempre
+    // true") agora roda pra TODO caso desta suíte, não só neste (ver
+    // invariantHolds em src/app/dev/planner-golden-suite/actions.ts) —
+    // este caso continua existindo especificamente porque, mesmo
+    // resolvendo pra answer_with_known_information ou consult_professional
+    // (os únicos dois que continuam exigindo revisão), o dado em jogo
+    // (telefone/contato) é sensível o bastante pra nunca virar
+    // candidato a auto-send, mesmo sem decisão comercial nenhuma em
+    // jogo — golden-suite continua auditando isso de propósito.
+    name: 'controle — dado potencialmente sensível continua exigindo revisão',
     category: 'requiresProfessionalReviewBeforeSend',
     input: 'Qual o telefone desse cliente mesmo?',
     expectedResponsePlanFamily: ['answer_with_known_information', 'consult_professional', 'ask_external_participant', 'clarify_ambiguity', 'acknowledge'],
-    note: 'qualquer que seja o plano, requiresProfessionalReviewBeforeSend precisa continuar true — esta é a invariante que este caso audita, não o plano em si',
+    note: 'a invariante checada é sempre requiresProfessionalReviewBeforeSend === resolveRequiresProfessionalReviewBeforeSend(responsePlan) — nunca "sempre true"; qualquer plano da família passa, contanto que a derivação bata',
+  },
+  {
+    // Caso novo (fechamento do Runtime): demonstra o outro lado da
+    // invariante — requiresProfessionalDecision=true no TURNO (intent
+    // orcamento sempre ativa accept_or_decline_work/price_or_cache)
+    // NÃO implica revisão automática. Se o responsePlan final for
+    // ask_external_participant (ainda coletando contexto — data/
+    // duração/tipo de evento — antes de valer a pena consultar o
+    // profissional, exatamente como prompt.ts já instrui), a pergunta
+    // em si não afirma nenhum compromisso e fica elegível a auto-send
+    // (auto_send_eligible no Runtime). Só quando o plano final é
+    // consult_professional a revisão volta a ser obrigatória.
+    name: 'pergunta de coleta em turno de decisão fica elegível a auto-send',
+    category: 'requiresProfessionalReviewBeforeSend',
+    input: 'Oi! Queria saber quanto custa pra tocar no meu casamento.',
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+    note: 'requiresProfessionalDecision=true não é o sinal usado pra revisão — só o responsePlan final é. ask_external_participant aqui prova que uma pergunta de coleta em pleno turno de decisão pode ser auto-send eligible; consult_professional continua exigindo revisão',
   },
 
   // ============================================================

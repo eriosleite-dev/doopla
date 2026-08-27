@@ -9,9 +9,22 @@ import type { ResponsePlan } from './response-plan';
 // Percepção (Bloco 3) → PLANEJAMENTO (Bloco 4) → draft. Nunca
 // planejamento → envio/execução. Nenhum campo aqui pode representar
 // approval, execução de tool, transição de estado, ou envio — isso é
-// estrutural, não uma convenção a lembrar (ver PlannerDecision
-// abaixo: requiresProfessionalReviewBeforeSend é um tipo literal
-// `true`, fora do schema que o model preenche).
+// estrutural, não uma convenção a lembrar (ver PlannerDecision abaixo:
+// requiresProfessionalReviewBeforeSend continua fora do schema que o
+// model preenche — só o CÓDIGO deriva esse valor, nunca o model).
+//
+// requiresProfessionalReviewBeforeSend deixou de ser um literal `true`
+// incondicional (migration 0044 original) — decisão do usuário
+// (Runtime, fechamento): derivado deterministicamente do responsePlan
+// FINAL (pós-piso de invariants.ts), nunca de requiresProfessionalDecision
+// (sinal do turno inteiro, não do texto específico — usá-lo aqui
+// bloquearia autonomamente até uma simples pergunta de esclarecimento
+// feita no meio de uma negociação). A própria migration 0044 já
+// prescrevia esse relaxamento "quando o Approval Engine existir" — e
+// agora também existe o Post-model Policy Gate (Bloco 6), que
+// continua sendo o enforcement final e independente do CONTEÚDO do
+// texto, nunca do responsePlan (ver resolveRequiresProfessionalReviewBeforeSend
+// em invariants.ts).
 
 // ============================================================
 // CommitmentNature — INTENT ≠ DECISION.
@@ -112,8 +125,15 @@ export type PlannerDecision = {
   professionalDecisionCategory: ProfessionalDecisionCategory[];
   professionalDecisionSignal: ProfessionalDecisionSignal;
   proposedResponse: string | null;
-  // Tipo literal — impossível de compilar com outro valor. Fora do
-  // schema que o model preenche (ele nunca vê nem escreve este
-  // campo); reforçado por CHECK no banco (ver migration 0044).
-  requiresProfessionalReviewBeforeSend: true;
+  // Derivado só do responsePlan final (resolveRequiresProfessionalReviewBeforeSend,
+  // invariants.ts) — fora do schema que o model preenche (ele nunca vê
+  // nem escreve este campo). true para consult_professional/
+  // answer_with_known_information (compromisso ou dado potencialmente
+  // sensível — golden-suite continua auditando isso); false para
+  // acknowledge/ask_external_participant/clarify_ambiguity/
+  // no_response_needed (pergunta/reação, nunca afirmação, por
+  // definição de prompt.ts). Nunca uma segunda política: o Post-model
+  // Policy Gate (Bloco 6) continua sendo quem valida o CONTEÚDO real
+  // do texto, independente deste campo.
+  requiresProfessionalReviewBeforeSend: boolean;
 };

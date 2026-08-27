@@ -52,6 +52,10 @@ export async function finishOrchestratorRun(
     p_professional_decision_signal: plan?.professionalDecisionSignal ?? null,
     p_missing_information_count: plan?.missingInformationCount ?? 0,
     p_evidence_used_count: plan?.evidenceUsedCount ?? 0,
+    // Sem plan (run sem planejamento nesta execução), mantém o default
+    // conservador true da própria coluna — nunca assume que algo sem
+    // Planner nenhum é seguro pra auto-send.
+    p_requires_professional_review_before_send: plan?.requiresProfessionalReviewBeforeSend ?? true,
   });
 
   if (error || !data) return null;

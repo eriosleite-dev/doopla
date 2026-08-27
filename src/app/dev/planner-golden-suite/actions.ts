@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { classifyIntent } from '@/lib/intelligence/classification';
 import type { ContextFact, ContextPackage, MessageContextItem } from '@/lib/intelligence/context-builder';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
-import { planResponse, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
+import { planResponse, resolveRequiresProfessionalReviewBeforeSend, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
 import type { PlannerGoldenSuiteCase } from '@/lib/intelligence/planner';
 import type { ActorContext, MinimalConversation, ToolContext } from '@/lib/intelligence/types';
 
@@ -155,9 +155,15 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
         decision.requiresProfessionalDecision === goldenCase.expectedRequiresProfessionalDecision;
       const signalMatches =
         !goldenCase.expectedProfessionalDecisionSignal || decision.professionalDecisionSignal === goldenCase.expectedProfessionalDecisionSignal;
-      // Invariante checada em TODO caso, não só no de controle: nenhuma
-      // saída do Planner pode ser marcada como autorizada pra envio.
-      const invariantHolds = decision.requiresProfessionalReviewBeforeSend === true;
+      // Invariante checada em TODO caso, não só nos de controle:
+      // requiresProfessionalReviewBeforeSend precisa bater EXATAMENTE
+      // com a derivação determinística de invariants.ts a partir do
+      // responsePlan final — nunca true incondicional (decisão do
+      // usuário, fechamento do Runtime: consult_professional/
+      // answer_with_known_information exigem revisão, os 4 planos
+      // restantes não, mas o Post-model Policy Gate continua sendo o
+      // enforcement final independente disso).
+      const invariantHolds = decision.requiresProfessionalReviewBeforeSend === resolveRequiresProfessionalReviewBeforeSend(decision.responsePlan);
 
       const pass = planMatches && commitmentMatches && requiresDecisionMatches && signalMatches && invariantHolds;
 

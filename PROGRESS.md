@@ -4029,6 +4029,210 @@ allowed).
   continuam pendentes de execução real (sem OpenAI/Preview neste
   sandbox) — Beta Gate inalterado.
 
+## 39. Fechamento do Runtime — autonomia de envio seguro + professional_self (migration 0052)
+
+Fecha os dois pontos que a seção 38 deixou em aberto, autorizados
+depois de auditoria (não implementados até a auditoria ser aprovada
+explicitamente). WhatsApp/Meta/Resend continuam fora de escopo.
+Nenhum merge, nenhum PR.
+
+### 1. `requiresProfessionalReviewBeforeSend` deixou de ser `true` incondicional
+
+Era reforçado em três camadas independentes: tipo literal TS, fora do
+schema do model, e um CHECK físico em `orchestrator_runs`
+(`requires_professional_review_before_send = true`, migration 0044).
+Auditei as três antes de tocar em qualquer uma — a própria migration
+0044 já previa esse relaxamento *"quando o Approval Engine existir"*
+(existe desde o Bloco 5; o Post-model Policy Gate, Bloco 6, também
+existe agora e continua sendo o enforcement final de CONTEÚDO).
+
+Nova derivação (`resolveRequiresProfessionalReviewBeforeSend`,
+`planner/invariants.ts`), a partir só do `responsePlan` FINAL (pós-piso
+de `resolveResponsePlan`) — **nunca de `requiresProfessionalDecision`**,
+que é um sinal do turno inteiro, não do texto: usá-lo bloquearia
+autonomamente até uma pergunta de esclarecimento (`ask_external_participant`)
+feita em pleno turno de decisão, que já é um resultado esperado e
+testado (`golden-suite.ts`, "novo compromisso — desconto").
+
+- `consult_professional` → `true` (pode estar endereçado ao próprio
+  profissional, ou pedir uma decisão real).
+- `answer_with_known_information` → `true`, mantido conservador de
+  propósito — nunca é compromisso, mas pode carregar dado
+  potencialmente sensível (telefone/endereço de terceiros) que este
+  bloco não classifica por campo. Nenhum dos exemplos de auto-send do
+  usuário é este plano.
+- `acknowledge`/`ask_external_participant`/`clarify_ambiguity`/`no_response_needed`
+  → `false` — nunca afirmam compromisso, por definição de `prompt.ts`.
+
+Isto NUNCA é a garantia de conteúdo: mesmo com `false`, o Post-model
+Gate ainda lê o TEXTO real via `extractCommitments` — um `responsePlan`
+mal rotulado que na prática afirma um compromisso é pego por lá
+(`no_matching_approval`/`stale_dependency`/etc.), independente deste
+campo.
+
+- ✅ **Golden-suite reescrita, não só "feita passar"**: o caso antigo
+  ("controle — fato interno nunca vira autorizado pra envio", que
+  afirmava `true` incondicional pra qualquer plano) foi substituído por
+  dois: um mantendo o teste de dado sensível (agora com a expectativa
+  correta: `true` só quando o plano resolve pra
+  `answer_with_known_information`/`consult_professional`), e um novo
+  demonstrando o outro lado — `requiresProfessionalDecision=true` no
+  turno (intent `orcamento`) com `ask_external_participant` como plano
+  final fica elegível a auto-send. A checagem universal
+  (`/dev/planner-golden-suite/actions.ts`) também mudou: deixou de
+  assumir `true` sempre e passou a verificar que o valor bate
+  EXATAMENTE com a derivação, pra TODO caso da suíte — não só o de
+  controle (nunca executada contra o model real neste sandbox — Beta
+  Gate).
+
+### 2. Três `disposition`, compostos — nunca uma segunda política
+
+`resolveRuntimeDisposition(gateOutcome, requiresProfessionalReviewBeforeSend)`
+(`runtime/disposition.ts`) — só nomeia a combinação de dois sinais já
+autoritativos, nunca reavalia nada:
+
+```
+gate.outcome === 'blocked'                          → 'blocked'
+gate.outcome === 'allowed' + review=true             → 'professional_action_required'
+gate.outcome === 'allowed' + review=false            → 'auto_send_eligible'
+sem proposedResponse nenhum                          → 'not_applicable'
+```
+
+### 3. Bug real encontrado e corrigido: `consult_professional` numa conversa `external_inquiry`
+
+O Runtime original derivava `recipientType` só de `conversation_type`
+— então uma conversa `external_inquiry` sempre tentaria mandar o draft
+pro cliente, mesmo quando o plano final é `consult_professional`
+("pergunta clara ao profissional", `prompt.ts`). Corrigido
+(`resolveRecipientType`, `runtime/recipient.ts`, extraído de
+`pipeline.ts` pra ser testável isoladamente):
+
+```
+conversation_type='professional_self' OU responsePlan='consult_professional'
+  → 'professional'
+senão → 'external_participant'
+```
+
+`resolveOutboundAction(recipientType, gateOutcome, hasExternalParticipantId)`
+decide o caminho de escrita: `external_participant` + `allowed` →
+`create_outbound_intent` (canal externo real, com provider — nunca
+muda); `professional` + `allowed` → `persist_ai_message` (nova RPC,
+abaixo); qualquer outro caso → `none`.
+
+### 4. `persist_ai_message` — fecha o gap de `professional_self`
+
+Nova RPC (migration 0052), mesmo padrão de `persist_inbound_message`
+(0051): `is_system_caller()`-only, insere `conversation_messages` com
+`direction='outbound', author_type='ai', generated_by='ai'`. Sem
+`p_run_id`/`p_trigger_message_id` — `conversation_messages` não tem
+essas colunas (nem `persist_inbound_message` tem); correlação continua
+no nível de `orchestrator_runs`, mesmo padrão já usado em toda mensagem
+inbound. `last_activity_at` fica pro trigger existente
+(`bump_conversation_last_activity_trigger`, 0040) — nunca duplicado
+com um `UPDATE` explícito. Usa a MESMA infraestrutura de
+`conversations`/`conversation_messages` — nunca um sistema paralelo,
+serve tanto `professional_self` quanto `consult_professional` dentro
+de `external_inquiry` (ponto 3).
+
+Explícito, reafirmado no comentário da function: só persiste
+conteúdo — não concede autoridade, não executa tool, não cria
+approval, não é um segundo caminho de policy (o Gate já decidiu
+`allowed` antes desta chamada).
+
+### Gap novo encontrado DURANTE a implementação (fora do escopo original dos 9 RPCs)
+
+`start_orchestrator_run`/`finish_orchestrator_run` (Bloco 1, migration
+0042) nunca tinham sido estendidos com `is_system_caller()` na seção
+38 — o audit anterior escopou só Blocos 5/6. Sem isso, **nenhum ciclo
+do Runtime conseguiria sequer abrir/fechar um `orchestrator_run`**:
+`start_orchestrator_run` recusava incondicionalmente qualquer caller
+sem `auth.uid()` E recusava `actor_type='system'` explicitamente;
+`finish_orchestrator_run` também bloqueava incondicionalmente sem
+`auth.uid()`. Corrigido no mesmo padrão já auditado das 9 functions da
+seção 38 (condição adicional, nunca substitui `auth.uid()`; ownership
+estrutural nunca pulado): caminho `system` exige `actor_type='system'`
+E `actor_profile_id is null` (sistema nunca representa um humano
+específico) em `start_orchestrator_run`; `finish_orchestrator_run` só
+fecha runs cujo `actor_type` na própria linha já é `'system'` (nunca
+um run de sessão comum). Não é uma decisão arquitetural nova — é a
+aplicação mecânica do padrão já aprovado a duas functions que ficaram
+de fora por escopo estreito demais na auditoria original; reportado
+aqui em vez de silenciado.
+
+### Testes
+
+**SQL adversarial** (`52_runtime_closing_adversarial.sql`, scratchpad):
+rebuild completo do zero (bootstrap + 52 migrations + seed,
+`ON_ERROR_STOP=1`) — limpo. 11 cenários: `start_orchestrator_run` como
+`service_role` com `actor_type='system'` (antes desta migration,
+falhava incondicionalmente); `actor_type='professional'`/`actor_profile_id`
+preenchido pelo sistema → negados; `represented_professional_id`
+forjado sem conversation real → `conversation_not_owned`;
+`finish_orchestrator_run` como sistema fecha o próprio run com
+`requires_professional_review_before_send=false`, valor **persiste de
+verdade** na coluna (constraint física confirmada relaxada, não só
+TypeScript); sistema não fecha um run que não abriu; `persist_ai_message`
+persiste `author_type='ai'`/`direction='outbound'` corretamente,
+`last_activity_at` bate com o trigger existente (sem duplicar update);
+`authenticated` comum negado por GRANT; conversation inexistente →
+`conversation_not_found`. **Regressão completa revalidada**: todos os
+arquivos `02_*`...`52_*` acumulados desde o Bloco 1 — só a mesma falha
+pré-existente já documentada (`30_redteam_composite_and_takeover.sql`,
+teste de timing de expiração de lease, idêntica ao baseline) e uma
+asserção do `15_planner_migration_tests.sql` que testava o CHECK
+antigo (`=true`) — reescrita pra testar o oposto (constraint relaxada
+aceita `false` de verdade), não simplesmente descartada.
+
+**TS determinístico** (tsx, scripts descartados depois de rodar — mesmo
+padrão de sempre): `resolveRequiresProfessionalReviewBeforeSend` (6
+valores), `resolveRuntimeDisposition` (6 combinações, `blocked` sempre
+vence), `resolveRecipientType` (6 casos, incluindo o bug corrigido),
+`resolveOutboundAction` (6 combinações), `shouldRunApprovalEngine` (4
+combinações — cliente nunca aciona o Approval Engine). **Os 13
+cenários pedidos**, compostos a partir dessas funções (a "cola" real
+de `pipeline.ts`) e citando a cobertura já existente onde aplicável:
+1–2 pergunta segura/coleta de contexto → `auto_send_eligible`; 3
+preço sem approval → `blocked`; 4/11 cliente nunca cria approval
+(mesmo dizendo "fechado"); 5 confirmação pós-approval pode ficar
+`auto_send_eligible` (plano seguro) ou continuar conservadora (relato
+de fato); 6 valor divergente → `blocked` sempre; 7/8 fronteira de
+`is_operationally_ready` (intake livre, negociação protegida
+bloqueada) — já provada em `gate-no-root-test.ts`/`gate-readiness-test.ts`
+da rodada anterior, reconfirmados sem alteração nesta; 9
+`professional_self` → `persist_ai_message`; 10 profissional aciona o
+Approval Engine antes do Gate (ordem estrutural do `pipeline.ts`,
+nunca invertida); 12/13 duplicidade/concorrência → já cobertos pelos
+28/28 testes SQL adversariais da seção 38, reconfirmados no rebuild
+desta rodada. **34 + 11 = 45 asserções, 0 FAIL.**
+
+- ✅ `tsc --noEmit`, `eslint` (limpo) e `next build` (32 rotas) — todos
+  limpos após cada mudança.
+- ✅ **Migration**: `0052_runtime_autonomy_and_professional_self.sql`.
+- ✅ **Novo**: `runtime/disposition.ts`, `runtime/recipient.ts`,
+  `runtime/professional-message.ts`.
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **`outbound_intents` não carrega `disposition` fisicamente** — a
+  proposta original cogitava uma coluna nova (`requires_professional_review`)
+  pra um futuro send-worker nunca precisar re-derivar isso; não estava
+  no checklist final que o usuário autorizou, então não foi
+  implementada. `disposition` hoje só existe no retorno de
+  `processInboundEvent` (`RuntimeCycleOutcome`), não persistido.
+- **Outcome `blocked` não notifica o profissional** — fica só no log
+  append-only (`policy_gate_decisions`) e no retorno do ciclo; nenhum
+  painel/notificação existe ainda pra isso (fora de escopo, nenhuma UI
+  autorizada nesta rodada).
+- **`persist_ai_message` sem correlação a `run_id`/`trigger_message_id`**
+  na própria linha (schema de `conversation_messages` não tem essas
+  colunas — mesma limitação que já existia pra mensagens inbound).
+  Correlação fica só no nível de `orchestrator_runs`.
+- Golden Suites (Classifier/Planner/Approval/Policy Gate) continuam
+  **Beta Gate** — nenhuma rodada real contra OpenAI neste sandbox
+  desde o início do projeto.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend/pagamento
+  real nesta rodada. Nenhum merge, nenhum PR.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

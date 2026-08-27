@@ -13,6 +13,7 @@ import {
   missingInformationFallback,
   resolveCommitmentNature,
   resolveProfessionalDecisionSignal,
+  resolveRequiresProfessionalReviewBeforeSend,
   resolveResponsePlan,
   validateEvidenceUsed,
 } from './invariants';
@@ -28,8 +29,10 @@ import type { PlannerDecision } from './types';
 // PlannerDecision: sem requiresProfessionalDecision/
 // professionalDecisionCategory finais (só invariants.ts, em código,
 // preenche isso, unindo o mandatório com o que o model propôs) e sem
-// requiresProfessionalReviewBeforeSend (hardcoded, fora do schema —
-// estruturalmente impossível do model influenciar).
+// requiresProfessionalReviewBeforeSend (derivado por
+// resolveRequiresProfessionalReviewBeforeSend, invariants.ts, a partir
+// só do responsePlan FINAL — fora do schema, estruturalmente
+// impossível do model influenciar).
 const evidenceUsedSchema = z.discriminatedUnion('sourceType', [
   z.object({ sourceType: z.literal('professional_profile'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('opportunity'), sourceId: z.string(), field: z.string() }),
@@ -146,7 +149,7 @@ export async function planResponse(
         professionalDecisionCategory: [],
         professionalDecisionSignal: 'none',
         proposedResponse: null,
-        requiresProfessionalReviewBeforeSend: true,
+        requiresProfessionalReviewBeforeSend: resolveRequiresProfessionalReviewBeforeSend('consult_professional'),
       },
       inputTokens,
       outputTokens,
@@ -192,7 +195,7 @@ export async function planResponse(
       professionalDecisionCategory: categories,
       professionalDecisionSignal,
       proposedResponse,
-      requiresProfessionalReviewBeforeSend: true,
+      requiresProfessionalReviewBeforeSend: resolveRequiresProfessionalReviewBeforeSend(responsePlan),
     },
     inputTokens,
     outputTokens,

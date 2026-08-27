@@ -2,7 +2,7 @@ import type { ClassificationStatus, ConfidenceLevel, Intent } from '../classific
 import type { ContextFact, ContextSection } from '../context-builder';
 import { INTENT_MANDATORY_DECISION_CATEGORIES, PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import type { ProfessionalDecisionCategory } from './decision-categories';
-import type { PlannerModelResponsePlan } from './response-plan';
+import type { PlannerModelResponsePlan, ResponsePlan } from './response-plan';
 import type { CommitmentNature, EvidenceUsed, MissingInformationItem, PlannerContext, ProfessionalDecisionSignal } from './types';
 
 // Doopla Intelligence Core v1 — Bloco 4: invariantes determinísticas
@@ -205,4 +205,35 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
 
 export function missingInformationFallback(field: string): MissingInformationItem[] {
   return [{ field, reason: 'unavailable', blocksProfessionalDecision: true }];
+}
+
+// Deriva requiresProfessionalReviewBeforeSend a partir do responsePlan
+// FINAL (já pós-piso de resolveResponsePlan acima) — decisão do
+// usuário (fechamento do Runtime): nunca a partir de
+// requiresProfessionalDecision, que é um sinal do TURNO inteiro (ex.:
+// intent=orcamento sempre ativa price_or_cache/accept_or_decline_work),
+// não do texto específico deste responsePlan — usá-lo aqui bloquearia
+// autonomamente até uma simples pergunta de esclarecimento
+// (ask_external_participant) feita no meio de uma negociação, que já é
+// um resultado esperado e testado (golden-suite.ts, "novo compromisso
+// — desconto": ask_external_participant é família aceita mesmo com
+// requiresProfessionalDecision=true).
+//
+// consult_professional: pode estar endereçado ao próprio profissional
+// (ver prompt.ts) ou pedir uma decisão de compromisso — sempre exige
+// revisão. answer_with_known_information: nunca é compromisso, mas
+// pode carregar dado potencialmente sensível (telefone/endereço de
+// terceiros) que este bloco não classifica por campo — mantido
+// conservador de propósito (golden-suite audita isso). Os demais
+// quatro planos (acknowledge/ask_external_participant/
+// clarify_ambiguity/no_response_needed) nunca afirmam compromisso, por
+// definição de prompt.ts — não precisam de revisão humana.
+//
+// Isto NUNCA é a garantia de conteúdo: mesmo com false aqui, o
+// Post-model Policy Gate (Bloco 6) ainda lê o TEXTO real via
+// extractCommitments — um responsePlan mal rotulado que na prática
+// afirma um compromisso é pego por lá (no_matching_approval/
+// stale_dependency/etc.), independente deste campo.
+export function resolveRequiresProfessionalReviewBeforeSend(responsePlan: ResponsePlan): boolean {
+  return responsePlan === 'consult_professional' || responsePlan === 'answer_with_known_information';
 }
