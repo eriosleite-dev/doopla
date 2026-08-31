@@ -31,6 +31,21 @@ import type { CommitResolutionResult } from './types';
 // resolver desnecessariamente, e libera o claim explicitamente quando
 // aplicável (release_approval_resolution_claim) — nunca deixa presa
 // até o lease expirar por um motivo que não é de posse.
+//
+// Micro-patch (achado real do smoke test do Beta Runtime Integration,
+// contra @supabase/supabase-js de verdade — nunca exercitado antes
+// contra um client HTTP/JSON real, só contra o driver `pg` binário em
+// testes anteriores): computeContextIdentity() devolve um Buffer do
+// Node — passar esse Buffer direto como parâmetro bytea numa RPC via
+// supabase-js falha (JSON.stringify de um Buffer vira
+// {"type":"Buffer","data":[...]}, nunca um bytea válido; a RPC recusa
+// fail-closed com invalid_context_identity, octet_length ≠ 32). Fix
+// isolado nesta fronteira — nunca muda o que computeContextIdentity()
+// devolve nem como F1/F2 são comparados internamente, só como o valor
+// cruza pra uma chamada RPC.
+function contextIdentityToBytea(identity: Buffer): string {
+  return `\\x${identity.toString('hex')}`;
+}
 
 export type RunApprovalEngineResult =
   | { status: 'not_eligible'; reason: string }
@@ -113,7 +128,7 @@ export async function runApprovalEngine(
   const { data: acquireRows, error: acquireError } = await supabase.rpc('try_acquire_approval_resolution_claim', {
     p_message_id: params.professionalStatementMessageId,
     p_worker_id: params.workerId,
-    p_current_context_identity: f1,
+    p_current_context_identity: contextIdentityToBytea(f1),
   });
   if (acquireError) throw new Error(`try_acquire_approval_resolution_claim falhou: ${acquireError.message}`);
   const acquire = (Array.isArray(acquireRows) ? acquireRows[0] : acquireRows) as {
@@ -192,8 +207,8 @@ export async function runApprovalEngine(
     p_message_id: params.professionalStatementMessageId,
     p_lease_token: leaseToken,
     p_commercial_root_id: contextF1.commercialRootId,
-    p_inference_context_identity: f1,
-    p_current_context_identity: f2,
+    p_inference_context_identity: contextIdentityToBytea(f1),
+    p_current_context_identity: contextIdentityToBytea(f2),
     p_context_schema_version: contextF1.contextSchemaVersion,
     p_outcome: output.outcome,
     p_inconclusive_reason: output.outcome === 'inconclusive' ? output.reason : null,

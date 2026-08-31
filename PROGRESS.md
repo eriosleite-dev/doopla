@@ -5762,6 +5762,90 @@ projeto Supabase existente). **Aplicado com sucesso.** Runtime
 Architecture v1 agora existe de fato no banco real, não só no
 repositório — bloqueador fechado, seguimos pro smoke test de verdade.
 
+**Atualização 5**: com o banco migrado e as credenciais corretas, os
+dois passos do smoke test rodaram de verdade pela primeira vez contra
+OpenAI + Postgres reais. O passo do cliente terminou
+`policyGateOutcome: "blocked", policyGateBlockReason:
+"extraction_unavailable"` (ainda não investigado — Classifier e
+Planner rodaram certo, só o extrator do Post-model Gate falhou; fica
+como ponta solta pra revisitar). O passo do profissional (`"Pode
+fechar por R$3000!"`) falhou com `try_acquire_approval_resolution_claim
+falhou: invalid_context_identity` — bug real do Approval Engine, nunca
+visto em nenhum teste anterior deste projeto inteiro.
+
+**Causa raiz**: `computeContextIdentity()`
+(`src/lib/intelligence/approval/canonicalize.ts`) devolve um `Buffer`
+do Node. `orchestrator.ts` passava esse `Buffer` direto como parâmetro
+`p_current_context_identity`/`p_inference_context_identity` (tipo
+`bytea`) nas chamadas RPC via `@supabase/supabase-js`. O client real
+fala com o Postgres via PostgREST (HTTP/JSON) — `JSON.stringify()` de
+um `Buffer` produz `{"type":"Buffer","data":[...]}`, que não é um
+literal `bytea` válido. A RPC (`try_acquire_approval_resolution_claim`,
+migration 0045) recusa fail-closed com `invalid_context_identity`
+assim que confere `octet_length(...) <> 32`. Nunca detectado antes
+porque TODO teste anterior do Approval Engine (as 10 Áreas, os testes
+adversariais, os cenários de fechamento — tudo) rodava contra
+`pg-supabase-shim.ts`, um shim que fala o protocolo binário nativo do
+`pg`, que serializa `Buffer` corretamente como `bytea` — mascarando um
+bug que só existe na fronteira HTTP/JSON do client real. Este é o
+PRIMEIRO teste de todo o projeto a exercitar o Approval Engine contra
+o `@supabase/supabase-js` de verdade em vez do shim.
+
+**Fix** (autorizado explicitamente pelo usuário via pergunta
+sim/não): isolado na fronteira de serialização, dentro do próprio
+`orchestrator.ts` (Bloco 5) — `computeContextIdentity()` continua
+devolvendo `Buffer`, nada muda em como F1/F2 são comparados
+internamente. Novo helper privado:
+
+```ts
+function contextIdentityToBytea(identity: Buffer): string {
+  return `\\x${identity.toString('hex')}`;
+}
+```
+
+Aplicado nos 2 únicos call sites que passam `f1`/`f2` pra uma RPC
+(`try_acquire_approval_resolution_claim` e
+`commit_approval_resolution`) — confirmado via grep que
+`computeContextIdentity` não é chamado em nenhum outro lugar do
+projeto. `\x<hex>` é o formato textual padrão que o parser de `bytea`
+do Postgres aceita; ao contrário de um `Buffer`, `JSON.stringify()` de
+uma string hex produz uma string plana — exatamente o que o transporte
+JSON do PostgREST consegue carregar sem ambiguidade.
+
+**Testes**: novo `61_context_identity_bytea_test.ts` (7 asserções) —
+confirma que o Buffer tem 32 bytes, que o formato `\x<hex>` bate a
+regex esperada, que `JSON.stringify(Buffer)` vira objeto (a causa
+raiz) enquanto `JSON.stringify(hex)` vira string plana (o fix), e via
+o shim `pg` que tanto o `Buffer` bruto quanto a string hex produzem o
+MESMO valor `bytea` de 32 bytes no Postgres (`octet_length` = 32 dos
+dois jeitos, `Buffer.compare(...) === 0`) — prova que o fix preserva o
+valor, só corrige a serialização.
+
+**Regressão**: re-rodados os testes que exercitam `orchestrator.ts`
+mais de perto — `55_commercial_root_resolution_test.ts` (4 PASS),
+`56_retry_backoff_test.ts` (9 PASS),
+`58_redteam_stale_context_integration_test.ts` (13 PASS),
+`59_gate_professional_id_fix_test.ts` (9 PASS),
+`60_log_ai_usage_event_test.ts`, `runtime-closing-scenarios-test.ts`
+(todos os cenários do fechamento do Runtime) — todos verdes, zero
+regressão. `tsc --noEmit` e `eslint` (projeto inteiro) limpos além dos
+2 achados pré-existentes e não relacionados (arquivos vendorizados
+`public/vendor/gsap/*.min.js` e o warning de custom font em
+`layout.tsx`).
+
+🔒 **Confirmação de escopo**: único arquivo alterado é
+`src/lib/intelligence/approval/orchestrator.ts` — mudança isolada na
+fronteira de serialização RPC, nenhuma migration tocada, nenhuma
+mudança de contrato/assinatura, `computeContextIdentity()` e toda a
+lógica de comparação F1/F2 continuam exatamente como estavam. Resto do
+Runtime Architecture v1 e Blocos 1-4 seguem congelados e intocados.
+
+Ainda pendente: usuário precisa disparar um novo deployment (push já
+força isso) e repetir o cenário `"profissional: Pode fechar por
+R$3000!"` no Preview real — é essa a validação que este fix realmente
+precisa, já que o sandbox não reproduz o transporte HTTP/JSON real do
+`@supabase/supabase-js`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
