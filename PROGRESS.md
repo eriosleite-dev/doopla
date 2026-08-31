@@ -5740,6 +5740,28 @@ já tinha desde o início — mais simples e suficiente). Este commit
 força mais um deployment pra pegar essa versão, agora sem
 ambiguidade.
 
+**Atualização 4**: com as credenciais corretas, o primeiro erro real
+de Runtime foi `claim_inbound_event falhou: Could not find the
+function ... in the schema cache` — revelou que o banco Supabase real
+de produção nunca tinha recebido as migrations 0045-0055 (Approval
+Engine, Post-model Gate, Runtime/Orchestrator, Pending Replies,
+Durable Retry, fix do `log_ai_usage_event`) — elas só existiam como
+arquivo no repositório. Diagnóstico via `Table Editor` (nada entre
+`ai_usage_events` e `artist_availability` alfabeticamente — confirma
+ausência de tudo `approval_*`) e via `information_schema.columns` em
+`orchestrator_runs`, que revelou uma segunda lacuna mais funda: a
+migration 0044 (Bloco 4 — Response Planner) TAMBÉM nunca tinha sido
+aplicada, apesar da 0043 (classification) estar presente — por isso a
+primeira tentativa de aplicar só 0045+ falhou tentando apagar uma
+constraint (`orchestrator_runs_requires_professional_review_before_sen_check`)
+que não existia. Resolvido com um script único (0044 a 0055
+concatenadas, envolvidas em `begin;`/`commit;` — atômico, sem risco de
+deixar o banco pela metade) rodado pelo usuário no SQL Editor do
+Supabase (projeto `doopla`, branch `main`/**PRODUCTION** — único
+projeto Supabase existente). **Aplicado com sucesso.** Runtime
+Architecture v1 agora existe de fato no banco real, não só no
+repositório — bloqueador fechado, seguimos pro smoke test de verdade.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
