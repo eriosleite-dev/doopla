@@ -379,11 +379,23 @@ async function runResumptionCycle(
     return { pendingReplyId: pending.id, kind: 'left_pending_no_draft' };
   }
 
+  // Achado do usuário (2ª rodada de auditoria): a checagem de
+  // cobertura de identidade vale pros DOIS outcomes do Gate fresco,
+  // nunca só pro 'allowed' — supersessão via resolveRuntimePendingReplyStillBlocked
+  // também consome/fecha esta pendência específica, então bloquear por
+  // um assunto DIFERENTE (ex.: pending de preço, Gate fresco bloqueia
+  // logística) não pode superseder a pendência de preço: a obrigação
+  // de preço nunca foi de fato reavaliada, só "desapareceu" porque uma
+  // pendência nova (de logística) nasceu no lugar. Root terminal
+  // continua encerrando pela própria regra estrutural
+  // (supersede_runtime_pending_replies_for_terminal_root, chamada fora
+  // daqui, em pipeline.ts) — nunca tocada por esta checagem.
+  if (!freshChecksAddressPendingIdentities(pendingChecks, gate.checks)) {
+    await finish('completed', null);
+    return { pendingReplyId: pending.id, kind: 'left_pending_context_diverged' };
+  }
+
   if (gate.outcome === 'blocked') {
-    // Bloqueado é sempre acionável, mesmo que o motivo não toque a
-    // identidade original desta pendência — supersessão nunca envia
-    // nada, nunca arrisca conteúdo stale (mesmo mecanismo já existente,
-    // nenhuma mudança aqui).
     const result = await resolveRuntimePendingReplyStillBlocked(supabase, {
       pendingReplyId: pending.id,
       newPolicyGateDecisionId: newPolicyDecisionId,
@@ -393,17 +405,10 @@ async function runResumptionCycle(
     return { pendingReplyId: pending.id, kind: 'still_blocked', newPendingReplyId: result.newPendingReplyId };
   }
 
-  // allowed — achado do usuário: só resolve esta pendência se o draft
-  // fresco de fato voltou a tratar de uma das identidades que ela
-  // bloqueava. Sem isso, um draft "allowed" só porque não extraiu NADA
-  // relacionado (a conversa seguiu pra outro assunto) NUNCA completa
-  // nem envia por conta desta pendência — fica pending, retryable,
-  // esgota pra needs_attention normalmente se o assunto nunca voltar.
-  if (!freshChecksAddressPendingIdentities(pendingChecks, gate.checks)) {
-    await finish('completed', null);
-    return { pendingReplyId: pending.id, kind: 'left_pending_context_diverged' };
-  }
-
+  // allowed, e o draft fresco de fato voltou a tratar de TODAS as
+  // identidades que esta pendência bloqueava (ver freshChecksAddressPendingIdentities
+  // — nunca resume parcial: se a pendência tinha 2 identidades e só 1
+  // foi retocada, cai no ramo acima, fica pending).
   const action = resolveOutboundAction(recipientType, gate.outcome, conversation.external_participant_id !== null);
   let outboundIntentId: string | null = null;
   let aiMessageId: string | null = null;

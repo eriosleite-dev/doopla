@@ -4834,6 +4834,269 @@ falhas pré-existentes e não relacionadas de `41_redteam_provenance_and_overflo
 - 🔒 **Confirmação**: **Blocos 1–4 intocados.** Nenhuma migration.
   Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR.
 
+## 43. Corrige o mesmo gap de identidade também no ramo `blocked`
+
+2ª rodada de auditoria do bloco 42, antes do freeze. `freshChecksAddressPendingIdentities`
+só protegia o ramo `allowed` de `runResumptionCycle` — o ramo
+`blocked` chamava `resolveRuntimePendingReplyStillBlocked`
+incondicionalmente, mesmo quando o Gate fresco bloqueou uma identidade
+**completamente diferente** da que originou a pendência. Exemplo do
+usuário: pendência de `price_or_cache` esperando aprovação; durante o
+backoff a conversa muda de assunto; o Planner fresco responde sobre
+logística; o Gate fresco bloqueia `logistics_commitment`; o código
+antigo superseder a pendência de PREÇO e criava uma pendência nova de
+LOGÍSTICA no lugar — a obrigação de preço desaparecia sem nunca ter
+sido de fato reavaliada.
+
+### Correção
+
+A checagem de cobertura de identidade subiu pra ANTES do `if (gate.outcome === 'blocked')`,
+aplicando-se aos dois ramos igualmente — nunca mais um `switch`
+duplicado nem uma segunda política: é a MESMA `freshChecksAddressPendingIdentities`,
+chamada uma vez só, decidindo se a pendência pode ser tocada (por
+qualquer RPC de resolução) antes mesmo de saber se o resultado vai ser
+`allowed` ou `blocked`.
+
+```
+fresh Gate NÃO toca identidade original + allowed  → left_pending_context_diverged
+fresh Gate NÃO toca identidade original + blocked  → left_pending_context_diverged (NUNCA supersede)
+fresh Gate toca identidade original     + allowed  → resolve normalmente
+fresh Gate toca identidade original     + blocked  → resolveRuntimePendingReplyStillBlocked
+```
+
+`supersede_runtime_pending_replies_for_terminal_root` (raiz virando
+terminal) nunca foi tocada por esta mudança — é uma RPC/caminho
+completamente separado (chamada de `pipeline.ts`, bulk, por
+`commercial_root_id`, nunca por identidade) — continua encerrando
+pendências normalmente, exatamente como antes.
+
+### Achado extra durante a auditoria: pendência com múltiplas identidades
+
+Auditando o pedido do usuário ("pendência com múltiplas identidades +
+Gate fresco toca só uma: mantenha fail-closed se houver risco de
+perder as demais"), percebi que `freshChecksAddressPendingIdentities`
+originalmente exigia só **UMA** identidade original tocada (`some`) —
+suficiente pro caso de uma identidade só, mas insuficiente pro caso de
+uma pendência nascida de um Gate que bloqueou VÁRIAS identidades no
+mesmo draft (ex.: preço E logística juntos). Se o draft fresco só
+voltasse a tocar preço, a pendência inteira seria resolvida/superseded
+mesmo com a obrigação de logística nunca revisitada — a mesma classe
+de perda silenciosa, só que dentro de uma única pendência multi-
+identidade em vez de entre duas pendências diferentes.
+
+Corrigido trocando `some` por `every`: **todas** as identidades
+originais elegíveis (`blockedIdentities(pendingChecks)`) precisam
+aparecer nos checks frescos (matched ou blocked, qualquer motivo) —
+mesma disciplina já usada pra `subject_key_unresolved` em
+`isEligibleForAutoMatch`/`shouldAttemptResume` ("nenhum blocker sem
+identidade prescinde a pendência inteira de auto-match"), agora
+generalizada pra qualquer pendência multi-identidade. Pendências de
+identidade única (o caso comum) não mudam de comportamento — `every`
+sobre um array de 1 elemento é idêntico a `some`.
+
+### Por que os 8 testes anteriores não pegaram isso
+
+Revisão honesta pedida pelo usuário: o cenário 5 do bloco 42
+("múltiplas mensagens durante vários retries") já testava, sem saber,
+quase exatamente a situação do bug — a 2ª tentativa usava um extrator
+fake devolvendo `date_change/primary` (identidade DIFERENTE da
+pendência original, `price_or_cache/primary`). Mas a asserção só
+checava `outcome.kind === 'still_blocked'` — que era verdade tanto com
+o bug presente (a RPC supersedia a pendência de preço incondicionalmente
+em qualquer bloqueio) quanto sem ele. A asserção nunca checava QUAL
+pendência foi de fato tocada nem se a identidade original sobreviveu —
+provava a forma do outcome, não a substância. Corrigido nesta rodada:
+o cenário 5 agora afirma explicitamente `left_pending_context_diverged`
+e que a pendência de preço continua `pending` depois da 2ª tentativa
+(nunca superseded por um assunto diferente).
+
+### Testes (Red Team real, cenários novos)
+
+Adicionados ao mesmo arquivo de integração real (`58_redteam_stale_context_integration_test.ts`,
+scratchpad) — mesmo princípio do bloco 42 (Postgres real,
+`resumeOnePendingReply()` de produção, model calls injetados). **13/13
+cenários PASS** (os 8 do bloco 42 + 5 novos), estável em 3 execuções:
+- **9** (pedido #1): pending de preço + Gate fresco bloqueia logística
+  (identidade diferente) → `left_pending_context_diverged`, preço
+  continua `pending`, 0 outbound;
+- **10** (pedido #2): pending de preço + Gate fresco bloqueia o MESMO
+  preço com valor novo → `still_blocked`, supersede corretamente
+  (confirma que a correção não travou o caso legítimo);
+- **11** (pedido #3): pendência com 2 identidades (preço + logística)
+  originais, Gate fresco toca só preço → `left_pending_context_diverged`,
+  fail-closed, logística nunca perdida;
+- **11b** (contraprova do #3): mesma pendência de 2 identidades, Gate
+  fresco toca AS DUAS → `still_blocked`, supersede corretamente;
+- **12** (pedido #7): depois de ficar `left_pending_context_diverged`
+  no cenário 9, uma mensagem posterior que de fato volta a tocar preço
+  faz uma tentativa seguinte resolver normalmente — a obrigação nunca
+  fica irrecuperável, só espera o assunto certo voltar.
+
+Pedido #4 (allowed sem identidade original) e #5 (root terminal) já
+estavam cobertos pelos cenários 1/3/4 e 6 do bloco 42 — reconfirmados
+nesta rodada sem alteração. Pedido #6 (nenhuma rota cria outbound
+indevido) — asserção `outboundIntentCountByTrigger(...) === 0`
+adicionada explicitamente em cada cenário `diverged`/fail-closed novo
+(9, 11), não só assumida.
+
+**Achado de fixture (não de produção)**: dois bugs nos MEUS cenários
+de teste, achados rodando contra o Gate real — `subjectKey: 'transporte'`
+(português) não existe na taxonomia real de `logistics_commitment`
+(`['transport', 'lodging', 'equipment', 'crew_access', 'other']`,
+`value-schemas.ts`) e teria sido silenciosamente resolvido pra
+`subject_key_unresolved` pelo matcher real; e `value: { detail: ... }`
+não bate com o schema real (`{ description: string }`, `.strict()`).
+Os dois só apareceram porque estes testes rodam o Gate DE VERDADE
+(`matcher.ts`/`value-schemas.ts` reais) — nenhum teste anterior deste
+projeto tinha exercitado essa validação com dado de fixture solto.
+Corrigidos nos fixtures, nunca em código de produção.
+
+- ✅ `tsc --noEmit`, `eslint` (limpo), `next build` (32 rotas).
+- ✅ **Sem migration nova.**
+- ✏️ **Modificado**: `runtime/resumption.ts` (checagem de cobertura
+  movida pra antes do branch allowed/blocked), `pending-replies-matching.ts`
+  (`freshChecksAddressPendingIdentities`: `some` → `every`).
+- **Regressão completa revalidada** (`02_*` a `57_*`, rebuild limpo
+  0001-0054): 0 FAIL em tudo tocado — só as mesmas 3 falhas
+  pré-existentes e não relacionadas de `41_redteam_provenance_and_overflow.sql`.
+
+### Nível de integração exato dos testes Red Team (esclarecimento pedido)
+
+Pra não superclamar cobertura: os testes deste bloco e do bloco 42 são
+**integração real do Runtime com model calls injetados** — não
+"end-to-end completo". Precisamente:
+
+| Camada | Real ou injetado? |
+|---|---|
+| Postgres (schema, RLS, functions/RPCs) | **Real** — mesmo `doopla_rls_test` de sempre |
+| `resumeOnePendingReply()`/`runResumptionCycle()` | **Real** — código de produção, sem cópia/reimplementação |
+| Todas as RPCs (`begin_runtime_pending_reply_attempt`, `record_policy_gate_decision`, `resolve_runtime_pending_reply_*`, `get_active_approvals`, `is_operationally_ready`, etc.) | **Real** |
+| `evaluatePostModelGate`/`matcher.ts`/`value-schemas.ts` (matching de valor, resolução de subject_key, extractCommitments exceto o model call em si) | **Real** |
+| Lifecycle da pendência (`pending`/`completed`/`superseded`/`needs_attention`), decisão de outbound (`resolveOutboundAction`) | **Real** |
+| Classifier, Planner, extrator do Gate (as 3 chamadas ao model) | **Injetados** (`opts.modelCall`) — sem acesso a OpenAI neste sandbox |
+
+Ou seja: tudo que é CÓDIGO/BANCO é real; só a INFERÊNCIA de linguagem
+natural (as 3 chamadas de model) é simulada com outputs plausíveis por
+cenário, escritos por mim. Isso prova que o Runtime ORQUESTRA
+corretamente dado qualquer combinação razoável de saídas do model —
+não prova que o Classifier/Planner/extrator REAIS vão de fato produzir
+essas saídas plausíveis (isso continua Beta Gate, sem OpenAI).
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- Gap do Gate (seção 44 abaixo) segue sem correção — bloqueador do
+  freeze final do Runtime, aguardando micro-patch isolado autorizado
+  separadamente.
+- Mesma dependência do julgamento do Planner congelado pra
+  cancelamentos puros, já nomeada na seção 42 — inalterada por esta
+  correção.
+- Gaps residuais do bloco 41 (sem infraestrutura real de agendamento)
+  continuam abertos.
+- 🔒 **Confirmação**: **Blocos 1–4 intocados.** Nenhuma migration.
+  Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR.
+
+## 44. Bug preexistente do Post-model Gate (documentado, NÃO corrigido nesta rodada)
+
+Achado durante o Red Team do bloco 42, mantido sem correção permanente
+por instrução explícita do usuário — será tratado num micro-patch
+isolado, com regression test próprio, depois desta auditoria.
+
+**1. Resultado com HEAD puro** (nenhuma alteração local em `gate.ts`):
+rodando `resumeOnePendingReply()` de verdade contra Postgres real, com
+uma conversation que tem `related_booking_id` (commercial root real) e
+um draft que produz `decision.proposedResponse`, `evaluatePostModelGate`
+lança sempre que chega na chamada de `is_commercial_root_terminal`.
+
+**2. Erro exato**:
+```
+is_commercial_root_terminal falhou: professional_id_required_for_system_caller
+```
+(levantado dentro da própria function PL/pgSQL, `errcode = '22023'`,
+propagado por `gate.ts` como `throw new Error(...)`.)
+
+**3. Chamada atual** (`src/lib/intelligence/policy-gate-post/gate.ts:119`):
+```ts
+supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId }),
+```
+— nunca passou `p_professional_id`, em nenhuma versão desde que o
+parâmetro foi introduzido.
+
+**4. Assinatura atual** (migration 0051,
+`supabase/migrations/0051_runtime_orchestrator.sql`):
+```sql
+create function public.is_commercial_root_terminal(
+  p_commercial_root_id uuid,
+  p_professional_id uuid default null
+)
+```
+com, no corpo:
+```sql
+if public.is_system_caller() then
+  if p_professional_id is null then
+    raise exception 'professional_id_required_for_system_caller' using errcode = '22023';
+  end if;
+  v_professional_id := p_professional_id;
+else
+  if auth.uid() is null then raise exception 'not_authorized' ...; end if;
+  v_professional_id := auth.uid();
+end if;
+```
+
+**5. Por que `service_role`/system caller precisa do parâmetro**: o
+caminho `auth.uid()` deriva o profissional automaticamente do JWT de
+uma sessão autenticada real — não existe pra uma chamada `service_role`
+(o JWT não representa nenhum profissional específico). A function
+precisa que o CHAMADOR passe explicitamente qual profissional está
+sendo verificado pra derivar ownership (`commercial_root_belongs_to_professional`)
+— sem isso, não há como saber de quem é a raiz comercial sendo checada,
+e a function recusa fail-closed em vez de assumir.
+
+**6. Caminhos reais afetados**: `evaluatePostModelGate` é chamado tanto
+pelo ciclo normal (`pipeline.ts::runCycle`) quanto pela retomada
+(`resumption.ts::runResumptionCycle`) — **qualquer** execução real do
+Runtime (sempre via `service_role`, nunca `authenticated`) que tenha
+`bookingId`/`opportunityId` resolvido E um `decision.proposedResponse`
+não-vazio cai nesta chamada. Ou seja: todo o Post-model Gate real,
+pro caminho automatizado do Runtime, com commercial root — que é o
+caso comum, não uma borda.
+
+**7. Por que nenhum teste anterior detectou**: nenhuma execução
+end-to-end do pipeline TS contra Postgres real tinha acontecido neste
+projeto até o Red Team do bloco 42 — sem acesso a OpenAI (Classifier/
+Planner/extrator) e sem PostgREST local, todo teste anterior (Blocos
+1-6, Runtime, "fechar o ciclo", retomada durável) simulava decisões do
+Gate via `record_policy_gate_decision` chamado DIRETO com `p_checks`
+fabricados, nunca passando por `evaluatePostModelGate`/`is_commercial_root_terminal`
+de verdade. Testes via UI/dev routes usam `authenticated` (sessão real
+de profissional), que sempre teve `auth.uid()` preenchido — o ramo
+`is_system_caller()` nunca foi exercitado por nenhum caminho de teste
+existente antes deste Red Team.
+
+**8. Correção mínima identificada** (uma linha, `gate.ts:119`):
+```ts
+supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId, p_professional_id: input.professionalId }),
+```
+`input.professionalId` já existe no `PostModelGateInput` — nenhum dado
+novo precisa ser buscado, só passar o que já está disponível.
+
+**9. Resultado dos testes com a correção aplicada só localmente**: com
+essa única linha alterada, **13/13 cenários do Red Team passaram**
+(blocos 42 e 43 juntos, 3 execuções seguidas estáveis) e a regressão
+SQL completa (`02_*` a `57_*`, rebuild limpo) permaneceu em 0 FAIL
+(exceto as mesmas 3 falhas pré-existentes não relacionadas). Nenhuma
+outra alteração foi necessária pra fazer o Gate real funcionar sob
+`service_role`.
+
+**10. Confirmação explícita**: a alteração foi revertida (`git checkout --`)
+antes de qualquer commit deste bloco — `git diff src/lib/intelligence/policy-gate-post/gate.ts`
+contra o HEAD commitado está vazio. O arquivo commitado é
+byte-idêntico ao estado anterior a esta auditoria.
+
+**Este continua sendo o risco residual mais importante do Runtime**:
+sem ele, nenhuma execução real do Post-model Gate com commercial root
+funciona — bloqueador do freeze final, aguardando autorização
+explícita pra um micro-patch isolado com seu próprio regression test.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

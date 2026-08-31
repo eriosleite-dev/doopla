@@ -93,8 +93,20 @@ function touchedIdentities(checks: readonly GateCheckSnapshot[]): BlockedIdentit
 // touchedIdentities (matched OU blocked, qualquer motivo) — só
 // precisamos saber se o assunto foi de fato revisitado, o outcome real
 // (allowed/blocked) continua 100% decisão do Gate re-avaliado.
+//
+// TODAS as identidades originais precisam ser tocadas, nunca "pelo
+// menos uma" (achado da 2ª rodada de auditoria, mesmo princípio já
+// aplicado a subject_key_unresolved em isEligibleForAutoMatch/
+// shouldAttemptResume): uma pendência pode ter nascido de UMA decisão
+// com MÚLTIPLOS commitments bloqueados (ex.: preço E logística no
+// mesmo draft original). Se o draft fresco só volta a tratar de um
+// deles, resolver/superseder a pendência inteira perderia a obrigação
+// do outro silenciosamente — nunca resume/supersede parcial, mesma
+// disciplina de "nenhum blocker sem identidade prescinde a pendência
+// inteira" já usada pro caso subject_key_unresolved.
 export function freshChecksAddressPendingIdentities(pendingChecks: readonly GateCheckSnapshot[], freshChecks: readonly GateCheckSnapshot[]): boolean {
   const originalIdentities = blockedIdentities(pendingChecks);
   if (originalIdentities.length === 0) return false;
-  return identitiesOverlap(originalIdentities, touchedIdentities(freshChecks));
+  const touched = touchedIdentities(freshChecks);
+  return originalIdentities.every((o) => touched.some((t) => t.decisionCategory === o.decisionCategory && t.subjectKey === o.subjectKey));
 }
