@@ -5717,6 +5717,20 @@ deployment novo que já lê as duas, evitando depender da navegação de
 "Redeploy" na UI da Vercel (que apresentou travamentos de interface
 durante a tentativa manual).
 
+**Atualização 2**: primeira tentativa real (via deployment do commit
+`27aebd1`) retornou `{"kind": "action_error", "error":
+"claim_inbound_event falhou: Invalid API key"}` nos dois passos
+(cliente e profissional) — erro do próprio gateway do Supabase (não do
+Postgres/Runtime), indicando que o valor colado em
+`SUPABASE_SERVICE_ROLE_KEY` na Vercel não era a `service_role` secret
+correta. Sinal positivo apesar do erro: prova que
+`triggerInboundMessage`/a rota/a autenticação funcionam exatamente
+como desenhado, e que o tratamento de erro (nunca derruba a página,
+mensagem limpa) se comporta como esperado mesmo numa falha de
+infraestrutura real, não simulada. Usuário corrigiu o valor da
+`SUPABASE_SERVICE_ROLE_KEY` na Vercel; este commit força outro
+deployment novo pra pegar o valor corrigido.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
