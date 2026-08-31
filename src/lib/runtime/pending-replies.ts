@@ -15,10 +15,13 @@ export type RuntimePendingReply = {
   triggerMessageId: string;
   policyGateDecisionId: string;
   runId: string | null;
-  status: 'pending' | 'completed' | 'superseded';
+  status: 'pending' | 'completed' | 'superseded' | 'needs_attention';
   supersededById: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
 };
 
 type RuntimePendingReplyRow = {
@@ -28,10 +31,13 @@ type RuntimePendingReplyRow = {
   trigger_message_id: string;
   policy_gate_decision_id: string;
   run_id: string | null;
-  status: 'pending' | 'completed' | 'superseded';
+  status: 'pending' | 'completed' | 'superseded' | 'needs_attention';
   superseded_by_id: string | null;
   created_at: string;
   resolved_at: string | null;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  last_attempt_at: string | null;
 };
 
 function fromRow(row: RuntimePendingReplyRow): RuntimePendingReply {
@@ -46,6 +52,9 @@ function fromRow(row: RuntimePendingReplyRow): RuntimePendingReply {
     supersededById: row.superseded_by_id,
     createdAt: row.created_at,
     resolvedAt: row.resolved_at,
+    attemptCount: row.attempt_count,
+    nextAttemptAt: row.next_attempt_at,
+    lastAttemptAt: row.last_attempt_at,
   };
 }
 
@@ -160,4 +169,56 @@ export async function fetchPolicyGateDecisionChecks(
   const { data, error } = await supabase.from('policy_gate_decisions').select('checks').eq('id', policyGateDecisionId).maybeSingle<{ checks: GateCheckSnapshot[] }>();
   if (error) throw new Error(`leitura de policy_gate_decisions.checks falhou: ${error.message}`);
   return data?.checks ?? [];
+}
+
+// ============================================================
+// Retomada durável (migration 0054) — wrappers finos sobre as 3 novas
+// RPCs. begin_attempt/record_busy nunca decidem elegibilidade de
+// identidade (isso continua só em pending-replies-matching.ts pro
+// caminho aprovação-disparada) — só controlam SE/QUANDO uma tentativa
+// pode começar e o que fazer quando ela esbarra em conversation_busy.
+// ============================================================
+
+export async function beginRuntimePendingReplyAttempt(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { pendingReplyId: string; safetyNetSeconds: number; maxAttempts: number }
+): Promise<{ granted: boolean; attemptCount: number; exhausted: boolean }> {
+  const { data, error } = await supabase
+    .rpc('begin_runtime_pending_reply_attempt', {
+      p_pending_reply_id: params.pendingReplyId,
+      p_safety_net_seconds: params.safetyNetSeconds,
+      p_max_attempts: params.maxAttempts,
+    })
+    .single();
+  if (error || !data) throw new Error(`begin_runtime_pending_reply_attempt falhou: ${error?.message ?? 'sem dado'}`);
+  const row = data as { granted: boolean; attempt_count: number; exhausted: boolean };
+  return { granted: row.granted, attemptCount: row.attempt_count, exhausted: row.exhausted };
+}
+
+export async function recordRuntimePendingReplyBusy(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { pendingReplyId: string; backoffSeconds: number; maxAttempts: number }
+): Promise<{ recorded: boolean; nextAttemptAt: string | null; exhausted: boolean }> {
+  const { data, error } = await supabase
+    .rpc('record_runtime_pending_reply_busy', {
+      p_pending_reply_id: params.pendingReplyId,
+      p_backoff_seconds: params.backoffSeconds,
+      p_max_attempts: params.maxAttempts,
+    })
+    .single();
+  if (error || !data) throw new Error(`record_runtime_pending_reply_busy falhou: ${error?.message ?? 'sem dado'}`);
+  const row = data as { recorded: boolean; next_attempt_at: string | null; exhausted: boolean };
+  return { recorded: row.recorded, nextAttemptAt: row.next_attempt_at, exhausted: row.exhausted };
+}
+
+export async function listDueRuntimePendingReplies(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { limit: number }
+): Promise<RuntimePendingReply[]> {
+  const { data, error } = await supabase.rpc('list_due_runtime_pending_replies', { p_limit: params.limit });
+  if (error) throw new Error(`list_due_runtime_pending_replies falhou: ${error.message}`);
+  return ((data ?? []) as RuntimePendingReplyRow[]).map(fromRow);
 }

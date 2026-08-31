@@ -4459,6 +4459,182 @@ suites do projeto.
   pre-model) — só Runtime (novo) e uma extensão pontual de uma RPC do
   Bloco 5 (`try_classify_communicated_proposal`).
 
+## 41. Retomada durável — fecha o risco residual `conversation_busy` (migration 0054)
+
+Extensão pequena e isolada, autorizada explicitamente em cima do bloco
+40 já fechado — nenhum redesenho do que já estava aprovado, nenhuma
+alteração nos Blocos 1–4. Objetivo único: uma aprovação já resolvida
+nunca morre silenciosamente só porque a conversation estava ocupada no
+momento exato da retomada.
+
+### Lifecycle/estados finais de `runtime_pending_replies`
+
+Três colunas novas na MESMA linha (nunca uma tabela paralela):
+`attempt_count` (monotônico, nunca resetado — uma pendência nova
+nascida de supersessão sempre começa em 0), `next_attempt_at` (quando
+a linha volta a ficar elegível pro reconciler) e `last_attempt_at`
+(observabilidade). Um status novo, `needs_attention`, junta-se aos três
+já existentes:
+
+```
+pending          → obrigação viva, explicitamente retryable.
+completed        → Gate permitiu, outbound criado (ou terminal-de-sucesso).
+superseded       → substituída por uma pendência mais nova, ou raiz virou terminal.
+needs_attention  → esgotou attempt_count sem resolver — teto de
+                    segurança, NUNCA mais retentada automaticamente,
+                    estado observável, nunca uma falha silenciosa.
+```
+
+`next_attempt_at` começa `NULL` (só alcançável via aprovação nova,
+igual ao bloco 40) e só ganha um valor real depois da PRIMEIRA
+tentativa de retomada — nunca antes disso, pra não transformar isto
+num polling genérico de toda pendência viva (fora do que foi pedido).
+
+### Estratégia de retry/backoff/idempotência
+
+**`begin_runtime_pending_reply_attempt`** roda ANTES de qualquer
+`conversation_processing_lease`/Planner/Gate — serve DUAS funções na
+mesma escrita atômica (`select ... for update` + `UPDATE` condicional,
+mesmo boundary de idempotência já usado em `resolve_runtime_pending_reply_allowed`):
+(a) **heartbeat de segurança** — agenda `next_attempt_at` generoso
+(15min, `RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS`) ANTES de tentar
+qualquer coisa, cobrindo não só `conversation_busy` mas um crash a
+meio do caminho; (b) **claim de concorrência** — duas tentativas
+batendo na MESMA linha (reconciler duplicado, ou reconciler +
+aprovação simultâneos) nunca processam a mesma janela: a segunda vê
+`next_attempt_at` no futuro (empurrado pela primeira) e desiste.
+
+Se a conversation lease falhar (`conversation_busy` de verdade),
+**`record_runtime_pending_reply_busy`** substitui o heartbeat genérico
+por um backoff mais apertado e ESPECÍFICO
+(`computeRuntimeRetryBackoffSeconds`, exponencial capado: 30s → 60s →
+120s → ... teto 1800s/`RUNTIME_PENDING_REPLY_MAX_ATTEMPTS`=8) — a
+linha NUNCA sai de `pending`, nunca é "perdida". Se este JÁ era o
+último attempt permitido, fecha pra `needs_attention` na hora, sem
+esperar uma tentativa extra descobrir isso depois.
+
+Idempotência real (mensagem duplicada) continua 100% garantida pelo
+MESMO boundary do bloco 40 (`resolve_runtime_pending_reply_allowed`,
+`UPDATE ... WHERE status='pending'` como linearização) — as duas RPCs
+novas NUNCA tocam `outbound_intents`, só controlam agendamento/claim de
+tentativa. `**reconcileDueRuntimePendingReplies**` (`runtime/resumption.ts`)
+é o ponto de entrada que um worker/cron futuro chamaria
+periodicamente — só descoberta (`list_due_runtime_pending_replies`) +
+reaproveita o MESMO `resumeOnePendingReply` que o caminho
+aprovação-disparada já usa (agora exportado, chamado por ambos).
+Nenhuma infraestrutura real de agendamento (cron/fila) foi criada
+nesta rodada — decidir QUANDO/COMO ele roda de verdade é uma decisão
+de infra fora do escopo autorizado aqui.
+
+### Testes (10 cenários pedidos)
+
+**SQL adversarial** (`57_runtime_durable_retry_adversarial.sql`,
+scratchpad, rebuild completo do zero, `ON_ERROR_STOP=1`, migrations
+0001-0054 + seed): **28 asserções PASS, 0 FAIL**, 3 negações de
+permissão confirmadas (`authenticated` negado nas 3 RPCs novas).
+Cobertura ponto a ponto:
+1. aprovação durante busy → retoma depois (begin→busy→due→begin
+   sucesso→resolve, 1 outbound_intent);
+2. múltiplas tentativas busy → só 1 resposta final (mesmo teste acima,
+   contagem exata de `outbound_intents`);
+3. crash depois de adquirir a tentativa, antes do envio → recuperável
+   (heartbeat de 1s + `pg_sleep(1.2)` + nova tentativa concedida, SEM
+   simular `conversation_busy` explícito — prova o caso genérico, não
+   só o nomeado);
+4. crash depois do envio, antes de marcar concluído → sem duplicação
+   (reconfirmação do boundary do bloco 40 com as colunas novas
+   presentes);
+5. mensagem nova durante o backoff → Planner fresco considera —
+   **validado por design, não por execução** (nenhum acesso a OpenAI
+   neste sandbox): a mensagem nova dispara um `processInboundEvent`
+   NORMAL, com `buildContextPackage` completo e NUNCA truncado
+   (`truncateContextAtMessage` só existe dentro do caminho de
+   retomada) — as duas mensagens usam pipelines estruturalmente
+   diferentes, nunca compartilham contexto por acidente;
+6. proposta superseded durante o backoff → resposta antiga nunca
+   retomada (pendência antiga vira `superseded` com `next_attempt_at`
+   limpo — nunca mais aparece pro reconciler nem aceita
+   `begin_attempt`);
+7. pendência completed nunca é reapanhada (`begin_attempt` sempre nega,
+   `exhausted=false` — já é terminal por outro motivo);
+8. duas pendências elegíveis da MESMA root, categorias diferentes →
+   resolvidas isoladamente, sem resposta conflitante (resolver uma não
+   toca a outra);
+9. isolamento entre conversations/roots — coberto estruturalmente
+   (todas as RPCs escopam por `id` explícito, nunca por root/conversation
+   implícito) + fixture cross-professional quando disponível;
+10. teto de tentativas → `needs_attention`, nunca falha silenciosa
+    (max_attempts=2 no teste — 2ª busy fecha na hora, sem esperar uma
+    3ª tentativa; reconciler nunca mais pega a linha; `begin_attempt`
+    subsequente nega sem re-disparar `exhausted=true`).
+
+**TS determinístico** (tsx): `retry-backoff.ts` — 9 asserções
+(sequência exponencial exata, monotonicidade, teto físico nunca
+ultrapassado, constantes coerentes).
+
+**Achado real durante os testes, corrigido na migration**: as duas
+RPCs novas com colunas OUT homônimas às colunas da própria tabela
+(`attempt_count`, `next_attempt_at`) geravam `column reference ...
+is ambiguous` em PL/pgSQL — `returns table(...)` declara essas
+variáveis implicitamente, colidindo com a coluna bare dentro de
+`UPDATE ... SET x = x + 1 ... RETURNING x`. Corrigido qualificando com
+o nome completo da tabela nos dois pontos (lado direito do `SET` e
+`RETURNING`) — achado e corrigido ainda nesta rodada, antes do commit,
+nunca chegou a ficar quebrado no código commitado.
+
+**Regressão completa revalidada** (`02_*` a `54_*`, rebuild limpo):
+0 FAIL em tudo que este round tocou. `30_redteam_composite_and_takeover.sql`
+(o teste de timing de lease com `now()` congelado, documentado como
+baseline conhecido desde a seção 39) foi **corrigido de verdade** nesta
+rodada — dividido em dois `do $$ end $$` com um `pg_sleep` TOP-LEVEL
+entre eles (statements separados = transações separadas = `now()`
+avança de verdade); 3 reruns confirmam 0 FAIL estável, nenhuma lógica
+de produção mudou. `41_redteam_provenance_and_overflow.sql` continua
+com 3 falhas — **investigado a fundo e caracterizado corretamente
+desta vez**: NÃO é o mesmo problema de relógio (não tem nenhum
+`pg_sleep`, nem um único `do $$`) — é um `reset role`/limpeza de JWT
+claims que acontece ANTES do loop de 50 mensagens da seção 6, deixando
+a chamada a `try_classify_communicated_proposal` sem `auth.uid()` nem
+`is_system_caller()`. Confirmado que isto já falharia com a function
+ORIGINAL (pré-migration 0053) — não é uma regressão desta rodada nem
+da rodada anterior, é um gap pré-existente e não relacionado neste
+arquivo de scratchpad específico, fora do que foi autorizado corrigir
+("o problema já identificado é o relógio transacional congelado" — não
+se aplica aqui). Reportado com precisão em vez de forçado sob a mesma
+explicação do outro teste.
+
+- ✅ `tsc --noEmit`, `eslint` (limpo), `next build` (32 rotas).
+- ✅ **Migration**: `0054_runtime_pending_reply_durable_retry.sql`.
+- ✅ **Novo**: `runtime/retry-backoff.ts`. `runtime/pending-replies.ts`
+  ganhou `beginRuntimePendingReplyAttempt`/`recordRuntimePendingReplyBusy`/
+  `listDueRuntimePendingReplies`. `runtime/resumption.ts` ganhou
+  `resumeOnePendingReply` exportado + `reconcileDueRuntimePendingReplies`.
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **Nenhuma infraestrutura real de agendamento** (cron/fila/worker)
+  foi criada — `reconcileDueRuntimePendingReplies` é o ponto de
+  entrada pronto, mas nada chama ele periodicamente ainda nesta
+  rodada. Decisão de infra explicitamente fora do escopo autorizado.
+- **`41_redteam_provenance_and_overflow.sql`** continua com 3 falhas
+  pré-existentes, não relacionadas a este bloco nem ao anterior (ver
+  seção de testes acima) — não corrigido, por não ser o problema que
+  foi autorizado a corrigir.
+- Os dois gaps residuais do bloco 40 que NÃO eram sobre
+  `conversation_busy` continuam abertos, fora do escopo desta extensão
+  pontual: `outbound_intents` não carrega `disposition` fisicamente;
+  outcome `blocked` não notifica o profissional (sem painel/notificação
+  ainda).
+- Golden Suites continuam **Beta Gate** — nenhuma rodada real contra
+  OpenAI neste sandbox.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend real
+  nesta rodada. Nenhum merge, nenhum PR. **Blocos 1–4 intocados** —
+  única mudança fora de `runtime/` foi a migration adicionar colunas/
+  RPCs novas em `runtime_pending_replies` e fazer `create or replace`
+  (mesma assinatura) nas 4 functions do bloco 40 só pra limpar
+  `next_attempt_at` ao finalizar uma linha (higiene, sem mudança de
+  comportamento observável).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

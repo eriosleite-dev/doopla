@@ -12,10 +12,20 @@ import type { ToolContext } from '../intelligence/types';
 import { resolveCommercialRootForResumption } from './commercial-root';
 import { acquireConversationLease, releaseConversationLease } from './conversation-lease';
 import { truncateContextAtMessage } from './context-window';
-import { fetchPolicyGateDecisionChecks, listPendingRuntimeReplies, resolveRuntimePendingReplyAllowed, resolveRuntimePendingReplyStillBlocked, type RuntimePendingReply } from './pending-replies';
+import {
+  beginRuntimePendingReplyAttempt,
+  fetchPolicyGateDecisionChecks,
+  listDueRuntimePendingReplies,
+  listPendingRuntimeReplies,
+  recordRuntimePendingReplyBusy,
+  resolveRuntimePendingReplyAllowed,
+  resolveRuntimePendingReplyStillBlocked,
+  type RuntimePendingReply,
+} from './pending-replies';
 import { shouldAttemptResume, type BlockedIdentity } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
 import { resolveOutboundAction, resolveRecipientType } from './recipient';
+import { computeRuntimeRetryBackoffSeconds, RUNTIME_PENDING_REPLY_MAX_ATTEMPTS, RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS } from './retry-backoff';
 import { buildStructuralFacts } from './structural-facts';
 import { resolveSystemActorContext } from './system-actor';
 
@@ -42,7 +52,20 @@ import { resolveSystemActorContext } from './system-actor';
 // nunca throw propagado.
 
 export type ResumptionOutcome =
-  | { pendingReplyId: string; kind: 'skipped_conversation_busy' }
+  // Tentativa nem chegou a começar — begin_runtime_pending_reply_attempt
+  // negou porque outra tentativa reservou o horário primeiro, ou a
+  // linha foi resolvida/superseded por outro caminho entre a leitura e
+  // a tentativa (concorrência normal, nunca um erro).
+  | { pendingReplyId: string; kind: 'skipped_not_due_yet' }
+  // attempt_count esgotou RUNTIME_PENDING_REPLY_MAX_ATTEMPTS — a linha
+  // já virou 'needs_attention' (terminal de observabilidade, nunca
+  // reprocessada automaticamente de novo).
+  | { pendingReplyId: string; kind: 'needs_attention'; attemptCount: number }
+  // conversation ocupada — a tentativa FOI contabilizada
+  // (begin_runtime_pending_reply_attempt já rodou) e um retry com
+  // backoff foi agendado (record_runtime_pending_reply_busy). A linha
+  // continua 'pending', explicitamente retryable — nunca perdida.
+  | { pendingReplyId: string; kind: 'conversation_busy_retry_scheduled'; nextAttemptAt: string | null; attemptCount: number }
   | { pendingReplyId: string; kind: 'skipped_root_mismatch' }
   | { pendingReplyId: string; kind: 'skipped_trigger_not_in_window' }
   | { pendingReplyId: string; kind: 'left_pending_no_draft' }
@@ -84,19 +107,74 @@ export async function attemptResumptionsAfterApproval(
   return outcomes;
 }
 
-async function resumeOnePendingReply(
+// Ponto de entrada único pra QUALQUER tentativa de retomada, disparada
+// por aprovação nova (attemptResumptionsAfterApproval) OU pelo
+// reconciler (reconcileDueRuntimePendingReplies) — mesmo ciclo, mesmas
+// garantias, em ambos os casos. Retomada durável (migration 0054):
+// begin_runtime_pending_reply_attempt roda ANTES de qualquer lease —
+// serve de heartbeat de segurança (cobre um crash a meio da tentativa,
+// não só conversation_busy) E de claim de concorrência (duas
+// tentativas na MESMA linha, uma delas sempre perde). Só depois disso
+// a conversation lease é tentada; se esbarrar em busy,
+// record_runtime_pending_reply_busy agenda um retry com backoff mais
+// apertado — a linha NUNCA sai de 'pending' por causa disso, nunca
+// fica "perdida".
+export async function resumeOnePendingReply(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   pending: RuntimePendingReply,
   workerId: string
 ): Promise<ResumptionOutcome> {
+  const begin = await beginRuntimePendingReplyAttempt(supabase, {
+    pendingReplyId: pending.id,
+    safetyNetSeconds: RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS,
+    maxAttempts: RUNTIME_PENDING_REPLY_MAX_ATTEMPTS,
+  });
+  if (!begin.granted) {
+    if (begin.exhausted) return { pendingReplyId: pending.id, kind: 'needs_attention', attemptCount: begin.attemptCount };
+    return { pendingReplyId: pending.id, kind: 'skipped_not_due_yet' };
+  }
+
   const lease = await acquireConversationLease(supabase, { conversationId: pending.conversationId, workerId });
-  if (!lease.granted) return { pendingReplyId: pending.id, kind: 'skipped_conversation_busy' };
+  if (!lease.granted) {
+    const backoffSeconds = computeRuntimeRetryBackoffSeconds(begin.attemptCount);
+    const busy = await recordRuntimePendingReplyBusy(supabase, {
+      pendingReplyId: pending.id,
+      backoffSeconds,
+      maxAttempts: RUNTIME_PENDING_REPLY_MAX_ATTEMPTS,
+    });
+    if (busy.exhausted) return { pendingReplyId: pending.id, kind: 'needs_attention', attemptCount: begin.attemptCount };
+    return { pendingReplyId: pending.id, kind: 'conversation_busy_retry_scheduled', nextAttemptAt: busy.nextAttemptAt, attemptCount: begin.attemptCount };
+  }
   try {
     return await runResumptionCycle(supabase, pending);
   } finally {
     await releaseConversationLease(supabase, { conversationId: pending.conversationId, leaseToken: lease.leaseToken! });
   }
+}
+
+// Reconciler/worker — reaproveita QUALQUER pendência que já passou por
+// pelo menos uma tentativa (agendada via begin_attempt/record_busy) e
+// está due, SEM depender de uma nova aprovação futura. Nenhuma
+// infraestrutura de agendamento real (cron/fila) é criada nesta rodada
+// — este é o ponto de entrada que um worker/trigger futuro chamaria
+// periodicamente; fora de escopo decidir aqui QUANDO/COMO ele roda de
+// verdade.
+export async function reconcileDueRuntimePendingReplies(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { workerId: string; limit?: number }
+): Promise<ResumptionOutcome[]> {
+  const due = await listDueRuntimePendingReplies(supabase, { limit: params.limit ?? 50 });
+  const outcomes: ResumptionOutcome[] = [];
+  for (const pending of due) {
+    try {
+      outcomes.push(await resumeOnePendingReply(supabase, pending, params.workerId));
+    } catch (err) {
+      outcomes.push({ pendingReplyId: pending.id, kind: 'failed', error: err instanceof Error ? err.message : 'unknown_error' });
+    }
+  }
+  return outcomes;
 }
 
 async function runResumptionCycle(

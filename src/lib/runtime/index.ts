@@ -42,8 +42,13 @@ export {
   resolveRuntimePendingReplyStillBlocked,
   supersedeRuntimePendingRepliesForTerminalRoot,
   fetchPolicyGateDecisionChecks,
+  beginRuntimePendingReplyAttempt,
+  recordRuntimePendingReplyBusy,
+  listDueRuntimePendingReplies,
 } from './pending-replies';
 export type { RuntimePendingReply, GateCheckSnapshot } from './pending-replies';
+
+export { computeRuntimeRetryBackoffSeconds, RUNTIME_PENDING_REPLY_MAX_ATTEMPTS, RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS } from './retry-backoff';
 
 export { shouldCreatePendingReply, isEligibleForAutoMatch, blockedIdentities, shouldSupersedeOnCreation, shouldAttemptResume } from './pending-replies-matching';
 export type { BlockedIdentity } from './pending-replies-matching';
@@ -55,5 +60,5 @@ export type { ProposedBy } from './proposal-classification';
 
 export { resolveCommercialRootForResumption } from './commercial-root';
 
-export { attemptResumptionsAfterApproval } from './resumption';
+export { attemptResumptionsAfterApproval, resumeOnePendingReply, reconcileDueRuntimePendingReplies } from './resumption';
 export type { ResumptionOutcome } from './resumption';
