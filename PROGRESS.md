@@ -5708,6 +5708,15 @@ zero arquivo existente alterado.** Nenhuma migration. Nenhuma
 integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR. Nenhuma
 execução real ainda — nem neste sandbox, nem confirmada no Preview.
 
+**Atualização**: as duas credenciais foram confirmadas configuradas no
+projeto Vercel (`OPENAI_API_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, ambas
+escopadas a Preview + branch `claude/new-session-3hdkui`). O
+deployment do commit `27aebd1` (Preview, Ready) foi criado antes da
+`SUPABASE_SERVICE_ROLE_KEY` ser salva — este commit vazio força um
+deployment novo que já lê as duas, evitando depender da navegação de
+"Redeploy" na UI da Vercel (que apresentou travamentos de interface
+durante a tentativa manual).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
