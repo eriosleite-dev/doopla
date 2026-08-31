@@ -27,6 +27,66 @@ export async function startOrchestratorRun(
   return data as OrchestratorRun;
 }
 
+// Doopla Intelligence Core v1 — micro-patch isolado (auditoria de
+// contratos TS -> Postgres): log_ai_usage_event nunca tinha ganhado o
+// boundary is_system_caller() (migration 0051 estendeu 8 RPCs, esta
+// não era uma delas) — toda chamada real do Runtime (service_role)
+// falhava com not_authorized, e os 4 call sites reais (pipeline.ts x2,
+// resumption.ts x2) nunca checavam {error}, então a perda de
+// telemetria nunca aparecia em lugar nenhum. Migration 0055 fecha o
+// contrato (p_professional_id obrigatório e validado no caminho de
+// sistema); esta function fecha o lado TS: falha de logging é sempre
+// OBSERVÁVEL (console.error, nunca engolida) mas NUNCA lança — separar
+// "falha da operação principal" de "falha de observabilidade" é uma
+// decisão explícita: perder um evento de custo/uso não é motivo pra
+// derrubar um ciclo client-facing (booking/resposta), e este módulo
+// não tem nenhuma outra forma barata/já existente de reportar isso sem
+// esse risco (orchestrator_runs.error é semanticamente outra coisa —
+// fallback de contexto do Bloco 3 — reaproveitar o mesmo campo pra
+// telemetria conflaria dois tipos de degradação diferentes).
+export type LogAiUsageEventParams = {
+  feature: string;
+  model: string;
+  status: 'success' | 'error';
+  conversationId?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  runId?: string | null;
+  // Obrigatório na prática pra qualquer chamador service_role/sistema
+  // (a RPC recusa fail-closed sem isso) — opcional aqui só porque o
+  // caminho authenticated (test-call.ts) nunca precisou e nunca deve
+  // precisar: profile_id ali continua 100% auth.uid(), este campo é
+  // ignorado pela RPC nesse caminho.
+  professionalId?: string | null;
+};
+
+export type LogAiUsageEventResult = { ok: true } | { ok: false; error: string };
+
+export async function logAiUsageEvent(
+  supabase: SupabaseClient<Database>,
+  params: LogAiUsageEventParams
+): Promise<LogAiUsageEventResult> {
+  const { error } = await supabase.rpc('log_ai_usage_event', {
+    p_feature: params.feature,
+    p_model: params.model,
+    p_status: params.status,
+    p_conversation_id: params.conversationId ?? null,
+    p_input_tokens: params.inputTokens ?? null,
+    p_output_tokens: params.outputTokens ?? null,
+    p_run_id: params.runId ?? null,
+    p_professional_id: params.professionalId ?? null,
+  });
+
+  if (error) {
+    // Observável (aparece nos logs do processo/plataforma), nunca
+    // lançado — ver comentário acima sobre a separação deliberada
+    // entre falha de observabilidade e falha da operação principal.
+    console.error(`log_ai_usage_event falhou (telemetria — ciclo principal não é afetado): ${error.message}`);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
 export async function finishOrchestratorRun(
   supabase: SupabaseClient<Database>,
   params: OrchestratorRunFinish

@@ -5320,6 +5320,246 @@ congelado (commit `b7b142c`) sem alteração funcional. Nenhuma
 migration. Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge,
 nenhum PR. Nenhuma regra de segurança relaxada no banco.
 
+## 46. Auditoria mecânica de contratos TS → Postgres + micro-patch `log_ai_usage_event`
+
+Duas entregas separadas, ambas autorizadas explicitamente:
+
+**(a) Auditoria final mecânica** (só leitura — nenhum código/migration/teste
+alterado): percorridos os 37 `supabase.rpc(...)` distintos usados pelo
+Runtime/Intelligence, cada um comparado contra a assinatura vigente
+(migration mais recente que o define/substitui) — nome, parâmetros
+obrigatórios/opcionais, nomes exatos dos argumentos, provenance/ownership
+sob `service_role`/`is_system_caller()`, se houve migration posterior
+alterando a assinatura, se o call site TS acompanha, e se existe teste
+TS→RPC real ou só SQL direto. Achado principal: `log_ai_usage_event`
+exigia `auth.uid()` incondicionalmente (migrations 0041/0042, nunca
+estendida com `is_system_caller()` — não estava na lista de 8 RPCs que
+a migration 0051 lista explicitamente como boundary de sistema) — toda
+chamada real do Runtime (`service_role`) falhava com `not_authorized`,
+e os 4 call sites reais (`pipeline.ts` x2, `resumption.ts` x2) nunca
+checavam `{error}`, então a perda de telemetria de custo/uso nunca
+apareceu em lugar nenhum. Confirmado também: nenhum arquivo de
+`src/app` chama `processInboundEvent`/`runApprovalEngine`/
+`attemptResumptionsAfterApproval`/`reconcileDueRuntimePendingReplies`
+— zero infraestrutura de disparo (webhook/cron/worker) conectada hoje;
+`reconcileDueRuntimePendingReplies` só tem o entrypoint, sem cron real.
+`evaluateToolCallGate` (`tool-gate.ts`) confirmado como código morto —
+mesmo bug de `is_commercial_root_terminal` sem `p_professional_id`,
+mas sem nenhum caminho de produção capaz de alcançá-lo hoje (dívida
+classe B, bloqueador obrigatório antes de qualquer write tool).
+
+**(b) Micro-patch isolado**, autorizado depois da auditoria aceita —
+fecha o achado de `log_ai_usage_event`.
+
+### Causa raiz
+
+`log_ai_usage_event` (migration 0041, redefinida em 0042 só pra
+adicionar `p_run_id`) sempre exigiu `auth.uid()` — o próprio comentário
+original da function já dizia "Único caminho de INSERT em
+ai_usage_events **pra authenticated**". A migration 0051, que
+introduziu `is_system_caller()` e estendeu 8 RPCs com esse boundary
+(listadas explicitamente no comentário da própria migration), não
+incluiu esta function — 0041/0042 são anteriores ao conceito de
+Runtime/service_role, e ninguém revisitou esta function quando
+`pipeline.ts`/`resumption.ts` passaram a chamá-la. Reproduzido contra
+Postgres real antes de qualquer alteração:
+```sql
+set role service_role;
+select * from public.log_ai_usage_event(p_feature := 'intent_classification', p_model := 'gpt-5-mini', p_status := 'success');
+-- ERROR: not_authorized
+```
+Efeito em produção: nunca derrubava o ciclo (a exceção era descartada
+silenciosamente nos 4 call sites, que nunca checavam `{error}`), mas
+**100% da telemetria de custo/uso de IA do Runtime automatizado nunca
+era gravada**, sem nenhum sinal de erro em lugar nenhum.
+
+### Desenho de provenance escolhido
+
+Auditado antes de alterar: `profile_id` (a identidade registrada em
+`ai_usage_events`) é sempre `auth.uid()` no caminho authenticated —
+nunca um parâmetro, nunca deveria virar um. A RPC hoje não recebia
+`professional_id` nenhum; a mudança mínima e segura, seguindo o MESMO
+padrão já usado (e já auditado) em `is_commercial_root_terminal`
+(migration 0051) e em `commit_approval_resolution`/
+`try_classify_communicated_proposal`/etc.: adicionar
+`p_professional_id uuid default null` como último parâmetro
+(compatível com o caminho authenticated, que nunca precisa dele e
+nunca deve confiar nele) e, no corpo:
+- `is_system_caller()` **falso** (authenticated): `v_professional_id := auth.uid()`,
+  exatamente como antes — `p_professional_id` é sempre ignorado aqui,
+  mesmo que alguém tente passar o id de outro profissional (nunca uma
+  segunda fonte de identidade pra quem já tem sessão real).
+- `is_system_caller()` **verdadeiro** (Runtime real): exige
+  `p_professional_id` explícito, fail-closed sem ele
+  (`professional_id_required_for_system_caller`, mesmo texto de erro
+  já usado em `is_commercial_root_terminal` — vocabulário consistente
+  no projeto). `v_professional_id := p_professional_id`.
+- Nos dois caminhos, as checagens de ownership que já existiam
+  (`conversation_not_owned`/`run_not_owned`, comparando
+  `conversations.represented_professional_id`/
+  `orchestrator_runs.represented_professional_id` contra a identidade
+  do chamador) passam a comparar contra `v_professional_id` — nunca
+  mais hardcoded em `auth.uid()`. Isso fecha exatamente o vetor de
+  spoof nomeado: um system caller não pode declarar
+  `p_professional_id = A` e citar `conversation_id`/`run_id` de B —
+  a linha simplesmente não pertence a A, `conversation_not_owned`/
+  `run_not_owned` disparam antes do INSERT.
+
+Provenance real, na prática: `actorContext.representedProfessionalId`
+(resolvido por `resolveSystemActorContext`, nunca do texto da
+mensagem) — a MESMA identidade que `pipeline.ts`/`resumption.ts` já
+usam pra todas as outras RPCs desta chamada (Gate, pending replies,
+orchestrator run). Nenhuma fonte nova de autoridade.
+
+### Migration/diff
+
+`supabase/migrations/0055_log_ai_usage_event_system_caller.sql` — `drop
+function` explícito da assinatura antiga (7 args) antes do `create or
+replace` (mesmo achado de `is_commercial_root_terminal`: um parâmetro
+novo no fim faz `create or replace` criar um SEGUNDO overload em vez de
+substituir, já que Postgres distingue functions pela lista de tipos de
+argumento) + `create or replace function` com o parâmetro novo +
+`comment on function` atualizado + `grant execute` explícito a
+`authenticated, service_role`. Nenhuma tabela alterada, nenhuma RLS
+tocada, nenhuma outra function tocada.
+
+`src/lib/supabase/types.ts`: `log_ai_usage_event.Args` ganhou
+`p_professional_id?: string | null` (o único ponto deste projeto que
+mantém tipos do Supabase à mão, já que `is_commercial_root_terminal`
+nunca precisou — `gate.ts` usa `SupabaseClient<any>`, `observability.ts`
+usa `SupabaseClient<Database>` estrito).
+
+`src/lib/intelligence/observability.ts`: nova function
+`logAiUsageEvent(supabase, params)` — wrapper único, chamada pelos 4
+call sites reais. `pipeline.ts`/`resumption.ts`: os 2+2 call sites
+trocam `supabase.rpc('log_ai_usage_event', {...})` cru por
+`logAiUsageEvent(supabase, {..., professionalId: actorContext.representedProfessionalId})`.
+Diff mínimo confirmado via `git diff` — só import + corpo dos 4 call
+sites, nenhuma outra linha tocada em nenhum dos dois arquivos.
+
+### Tratamento explícito de erro (separação operação principal vs. observabilidade)
+
+`logAiUsageEvent()` **nunca lança**. Em erro, chama `console.error(...)`
+(observável nos logs do processo/plataforma — grep-ável, nunca
+silencioso) e devolve `{ ok: false, error }`; em sucesso, `{ ok: true }`.
+Os 4 call sites fazem `await logAiUsageEvent(...)` sem inspecionar o
+resultado — decisão deliberada: perder um evento de custo/uso não é
+motivo pra derrubar um ciclo client-facing (booking/resposta), e este
+módulo não reaproveita `orchestrator_runs.error`/`fallback_used`
+(campos que já representam um OUTRO tipo de degradação — fallback de
+contexto do Bloco 3 — conflar os dois seria confuso e exigiria tocar a
+assinatura congelada de `finishOrchestratorRun` nos 4 call sites, sem
+necessidade). Nenhuma razão arquitetural forte pra algo mais elaborado
+foi encontrada — `console.error` é observável, simples, e não introduz
+nenhum schema/tabela nova.
+
+### Testes
+
+**Contrato puro da RPC** (`60_log_ai_usage_event_provenance_test.sql`,
+Postgres real, 10 cenários, 10/10 conforme esperado, 3 execuções
+estáveis):
+1. authenticated (A) grava o próprio usage, sem/com a própria
+   conversation.
+2. authenticated (A) tentando citar conversation/run de B →
+   `conversation_not_owned`/`run_not_owned`, nunca grava.
+3. system caller com `p_professional_id=A` + conversation/run de A →
+   grava normalmente, `profile_id=A`.
+4. system caller sem `p_professional_id` → `professional_id_required_for_system_caller`,
+   nenhuma linha gravada (confirmado por contagem antes/depois).
+5. system caller com `p_professional_id=A` citando conversation/run de
+   B (e o inverso, B citando conversation de A) → `conversation_not_owned`/
+   `run_not_owned` nas duas direções, zero linha gravada pra B via spoof.
+
+**Wrapper + call sites + retomada real** (`60_log_ai_usage_event_test.ts`,
+integração real contra Postgres via `pg-supabase-shim.ts`, 5/5, 3
+execuções estáveis):
+1. `logAiUsageEvent` com provenance válida → `{ok:true}`, linha real.
+2. `logAiUsageEvent` sem `professionalId` (service_role) → nunca lança
+   (capturado em try/catch), `{ok:false}`, nada gravado.
+3. `logAiUsageEvent` com `professionalId=A` + conversation de B →
+   nunca lança, `{ok:false}`, sem spoof.
+4. Réplica exata do shape dos 4 call sites reais → grava evento real
+   pros dois (classificação + planejamento).
+5. `resumeOnePendingReply()` REAL (produção, sem cópia, só os 3 model
+   calls injetados por falta de OpenAI) → **prova end-to-end** que a
+   retomada de fato grava `ai_usage_events` (>= 2 linhas, uma por
+   feature, `profile_id`/`conversation_id`/`run_id` corretos).
+
+**Nota honesta sobre "pipeline normal gera `ai_usage_event`"**:
+`pipeline.ts::processInboundEvent` não expõe injeção de model call
+(mesma limitação já documentada no commit `4c0fba2`) — o cenário 4
+acima prova que os DOIS call sites de `pipeline.ts` (mesmo shape exato,
+mesmos parâmetros) gravam corretamente, mas não roda o Classifier/
+Planner reais (precisam de OpenAI, indisponível neste sandbox). A prova
+end-to-end completa (cenário 5) é da retomada, que já suporta injeção.
+
+### Regressão completa
+
+Rebuild limpo do zero (`dropdb`/`createdb` + `00_supabase_bootstrap.sql`
++ 54 migrations + `01_seed_test_data.sql`, sem erro) — SQL (`02_*` a
+`57_*`, 31 arquivos): **227 PASS**, exatamente as mesmas 3 falhas
+pré-existentes e não relacionadas (`41_redteam_provenance_and_overflow.sql`),
+0 falhas novas, 0 problemas de `\gset`. Sobre esse mesmo rebuild, na
+ordem correta (evita a poluição de dados entre fixtures já documentada
+no commit `4c0fba2`): Red Team de retomada (`58_*`) 13/13, micro-patch
+do Gate (`59_*`) 9/9, e os testes desta rodada (`60_*`) 10/10 + 5/5.
+`tsc --noEmit`: limpo. `eslint src/`: limpo (só o warning pré-existente
+de fonte em `layout.tsx`). `next build`: limpo, 32 rotas.
+
+### Outros silent failures encontrados (reportados, NÃO corrigidos — fora do escopo autorizado)
+
+Busca dedicada por qualquer chamada `await supabase.rpc(...)` do
+Runtime/Intelligence que descarta `{error}` sem checar:
+- **`src/lib/intelligence/test-call.ts` (3 call sites, dev-only)**:
+  as mesmas 3 chamadas a `log_ai_usage_event` da rota `/dev/intelligence-test`
+  nunca checavam `{error}` — mesmo padrão exato do bug original, mas
+  hoje **inofensivo**: roda sempre com client `authenticated` real
+  (`@/lib/supabase/server`, sessão do profissional logado via
+  `requireProfessional()`), nunca `service_role` — `auth.uid()` sempre
+  populado, a RPC sempre teve sucesso nesse caminho. Dormant, não
+  crítico.
+- **`src/lib/intelligence/approval/orchestrator.ts:140` e `:164`**:
+  `await supabase.rpc('release_approval_resolution_claim', {...})`
+  sem desestruturar `{error}` — chamado quando um claim precisa ser
+  liberado antecipadamente (rate limit ou F2 stale). `release_approval_resolution_claim`
+  JÁ tem `is_system_caller()` (migration 0051), então isto não é o
+  mesmo bug de auth — é só o mesmo PADRÃO de erro descartado. Efeito,
+  se a liberação falhar por outro motivo (rede, etc.): o claim fica
+  preso até o `lease_expires_at` vencer sozinho (mecanismo de TTL já
+  existente) — degradação temporária, não perda de dado, severidade
+  bem menor que o achado principal.
+
+Nenhum outro padrão equivalente encontrado nos 37 RPCs auditados. Não
+corrigido nesta rodada — fora do escopo autorizado ("apenas reporte
+outros achados; não amplie o patch automaticamente").
+
+### `evaluateToolCallGate` — não tocado
+
+Confirmado permanecer dívida classe B, bloqueador obrigatório antes de
+qualquer write tool — nenhuma linha de `tool-gate.ts` alterada nesta
+rodada, por instrução explícita.
+
+### Confirmação: Runtime Architecture congelada sem alteração funcional
+
+`freshChecksAddressPendingIdentities`, a regra de 4 ramos, o `every`
+sobre múltiplas identidades, `is_commercial_root_terminal` (commit
+`4c0fba2`), `supersede_runtime_pending_replies_for_terminal_root` —
+nenhum tocado. O único código de `pipeline.ts`/`resumption.ts`
+alterado nesta rodada foi a troca do `supabase.rpc('log_ai_usage_event', ...)`
+cru pelo wrapper `logAiUsageEvent(...)` — mesmos parâmetros
+(equivalentes, só renomeados pro shape TS) mais `professionalId` novo,
+nenhuma outra linha de lógica de negócio tocada. Os 13/13 do Red Team
+da retomada (seção 43) e os 9/9 do micro-patch do Gate (seção 45)
+confirmam isso empiricamente: mesmos resultados de sempre.
+
+🔒 **Confirmação**: **Blocos 1–4 intocados. Runtime Architecture v1
+FROZEN sem alteração funcional.** Nenhuma integração WhatsApp/Meta/
+Resend. Nenhum merge, nenhum PR. Nenhuma regra de segurança relaxada —
+`log_ai_usage_event` ficou MAIS restrita (agora exige provenance
+explícita e validada no caminho de sistema, onde antes simplesmente
+falhava sempre). Nenhum avanço pra webhook, cron ou outbound worker
+nesta rodada.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

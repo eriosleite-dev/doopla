@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION, type ClassifierModelCall } from '../intelligence/classification';
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
-import { finishOrchestratorRun, startOrchestratorRun } from '../intelligence/observability';
+import { finishOrchestratorRun, logAiUsageEvent, startOrchestratorRun } from '../intelligence/observability';
 import { AI_FEATURE_RESPONSE_PLANNING, planResponse, type PlannerModelCall } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
 import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision, type PolicyGateExtractorModelCall } from '../intelligence/policy-gate-post';
@@ -273,26 +273,28 @@ async function runResumptionCycle(
 
   const classifyResult = await classifyIntent(toolCtx, contextPackage, { modelCall: modelCalls.classifierModelCall });
   const classification = classifyResult.classification;
-  await supabase.rpc('log_ai_usage_event', {
-    p_feature: AI_FEATURE_INTENT_CLASSIFICATION,
-    p_model: AI_MODEL,
-    p_status: classification.classificationStatus === 'invalid' ? 'error' : 'success',
-    p_conversation_id: pending.conversationId,
-    p_input_tokens: classifyResult.inputTokens,
-    p_output_tokens: classifyResult.outputTokens,
-    p_run_id: run?.id ?? null,
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_INTENT_CLASSIFICATION,
+    model: AI_MODEL,
+    status: classification.classificationStatus === 'invalid' ? 'error' : 'success',
+    conversationId: pending.conversationId,
+    inputTokens: classifyResult.inputTokens,
+    outputTokens: classifyResult.outputTokens,
+    runId: run?.id ?? null,
+    professionalId: actorContext.representedProfessionalId,
   });
 
   const planResult = await planResponse(toolCtx, contextPackage, classification, { modelCall: modelCalls.plannerModelCall });
   let decision = planResult.decision;
-  await supabase.rpc('log_ai_usage_event', {
-    p_feature: AI_FEATURE_RESPONSE_PLANNING,
-    p_model: AI_MODEL,
-    p_status: 'success',
-    p_conversation_id: pending.conversationId,
-    p_input_tokens: planResult.inputTokens,
-    p_output_tokens: planResult.outputTokens,
-    p_run_id: run?.id ?? null,
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_RESPONSE_PLANNING,
+    model: AI_MODEL,
+    status: 'success',
+    conversationId: pending.conversationId,
+    inputTokens: planResult.inputTokens,
+    outputTokens: planResult.outputTokens,
+    runId: run?.id ?? null,
+    professionalId: actorContext.representedProfessionalId,
   });
 
   const finish = (status: 'completed' | 'failed', error: string | null) =>

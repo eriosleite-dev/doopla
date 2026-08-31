@@ -5,7 +5,7 @@ import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION } from '../intelligenc
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
 import { detectInboundProposal } from '../intelligence/inbound-proposal';
-import { finishOrchestratorRun, startOrchestratorRun } from '../intelligence/observability';
+import { finishOrchestratorRun, logAiUsageEvent, startOrchestratorRun } from '../intelligence/observability';
 import { AI_FEATURE_RESPONSE_PLANNING, planResponse } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
 import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision } from '../intelligence/policy-gate-post';
@@ -158,14 +158,15 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
   // Percepção (Bloco 3).
   const classifyResult = await classifyIntent(toolCtx, buildResult.contextPackage);
   const classification = classifyResult.classification;
-  await supabase.rpc('log_ai_usage_event', {
-    p_feature: AI_FEATURE_INTENT_CLASSIFICATION,
-    p_model: AI_MODEL,
-    p_status: classification.classificationStatus === 'invalid' ? 'error' : 'success',
-    p_conversation_id: event.conversationId,
-    p_input_tokens: classifyResult.inputTokens,
-    p_output_tokens: classifyResult.outputTokens,
-    p_run_id: run?.id ?? null,
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_INTENT_CLASSIFICATION,
+    model: AI_MODEL,
+    status: classification.classificationStatus === 'invalid' ? 'error' : 'success',
+    conversationId: event.conversationId,
+    inputTokens: classifyResult.inputTokens,
+    outputTokens: classifyResult.outputTokens,
+    runId: run?.id ?? null,
+    professionalId: actorContext.representedProfessionalId,
   });
 
   // Linking conversation<->commercial root (migration 0051) — logo
@@ -226,14 +227,15 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
   // Planejamento (Bloco 4).
   const planResult = await planResponse(toolCtx, buildResult.contextPackage, classification);
   let decision = planResult.decision;
-  await supabase.rpc('log_ai_usage_event', {
-    p_feature: AI_FEATURE_RESPONSE_PLANNING,
-    p_model: AI_MODEL,
-    p_status: 'success',
-    p_conversation_id: event.conversationId,
-    p_input_tokens: planResult.inputTokens,
-    p_output_tokens: planResult.outputTokens,
-    p_run_id: run?.id ?? null,
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_RESPONSE_PLANNING,
+    model: AI_MODEL,
+    status: 'success',
+    conversationId: event.conversationId,
+    inputTokens: planResult.inputTokens,
+    outputTokens: planResult.outputTokens,
+    runId: run?.id ?? null,
+    professionalId: actorContext.representedProfessionalId,
   });
 
   let approvalOutcome: string | null = null;

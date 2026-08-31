@@ -1050,6 +1050,10 @@ export type Database = {
           p_input_tokens?: number | null;
           p_output_tokens?: number | null;
           p_run_id?: string | null;
+          // Migration 0055 — obrigatório no caminho is_system_caller()
+          // (service_role/Runtime); ignorado no caminho authenticated
+          // (profile_id continua sempre auth.uid()).
+          p_professional_id?: string | null;
         };
         Returns: AiUsageEvent;
       };
