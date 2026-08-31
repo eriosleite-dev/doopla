@@ -1,3 +1,5 @@
+import type { ResumptionOutcome } from './resumption';
+
 // Doopla Intelligence Core v1 — Orchestrator/Runtime: tipos centrais.
 //
 // Runtime é a camada que transforma um evento externo normalizado num
@@ -86,5 +88,16 @@ export type RuntimeCycleOutcome =
       // (migration 0052), nunca outbound_intents (profissional lê
       // dentro do próprio app, nunca via canal/provider).
       aiMessageId: string | null;
+      // Preenchido só quando o Gate bloqueou por um motivo elegível
+      // (no_matching_approval/stale_dependency/subject_key_unresolved)
+      // E havia commercial root — a obrigação de retomada criada
+      // nesta rodada (runtime_pending_replies, migration 0053).
+      pendingReplyId: string | null;
+      // Tentativas de retomada disparadas por UMA aprovação resolvida
+      // nesta rodada (nunca pela própria mensagem deste ciclo) —
+      // sempre vazio quando este ciclo não rodou o Approval Engine ou
+      // a aprovação não resolveu nada novo. Cada item é uma pendência
+      // de OUTRA conversation (a do cliente), reprocessada do zero.
+      resumptions: ResumptionOutcome[];
     }
   | { kind: 'failed'; error: string };

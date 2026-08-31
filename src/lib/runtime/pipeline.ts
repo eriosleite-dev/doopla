@@ -4,6 +4,7 @@ import { runApprovalEngine } from '../intelligence/approval';
 import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION } from '../intelligence/classification';
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
+import { detectInboundProposal } from '../intelligence/inbound-proposal';
 import { finishOrchestratorRun, startOrchestratorRun } from '../intelligence/observability';
 import { AI_FEATURE_RESPONSE_PLANNING, planResponse } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
@@ -16,20 +17,26 @@ import { resolveRuntimeDisposition } from './disposition';
 import { claimInboundEvent, finishInboundEvent } from './inbound-events';
 import { persistInboundMessage, resolveOrCreateExternalParticipant } from './intake';
 import { createOutboundIntent } from './outbound';
+import { createRuntimePendingReply, fetchPolicyGateDecisionChecks, listPendingRuntimeReplies } from './pending-replies';
+import { shouldCreatePendingReply, shouldSupersedeOnCreation } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
+import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
+import { attemptResumptionsAfterApproval, type ResumptionOutcome } from './resumption';
 import { buildStructuralFacts } from './structural-facts';
 import { resolveSystemActorContext } from './system-actor';
 import type { InboundEvent, RuntimeCycleOutcome } from './types';
 
 // Doopla Intelligence Core v1 — Orchestrator/Runtime: pipeline
 // principal. Encadeia os Blocos 1–6 numa única execução determinística
-// por InboundEvent — mesma ordem já auditada e justificada nesta
-// rodada (idempotência → lease → identidade/mandato → intake →
-// percepção → linking comercial → planejamento → aprovação → política
-// pós-model → outbound_intent). Nunca chama o Approval Resolver duas
-// vezes, nunca reinterpreta approval fora do Bloco 5, nunca envia de
-// verdade (ver comentário em types.ts).
+// por InboundEvent — idempotência → lease → identidade/mandato →
+// intake → percepção → linking comercial → registro de proposta
+// inbound → planejamento → aprovação → política pós-model → pendência
+// de retomada (quando bloqueado) / outbound_intent (quando permitido)
+// → retomada de pendências que a aprovação deste ciclo desbloqueou.
+// Nunca chama o Approval Resolver duas vezes por mensagem do
+// profissional, nunca reinterpreta approval fora do Bloco 5, nunca
+// envia de verdade (ver comentário em types.ts).
 
 export async function processInboundEvent(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -174,6 +181,48 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     relatedBookingId: conversation.related_booking_id,
   });
 
+  const hasCommercialRoot = effectiveBookingId !== null || effectiveOpportunityId !== null;
+
+  // commercialRootId/structuralFacts resolvidos UMA vez aqui (antes só
+  // buildStructuralFacts era chamado duas vezes nesta função — pro
+  // Approval Engine e, separadamente, pro Gate — mesma leitura, sem
+  // motivo pra duplicar). knownEventDate é usado tanto pelo registro
+  // de proposta inbound (resolução temporal) quanto pelo Gate.
+  let commercialRootId: string | null = null;
+  let structuralFacts: Record<string, unknown> = {};
+  let knownEventDate: string | null = null;
+  if (hasCommercialRoot) {
+    const { data: rootId } = await supabase.rpc('resolve_commercial_root_id', {
+      p_booking_id: effectiveBookingId,
+      p_opportunity_id: effectiveOpportunityId,
+    });
+    commercialRootId = (rootId as string) ?? null;
+    const facts = await buildStructuralFacts(supabase, { bookingId: effectiveBookingId, opportunityId: effectiveOpportunityId });
+    structuralFacts = facts.structuralFacts;
+    knownEventDate = facts.knownEventDate;
+
+    // Registro de proposta inbound (fechar o ciclo de decisão do
+    // profissional) — gate = hasCommercialRoot sozinho (decisão do
+    // usuário: nunca commitmentNature, sinal de outro propósito).
+    // Roda em TODA mensagem inbound com root, de qualquer autor —
+    // provenance estrita é estrutural dentro de detectInboundProposal
+    // (input só {messageText, temporalCandidates}, nunca contexto).
+    if (commercialRootId) {
+      const detection = await detectInboundProposal(event.body, { referenceTimestamp: message.createdAt, timezone: null, knownEventDate });
+      for (const proposal of detection.proposals) {
+        await registerInboundProposal(supabase, {
+          messageId: message.id,
+          professionalId: actorContext.representedProfessionalId,
+          bookingId: effectiveBookingId,
+          opportunityId: effectiveOpportunityId,
+          commercialRootId,
+          proposedBy: event.authorType,
+          proposal,
+        });
+      }
+    }
+  }
+
   // Planejamento (Bloco 4).
   const planResult = await planResponse(toolCtx, buildResult.contextPackage, classification);
   let decision = planResult.decision;
@@ -187,11 +236,9 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     p_run_id: run?.id ?? null,
   });
 
-  const hasCommercialRoot = effectiveBookingId !== null || effectiveOpportunityId !== null;
-
   let approvalOutcome: string | null = null;
+  let resumptions: ResumptionOutcome[] = [];
   if (shouldRunApprovalEngine(event.authorType, hasCommercialRoot)) {
-    const { structuralFacts } = await buildStructuralFacts(supabase, { bookingId: effectiveBookingId, opportunityId: effectiveOpportunityId });
     const approvalResult = await runApprovalEngine(supabase, {
       professionalId: actorContext.representedProfessionalId,
       conversationId: event.conversationId,
@@ -202,6 +249,19 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       workerId: event.workerId,
     });
     approvalOutcome = approvalResult.status;
+
+    // Fecha o ciclo: aprovação nova pode desbloquear pendências de
+    // OUTRAS conversations (a do cliente, ligada só por
+    // commercial_root_id — nunca a mesma conversation da mensagem do
+    // profissional). "Approval resolved ≠ send allowed": cada
+    // pendência elegível é reprocessada 100% do zero (resumption.ts).
+    if (approvalResult.status === 'committed' && approvalResult.outcome === 'resolved' && commercialRootId) {
+      resumptions = await attemptResumptionsAfterApproval(supabase, {
+        commercialRootId,
+        approvalRecordIds: approvalResult.approvalRecordIds,
+        workerId: event.workerId,
+      });
+    }
   }
 
   // Política pós-model (Bloco 6) — só quando há draft E um commercial
@@ -212,6 +272,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
   let recipientType: 'external_participant' | 'professional' | null = null;
   let outboundIntentId: string | null = null;
   let aiMessageId: string | null = null;
+  let pendingReplyId: string | null = null;
 
   if (decision.proposedResponse) {
     recipientType = resolveRecipientType(conversation.conversation_type, decision.responsePlan);
@@ -225,10 +286,6 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     // sem root repetiria exatamente o erro já corrigido pro readiness
     // boundary (decisão final do usuário) — intake/discovery nunca pode
     // ser silenciado.
-    const { knownEventDate } = hasCommercialRoot
-      ? await buildStructuralFacts(supabase, { bookingId: effectiveBookingId, opportunityId: effectiveOpportunityId })
-      : { knownEventDate: null };
-
     const gate = await evaluatePostModelGate(supabase, {
       professionalId: actorContext.representedProfessionalId,
       bookingId: effectiveBookingId,
@@ -252,19 +309,42 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     // continua refletido no RuntimeCycleOutcome retornado pelo ciclo,
     // só o log append-only fica de fora.
     let policyDecisionId: string | null = null;
-    if (hasCommercialRoot) {
-      const { data: commercialRootId } = await supabase.rpc('resolve_commercial_root_id', {
-        p_booking_id: effectiveBookingId,
-        p_opportunity_id: effectiveOpportunityId,
-      });
+    if (hasCommercialRoot && commercialRootId) {
       const logResult = await logPolicyGateDecision(supabase, {
         conversationId: event.conversationId,
-        commercialRootId: (commercialRootId as string) ?? '',
+        commercialRootId,
         messageId: message.id,
         runId: run?.id ?? null,
         result: gate,
       });
       policyDecisionId = logResult?.id ?? null;
+
+      // Fecha o ciclo de decisão do profissional — quando o Gate
+      // bloqueou por um motivo que uma approval de fato resolve
+      // (no_matching_approval/stale_dependency/subject_key_unresolved),
+      // registra a obrigação de retomada. policy_gate_decisions
+      // continua append-only (decisão do usuário) — runtime_pending_replies
+      // é o ÚNICO estado de workflow, cada linha uma fotografia
+      // imutável de UM policy_gate_decision. Supersessão na criação só
+      // por identidade REAL (categoria+subject resolvido) — nunca
+      // subject_key_unresolved (pending-replies-matching.ts).
+      if (gate.outcome === 'blocked' && policyDecisionId && shouldCreatePendingReply(gate.checks)) {
+        const existingPending = await listPendingRuntimeReplies(supabase, commercialRootId);
+        const supersedeIds: string[] = [];
+        for (const p of existingPending) {
+          const oldChecks = await fetchPolicyGateDecisionChecks(supabase, p.policyGateDecisionId);
+          if (shouldSupersedeOnCreation(oldChecks, gate.checks)) supersedeIds.push(p.id);
+        }
+        const created = await createRuntimePendingReply(supabase, {
+          conversationId: event.conversationId,
+          commercialRootId,
+          triggerMessageId: message.id,
+          policyGateDecisionId: policyDecisionId,
+          runId: run?.id ?? null,
+          supersedeIds,
+        });
+        pendingReplyId = created.id;
+      }
     }
 
     // Sempre cria o outbound_intent/persiste a mensagem quando o Gate
@@ -345,5 +425,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     recipientType,
     outboundIntentId,
     aiMessageId,
+    pendingReplyId,
+    resumptions,
   };
 }

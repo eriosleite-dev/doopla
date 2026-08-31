@@ -34,3 +34,26 @@ export {
 
 export { resolveSystemActorContext } from './system-actor';
 export { buildStructuralFacts } from './structural-facts';
+
+export {
+  createRuntimePendingReply,
+  listPendingRuntimeReplies,
+  resolveRuntimePendingReplyAllowed,
+  resolveRuntimePendingReplyStillBlocked,
+  supersedeRuntimePendingRepliesForTerminalRoot,
+  fetchPolicyGateDecisionChecks,
+} from './pending-replies';
+export type { RuntimePendingReply, GateCheckSnapshot } from './pending-replies';
+
+export { shouldCreatePendingReply, isEligibleForAutoMatch, blockedIdentities, shouldSupersedeOnCreation, shouldAttemptResume } from './pending-replies-matching';
+export type { BlockedIdentity } from './pending-replies-matching';
+
+export { truncateContextAtMessage } from './context-window';
+
+export { registerInboundProposal } from './proposal-classification';
+export type { ProposedBy } from './proposal-classification';
+
+export { resolveCommercialRootForResumption } from './commercial-root';
+
+export { attemptResumptionsAfterApproval } from './resumption';
+export type { ResumptionOutcome } from './resumption';

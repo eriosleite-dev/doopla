@@ -4233,6 +4233,232 @@ desta rodada. **34 + 11 = 45 asserções, 0 FAIL.**
 - 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend/pagamento
   real nesta rodada. Nenhum merge, nenhum PR.
 
+## 40. Fechar o ciclo de decisão do profissional (migration 0053)
+
+Cobre o caminho completo: `professional_action_required`/`blocked` →
+pendência → mensagem/consulta ao profissional → aprovação → resolução
+→ retomada segura do turno do cliente. Passou por 3 rodadas de
+auditoria-e-correção antes da autorização final — as correções do
+usuário (nunca inventadas por mim) definiram a arquitetura real:
+provenance nunca fabricada, `policy_gate_decisions` nunca vira fila,
+`subject_key_unresolved` nunca entra em matching automático. Sem
+PR/merge, sem WhatsApp/Meta/Resend.
+
+### 1. Gap real encontrado: `try_classify_communicated_proposal` nunca tinha chamador
+
+Mesma classe do gap de `start_orchestrator_run`/`finish_orchestrator_run`
+da seção 39: a RPC existe desde o Bloco 5 (migrations 0045/0047), mas
+nenhum código TS jamais a chamava — `communicated_proposal_candidates`
+ficava sempre vazia em produção, o que significa que
+`operationType='contextual_decision'` (a única forma de um "sim" bare
+resolver sem restatar o valor) **sempre falhava `invalid_provenance`**.
+Estendida com `is_system_caller()` (mesmo padrão: condição adicional,
+nunca substitui `auth.uid()`; ownership sempre derivado de
+`conversation_messages→conversations`).
+
+### 2. Extrator dedicado de proposta inbound (`src/lib/intelligence/inbound-proposal/`)
+
+Decisão do usuário: um 4º model call independente, nunca integrado ao
+Planner (separação de responsabilidades — Planner desenha resposta com
+contexto rico, este só detecta literal-texto; misturar arriscaria
+contexto vazar pra extração). Provenance é **estrutural, não só
+instrução de prompt**: o `input` da chamada é só
+`{messageText, temporalCandidates}` — sem histórico, sem
+`ContextPackage`, é fisicamente impossível "completar" um valor que a
+mensagem não afirma. Gate de disparo: **`hasCommercialRoot` sozinho**
+— nunca `commitmentNature` (achado real: esse sinal só escala
+`report_existing_fact`→`new_or_changed_commitment`, nunca valida um
+`not_applicable` alucinado pelo Planner — usá-lo como gate arriscava
+perder propostas reais por erro de outro model call). Roda em toda
+mensagem inbound com commercial root, de qualquer autor.
+
+Reaproveita `generateTemporalCandidates`/`resolveTemporalCandidateLabel`/
+`isDatePlausible` (`policy-gate-post/temporal.ts`) e
+`validateApprovedValue` (`approval/value-schemas.ts`) — nunca reinventa
+resolução temporal/validação de shape. `resolveSubjectKeyForNewProposal`
+é deliberadamente diferente do `resolveSubjectKey` do matcher (Bloco
+6): não há nada aprovado ainda pra fazer fallback contra, então o único
+fallback seguro é a taxonomia fechada — sem isso, sem candidato
+(fail-closed).
+
+`registerInboundProposal` (`runtime/proposal-classification.ts`, novo
+chamador real da RPC) decide `created_candidate`/`reaffirmed_candidate`/
+`superseded_candidate` reaproveitando o MESMO mecanismo de chain que
+`resolution-context.ts` já usa (`get_communicated_proposal_candidates`
++ `valuesStructurallyEqual`) — nunca uma segunda política de matching.
+
+### 3. `runtime_pending_replies` — estado de workflow separado do audit log
+
+Correção do usuário, 1ª rodada: rejeitei provenance-por-"sim" e
+`policy_gate_decisions`-como-fila nas minhas duas primeiras propostas.
+Tabela nova e mínima (migration 0053): cada linha é uma **fotografia
+imutável** de UM `policy_gate_decision_id` — nunca reaproveitada pra
+representar uma avaliação diferente. Lifecycle:
+`pending → completed` (Gate re-avaliado permitiu, outbound criado) ou
+`pending → superseded` (+ `superseded_by_id` apontando pra uma pendência
+NOVA referenciando o NOVO `policy_gate_decision_id`, se ainda bloqueado;
+sem sucessora se a raiz virou terminal).
+
+Só os 3 motivos de bloqueio que uma aprovação de fato resolve
+(`no_matching_approval`/`stale_dependency`/`subject_key_unresolved`)
+criam pendência (`shouldCreatePendingReply`,
+`runtime/pending-replies-matching.ts`, 100% puro) — os outros
+(`invalid_extracted_value`/`commercial_root_terminal`/
+`professional_not_operationally_ready`/`extraction_unavailable`) são
+classes de problema diferentes, uma approval nunca resolve.
+
+**Os dois ajustes finais do usuário antes de autorizar** (3ª rodada),
+os mais importantes deste bloco:
+- `subject_key_unresolved` **nunca** é auto-supersedida na criação nem
+  auto-retomada — nem por `decision_category + commercial_root_id`
+  sozinhos. Duas instâncias distintas (ex.: dois horários diferentes)
+  podem existir na mesma root/categoria; sem `subject_key` real não há
+  identidade suficiente pra provar que é a mesma coisa.
+- Uma pendência com **qualquer** commitment `subject_key_unresolved` é
+  inelegível pra matching automático **como um todo**, mesmo que outros
+  commitments dela tenham subject_key resolvido — nunca resume parcial
+  silencioso.
+
+5 RPCs novas (`create_runtime_pending_reply`, `list_pending_runtime_replies`,
+`resolve_runtime_pending_reply_allowed`, `resolve_runtime_pending_reply_still_blocked`,
+`supersede_runtime_pending_replies_for_terminal_root`), todas
+`is_system_caller()`-only. Idempotência: claim atômico
+(`UPDATE ... WHERE status='pending'`) na MESMA function/transação que a
+escrita resultante — mesmo padrão já usado em `claim_inbound_event`/
+`try_acquire_approval_resolution_claim`, nunca uma chave nova
+inventada. Ajuste feito DEPOIS do primeiro round de testes SQL (e
+revalidado no round final): `resolve_runtime_pending_reply_allowed`
+recebe `p_channel`/`p_recipient_external_participant_id`/`p_content`
+como `default null` — quando a retomada muda o destinatário pro
+próprio profissional (`recipientType` virou `'professional'` na
+reavaliação), a function só faz o claim, sem `outbound_intent`; o
+chamador usa `persist_ai_message` por fora, best-effort, não atômico
+com o claim (tradeoff aceito: duplicação de mensagem interna é
+bem menos grave que duplicação client-facing).
+
+### 4. `pipeline.ts` — fecha o ciclo
+
+`commercialRootId`/`structuralFacts`/`knownEventDate` passaram a ser
+resolvidos **uma vez** por ciclo (antes, `buildStructuralFacts` era
+chamado duas vezes — pro Approval Engine e separadamente pro Gate;
+mesma leitura, sem motivo pra duplicar — simplificação instrumental,
+nunca uma mudança de comportamento).
+
+- **Registro de proposta inbound**: logo após resolver o commercial
+  root, antes do Approval Engine rodar (pra um candidato criado NESTA
+  mensagem já estar visível caso o mesmo ciclo também rode o Approval
+  Engine).
+- **Criação de pendência**: quando o Gate bloqueia por motivo elegível
+  E há commercial root, calcula supersessão contra pendências
+  existentes (`shouldSupersedeOnCreation`) e chama
+  `createRuntimePendingReply`.
+- **Retomada**: só depois de `runApprovalEngine` retornar
+  `status:'committed', outcome:'resolved'` com `approvalRecordIds`
+  não-vazio — busca as identidades recém-aprovadas em
+  `approval_records`, filtra pendências elegíveis via
+  `shouldAttemptResume`, tenta cada uma isoladamente
+  (`runtime/resumption.ts`).
+
+**Achado de design, resolvido no próprio escopo do Runtime**:
+`classification-context.ts`/`planner-context.ts` (Blocos 3/4,
+congelados) derivam a mensagem-gatilho implicitamente como
+`messages[messages.length-1]` — o item mais NOVO da janela, nunca um
+parâmetro explícito. `buildMessagesSection` (Bloco 2, congelado) não
+tem limite superior de data. Numa retomada, o gatilho de verdade é uma
+mensagem ANTIGA, mas pode haver mensagens mais novas na mesma
+conversation desde então. Resolvido SEM tocar nos arquivos congelados:
+`runtime/context-window.ts` (`truncateContextAtMessage`) poda
+`contextPackage.messages.items` DEPOIS de `buildContextPackage` já ter
+rodado sem alteração — a derivação "último item" das duas projeções
+volta a estar correta, porque agora o último item É o gatilho da
+retomada. Fail-closed: gatilho fora da janela carregada → retomada não
+prossegue, pendência fica como está.
+
+**Cada tentativa de retomada**: `orchestrator_run` PRÓPRIO;
+`resolveCommercialRootForResumption` (`runtime/commercial-root.ts`)
+reconstrói `{bookingId, opportunityId}` comparando `commercial_root_id`
+armazenado contra o `related_booking_id`/`related_opportunity_id`
+ATUAIS da conversation (nunca via `ensureOpportunityForConversation`
+de novo — arriscaria criar uma opportunity nova à toa); sem bater
+contra nenhum dos dois, fail-closed (`null`), pendência intocada.
+Reprocessa Planner + Post-model Gate 100% frescos ("Approval resolved
+≠ send allowed") — nunca reaproveita draft/decisão antigos. Isolamento
+de falha: a conversation da pendência quase sempre é DIFERENTE da
+conversation do evento que disparou a aprovação (cliente vs.
+professional_self, ligadas só por `commercial_root_id`) — cada
+tentativa adquire sua PRÓPRIA `conversation_processing_lease` (nunca
+reusa a do ciclo principal); erro em uma tentativa vira outcome, nunca
+propaga e derruba o ciclo que a disparou.
+
+- ✅ `tsc --noEmit`, `eslint` (limpo).
+- ✅ **Migration**: `0053_runtime_pending_replies.sql`.
+- ✅ **Novo**: `src/lib/intelligence/inbound-proposal/` (módulo
+  completo), `runtime/pending-replies.ts`,
+  `runtime/pending-replies-matching.ts`, `runtime/proposal-classification.ts`,
+  `runtime/context-window.ts`, `runtime/resumption.ts`; extensão de
+  `runtime/commercial-root.ts` (`resolveCommercialRootForResumption`).
+
+### Testes
+
+**SQL adversarial** (scratchpad, rebuild completo do zero,
+`ON_ERROR_STOP=1`, migrations 0001-0053 + seed): `53_runtime_pending_replies_adversarial.sql`
+(15 asserções + 3 negações de permissão) + `54_runtime_decision_cycle_adversarial.sql`
+(novo, fecha as lacunas que o 53 tinha deixado — 11 asserções + 2
+negações): `resolve_runtime_pending_reply_allowed` com recipient NULO
+(o ajuste feito DEPOIS do 53 já ter passado — nunca reverificado até
+agora — confirmado: claim sem `outbound_intent`, zero linhas
+inseridas); `create_runtime_pending_reply` com `p_supersede_ids`
+não-vazio supersedindo de verdade, atomicamente; `list_pending_runtime_replies`
+nunca retorna `superseded`; isolamento entre pendências de
+categorias/roots diferentes (resolver uma nunca mexe na outra);
+`authenticated` negado em `still_blocked`/`supersede_bulk` (faltava no
+53). **Regressão completa revalidada** (`02_*` a `54_*`, rebuild
+limpo): 0 FAIL em tudo que este round tocou. Duas falhas
+PRÉ-EXISTENTES e não relacionadas confirmadas (`30_redteam_composite_and_takeover.sql`,
+já documentada na seção 39 como baseline conhecido — teste de timing
+de expiração de lease dentro de um único `do $$ end $$` onde `now()`
+fica congelado pro início da transação, `pg_sleep` real não move o
+relógio que a function lê; `41_redteam_provenance_and_overflow.sql`,
+mesmo padrão, confirmado reproduzível de forma isolada sem nenhuma
+relação com este round — nenhuma das duas toca `runtime_pending_replies`/
+`try_classify_communicated_proposal`/lease de conversation).
+
+**TS determinístico** (tsx, scripts descartados depois de rodar):
+`pending-replies-matching.ts` — 23 asserções cobrindo especificamente
+os dois ajustes finais do usuário (`subject_key_unresolved` nunca
+supersede/retoma mesmo com categoria+root batendo; nunca resume
+parcial mesmo com outro commitment resolvido ao lado; duas instâncias
+distintas da mesma categoria nunca se confundem). `context-window.ts` +
+`resolveCommercialRootForResumption` — 9 asserções (truncamento correto,
+fail-closed sem o gatilho na janela, fail-closed sem correspondência
+de raiz). **Total: 11 + 2 + 23 + 9 = 45 asserções, 0 FAIL** (fora as 2
+falhas pré-existentes documentadas acima).
+
+`inbound-proposal/golden-suite.ts` (9 casos) segue **Beta Gate** — sem
+acesso a OpenAI neste sandbox, mesma limitação de todas as golden
+suites do projeto.
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **Retomada falhando por `conversation_busy` nunca é reagendada** — se
+  a lease da conversation do cliente estiver ocupada no exato momento
+  da tentativa, o outcome fica `skipped_conversation_busy` e NADA mais
+  dispara uma nova tentativa (só outra aprovação futura no mesmo root
+  chamaria `shouldAttemptResume` de novo). Gap real, não coberto por
+  nenhum mecanismo de retry — fora do que o usuário autorizou resolver
+  nesta rodada.
+- **Falha ao logar `policy_gate_decision` numa retomada deixa a
+  pendência intocada** (nunca chama a RPC de resolução sem uma
+  fotografia real) — mas também não é reagendada automaticamente, mesmo
+  gap acima.
+- Golden Suites continuam **Beta Gate** — nenhuma rodada real contra
+  OpenAI neste sandbox.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend real
+  nesta rodada. Nenhum merge, nenhum PR. Nenhuma alteração nos Blocos
+  1–4 (planner/classification/context-builder/policy-gate
+  pre-model) — só Runtime (novo) e uma extensão pontual de uma RPC do
+  Bloco 5 (`try_classify_communicated_proposal`).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
