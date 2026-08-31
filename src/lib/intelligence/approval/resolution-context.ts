@@ -5,17 +5,22 @@ import {
   computeUsableText,
   type ActiveApprovalCandidate,
   type CommunicatedProposalCandidateEntry,
+  type MessageContentEntry,
   type MessageWindowEntry,
   type ResolutionContextV1,
 } from './canonicalize';
 import { MAX_ACTIVE_CANDIDATES, MAX_CANDIDATES_PER_CHAIN, MAX_MESSAGE_WINDOW, RECENT_MESSAGE_WINDOW_SIZE } from './config';
+import { CONTEXT_MAX_MESSAGE_TEXT_CHARS, truncateText } from '../context-builder/budget';
 
 // Doopla Intelligence Core v1 — Bloco 5: construção de ResolutionContext
 // (V3.4 formalizado, V3.9/V3.10 bounded lineage). ÚNICA projeção usada
 // como input real do resolver — nunca uma estrutura paralela pro
 // cálculo de identidade (V3.4, achado 4): o mesmo objeto retornado
 // aqui é o que vira JSON pro model E o que é canonicalizado pra
-// context_identity.
+// context_identity — EXCETO messageContents (ver comentário em
+// canonicalize.ts), campo irmão de messageWindow que carrega o
+// conteúdo legível pro model e nunca participa do cálculo de
+// context_identity, de propósito.
 //
 // Budget fail-closed (V3.8/V3.9): se o universo de candidatos/mensagens
 // exceder o teto, esta function NUNCA constrói uma projeção parcial —
@@ -155,14 +160,22 @@ export async function buildResolutionContext(
     return { budgetExceeded: true, reason: 'context_budget_exceeded', commercialRootId, magnitude: fullWindow.length };
   }
 
-  const messageWindow: MessageWindowEntry[] = fullWindow.map((m) => {
+  const messageWindow: MessageWindowEntry[] = [];
+  // Conteúdo legível pro model (ver comentário em canonicalize.ts) —
+  // mesma fonte (computeUsableText) que já alimenta contentDigest
+  // abaixo, nunca uma segunda leitura divergente do conteúdo. Truncado
+  // com o MESMO helper/limite já usado pelo Context Builder
+  // (Classifier/Planner, context-builder/budget.ts) — nunca uma
+  // política de truncamento nova.
+  const messageContents: MessageContentEntry[] = [];
+  for (const m of fullWindow) {
     const usableText = computeUsableText({
       contentType: m.content_type,
       body: m.body,
       transcript: m.transcript,
       transcriptionStatus: m.transcription_status,
     });
-    return {
+    messageWindow.push({
       messageId: m.id,
       authorType: m.author_type,
       contentDigest: computeMessageContentDigest({
@@ -171,8 +184,12 @@ export async function buildResolutionContext(
         usableText,
         transcriptionStatus: m.transcription_status,
       }),
-    };
-  });
+    });
+    messageContents.push({
+      messageId: m.id,
+      usableText: usableText === null ? null : truncateText(usableText, CONTEXT_MAX_MESSAGE_TEXT_CHARS).value,
+    });
+  }
 
   // 2. Teto per-chain (V3.10) sobre os mesmos candidateRows já buscados acima.
   const perChainCount = new Map<string, { decisionCategory: string; subjectKey: string; count: number }>();
@@ -237,6 +254,7 @@ export async function buildResolutionContext(
       activeApprovalCandidates,
       communicatedProposalCandidates,
       structuralFacts: params.structuralFacts as ResolutionContextV1['structuralFacts'],
+      messageContents,
     },
   };
 }

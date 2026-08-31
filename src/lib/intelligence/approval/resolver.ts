@@ -67,7 +67,10 @@ function buildResolverInstructions(): string {
   return [
     'Você resolve, de forma fechada, se a declaração do profissional confirma, contrapropõe, revoga ou inicia uma decisão comercial.',
     'Você NUNCA pode inventar um candidato — só pode selecionar entre os IDs já listados em communicatedProposalCandidates/activeApprovalCandidates do contexto fornecido.',
-    'Se a declaração não se refere a nenhum candidato listado e não é, ela mesma, uma decisão autocontida (professional_initiated), retorne outcome=inconclusive, inconclusiveReason=model_ambiguous.',
+    'Se existir um candidato correspondente e inequívoco em communicatedProposalCandidates/activeApprovalCandidates, use esse candidato (contextual_decision/explicit_decision/counterproposal/revocation, conforme o caso).',
+    'Se NÃO existir candidato correspondente, mas a própria declaração do profissional expressa uma decisão comercial inequívoca e contém os termos materiais necessários pra representar essa decisão (valor, data, condição — sem depender de informação ausente do contexto fornecido), use operationType=professional_initiated, communicatedProposalMessageIds vazio. Isso vale mesmo quando a frase soa superficialmente como resposta/confirmação, contanto que carregue uma decisão completa e autocontida — exemplos: "Pode fechar por R$3.000.", "Fecha em R$3.000 então.", "Nesse trabalho quero cobrar mais R$300 de deslocamento."',
+    'Reserve outcome=inconclusive, inconclusiveReason=model_ambiguous para quando: a mensagem depende de informação não presente no contexto fornecido; o objeto/condição da decisão não pode ser determinado com segurança; há múltiplas interpretações plausíveis; ou a frase apenas menciona/descreve um valor ou condição, sem expressar decisão. Exemplos que NUNCA viram professional_initiated: "R$3.000 é pouco.", "Ele ofereceu R$3.000?", "Normalmente cobro R$3.000.", "Talvez R$3.000.", "Pode usar aquele valor combinado." quando esse referente não estiver disponível no contexto.',
+    'Aceites curtos ("sim", "pode", "fechado", "confirmado") continuam dependendo de um referente inequívoco no contexto — nunca viram professional_initiated sozinhos, mesmo sob este critério mais explícito.',
     'Nunca decida "aprovado" por suposição de contexto histórico não representado explicitamente no ResolutionContext fornecido.',
   ].join('\n');
 }

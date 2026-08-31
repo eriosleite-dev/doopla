@@ -6084,6 +6084,123 @@ real (novo deployment) e confirmar via a mesma consulta SQL usada
 nesta auditoria que `approval_resolutions.outcome = 'resolved'` desta
 vez — é essa a validação final que fecha o passo 3 de verdade.
 
+## 51. Beta Runtime Integration — passo 3: correção estrutural do Approval Resolver (identidade canônica ≠ contexto legível pelo model)
+
+Continuação do item 50. O fix do candidato circular não resolveu o
+`inconclusive` — investigação mais funda (pedida explicitamente pelo
+usuário antes de tocar em código) revelou a causa raiz real, bem mais
+séria.
+
+### Achado
+
+`ResolutionContextV1.messageWindow` (Approval Resolver, Bloco 5) só
+carrega `contentDigest` — um **hash SHA-256** do conteúdo da mensagem,
+nunca o texto. `resolveApproval()` manda `JSON.stringify(context)`
+pro model — ou seja, **o Approval Resolver nunca recebeu, em nenhum
+momento, o texto real do que o profissional escreveu**. Confirmado
+ponta a ponta (`canonicalize.ts`, `resolution-context.ts`,
+`resolver.ts`, `structuralFacts`, candidatos) — nenhum outro campo
+carrega texto legível. Comparado com o resto do projeto: Classifier,
+Planner, extrator do Post-model Gate e detector de proposta inbound
+**todos** recebem texto real (`ContextPackage.MessageContextItem.text`,
+`proposedResponse`, `messageText`) — só o Approval Resolver era a
+exceção.
+
+Causa: o autor original usava `contentDigest` corretamente pra
+detectar mudança de conteúdo do mesmo `messageId` entre F1 e F2 (ex.:
+transcrição de áudio concluindo — achado da V3.5, documentado no
+próprio comentário do código), mas usou essa MESMA representação como
+o que é entregue ao model — nunca preservou o texto em paralelo. Duas
+responsabilidades diferentes (identidade estável vs. conteúdo legível)
+comprimidas numa única representação.
+
+### Design da correção (auditado antes de qualquer código, por pedido explícito do usuário)
+
+Separação: `contentDigest`/`MessageWindowEntry` continuam existindo
+exatamente como estavam, servindo só identidade/`context_identity`.
+Novo campo **irmão**, `messageContents: MessageContentEntry[]`, em
+`ResolutionContextV1` — populado com `computeUsableText()` (mesma
+fonte que já alimenta o digest, nunca uma segunda leitura divergente),
+truncado com `truncateText()`/`CONTEXT_MAX_MESSAGE_TEXT_CHARS` já
+existentes em `context-builder/budget.ts` (nenhuma política de
+truncamento nova). `canonicalizeV1()` **nunca** lê este campo — nem no
+objeto `normalized` nem em nenhum outro ponto — com comentário
+explícito nos dois lugares (na definição do tipo e dentro da própria
+function) pra impedir que uma refatoração futura misture as duas
+responsabilidades de novo. Nenhuma migration, nenhum `canonicalizeV2`,
+nenhuma persistência nova (o campo só existe em memória, dentro da
+chamada — nunca gravado em tabela nenhuma; `context_identity`
+continua sendo só o hash de 32 bytes, único artefato deste módulo que
+é persistido).
+
+### Arquivos alterados
+
+- `approval/canonicalize.ts`: `MessageContentEntry` (tipo novo) +
+  campo `messageContents` em `ResolutionContextV1`, com comentário
+  explícito de exclusão. `canonicalizeV1()` ganha comentário no ponto
+  exato onde `messageContents` é deliberadamente omitido do objeto
+  `normalized`.
+- `approval/resolution-context.ts`: `buildResolutionContext()` monta
+  `messageContents` no MESMO loop que já monta `messageWindow`
+  (reaproveita o `usableText` já calculado ali, zero leitura nova),
+  truncando via `truncateText(usableText, CONTEXT_MAX_MESSAGE_TEXT_CHARS)`
+  importado de `context-builder/budget.ts`.
+- `approval/resolver.ts`: `buildResolverInstructions()` — critério
+  explícito pra `professional_initiated` (proposto pelo usuário,
+  aplicado antes desta rodada, mantido): declaração autocontida com
+  termos materiais completos vira `professional_initiated` mesmo
+  soando como resposta/confirmação na superfície; menção/pergunta/
+  hipótese/hábito nunca vira decisão; aceite curto continua exigindo
+  referente inequívoco. Só passa a ter efeito real agora que o model
+  recebe texto de verdade pra aplicar o critério.
+- `approval/golden-suite.ts`: os 6 casos existentes ganham
+  `messageContents` correspondente ao texto já documentado em cada
+  um (antes, `contentDigest: 'dN'` era um placeholder nunca lido de
+  verdade). +9 casos adversariais novos, pedidos explicitamente:
+  3 decisões autocontidas esperando `professional_initiated`
+  ("Pode fechar por R$3.000.", "Fecha em R$3.000 então.", o caso
+  R$300 de deslocamento já existente), 4 menções-sem-decisão esperando
+  `inconclusive` ("R$3.000 é pouco.", "Ele ofereceu R$3.000?",
+  "Normalmente cobro R$3.000.", "Talvez R$3.000."), 2 casos de
+  referente ausente esperando `inconclusive` ("Pode usar aquele valor
+  combinado." sem candidato, "Pode." sem candidato).
+
+### Testes
+
+Novo `64_resolution_context_readable_text_test.ts` (4 PASS, Postgres
+real): `messageContents` carrega o texto real; texto longo é truncado
+exatamente no limite do Context Builder; `messageWindow`/`contentDigest`
+continuam intactos; **`computeContextIdentity()` é idêntico com
+`messageContents` populado, vazio, ou com texto completamente
+diferente** — a prova central de que a separação funciona (testado
+contra o código de produção real, não uma cópia).
+
+### Regressão
+
+Suíte completa re-rodada: `55`, `56`, `58` (13), `59`, `60`, `61` (7),
+`62` (9), `63` (3), `64` (4), `gate-no-root-test.ts`,
+`gate-readiness-test.ts`, `runtime-closing-scenarios-test.ts` — 100%
+verde, zero regressão. `tsc --noEmit`, `eslint` e `next build` (33
+rotas) limpos.
+
+🔒 **Confirmação de escopo**: 4 arquivos de código tocados, todos
+dentro de `intelligence/approval/`. Nenhuma migration, nenhum
+`canonicalizeV2`, nenhuma persistência nova, nenhum campo de texto em
+log/auditoria (confirmado: `ai_usage_events` só grava contagem de
+tokens, nunca corpo de request/response, em nenhum módulo do
+projeto). Todos os invariantes preservados: `context_identity`
+estável (provado no teste 4), fail-closed, closed-candidate-selection,
+aceite curto exige referente inequívoco.
+
+### Ainda pendente — validação real (só possível em Preview, `OPENAI_API_KEY` indisponível neste sandbox)
+
+1. Golden suite completa (`/dev/approval-golden-suite`) contra o
+   model real — inclui agora os 9 casos adversariais novos.
+2. Smoke test 3b real: repetir "Pode fechar por R$3000!" e confirmar
+   via SQL que desta vez `approval_resolutions.outcome = 'resolved'`
+   (não só `RuntimeCycleOutcome.status = 'committed'`, que nunca
+   provou isso sozinho).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

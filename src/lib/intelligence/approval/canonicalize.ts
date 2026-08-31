@@ -46,12 +46,34 @@ export type ResolutionContextV1 = {
   activeApprovalCandidates: ActiveApprovalCandidate[];
   communicatedProposalCandidates: CommunicatedProposalCandidateEntry[];
   structuralFacts: Record<string, JsonValue>;
+  // Achado real (smoke test do Beta Runtime Integration): messageWindow
+  // só carrega contentDigest (hash) — o resolver NUNCA recebia o texto
+  // legível do que foi dito, só um SHA-256 opaco. messageContents é a
+  // correção: conteúdo legível pro MODEL, campo IRMÃO de messageWindow,
+  // nunca um substituto dele. INPUT DO MODEL, NUNCA MATERIAL DE
+  // IDENTIDADE — canonicalizeV1() abaixo NUNCA lê este campo, de
+  // propósito (ver comentário lá). Uma refatoração futura que precise
+  // tocar em ambos deve preservar essa separação: contentDigest continua
+  // sendo o único sinal de "o conteúdo desta mensagem mudou" pra
+  // context_identity (F1/F2); messageContents nunca participa dessa
+  // conta. Populado em resolution-context.ts via computeUsableText() —
+  // mesma fonte de verdade que já alimenta contentDigest, nunca uma
+  // segunda leitura divergente do conteúdo.
+  messageContents: MessageContentEntry[];
 };
 
 export type MessageWindowEntry = {
   messageId: string;
   authorType: string;
   contentDigest: string; // hex sha256 de {direction, contentType, usableText, transcriptionStatus}
+};
+
+// Conteúdo legível — ver comentário em ResolutionContextV1.messageContents.
+// usableText null = sem texto legível pra esta mensagem (attachment, ou
+// áudio ainda sem transcrição concluída) — nunca inventado.
+export type MessageContentEntry = {
+  messageId: string;
+  usableText: string | null;
 };
 
 export type ActiveApprovalCandidate = {
@@ -165,6 +187,14 @@ export function canonicalizeV1(ctx: ResolutionContextV1): string {
     return rest as unknown as JsonValue;
   };
 
+  // ctx.messageContents (conteúdo legível pro model, ver comentário em
+  // ResolutionContextV1) é DELIBERADAMENTE omitido daqui — nunca deve
+  // ser adicionado a este objeto `normalized`. context_identity precisa
+  // continuar dependendo só de contentDigest (o hash) pra decidir se o
+  // conteúdo de uma mensagem mudou entre F1 e F2; incluir o texto bruto
+  // aqui misturaria de novo as duas responsabilidades que essa
+  // separação existe pra manter distintas (identidade estável vs.
+  // conteúdo legível pelo model).
   const normalized: JsonValue = {
     contextSchemaVersion: ctx.contextSchemaVersion,
     professionalId: ctx.professionalId,
