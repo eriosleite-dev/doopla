@@ -5560,6 +5560,75 @@ explícita e validada no caminho de sistema, onde antes simplesmente
 falhava sempre). Nenhum avanço pra webhook, cron ou outbound worker
 nesta rodada.
 
+## 47. Beta Runtime Integration — passo 2: entrypoint (`triggerInboundMessage`)
+
+Roadmap aprovado (baseline): 1. credenciais reais; 2. entrypoint; 3.
+smoke test real contra OpenAI; 4. painel; 5. reconciler/cron; 6.
+outbound sender/adaptadores de canal. Ordem por dependência técnica,
+não por preferência — painel só depois do smoke test provar o
+entrypoint confiável; cron/outbound só depois do painel provar o loop
+manual fechando.
+
+**Este commit entrega só o passo 2** (autorizado explicitamente a
+avançar em paralelo à configuração das credenciais do passo 1 — "as
+credenciais são bloqueadoras pra executar/validar o Runtime real, não
+necessariamente pra escrever o `trigger.ts`"). **Não validado contra
+execução real** — sem `OPENAI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY`
+configuradas neste ambiente, nada aqui foi de fato invocado. O passo 3
+(smoke test) continua pendente, condicionado às credenciais.
+
+### O que foi criado
+
+`src/lib/beta-integration/trigger.ts` (arquivo novo, único) —
+`triggerInboundMessage(params)`: monta um `InboundEvent` a partir de
+parâmetros mínimos (`conversationId`, `authorType`, `body`, e o que for
+específico de cada author type) e chama `processInboundEvent()` — o
+único entrypoint do Runtime (`runtime/index.ts`) — com
+`createServiceRoleClient()`. Nenhuma lógica de negócio nova: valida
+nada que `pipeline.ts` já não valide sozinho (author_mismatch,
+missing_external_participant_identifier continuam resolvidos lá,
+fail-closed, sem duplicação aqui). `channel` default `'painel'` —
+honesto sobre a origem real (simulador/painel), nunca finge um canal
+que não existe. `providerEventId` default gera um novo por chamada
+(sem "evento de provider" real pra um disparo manual); um chamador
+que precisar de proteção contra duplo-clique pode passar o seu.
+
+**Decisão de localização, deliberada**: vive em `src/lib/beta-integration/`,
+FORA de `src/lib/runtime/` e `src/lib/intelligence/` — o Runtime está
+congelado (seção 46), e este arquivo é código de integração que
+CONSOME o entrypoint congelado, nunca o modifica. `git status`
+confirma: nenhum arquivo existente tocado, só este um arquivo novo.
+Quando um adaptador de canal real (WhatsApp/Meta/Resend) existir, ele
+chama esta mesma function (ou `processInboundEvent` direto) — nenhuma
+mudança de contrato necessária no Runtime pra isso.
+
+### Credenciais necessárias pro passo 3 (smoke test) — ainda pendentes
+
+Já comunicado ao usuário fora deste arquivo (`OPENAI_API_KEY` via
+platform.openai.com → API keys; `SUPABASE_SERVICE_ROLE_KEY` via
+Supabase Dashboard → Project Settings → API → service_role secret) —
+ambas server-only, nunca `NEXT_PUBLIC_`, entram em `.env.local` neste
+ambiente (já com as duas linhas comentadas em `.env.local.example`) ou
+na configuração de env vars da plataforma de deploy real, nunca
+coladas em código nem commitadas (`.env*` já no `.gitignore`, exceto
+o `.example`).
+
+### Validação desta rodada
+
+`tsc --noEmit`: limpo. `eslint`: limpo. `next build`: limpo, 32 rotas
+(arquivo não é rota, contagem inalterada). Nenhum teste de execução
+real — não é possível nem correto simular sem as credenciais reais
+(simular aqui reintroduziria exatamente o risco que o passo 3 existe
+pra eliminar: validar contra fixtures em vez de contra o
+comportamento real da OpenAI).
+
+🔒 **Confirmação**: **Blocos 1–4 e Runtime Architecture v1 congelados,
+zero arquivo existente alterado** (só um arquivo novo, fora dos
+diretórios congelados). Nenhuma migration. Nenhuma integração
+WhatsApp/Meta/Resend. Nenhum merge, nenhum PR. Nenhum avanço pro passo
+3 (smoke test) sem as credenciais configuradas, nem pro passo 4
+(painel) sem o passo 3 validado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
