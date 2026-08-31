@@ -67,3 +67,34 @@ export function shouldAttemptResume(pendingChecks: readonly GateCheckSnapshot[],
   if (!isEligibleForAutoMatch(pendingChecks)) return false;
   return identitiesOverlap(blockedIdentities(pendingChecks), newlyApprovedIdentities);
 }
+
+// Toda identidade (categoria+subject) que um conjunto de checks
+// efetivamente TOCA — matched OU blocked, qualquer motivo. Nunca usada
+// pra decidir approve/block (isso é 100% do Gate) — só pra saber se um
+// draft fresco chegou a DISCUTIR o assunto, mesmo que tenha bloqueado
+// por um motivo fora do mecanismo de pendência (ex.: commercial_root_terminal).
+function touchedIdentities(checks: readonly GateCheckSnapshot[]): BlockedIdentity[] {
+  return checks.filter((c) => c.subjectKey !== null).map((c) => ({ decisionCategory: c.decisionCategory, subjectKey: c.subjectKey! }));
+}
+
+// Retomada durável — contexto posterior (correção pós-freeze, sem
+// migration nova): a reavaliação de uma pendência agora vê a
+// conversation INTEIRA até agora, nunca só a fotografia congelada no
+// trigger original (achado do usuário: um draft fresco pode
+// legitimamente não ter NADA a ver com o que esta pendência
+// bloqueava, porque a conversa seguiu pra outro assunto enquanto ela
+// esperava). Sem isso, `runResumptionCycle`
+// completaria a pendência com um envio que nunca de fato re-confirmou
+// o compromisso original — perda silenciosa disfarçada de sucesso.
+//
+// originalIdentities vem de blockedIdentities(pendingChecks) — as
+// MESMAS identidades elegíveis que criaram esta pendência
+// (shouldCreatePendingReply). freshChecks é comparado por
+// touchedIdentities (matched OU blocked, qualquer motivo) — só
+// precisamos saber se o assunto foi de fato revisitado, o outcome real
+// (allowed/blocked) continua 100% decisão do Gate re-avaliado.
+export function freshChecksAddressPendingIdentities(pendingChecks: readonly GateCheckSnapshot[], freshChecks: readonly GateCheckSnapshot[]): boolean {
+  const originalIdentities = blockedIdentities(pendingChecks);
+  if (originalIdentities.length === 0) return false;
+  return identitiesOverlap(originalIdentities, touchedIdentities(freshChecks));
+}

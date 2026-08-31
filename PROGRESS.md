@@ -4635,6 +4635,205 @@ explicação do outro teste.
   `next_attempt_at` ao finalizar uma linha (higiene, sem mudança de
   comportamento observável).
 
+## 42. Correção: contexto posterior na retomada (nunca mais resposta stale)
+
+Correção material encontrada pelo usuário no bloco 41, antes do
+freeze: `runResumptionCycle` truncava o `ContextPackage` no trigger
+original (`truncateContextAtMessage`) antes de mandar pro
+Classifier/Planner — isso resolvia o problema original (mensagem nova
+virando trigger por acidente), mas criava o oposto: numa retomada
+depois de minutos/horas, o Planner respondia com base numa fotografia
+congelada, sem NUNCA enxergar que o cliente mudou, cancelou ou
+recontextualizou a proposta enquanto a pendência esperava. Exemplo do
+usuário: cliente propõe R$3000 → Gate bloqueia → profissional aprova →
+retomada esbarra em `conversation_busy` → cliente manda "esquece os
+R$3000, muda a data" → reconciler retoma → SEM a correção, a Doopla
+confirmaria R$3000 como se a mensagem 5 não existisse.
+
+### Solução mínima implementada (as 4 propriedades pedidas, simultâneas)
+
+**A) trigger original inequívoco** — nunca foi, na verdade, sobre o
+que Classifier/Planner tratam como "última mensagem" dentro de UMA
+chamada (isso sempre foi um conceito efêmero, por chamada). É sobre
+`pending.trigger_message_id`/`policy_gate_decisions.message_id`/
+`outbound_intents.trigger_message_id` — identidade PERSISTENTE no
+banco, usada pra correlação/auditoria — que esta correção nunca toca
+(continua apontando pra mensagem original em toda a linhagem, mesmo
+com supersessão). Testado explicitamente (cenário 7 abaixo).
+
+**B) contexto posterior disponível** — `truncateContextAtMessage`
+removido do caminho de retomada (arquivo `context-window.ts` inteiro
+apagado — sem outro chamador, manter seria deixar uma armadilha pra um
+uso futuro). `runResumptionCycle` agora passa o `ContextPackage`
+INTEIRO (sem alteração) pro Classifier/Planner — exatamente como o
+ciclo normal já faz. `classification-context.ts`/`planner-context.ts`
+(Blocos 3/4, congelados) continuam derivando trigger = última mensagem
+da janela, SEM NENHUMA mudança neles — agora essa última mensagem É a
+realidade atual da conversation, não uma escolhida artificialmente.
+`referenceTimestamp` do Gate também passou a acompanhar essa mensagem
+real (antes usava sempre o timestamp da mensagem original, mesmo
+quando o Planner já estava respondendo a algo mais novo — inconsistência
+que a correção também fecha).
+
+**C) nenhuma resposta stale** — depende em parte da competência do
+Planner congelado (Bloco 4) de não confirmar algo que acabou de ser
+retratado, dado contexto completo — isso é confiado, não redesenhado
+(ver limite nomeado abaixo). O que o Runtime GARANTE mecanicamente,
+independente do que o Planner escrever: `freshChecksAddressPendingIdentities`
+(nova, pura, `pending-replies-matching.ts`) — a pendência só é
+completada/enviada quando o Gate fresco de fato voltou a TOCAR em pelo
+menos uma das identidades (categoria+subject) que ela bloqueava
+originalmente (matched OU blocked, qualquer motivo — o outcome real
+continua 100% decisão do Gate). Se o draft fresco não tem nada a ver
+com o assunto (a conversa seguiu adiante), a pendência NUNCA é
+completada por essa tentativa — outcome novo `left_pending_context_diverged`:
+nada é enviado, nada é marcado concluído, a linha continua `pending`,
+retryable, e esgota pra `needs_attention` normalmente se o assunto
+nunca mais voltar (reaproveita 100% o mecanismo do bloco 41 — nenhuma
+infraestrutura nova).
+
+**D) nenhum redesenho dos blocos congelados** — zero linhas tocadas em
+Blocos 1–4. A correção inteira vive em `runtime/` (resumption.ts +
+pending-replies-matching.ts) + a remoção de um arquivo que só existia
+pra sustentar o bug.
+
+### Limite nomeado (não escondido)
+
+Pra cancelamentos puros especificamente (ex.: "esquece os R$3000"),
+esta correção depende do Planner congelado, dado contexto real,
+simplesmente não redigir uma confirmação do que foi retratado — não é
+uma lógica NOVA de "isto é um cancelamento" (fora de escopo, tocaria
+Bloco 4). O que o Runtime garante MECANICAMENTE, não importa o que o
+Planner escreva: mesmo que ele confirme por engano, `freshChecksAddressPendingIdentities`
+só permite completar quando a identidade original foi REVISITADA —
+mas se o Planner literalmente restatasse o mesmo valor antigo (R$3000)
+ele SERIA reenviado, porque bateria contra a approval real ainda ativa
+(KNOW≠APPROVE não muda — a approval continua válida até ser
+explicitamente revogada, ninguém revogou nada aqui). Pior caso de uma
+falha de julgamento do Planner: nunca pior do que o comportamento já
+aceito do sistema hoje pra reafirmação legítima — não uma regressão
+nova introduzida por este Runtime, mas também não uma garantia
+absoluta contra um Planner que erre a leitura. Nomeado explicitamente,
+nunca escondido.
+
+### Gap real encontrado (fora de escopo, NÃO corrigido nesta rodada)
+
+Auditoria do Red Team encontrou: `evaluatePostModelGate` (`gate.ts`,
+Bloco 6) chama `is_commercial_root_terminal` sem `p_professional_id` —
+migration 0051 tornou esse parâmetro OBRIGATÓRIO pro caminho
+`is_system_caller()` (`raise exception 'professional_id_required_for_system_caller'`
+sem ele). Isso significa que **o Post-model Gate falha
+incondicionalmente toda vez que o Runtime real (service_role) processa
+um evento com commercial root** — não é um bug desta correção, é
+pré-existente desde a migration 0051, nunca detectado porque nenhuma
+execução end-to-end do pipeline TS contra Postgres real tinha
+acontecido neste projeto até este Red Team (todo teste anterior
+simulava decisões do Gate via `record_policy_gate_decision` direto,
+nunca chamando `evaluatePostModelGate` de verdade). Como `authenticated`
+usa o ramo `auth.uid()` (não exige o parâmetro), isso nunca apareceu
+em nenhum teste/uso anterior.
+
+**Não corrigido nesta rodada** — o usuário foi explícito: "não altere
+mais nada". O fix (`gate.ts`, uma linha: passar
+`p_professional_id: input.professionalId`) foi aplicado SÓ
+localmente pra rodar o Red Team de verdade contra Postgres, e revertido
+antes do commit — o diff commitado não toca `gate.ts`. Reportado aqui
+pra decisão explícita do usuário, separada desta correção.
+
+### Testes
+
+**TS puro** (`pending-replies-matching.ts`): 6 novas asserções pra
+`freshChecksAddressPendingIdentities` (matched bate, blocked-de-novo
+bate, nada bate, categoria diferente, subject_key diferente, pendência
+sem identidade elegível) — **29 PASS no total do arquivo** (23 do
+bloco 40 + 6 novas), 0 FAIL.
+
+**Red Team real** (não SQL/state machine) — `resumeOnePendingReply()`
+de PRODUÇÃO, executado de verdade contra Postgres real via um shim
+`pg`→formato-supabase-js (sem PostgREST disponível neste sandbox — só
+os 3 model calls injetados, Classifier/Planner/Gate-extractor,
+retornando outputs REALISTAS por cenário — mesmo princípio de
+testabilidade (`opts.modelCall`) já usado em todo o projeto). **8/8
+cenários PASS**, estável em 3 execuções seguidas:
+1. mensagem nova contradiz → `left_pending_context_diverged`, 0
+   outbound_intent;
+2. mensagem nova muda valor → `still_blocked` com fotografia nova
+   (Pending B), antiga superseded;
+3. mensagem nova cancela → `left_pending_context_diverged`, 0 envio;
+4. pergunta irrelevante → `left_pending_context_diverged`, pendência
+   continua `pending` (não mata, não trava, não duplica);
+5. múltiplas mensagens em vários retries (busy real simulado + nova
+   mensagem no meio) → cada tentativa reflete o estado atual;
+6. root superseded durante a espera (bulk supersede real) → `begin_attempt`
+   nega, nunca retomada;
+7. `trigger_message_id` no banco nunca muda, mesmo com 3 mensagens
+   novas na janela;
+8. resolução feliz (nada mudou) seguida de retry simulando crash
+   pós-commit → exatamente 1 `outbound_intent`, nunca duplicado.
+
+Achado de infraestrutura de teste (não produção): duas correções no
+shim `pg`→supabase-js foram necessárias — (a) JSON.stringify seletivo
+pra parâmetros `jsonb` reais (consultado via
+`information_schema.parameters`, nunca hardcoded por nome de function)
+— sem isso, `pg` serializa array/objeto JS como array literal do
+Postgres, não JSON, e `record_policy_gate_decision` falhava com
+"invalid input syntax for type json"; (b) limpeza da conversation de
+teste no início do script — reruns anteriores acumulavam mensagens na
+mesma conversation, poluindo "última mensagem = trigger" das rodadas
+seguintes. Nenhuma das duas é um achado sobre `resumption.ts`, ambas
+são do arnês de teste (scratchpad, nunca commitado).
+
+**Revisão da afirmação anterior** (bloco 41, seção de testes,
+cenário 5 "validado por design"): a afirmação estava CORRETA quanto à
+arquitetura (mensagem nova nunca usa `truncateContextAtMessage`,
+sempre dispara um `processInboundEvent` normal e separado), mas o
+teste anterior (`55_context_window_and_root_resolution_test.ts`, TS
+puro) só provava que `truncateContextAtMessage` corta o array
+corretamente — nunca provava que o Planner de fato RECEBE mensagens
+posteriores numa retomada, porque a função ERA chamada dentro de
+`runResumptionCycle` justamente pra IMPEDIR isso. A alegação de
+cobertura era, na prática, sobre uma propriedade adjacente, não sobre
+o comportamento que importava. Esta rodada corrige isso com um teste
+que de fato executa `runResumptionCycle` e prova que mensagens
+posteriores chegam ao Planner (cenários 1, 2, 3, 4, 5, 7 acima).
+
+**Regressão completa revalidada** (`02_*` a `57_*`, rebuild limpo
+0001-0054): 0 FAIL em tudo tocado por esta correção — só as mesmas 3
+falhas pré-existentes e não relacionadas de `41_redteam_provenance_and_overflow.sql`
+(gap de auth context anterior a esta rodada, já documentado no bloco
+41).
+
+- ✅ `tsc --noEmit`, `eslint` (limpo), `next build` (32 rotas).
+- ✅ **Sem migration nova** — correção 100% TS.
+- 🗑️ **Removido**: `runtime/context-window.ts` (a causa raiz do bug —
+  sem outro chamador, apagado por completo em vez de deixado morto).
+- ✅ **Novo**: `freshChecksAddressPendingIdentities` (`pending-replies-matching.ts`).
+- ✏️ **Modificado**: `runtime/resumption.ts` (contexto não-truncado +
+  gate de cobertura de identidade + `ResumptionModelCalls` injetável
+  pra teste), `runtime/index.ts` (exports).
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **Gap real do Gate (`is_commercial_root_terminal` sem `p_professional_id`)**
+  — descrito acima, bloqueia o Post-model Gate real em QUALQUER
+  execução service_role com commercial root, não só retomada. Fix de
+  uma linha identificado, não aplicado (fora do escopo autorizado
+  nesta rodada). **Este é o risco residual mais importante — sem ele,
+  o Runtime real não roda.**
+- **Limite nomeado da seção acima**: cancelamento puro sem nenhuma
+  mudança de valor depende do julgamento do Planner congelado; o
+  Runtime garante mecanicamente que a pendência só completa quando a
+  identidade original foi revisitada, mas não impede um Planner que
+  erre restatando o valor antigo exatamente — mesma superfície de
+  risco que já existia pra reafirmação legítima, não uma regressão
+  nova.
+- Gaps residuais do bloco 41 (sem infraestrutura real de
+  agendamento) continuam abertos, fora do escopo desta correção
+  pontual.
+- Golden Suites continuam **Beta Gate**.
+- 🔒 **Confirmação**: **Blocos 1–4 intocados.** Nenhuma migration.
+  Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

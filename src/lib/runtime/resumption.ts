@@ -1,17 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION } from '../intelligence/classification';
+import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION, type ClassifierModelCall } from '../intelligence/classification';
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
 import { finishOrchestratorRun, startOrchestratorRun } from '../intelligence/observability';
-import { AI_FEATURE_RESPONSE_PLANNING, planResponse } from '../intelligence/planner';
+import { AI_FEATURE_RESPONSE_PLANNING, planResponse, type PlannerModelCall } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
-import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision } from '../intelligence/policy-gate-post';
+import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision, type PolicyGateExtractorModelCall } from '../intelligence/policy-gate-post';
 import '../intelligence/tools';
 import type { ToolContext } from '../intelligence/types';
 import { resolveCommercialRootForResumption } from './commercial-root';
 import { acquireConversationLease, releaseConversationLease } from './conversation-lease';
-import { truncateContextAtMessage } from './context-window';
 import {
   beginRuntimePendingReplyAttempt,
   fetchPolicyGateDecisionChecks,
@@ -22,7 +21,7 @@ import {
   resolveRuntimePendingReplyStillBlocked,
   type RuntimePendingReply,
 } from './pending-replies';
-import { shouldAttemptResume, type BlockedIdentity } from './pending-replies-matching';
+import { freshChecksAddressPendingIdentities, shouldAttemptResume, type BlockedIdentity } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
 import { resolveOutboundAction, resolveRecipientType } from './recipient';
 import { computeRuntimeRetryBackoffSeconds, RUNTIME_PENDING_REPLY_MAX_ATTEMPTS, RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS } from './retry-backoff';
@@ -41,6 +40,22 @@ import { resolveSystemActorContext } from './system-actor';
 // nenhuma identidade recém-aprovada, ou cuja raiz comercial não é mais
 // reconstruível, nunca é tocada — fica exatamente como estava.
 //
+// Correção pós-freeze (achado real do usuário): o contexto passado pro
+// Classifier/Planner é o ContextPackage INTEIRO até agora, nunca uma
+// fotografia truncada no trigger original. classification-context.ts/
+// planner-context.ts (Bloco 3/4, congelados) continuam derivando
+// trigger = última mensagem da janela — sem mudar isso, se a
+// conversation seguiu adiante enquanto a pendência esperava, o Planner
+// agora enxerga isso naturalmente, exatamente como enxergaria num
+// ciclo normal. O que NÃO pode acontecer é completar a pendência com
+// um envio que não tem nada a ver com o que ela bloqueava — ver
+// freshChecksAddressPendingIdentities logo abaixo, no ramo 'allowed'.
+// A identidade PERSISTENTE do trigger original (pending.triggerMessageId,
+// referenciada em policy_gate_decisions/outbound_intents) nunca muda —
+// é um conceito de auditoria/correlação no banco, inteiramente
+// separado do que o Classifier/Planner tratam como "última mensagem"
+// dentro de UMA chamada.
+//
 // Isolamento de falha: a conversation de uma pendência quase sempre é
 // DIFERENTE da conversation do evento que disparou a aprovação (client
 // conversation vs. professional_self conversation, ligadas só por
@@ -50,6 +65,15 @@ import { resolveSystemActorContext } from './system-actor';
 // nunca deixa uma falha aqui derrubar o ciclo principal que a
 // disparou — cada pendência é tentada isoladamente, erro vira outcome,
 // nunca throw propagado.
+
+// Injetável — mesmo princípio já usado em cada Bloco (nunca uma rede
+// real chamada nos testes deste módulo). Opcional: omitido, usa as
+// chamadas reais (OpenAI), igual ao ciclo normal.
+export type ResumptionModelCalls = {
+  classifierModelCall?: ClassifierModelCall;
+  plannerModelCall?: PlannerModelCall;
+  gateExtractorModelCall?: PolicyGateExtractorModelCall;
+};
 
 export type ResumptionOutcome =
   // Tentativa nem chegou a começar — begin_runtime_pending_reply_attempt
@@ -67,8 +91,18 @@ export type ResumptionOutcome =
   // continua 'pending', explicitamente retryable — nunca perdida.
   | { pendingReplyId: string; kind: 'conversation_busy_retry_scheduled'; nextAttemptAt: string | null; attemptCount: number }
   | { pendingReplyId: string; kind: 'skipped_root_mismatch' }
-  | { pendingReplyId: string; kind: 'skipped_trigger_not_in_window' }
+  | { pendingReplyId: string; kind: 'skipped_trigger_message_missing' }
   | { pendingReplyId: string; kind: 'left_pending_no_draft' }
+  // Achado do usuário: o draft fresco (com contexto INTEIRO até agora)
+  // ficou 'allowed', mas não tocou em NENHUMA das identidades que esta
+  // pendência bloqueava — a conversa seguiu pra outro assunto. Nunca
+  // envia, nunca completa, nunca duplica: a pendência fica exatamente
+  // como estava (mesmo attempt_count/next_attempt_at já agendados por
+  // begin_runtime_pending_reply_attempt), retryable depois, e se a
+  // conversa nunca mais voltar ao assunto, esgota attempt_count e vira
+  // needs_attention normalmente — nunca falha silenciosa, nunca envia
+  // conteúdo que não foi de fato re-confirmado.
+  | { pendingReplyId: string; kind: 'left_pending_context_diverged' }
   | { pendingReplyId: string; kind: 'still_blocked'; newPendingReplyId: string | null }
   | { pendingReplyId: string; kind: 'resolved'; outboundIntentId: string | null; aiMessageId: string | null }
   | { pendingReplyId: string; kind: 'failed'; error: string };
@@ -76,7 +110,8 @@ export type ResumptionOutcome =
 export async function attemptResumptionsAfterApproval(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
-  params: { commercialRootId: string; approvalRecordIds: string[]; workerId: string }
+  params: { commercialRootId: string; approvalRecordIds: string[]; workerId: string },
+  modelCalls: ResumptionModelCalls = {}
 ): Promise<ResumptionOutcome[]> {
   if (params.approvalRecordIds.length === 0) return [];
 
@@ -99,7 +134,7 @@ export async function attemptResumptionsAfterApproval(
     try {
       const pendingChecks = await fetchPolicyGateDecisionChecks(supabase, pending.policyGateDecisionId);
       if (!shouldAttemptResume(pendingChecks, newlyApprovedIdentities)) continue;
-      outcomes.push(await resumeOnePendingReply(supabase, pending, params.workerId));
+      outcomes.push(await resumeOnePendingReply(supabase, pending, params.workerId, modelCalls));
     } catch (err) {
       outcomes.push({ pendingReplyId: pending.id, kind: 'failed', error: err instanceof Error ? err.message : 'unknown_error' });
     }
@@ -123,7 +158,8 @@ export async function resumeOnePendingReply(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
   pending: RuntimePendingReply,
-  workerId: string
+  workerId: string,
+  modelCalls: ResumptionModelCalls = {}
 ): Promise<ResumptionOutcome> {
   const begin = await beginRuntimePendingReplyAttempt(supabase, {
     pendingReplyId: pending.id,
@@ -147,7 +183,7 @@ export async function resumeOnePendingReply(
     return { pendingReplyId: pending.id, kind: 'conversation_busy_retry_scheduled', nextAttemptAt: busy.nextAttemptAt, attemptCount: begin.attemptCount };
   }
   try {
-    return await runResumptionCycle(supabase, pending);
+    return await runResumptionCycle(supabase, pending, modelCalls);
   } finally {
     await releaseConversationLease(supabase, { conversationId: pending.conversationId, leaseToken: lease.leaseToken! });
   }
@@ -163,13 +199,14 @@ export async function resumeOnePendingReply(
 export async function reconcileDueRuntimePendingReplies(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
-  params: { workerId: string; limit?: number }
+  params: { workerId: string; limit?: number },
+  modelCalls: ResumptionModelCalls = {}
 ): Promise<ResumptionOutcome[]> {
   const due = await listDueRuntimePendingReplies(supabase, { limit: params.limit ?? 50 });
   const outcomes: ResumptionOutcome[] = [];
   for (const pending of due) {
     try {
-      outcomes.push(await resumeOnePendingReply(supabase, pending, params.workerId));
+      outcomes.push(await resumeOnePendingReply(supabase, pending, params.workerId, modelCalls));
     } catch (err) {
       outcomes.push({ pendingReplyId: pending.id, kind: 'failed', error: err instanceof Error ? err.message : 'unknown_error' });
     }
@@ -180,7 +217,8 @@ export async function reconcileDueRuntimePendingReplies(
 async function runResumptionCycle(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
-  pending: RuntimePendingReply
+  pending: RuntimePendingReply,
+  modelCalls: ResumptionModelCalls
 ): Promise<ResumptionOutcome> {
   const actorResult = await resolveSystemActorContext(supabase, pending.conversationId);
   if (!actorResult.ok) return { pendingReplyId: pending.id, kind: 'skipped_root_mismatch' };
@@ -195,12 +233,21 @@ async function runResumptionCycle(
   const gateResult = evaluatePreModelGate({ actorContext, conversation });
   if (!gateResult.ok) return { pendingReplyId: pending.id, kind: 'skipped_root_mismatch' };
 
+  // Identidades que esta pendência bloqueava originalmente — precisa
+  // ANTES de rodar o Gate fresco, pra depois checar se o draft novo de
+  // fato voltou a tocar no assunto (freshChecksAddressPendingIdentities).
+  const pendingChecks = await fetchPolicyGateDecisionChecks(supabase, pending.policyGateDecisionId);
+
+  // Só usado pro canal de envio (whatsapp/email/...) — nunca mais pro
+  // referenceTimestamp do Gate, que agora acompanha a mensagem mais
+  // recente de verdade (ver abaixo). Se a mensagem original nem existe
+  // mais (não deveria, mas nunca assume), fail-closed.
   const { data: triggerRow, error: triggerError } = await supabase
     .from('conversation_messages')
-    .select('created_at, channel')
+    .select('channel')
     .eq('id', pending.triggerMessageId)
-    .maybeSingle<{ created_at: string; channel: string }>();
-  if (triggerError || !triggerRow) return { pendingReplyId: pending.id, kind: 'skipped_trigger_not_in_window' };
+    .maybeSingle<{ channel: string }>();
+  if (triggerError || !triggerRow) return { pendingReplyId: pending.id, kind: 'skipped_trigger_message_missing' };
 
   const run = await startOrchestratorRun(supabase, {
     conversationId: pending.conversationId,
@@ -214,15 +261,15 @@ async function runResumptionCycle(
 
   const toolCtx: ToolContext = { representedProfessionalId: actorContext.representedProfessionalId, actorContext, conversation, supabase };
 
+  // Contexto INTEIRO até agora — nunca truncado no trigger original
+  // (achado do usuário: truncar aqui é o que causava a resposta stale;
+  // classification-context.ts/planner-context.ts continuam derivando
+  // trigger = última mensagem da janela, congelados, sem mudança —
+  // agora essa última mensagem É a realidade atual da conversation).
   const buildResult = await buildContextPackage(toolCtx, { allowedContextSources: gateResult.allowedContextSources, eligibleTools: gateResult.eligibleTools });
-  const truncated = truncateContextAtMessage(buildResult.contextPackage, pending.triggerMessageId);
-  if (!truncated.ok) {
-    await finishOrchestratorRun(supabase, { runId: run?.id ?? '', status: 'failed', calledTools: buildResult.calledTools, error: 'trigger_message_not_in_window', fallbackUsed: false });
-    return { pendingReplyId: pending.id, kind: 'skipped_trigger_not_in_window' };
-  }
-  const contextPackage = truncated.contextPackage;
+  const contextPackage = buildResult.contextPackage;
 
-  const classifyResult = await classifyIntent(toolCtx, contextPackage);
+  const classifyResult = await classifyIntent(toolCtx, contextPackage, { modelCall: modelCalls.classifierModelCall });
   const classification = classifyResult.classification;
   await supabase.rpc('log_ai_usage_event', {
     p_feature: AI_FEATURE_INTENT_CLASSIFICATION,
@@ -234,7 +281,7 @@ async function runResumptionCycle(
     p_run_id: run?.id ?? null,
   });
 
-  const planResult = await planResponse(toolCtx, contextPackage, classification);
+  const planResult = await planResponse(toolCtx, contextPackage, classification, { modelCall: modelCalls.plannerModelCall });
   let decision = planResult.decision;
   await supabase.rpc('log_ai_usage_event', {
     p_feature: AI_FEATURE_RESPONSE_PLANNING,
@@ -287,16 +334,32 @@ async function runResumptionCycle(
   const recipientType = resolveRecipientType(conversation.conversation_type, decision.responsePlan);
   const { knownEventDate } = await buildStructuralFacts(supabase, { bookingId: roots.bookingId, opportunityId: roots.opportunityId });
 
-  const gate = await evaluatePostModelGate(supabase, {
-    professionalId: actorContext.representedProfessionalId,
-    bookingId: roots.bookingId,
-    opportunityId: roots.opportunityId,
-    proposedResponse: decision.proposedResponse,
-    recipientType,
-    referenceTimestamp: triggerRow.created_at,
-    timezone: null,
-    knownEventDate,
-  });
+  // referenceTimestamp acompanha a mensagem que o Classifier/Planner de
+  // fato trataram como gatilho desta chamada (último item da janela
+  // real, não mais a mensagem antiga) — mantém a resolução temporal
+  // ("amanhã") consistente com o que o Planner está de fato vendo.
+  // Fallback pro timestamp da mensagem original só no caso defensivo
+  // de a seção messages não estar carregada (não deveria ocorrer aqui,
+  // já que o cycle inteiro depende dela).
+  const lastContextMessage = contextPackage.messages.status === 'loaded' && contextPackage.messages.items.length > 0
+    ? contextPackage.messages.items[contextPackage.messages.items.length - 1]
+    : null;
+  const referenceTimestamp = lastContextMessage?.createdAt ?? new Date().toISOString();
+
+  const gate = await evaluatePostModelGate(
+    supabase,
+    {
+      professionalId: actorContext.representedProfessionalId,
+      bookingId: roots.bookingId,
+      opportunityId: roots.opportunityId,
+      proposedResponse: decision.proposedResponse,
+      recipientType,
+      referenceTimestamp,
+      timezone: null,
+      knownEventDate,
+    },
+    { modelCall: modelCalls.gateExtractorModelCall }
+  );
   decision = applyGateOutcome(decision, gate);
 
   const logResult = await logPolicyGateDecision(supabase, {
@@ -317,6 +380,10 @@ async function runResumptionCycle(
   }
 
   if (gate.outcome === 'blocked') {
+    // Bloqueado é sempre acionável, mesmo que o motivo não toque a
+    // identidade original desta pendência — supersessão nunca envia
+    // nada, nunca arrisca conteúdo stale (mesmo mecanismo já existente,
+    // nenhuma mudança aqui).
     const result = await resolveRuntimePendingReplyStillBlocked(supabase, {
       pendingReplyId: pending.id,
       newPolicyGateDecisionId: newPolicyDecisionId,
@@ -326,7 +393,17 @@ async function runResumptionCycle(
     return { pendingReplyId: pending.id, kind: 'still_blocked', newPendingReplyId: result.newPendingReplyId };
   }
 
-  // allowed
+  // allowed — achado do usuário: só resolve esta pendência se o draft
+  // fresco de fato voltou a tratar de uma das identidades que ela
+  // bloqueava. Sem isso, um draft "allowed" só porque não extraiu NADA
+  // relacionado (a conversa seguiu pra outro assunto) NUNCA completa
+  // nem envia por conta desta pendência — fica pending, retryable,
+  // esgota pra needs_attention normalmente se o assunto nunca voltar.
+  if (!freshChecksAddressPendingIdentities(pendingChecks, gate.checks)) {
+    await finish('completed', null);
+    return { pendingReplyId: pending.id, kind: 'left_pending_context_diverged' };
+  }
+
   const action = resolveOutboundAction(recipientType, gate.outcome, conversation.external_participant_id !== null);
   let outboundIntentId: string | null = null;
   let aiMessageId: string | null = null;
