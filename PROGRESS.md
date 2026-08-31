@@ -6003,6 +6003,87 @@ sentidos** (cliente e profissional, com os 2 bugs reais corrigidos e
 confirmados no Preview) — próximo passo do roadmap aprovado é o passo
 4 (painel), a começar só quando o usuário autorizar.
 
+## 50. Beta Runtime Integration — passo 3: fechamento da lacuna 3b (candidato circular no Approval Resolver)
+
+Auditoria pedida explicitamente pelo usuário antes de autorizar o
+passo 4 (painel): verificar no Supabase real se a última aprovação do
+profissional testada depois do fix `7c68c28` persistiu
+`outcome = 'resolved'`, não `'inconclusive'`. Consulta de leitura
+(`approval_resolutions`, filtrando por `professional_statement_message_id`
+= `conversationMessageId` do smoke test) devolveu **`outcome =
+'inconclusive'`, `inconclusive_reason = 'model_ambiguous'`** — por
+regra explícita do usuário, isso pausou o fechamento do passo 3 pra
+investigação, sem seguir pro painel.
+
+### Causa raiz encontrada (achado real, terceiro desta rodada)
+
+Investigação (só leitura: código + uma segunda consulta na tabela
+`communicated_proposal_candidates`) revelou que existia sim um
+candidato para o `commercial_root_id` da conversa — mas com
+`source_message_id` **idêntico** ao `professional_statement_message_id`
+que o resolver estava avaliando. Causa: `pipeline.ts` roda
+`detectInboundProposal`/`registerInboundProposal` (migration 0053) —
+que registra um candidato a partir da mensagem inbound corrente, de
+QUALQUER autor — **antes** de chamar `runApprovalEngine` sobre essa
+MESMA mensagem (`pipeline.ts:211-224` antes de `:243-244`). Quando o
+profissional propõe um valor novo na própria declaração ("Pode fechar
+por R$3000!"), `get_communicated_proposal_candidates` já devolve, na
+mesma chamada, um candidato circular — a mensagem confirmando a si
+mesma. O model, vendo esse candidato ambíguo (proposto pelo
+profissional, valor idêntico ao que ele acabou de dizer, mas sem
+sinal explícito de que é a MESMA mensagem), não conseguiu classificar
+com segurança como `professional_initiated` (decisão autocontida, que
+não exige nenhuma referência) nem como confirmação de um candidato
+real e anterior — caiu em `inconclusive/model_ambiguous`, fail-closed.
+
+Diferente dos 2 bugs anteriores desta rodada (aqueles impediam a
+chamada de sequer FUNCIONAR); este é um problema de **qualidade do
+contexto entregue ao model**, só visível agora que as chamadas reais
+funcionam de verdade.
+
+### Fix
+
+Autorizado explicitamente pelo usuário. Isolado em
+`approval/resolution-context.ts` — `buildResolutionContext()` agora
+filtra `candidateRows` (única origem dos 3 usos: `messageWindow`, teto
+per-chain, `communicatedProposalCandidates`) excluindo qualquer
+candidato cuja `source_message_id` seja igual ao
+`professionalStatementMessageId` recebido. Nenhuma mudança na RPC SQL
+(`get_communicated_proposal_candidates` continua igual, usada também
+por `proposal-classification.ts` — ali o problema não existe, porque
+aquele call site roda ANTES do candidato da mensagem corrente ser
+inserido). A mensagem corrente continua presente no `messageWindow`
+via `statementRaw` (fonte separada, nunca dependente de
+`candidateRows`) — só deixa de aparecer como "candidato comunicado".
+
+### Testes
+
+Novo `63_resolution_context_self_candidate_test.ts` (3 PASS, contra
+Postgres real): candidato circular (mesma `source_message_id` da
+mensagem em avaliação) é excluído de `communicatedProposalCandidates`;
+candidato legítimo (mensagem diferente) continua aparecendo
+normalmente; a mensagem corrente continua no `messageWindow` mesmo
+com o candidato filtrado.
+
+### Regressão
+
+Suíte completa re-rodada: `55`, `56`, `58` (13), `59`, `60`, `61` (7),
+`62` (9), `gate-no-root-test.ts`, `gate-readiness-test.ts`,
+`runtime-closing-scenarios-test.ts` — 100% verde, zero regressão.
+`tsc --noEmit`, `eslint` e `next build` (33 rotas) limpos.
+
+🔒 **Confirmação de escopo**: único arquivo de código tocado —
+`approval/resolution-context.ts`. Nenhuma migration, nenhuma mudança
+de contrato/tipo, nenhuma regra de `validateApprovedValue`/matcher
+alterada — filtro isolado na montagem do `ResolutionContext`.
+
+### Ainda pendente
+
+Repetir o cenário "profissional: Pode fechar por R$3000!" no Preview
+real (novo deployment) e confirmar via a mesma consulta SQL usada
+nesta auditoria que `approval_resolutions.outcome = 'resolved'` desta
+vez — é essa a validação final que fecha o passo 3 de verdade.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
