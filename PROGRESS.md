@@ -5629,6 +5629,85 @@ WhatsApp/Meta/Resend. Nenhum merge, nenhum PR. Nenhum avanço pro passo
 3 (smoke test) sem as credenciais configuradas, nem pro passo 4
 (painel) sem o passo 3 validado.
 
+## 48. Beta Runtime Integration — passo 3: superfície do smoke test (`/dev/runtime-smoke-test`)
+
+Credenciais confirmadas configuradas no ambiente Vercel do usuário
+(não neste sandbox — este processo continua sem
+`OPENAI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY`, então nada aqui foi
+executado de verdade). Descoberto que a Vercel já está conectada a
+`eriosleite-dev/doopla` (confirmado via print de
+Project Settings → Git do usuário) — deploy automático por push já
+deve valer assim que as env vars forem salvas e um push acontecer.
+
+**Este commit entrega só a superfície necessária pra rodar o smoke
+test** — ainda NENHUMA execução real aconteceu, nem neste sandbox
+(sem credenciais) nem no Preview (depende do usuário configurar as env
+vars na Vercel, algo que não posso fazer nem verificar por aqui).
+
+### O que foi criado
+
+`src/app/dev/runtime-smoke-test/` (3 arquivos novos: `page.tsx`,
+`SmokeTestPanel.tsx`, `actions.ts`) — ferramenta interna, mesmo padrão
+de `/dev/intelligence-test` (auth real via Supabase, `getUser()` +
+redirect pra `/login`), mas chamando `triggerInboundMessage()`
+(`beta-integration/trigger.ts`, passo 2) em vez da chamada isolada de
+Blocos 1-4. Fluxo: criar/selecionar UMA conversa `external_inquiry`,
+mandar mensagem como cliente, mandar mensagem como profissional NA
+MESMA conversa (nunca uma `professional_self` separada — ver achado
+abaixo), exibindo o `RuntimeCycleOutcome` bruto de cada chamada.
+
+**Achado de design, antes de escrever o código** (evitou uma pegada
+real): `create_conversation` (RPC, migration 0039) não aceita
+`related_booking_id`/`related_opportunity_id` como parâmetro —
+`related_opportunity_id` só é setado por `ensure_opportunity_for_conversation`,
+e só na PRÓPRIA conversa que a chamou (migration 0051, linha 965). Uma
+segunda conversa `professional_self` criada à parte NUNCA herdaria o
+commercial root da conversa do cliente por nenhum caminho real — os
+fixtures deste projeto (58/59/60) só conseguiam fazer isso porque
+inseriam `related_booking_id` direto via SQL bruto, fora da RPC,
+válido pra fixture de teste mas não pra um fluxo real. A forma correta
+(e mais simples): o profissional responde na MESMA conversa/thread do
+cliente — exatamente como aconteceria de verdade num canal real
+(WhatsApp) — a conversa já carrega o commercial root criado pela
+primeira mensagem do cliente, `shouldRunApprovalEngine` já vê
+`hasCommercialRoot=true` na entrada seguinte. Corrigido no design antes
+de qualquer linha de `SmokeTestPanel.tsx`/`actions.ts`.
+
+**Revalidação de posse explícita** (`assertOwnsConversation` em
+`actions.ts`): `triggerInboundMessage`/`processInboundEvent` rodam com
+`service_role` e confiam no `conversationId` recebido (não é fronteira
+deles validar sessão de browser). Como esta é a PRIMEIRA superfície
+real chamando o Runtime a partir de uma sessão de profissional
+logado, a posse é revalidada aqui, com o client `authenticated` (RLS
+"conversations: select own"), antes de qualquer chamada ao Runtime —
+nunca confia no `conversationId` que o client alegou.
+
+### Validação desta rodada
+
+`tsc --noEmit`: limpo. `eslint`: achou e corrigiu 1 problema real antes
+do commit (`Date.now()` chamado direto no corpo do componente —
+`react-hooks/purity`; corrigido com lazy init `useState(() => ...)`).
+`next build`: limpo, 33 rotas (nova rota `/dev/runtime-smoke-test`
+aparece). `git status`: só arquivos novos, zero arquivo existente
+tocado — Blocos 1-4 e Runtime Architecture v1 seguem intocados.
+
+### Ainda pendente antes do resultado do smoke test
+
+1. Usuário configura `OPENAI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY` nas
+   Environment Variables do projeto Vercel (Preview, idealmente
+   restrito à branch `claude/new-session-3hdkui`).
+2. Push desta branch → Preview deployment.
+3. Usuário loga no Preview com sua própria sessão e roda os 2 passos
+   (cliente → profissional) na página nova.
+4. Resultado bruto (`RuntimeCycleOutcome` dos dois passos) volta pra
+   auditoria — só então o passo 3 do roadmap é considerado validado, e
+   só então o passo 4 (painel) começa.
+
+🔒 **Confirmação**: **Blocos 1–4 e Runtime Architecture v1 congelados,
+zero arquivo existente alterado.** Nenhuma migration. Nenhuma
+integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR. Nenhuma
+execução real ainda — nem neste sandbox, nem confirmada no Preview.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
