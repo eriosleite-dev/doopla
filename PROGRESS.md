@@ -5975,13 +5975,33 @@ nenhuma migration, nenhuma mudança de contrato de tipo externo
 lugar), nenhuma regra de `validateApprovedValue`/matcher/subject-key
 alterada.
 
-Ainda pendente: usuário precisa disparar um novo deployment e repetir
-os dois passos do smoke test no Preview real — desta vez, se
-`approvalOutcome: "committed"` vier acompanhado de um `approval_records`
-real gravado (não dá pra confirmar só pelo `RuntimeCycleOutcome`; a
-auditoria completa exigiria olhar a tabela), e se o `policyGateOutcome`
-do cliente parar de vir `extraction_unavailable` — é essa a validação
-real que só o transporte HTTP/JSON de produção pode confirmar.
+### Validação real no Preview (commit `7c68c28`)
+
+Usuário repetiu o smoke test no deployment do fix. Primeira rodada
+(cliente: "Oi, queria orçamento para meu casamento 20/12?", sem ano) —
+`policyGateOutcome: "blocked"`, `policyGateBlockReason:
+"invalid_extracted_value"`. Diferente do `extraction_unavailable` de
+antes: agora é o extrator rodando de verdade contra a OpenAI, e essa
+mensagem específica tem uma expressão de data AMBÍGUA ("20/12" sem
+ano) — exatamente o caminho documentado em `resolveDateValue()`
+(extractor.ts:181-197): expressão relativa sem candidato temporal
+correspondente vira `null`, `validateApprovedValue('date_change',
+null)` falha contra o schema (`z.object({date:...}).strict()` não
+aceita `null`), matcher bloqueia por `invalid_extracted_value` — fail-
+closed correto, nunca um bug novo.
+
+Confirmado pedindo um segundo teste, numa conversa nova, com data
+completa: "Oi, quanto custa tocar no meu casamento dia 20/12/2026?" —
+resultado: `policyGateOutcome: "allowed"`, `disposition:
+"auto_send_eligible"`, `outboundIntentId` real criado. Sem nenhuma
+ambiguidade de data, o pipeline completo (Classifier → Planner →
+extrator real → matcher → outbound intent) roda limpo, ponta a ponta,
+pela primeira vez contra infraestrutura real.
+
+🔒 **Passo 3 do roadmap (smoke test) considerado validado nos dois
+sentidos** (cliente e profissional, com os 2 bugs reais corrigidos e
+confirmados no Preview) — próximo passo do roadmap aprovado é o passo
+4 (painel), a começar só quando o usuário autorizar.
 
 ## Como usar isso
 
