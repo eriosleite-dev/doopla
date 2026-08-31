@@ -2,7 +2,7 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { getOpenAIClient } from '../openai-client';
-import { validateApprovedValue } from '../approval/value-schemas';
+import { MODEL_VALUE_OUTPUT_SCHEMA, modelValueToRecord, validateApprovedValue } from '../approval/value-schemas';
 import { PROFESSIONAL_DECISION_CATEGORIES } from '../planner/decision-categories';
 import { generateTemporalCandidates, isDatePlausible, resolveTemporalCandidateLabel, type TemporalCandidate, type TemporalContext } from '../policy-gate-post/temporal';
 import { INBOUND_PROPOSAL_MAX_RETRIES, INBOUND_PROPOSAL_MODEL, MAX_DETECTED_PROPOSALS } from './config';
@@ -39,7 +39,12 @@ const detectedProposalModelSchema = z.object({
   subjectKey: z.string().nullable(),
   // Não validado aqui — validateApprovedValue() (reusado de
   // approval/value-schemas.ts) decide se o shape é aceitável.
-  value: z.record(z.string(), z.unknown()).nullable(),
+  // MODEL_VALUE_OUTPUT_SCHEMA (fronteira Structured Outputs, ver
+  // comentário em approval/value-schemas.ts) — nunca z.record(...
+  // z.unknown()), que o modo strict da OpenAI rejeita incondicional e
+  // silenciosamente (achado real, nunca pego pelos testes anteriores
+  // que sempre injetavam modelCall).
+  value: MODEL_VALUE_OUTPUT_SCHEMA,
   // Mesmo mecanismo de closed-candidate-selection de policy-gate-post/temporal.ts —
   // reusado, nunca reinventado.
   temporalCandidateLabel: z.string().nullable(),
@@ -145,7 +150,13 @@ export async function detectInboundProposal(
 
   const proposals: DetectedInboundProposal[] = [];
   for (const p of parsed.proposals.slice(0, MAX_DETECTED_PROPOSALS)) {
-    const valueValidation = validateApprovedValue(p.decisionCategory, resolveDateValue(p, candidates, temporal.referenceTimestamp));
+    // p.value chega no shape achatado de MODEL_VALUE_OUTPUT_SCHEMA —
+    // reduzido pro Record<string, unknown> | null que resolveDateValue
+    // sempre esperou, antes de qualquer outra lógica.
+    const valueValidation = validateApprovedValue(
+      p.decisionCategory,
+      resolveDateValue({ ...p, value: modelValueToRecord(p.value) }, candidates, temporal.referenceTimestamp)
+    );
     if (!valueValidation.valid) continue; // fail-closed: forma inválida nunca vira candidato
     const subjectKey = resolveSubjectKeyForNewProposal(p.decisionCategory, p.subjectKey);
     if (subjectKey === null) continue; // fail-closed: sem subject_key provável, sem candidato

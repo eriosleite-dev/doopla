@@ -6,7 +6,7 @@ import { APPROVAL_RESOLVER_MAX_RETRIES, APPROVAL_RESOLVER_MODEL } from './config
 import type { ResolutionContextV1 } from './canonicalize';
 import { OPERATION_TYPES, OPERATION_TYPES_REQUIRING_PROVENANCE } from './types';
 import type { ApprovalResolverOutput, OperationType, PendingDecision } from './types';
-import { PROFESSIONAL_DECISION_CATEGORIES, validateApprovedValue } from './value-schemas';
+import { MODEL_VALUE_OUTPUT_SCHEMA, modelValueToRecord, PROFESSIONAL_DECISION_CATEGORIES, validateApprovedValue } from './value-schemas';
 
 // Doopla Intelligence Core v1 — Bloco 5: Approval Resolver.
 //
@@ -26,9 +26,9 @@ const decisionSchema = z.object({
   decisionCategory: z.enum(PROFESSIONAL_DECISION_CATEGORIES),
   subjectKey: z.string(),
   operationType: z.enum(OPERATION_TYPES),
-  approvedValue: z.record(z.string(), z.unknown()).nullable(),
+  approvedValue: MODEL_VALUE_OUTPUT_SCHEMA,
   communicatedProposalMessageIds: z.array(z.string()),
-  referredValue: z.record(z.string(), z.unknown()).nullable(),
+  referredValue: MODEL_VALUE_OUTPUT_SCHEMA,
 });
 
 const modelOutputSchema = z.object({
@@ -112,7 +112,13 @@ function toPendingDecisions(commercialRootId: string, decisions: ApprovalResolve
         `decisão inconsistente do resolver: operationType=${d.operationType} exige communicatedProposalMessageIds ${requiresProvenance ? 'não-vazio' : 'vazio'}, veio ${d.communicatedProposalMessageIds.length} ids`
       );
     }
-    if (d.operationType === 'revocation' && d.approvedValue !== null) {
+    // d.approvedValue/d.referredValue chegam no shape "achatado" de
+    // MODEL_VALUE_OUTPUT_SCHEMA (fronteira do model) — reduzidos aqui
+    // pro Record<string, unknown> | null que o resto deste módulo (e
+    // PendingDecision) sempre esperou, antes de qualquer outra checagem.
+    let approvedValue = modelValueToRecord(d.approvedValue);
+    const referredValue = modelValueToRecord(d.referredValue);
+    if (d.operationType === 'revocation' && approvedValue !== null) {
       throw new Error('revocation exige approvedValue null');
     }
     // Achado real do Red Team da implementação: nada validava
@@ -121,7 +127,6 @@ function toPendingDecisions(commercialRootId: string, decisions: ApprovalResolve
     // amountCents ausente/tipo errado ou campo extra passava direto
     // pro commit. Corrigido: todo approvedValue não-nulo precisa
     // validar contra APPROVED_VALUE_SCHEMAS[decisionCategory].
-    let approvedValue = d.approvedValue;
     if (approvedValue !== null) {
       const validation = validateApprovedValue(d.decisionCategory, approvedValue);
       if (!validation.valid) {
@@ -136,7 +141,7 @@ function toPendingDecisions(commercialRootId: string, decisions: ApprovalResolve
       operationType: d.operationType as OperationType,
       approvedValue,
       communicatedProposalMessageIds: d.communicatedProposalMessageIds,
-      referredValue: d.referredValue,
+      referredValue,
     };
   });
 }

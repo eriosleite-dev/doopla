@@ -5846,6 +5846,143 @@ R$3000!"` no Preview real — é essa a validação que este fix realmente
 precisa, já que o sandbox não reproduz o transporte HTTP/JSON real do
 `@supabase/supabase-js`.
 
+## 49. Beta Runtime Integration — passo 3: bug real de Structured Outputs em 3 model calls (resolver/extrator/detector)
+
+Depois do fix do Buffer→bytea (item 48, Atualização 5), o usuário
+repetiu o smoke test no Preview real. A mensagem do profissional
+("Pode fechar por R$3000!") voltou `"approvalOutcome": "committed"` —
+sinal positivo (o RPC não falhou mais). A mensagem do cliente ("oi,
+queria orcamento...") voltou `"policyGateBlockReason":
+"extraction_unavailable"` — sinal de alerta, investigado por pedido
+explícito do usuário.
+
+### Causa raiz
+
+`policy-gate-post/extractor.ts` pede ao model um campo `value:
+z.record(z.string(), z.unknown()).nullable()` — um "objeto livre".
+Esse shape NUNCA é aceito pelo modo strict de Structured Outputs da
+OpenAI (`zodTextFormat`): um objeto sem propriedades fechadas não pode
+ser representado com `additionalProperties: false`. A própria
+construção do schema (`zodTextFormat(modelOutputSchema, ...)`) lança
+uma exceção — **antes de qualquer chamada de rede**, incondicionalmente,
+em qualquer ambiente, com qualquer input. `extractCommitments()`
+engole essa exceção (mesmo padrão fail-closed do resto do projeto) e
+devolve `unavailable: true` — daí o bloqueio.
+
+Reproduzido isolando exatamente essa construção de schema fora do
+projeto (`zodTextFormat` chamado com o schema real do extrator) — o
+erro exato: `Object schema at ".../value/anyOf/0" must set
+additionalProperties: false to be compatible with strict Structured
+Outputs`.
+
+**Achado mais sério, buscando o mesmo padrão no resto do projeto**: o
+IDÊNTICO shape (`z.record(z.string(), z.unknown()).nullable()`) existe
+em mais 2 lugares:
+
+1. `approval/resolver.ts` — `approvedValue`/`referredValue` do
+   Approval Resolver.
+2. `inbound-proposal/detector.ts` — `value` do detector de proposta
+   inbound.
+
+Ou seja: a chamada real ao model do Approval Resolver **também sempre
+lançava** essa mesma exceção, sempre caindo no fallback fail-closed
+(`resolveApproval()` retorna `outcome: 'inconclusive', reason:
+'model_ambiguous'` quando `!parsed`). O `"approvalOutcome": "committed"`
+do smoke test não significava "aprovação capturada" — `status:
+'committed'` só descreve que o COMMIT no Postgres teve sucesso; o
+`outcome` interno (`resolved` vs `inconclusive`) não é exposto em
+`RuntimeCycleOutcome.approvalOutcome` (`pipeline.ts:253`,
+`approvalOutcome = approvalResult.status`). Ou seja: o profissional
+dizer "Pode fechar por R$3000!" nunca tinha sido processado de
+verdade pela IA — o sistema, com segurança (fail-closed, nunca gravou
+nada errado), sempre tratava como inconclusivo.
+
+Confirmado que Classifier (`classification/classify.ts`) e Planner
+(`planner/plan.ts`) NÃO têm esse padrão — só usam campos com tipo
+fechado — por isso os dois sempre funcionaram de verdade nos smoke
+tests (o texto do profissional/draft do Planner sempre foi real).
+
+Nunca detectado antes pela mesma razão do bug do Buffer: toda a
+suíte de testes anterior (Bloco 5, Post-model Gate, inbound-proposal)
+sempre injetava `modelCall` — o `defaultModelCall()`/`zodTextFormat`
+real nunca foi exercitado antes desta rodada de smoke test contra
+infraestrutura real.
+
+### Fix
+
+Autorizado explicitamente pelo usuário (pergunta sim/não). Um único
+padrão aplicado nos 3 arquivos, isolado na fronteira model↔código —
+nenhuma regra de validação existente mudou:
+
+`approval/value-schemas.ts` ganha `MODEL_VALUE_OUTPUT_SCHEMA` — achata
+as 13 formas de `APPROVED_VALUE_SCHEMAS` num único objeto Structured-
+Outputs-compatível, com todo campo possível (`amountCents`, `date`,
+`time`, `durationMinutes`, `location`, `description`, `installments`)
+declarado e `nullable()` (nenhum campo "opcional" — o modo strict exige
+toda propriedade presente; nullable é como "opcional" se expressa
+aqui), e `.nullable()` no objeto inteiro (pra representar ausência de
+valor, ex.: `revocation`). `modelValueToRecord()` reduz essa saída de
+volta a um `Record<string, unknown> | null` — exatamente o shape que
+`validateApprovedValue()`/`resolveDateValue()` já esperavam nos 3
+chamadores, descartando campos null.
+
+- `resolver.ts`: `decisionSchema.approvedValue`/`referredValue` trocam
+  pra `MODEL_VALUE_OUTPUT_SCHEMA`; `toPendingDecisions()` converte via
+  `modelValueToRecord()` antes de qualquer outra checagem (incluindo o
+  `revocation` exige `approvedValue null`, agora conferido no valor JÁ
+  convertido).
+- `policy-gate-post/extractor.ts`: `value` troca pro mesmo schema;
+  conversão aplicada antes de `resolveDateValue()`.
+- `inbound-proposal/detector.ts`: idêntico.
+
+### Testes
+
+Novo `62_model_value_schema_test.ts` (9 PASS): reproduz a causa raiz
+isoladamente (o shape antigo lança, sempre); confirma que os 3 schemas
+REAIS exportados de `resolver.ts`/`extractor.ts`/`detector.ts` nunca
+lançam na construção; testa `modelValueToRecord()` nos casos
+representativos (null, tudo-null→`{}`, price, date, payment_condition
+com `dueDate` null omitido do item).
+
+### Regressão
+
+Achado colateral: 4 arquivos de teste existentes mockavam `modelCall`
+com o shape ANTIGO parcial (ex.: `value: { amountCents: 300000 }`, sem
+os outros campos) — inofensivo contra o código antigo (que aceitava
+qualquer `Record`), mas quebraria contra `modelValueToRecord()` (que
+espera todo campo presente, mesmo que null — um campo *ausente* vira
+`undefined`, e `undefined !== null` faria `modelValueToRecord`
+incluir uma chave extra indevida, rejeitada por `validateApprovedValue`
+que usa `.strict()`). Corrigido nos 4 arquivos de teste (nunca em
+código do projeto): `59_gate_professional_id_fix_test.ts`,
+`gate-no-root-test.ts`, `gate-readiness-test.ts`,
+`58_redteam_stale_context_integration_test.ts` — todos passados a
+preencher o objeto completo (campos irrelevantes `null`), mesmo
+contrato que o model real agora sempre satisfaz.
+
+Toda a suíte relevante re-rodada depois do fix: `55`, `56`, `58`
+(13/13), `59` (9/9), `60`, `61` (7/7), `gate-no-root-test.ts`,
+`gate-readiness-test.ts`, `runtime-closing-scenarios-test.ts` — 100%
+verde, zero regressão. `tsc --noEmit`, `eslint` (nos 4 arquivos
+tocados) e `next build` (33 rotas) limpos.
+
+🔒 **Confirmação de escopo**: 4 arquivos tocados —
+`approval/value-schemas.ts` (schema/helper novos, nada removido),
+`approval/resolver.ts`, `policy-gate-post/extractor.ts`,
+`inbound-proposal/detector.ts` — todos na fronteira model↔código,
+nenhuma migration, nenhuma mudança de contrato de tipo externo
+(`Record<string, unknown> | null` continua o shape final em todo
+lugar), nenhuma regra de `validateApprovedValue`/matcher/subject-key
+alterada.
+
+Ainda pendente: usuário precisa disparar um novo deployment e repetir
+os dois passos do smoke test no Preview real — desta vez, se
+`approvalOutcome: "committed"` vier acompanhado de um `approval_records`
+real gravado (não dá pra confirmar só pelo `RuntimeCycleOutcome`; a
+auditoria completa exigiria olhar a tabela), e se o `policyGateOutcome`
+do cliente parar de vir `extraction_unavailable` — é essa a validação
+real que só o transporte HTTP/JSON de produção pode confirmar.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

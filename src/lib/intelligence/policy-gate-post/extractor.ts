@@ -1,6 +1,7 @@
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
+import { MODEL_VALUE_OUTPUT_SCHEMA, modelValueToRecord } from '../approval/value-schemas';
 import { getOpenAIClient } from '../openai-client';
 import { PROFESSIONAL_DECISION_CATEGORIES } from '../planner/decision-categories';
 import { MAX_EXTRACTED_COMMITMENTS, POLICY_GATE_EXTRACTOR_MAX_RETRIES, POLICY_GATE_EXTRACTOR_MODEL } from './config';
@@ -41,7 +42,12 @@ const extractedCommitmentModelSchema = z.object({
   subjectKey: z.string().nullable(),
   // Não validado aqui — validateApprovedValue() (value-schemas.ts,
   // reusado) decide se o shape é aceitável pra decisionCategory.
-  value: z.record(z.string(), z.unknown()).nullable(),
+  // MODEL_VALUE_OUTPUT_SCHEMA (fronteira Structured Outputs, ver
+  // comentário em approval/value-schemas.ts) — nunca z.record(...
+  // z.unknown()), que o modo strict da OpenAI rejeita incondicional e
+  // silenciosamente (achado real, nunca pego pelos testes anteriores
+  // que sempre injetavam modelCall).
+  value: MODEL_VALUE_OUTPUT_SCHEMA,
   // Closed-candidate-selection temporal (decisão do usuário): só
   // relevante pra decisionCategory='date_change' quando o texto usa
   // uma expressão RELATIVA ("amanhã", "sábado", "dia 20") — o model
@@ -162,7 +168,10 @@ export async function extractCommitments(
     .map((c) => ({
       decisionCategory: c.decisionCategory,
       rawSubjectKey: c.subjectKey,
-      rawValue: resolveDateValue(c, candidates, temporal.referenceTimestamp),
+      // c.value chega no shape achatado de MODEL_VALUE_OUTPUT_SCHEMA —
+      // reduzido pro Record<string, unknown> | null que resolveDateValue
+      // sempre esperou, antes de qualquer outra lógica.
+      rawValue: resolveDateValue({ ...c, value: modelValueToRecord(c.value) }, candidates, temporal.referenceTimestamp),
     }));
 
   return { commitments, inputTokens, outputTokens, unavailable: false };
