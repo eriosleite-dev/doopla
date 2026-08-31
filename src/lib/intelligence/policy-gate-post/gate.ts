@@ -116,7 +116,19 @@ export async function evaluatePostModelGate(
       p_booking_id: input.bookingId,
       p_opportunity_id: input.opportunityId,
     }),
-    supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId }),
+    supabase.rpc('is_commercial_root_terminal', {
+      p_commercial_root_id: commercialRootId,
+      // Migration 0051: caminho is_system_caller() (service_role, sem
+      // auth.uid()) exige p_professional_id explícito — mesma
+      // provenance já usada acima em get_active_approvals e abaixo em
+      // is_operationally_ready (input.professionalId, resolvido pelo
+      // Orchestrator/Runtime a partir do canal, nunca do próprio
+      // texto da mensagem). commercial_root_belongs_to_professional
+      // continua a única checagem de ownership nos dois caminhos —
+      // este parâmetro só diz DE ONDE vem o professional_id, nunca
+      // pula a verificação.
+      p_professional_id: input.professionalId,
+    }),
     extractCommitments(
       input.proposedResponse,
       { referenceTimestamp: input.referenceTimestamp, timezone: input.timezone, knownEventDate: input.knownEventDate },

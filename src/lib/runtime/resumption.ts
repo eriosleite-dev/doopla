@@ -49,7 +49,9 @@ import { resolveSystemActorContext } from './system-actor';
 // agora enxerga isso naturalmente, exatamente como enxergaria num
 // ciclo normal. O que NÃO pode acontecer é completar a pendência com
 // um envio que não tem nada a ver com o que ela bloqueava — ver
-// freshChecksAddressPendingIdentities logo abaixo, no ramo 'allowed'.
+// freshChecksAddressPendingIdentities logo abaixo, aplicada antes dos
+// ramos 'allowed' e 'blocked' (nenhum dos dois pode resolver/superseder
+// uma identidade que o draft fresco não tocou).
 // A identidade PERSISTENTE do trigger original (pending.triggerMessageId,
 // referenciada em policy_gate_decisions/outbound_intents) nunca muda —
 // é um conceito de auditoria/correlação no banco, inteiramente

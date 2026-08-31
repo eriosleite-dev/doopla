@@ -4997,6 +4997,11 @@ essas saídas plausíveis (isso continua Beta Gate, sem OpenAI).
 
 ## 44. Bug preexistente do Post-model Gate (documentado, NÃO corrigido nesta rodada)
 
+> **Atualização**: corrigido no micro-patch isolado da seção 45, com
+> autorização explícita do usuário, depois da auditoria do commit
+> `b7b142c`. Esta seção é mantida como registro histórico exato do
+> diagnóstico — nenhum conteúdo abaixo foi alterado.
+
 Achado durante o Red Team do bloco 42, mantido sem correção permanente
 por instrução explícita do usuário — será tratado num micro-patch
 isolado, com regression test próprio, depois desta auditoria.
@@ -5096,6 +5101,224 @@ byte-idêntico ao estado anterior a esta auditoria.
 sem ele, nenhuma execução real do Post-model Gate com commercial root
 funciona — bloqueador do freeze final, aguardando autorização
 explícita pra um micro-patch isolado com seu próprio regression test.
+
+## 45. Micro-patch isolado: corrige o bug preexistente do Post-model Gate (seção 44)
+
+Autorizado explicitamente pelo usuário depois da auditoria do commit
+`b7b142c` ("Aprovado o commit `b7b142c`... Agora está autorizado o
+micro-patch isolado do bug preexistente do Post-model Gate"). Escopo
+estrito, tratado como correção de wiring/provenance — nenhum
+redesenho do Gate, nenhum workaround de auth, nenhuma RPC relaxada.
+
+### Causa raiz
+
+`evaluatePostModelGate` (`src/lib/intelligence/policy-gate-post/gate.ts`)
+chamava `is_commercial_root_terminal` passando só `p_commercial_root_id`.
+A migration 0051 estendeu essa function com um segundo parâmetro,
+`p_professional_id uuid default null`, **obrigatório no caminho
+`is_system_caller()`** (service_role — sem `auth.uid()` pra derivar o
+profissional automaticamente): sem ele, a function levanta
+`professional_id_required_for_system_caller` (fail-closed, nunca
+assume). `gate.ts` nunca foi atualizado pra passar esse parâmetro —
+todo caminho real do Runtime (sempre `service_role`) com commercial
+root e um draft não-vazio caía nessa exceção. Diagnóstico completo,
+com os 10 itens exigidos, na seção 44.
+
+### Confirmação da assinatura real antes de alterar
+
+Lida diretamente de `supabase/migrations/0051_runtime_orchestrator.sql:773-807`
+antes de qualquer edição:
+```sql
+create function public.is_commercial_root_terminal(
+  p_commercial_root_id uuid,
+  p_professional_id uuid default null
+)
+...
+if public.is_system_caller() then
+  if p_professional_id is null then
+    raise exception 'professional_id_required_for_system_caller' using errcode = '22023';
+  end if;
+  v_professional_id := p_professional_id;
+else
+  if auth.uid() is null then raise exception 'not_authorized' ...; end if;
+  v_professional_id := auth.uid();
+end if;
+
+if not public.commercial_root_belongs_to_professional(p_commercial_root_id, v_professional_id) then
+  raise exception 'not_authorized' using errcode = '42501';
+end if;
+```
+`commercial_root_belongs_to_professional(root, professional)` (0047)
+continua a ÚNICA fonte de verdade de ownership nos dois caminhos —
+o parâmetro novo só diz DE ONDE vem o `professional_id`, nunca pula
+essa checagem. `input.professionalId` (`PostModelGateInput`) é
+exatamente `actorContext.representedProfessionalId`, resolvido por
+`resolveSystemActorContext` (`src/lib/runtime/system-actor.ts`) — a
+MESMA provenance já usada, sem alteração, nas duas outras RPCs que
+`gate.ts` chama nesta função (`get_active_approvals` e
+`is_operationally_ready`). Não é um valor novo nem uma fonte nova de
+autoridade — é o campo que já circula por todo o resto da função,
+agora também alimentando esta terceira chamada.
+
+### Diff exato
+
+`src/lib/intelligence/policy-gate-post/gate.ts` — só a chamada RPC,
+nenhuma outra linha:
+```diff
+-    supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId }),
++    supabase.rpc('is_commercial_root_terminal', {
++      p_commercial_root_id: commercialRootId,
++      p_professional_id: input.professionalId,
++    }),
+```
+Nenhuma migration. Nenhuma alteração em `matcher.ts`, `extractor.ts`,
+`config.ts`, ou em qualquer outro arquivo de `policy-gate-post/`.
+
+Higiene de comentário (sem mudança funcional), pedida à parte:
+`src/lib/runtime/resumption.ts` tinha um comentário desatualizado
+dizendo que `freshChecksAddressPendingIdentities` era usada "no ramo
+'allowed'" — o código já a aplica antes dos dois ramos (`allowed` e
+`blocked`) desde o commit `b7b142c` (seção 43). Corrigido pra refletir
+isso.
+
+### Testes novos (10 requisitos, `/tmp/pgtest/59_gate_professional_id_fix_test.ts`)
+
+Integração real contra Postgres (via shim `pg-supabase-shim.ts`, sem
+PostgREST disponível), chamando `evaluatePostModelGate` (produção,
+sem cópia) e a RPC `is_commercial_root_terminal` diretamente, com
+fixture dedicado (`59_gate_professional_id_fixture.sql`: bookings
+`BK_A` não-terminal e `BK_A_TERMINAL` terminal, ambos de A; `BK_B`
+não-terminal, de OUTRO profissional B; approval real de R$5000 pra
+`BK_A`).
+
+| # | Requisito | Cenário | Resultado |
+|---|---|---|---|
+| 1 | `evaluatePostModelGate` (system caller) + root não lança mais `professional_id_required_for_system_caller` | `bookingId=BK_A`, sem compromisso | PASS — `allowed`, sem exceção |
+| 2 | profissional correto + root correto → RPC funciona normalmente | `is_commercial_root_terminal(BK_A, A)` direto | PASS — `data=false, error=null` |
+| 3 | `professional_id` errado nunca ganha acesso ao root de outro profissional | `is_commercial_root_terminal(BK_B[de B], p_professional_id=A)` e o inverso `(BK_A[de A], p_professional_id=B)` | PASS (3a/3b) — `not_authorized` nas duas direções, nunca sucesso |
+| 4 | ausência de `professional_id` continua fail-closed no nível da RPC | `is_commercial_root_terminal(BK_A)` sem o parâmetro, `service_role` | PASS — `professional_id_required_for_system_caller` |
+| 5 | commercial root terminal continua bloqueando corretamente | `bookingId=BK_A_TERMINAL` + compromisso real (R$5000) | PASS — `blocked/commercial_root_terminal` |
+| 6a | root não-terminal segue pras demais avaliações do Gate (nunca para no terminal check) | `bookingId=BK_A` + valor divergente do aprovado (R$9999,99) | PASS — `blocked/value_mismatch` (prova que passou do terminal check e chegou no matcher real) |
+| 6b | idem, pass-through completo com approval real | `bookingId=BK_A` + valor igual ao aprovado (R$5000) | PASS — `allowed` |
+| 7 | `pipeline.ts::runCycle` atravessa esse ponto | cadeia REAL de `pipeline.ts` até o Gate (`resolveSystemActorContext`, `ensureOpportunityForConversation`, `resolveEffectiveCommercialRoot`, `resolveRecipientType`, todas funções de produção, sem cópia) chamando `evaluatePostModelGate` no mesmo shape de `pipeline.ts:289-300` | PASS — chega no Gate sem lançar, `allowed` |
+
+**9/9 PASS**, estável em 3 execuções seguidas (itens 3 e 6 têm 2 sub-asserções cada).
+
+**Nota honesta sobre o item 7**: `pipeline.ts::runCycle` não expõe
+nenhum ponto de injeção de model call (diferente de `resumption.ts`,
+que ganhou `ResumptionModelCalls` no commit `b7b142c`) — `classifyIntent`/
+`planResponse` ali sempre usam `defaultModelCall` (rede real,
+indisponível neste sandbox). Adicionar injeção a `pipeline.ts`
+extrapolaria o escopo estrito deste micro-patch (seria uma mudança de
+testabilidade em um arquivo de produção, não wiring do Gate). Por
+isso o teste do item 7 reconstrói, com as FUNÇÕES REAIS de produção
+(nenhuma reimplementação), toda a cadeia de `runCycle` até a chamada
+do Gate — actor context, linking de commercial root, `recipientType`
+— e só fornece `proposedResponse` diretamente como stand-in pro que o
+Planner real produziria. Isso prova que o CALL SITE exato de
+`pipeline.ts` não lança mais, sem alegar cobertura de
+classificação/planejamento (que este patch não toca).
+
+**Item 8** (`resumption.ts::runResumptionCycle` atravessa esse ponto):
+reaproveitado o Red Team de 13 cenários já existente
+(`58_redteam_stale_context_integration_test.ts`, seção 43) — re-executado
+com o fix do Gate agora PERMANENTE (não mais revertido depois do
+teste, como nas rodadas 42/43). **13/13 PASS**, nenhuma exceção
+`professional_id_required_for_system_caller`, nenhuma mudança de
+comportamento nos 13 cenários.
+
+**Item 9** (nenhuma mudança nas regras de approval/matching/pending
+replies/outbound): o diff inteiro é a adição de um parâmetro numa
+chamada RPC — nenhuma linha de `matcher.ts`, `pending-replies*.ts`,
+`recipient.ts`, `outbound.ts` foi tocada. Provado empiricamente pelos
+cenários 6a/6b (matcher continua distinguindo `value_mismatch` de
+`allowed` exatamente como antes) e pelos 13/13 do item 8 (nenhum dos
+13 cenários de matching/pending-replies mudou de resultado).
+
+### Regressão completa (item 10)
+
+Rebuild limpo do zero (`dropdb`/`createdb` + `00_supabase_bootstrap.sql`
++ todas as 54 migrations, em ordem, + `01_seed_test_data.sql`, sem
+erro em nenhum passo) — necessário porque uma execução anterior,
+sobre o banco acumulado de rodadas passadas, mostrou falhas de
+`\gset`/`limit 1` sem `order by` em alguns arquivos adversariais
+(`51`/`53`/`57`) causadas por POLUIÇÃO DE DADOS entre sessões (múltiplas
+conversations acumuladas pro profissional A ao longo de várias
+rodadas, tornando "pega a primeira conversation de A" ambíguo) —
+**não relacionado a esta mudança**: confirmado revertendo pro estado
+limpo e reproduzindo o mesmo problema mesmo sem o fix aplicado.
+
+Sobre o rebuild limpo:
+- SQL (`02_*` a `57_*`, 31 arquivos): **227 PASS**, exatamente as
+  mesmas **3 falhas pré-existentes e não relacionadas** já documentadas
+  (`41_redteam_provenance_and_overflow.sql` — "0 candidatos" ×3,
+  concorrência/overflow), **0 falhas novas**, **0 problemas de `\gset`**.
+- TS puro (sem DB): `54_pending_replies_matching_test.ts` (31 PASS),
+  `55_commercial_root_resolution_test.ts` (4 PASS),
+  `56_retry_backoff_test.ts` (9 PASS), `gate-readiness-test.ts`,
+  `gate-no-root-test.ts`, `runtime-closing-scenarios-test.ts`,
+  `runtime-commercial-root-test.ts` — todos limpos, sem falha.
+- Integração real (Postgres): `58_redteam_stale_context_integration_test.ts`
+  13/13, `59_gate_professional_id_fix_test.ts` 9/9 (ambos com o fix
+  permanente, não revertido desta vez).
+- `tsc --noEmit`: limpo. `eslint src/`: limpo. `next build`: limpo,
+  32 rotas (mesma contagem de antes).
+
+### Confirmação: nenhuma regra/RPC relaxada
+
+`is_commercial_root_terminal` continua com a MESMA assinatura, o
+MESMO fail-closed quando `p_professional_id` está ausente no caminho
+`service_role` (item 4 acima prova isso continua acontecendo), e a
+MESMA checagem de ownership (`commercial_root_belongs_to_professional`)
+nos dois caminhos (itens 2/3 provam isso — `professional_id` errado
+nunca ganha acesso a root alheio). Nenhuma migration foi criada ou
+alterada. O patch só corrige QUEM chama a RPC (o caller TS estava
+omitindo um parâmetro obrigatório) — nunca o que a RPC exige ou
+verifica.
+
+### Confirmação: Blocos 1–4 e o mecanismo de resumption congelado (commit `b7b142c`) sem alteração funcional
+
+`freshChecksAddressPendingIdentities`, a regra de 4 ramos
+(diverged/diverged/resolve/still_blocked), o `every` sobre múltiplas
+identidades, e `supersede_runtime_pending_replies_for_terminal_root` —
+nenhum tocado. O único código de `resumption.ts` alterado nesta rodada
+foi um comentário (ver "Diff exato" acima). Os 13/13 do Red Team da
+seção 43 confirmam isso empiricamente: mesmos 13 resultados, agora sem
+precisar reverter o fix do Gate pra rodá-los.
+
+### Riscos residuais
+
+O risco antes classificado como "o mais importante, bloqueador do
+freeze final" (seção 44) — o call site real, exercitado por todo
+ciclo/retomada do Runtime — está fechado.
+
+**Achado novo durante a busca por outros call sites** (fora do escopo
+autorizado, NÃO corrigido nesta rodada): `evaluateToolCallGate`
+(`src/lib/intelligence/policy-gate-post/tool-gate.ts:65`) chama
+`is_commercial_root_terminal` com o MESMO padrão — só
+`p_commercial_root_id`, sem `p_professional_id` — e sofreria o mesmo
+`professional_id_required_for_system_caller` se fosse exercitada sob
+`service_role` com um commercial root real. Diferença crítica:
+`evaluateToolCallGate` é exportada (`policy-gate-post/index.ts:38`)
+mas **nunca chamada por nenhum caminho real** — nem `pipeline.ts`, nem
+`resumption.ts`, nem nenhum outro arquivo do projeto a invoca; o
+próprio comentário do arquivo confirma o motivo ("nenhuma tool de
+escrita/ação existe ainda no Tool Registry... não há nada real pra
+encadear agora"). Ou seja: mesmo bug estrutural, mas em código
+morto/inalcançável hoje — zero risco de produção atual, ao contrário
+do achado da seção 44. Não corrigido porque está fora do escopo
+estrito autorizado ("a chamada de `is_commercial_root_terminal` no
+Post-model Gate", entendido como `gate.ts`/`evaluatePostModelGate`) —
+fica registrado aqui como candidato a um micro-patch futuro, análogo a
+este, se/quando uma tool de escrita real passar a chamar
+`evaluateToolCallGate`. Fix seria idêntico em forma (mesmo parâmetro,
+mesma provenance — `input.professionalId`, já presente em
+`ToolCallGateInput`).
+
+🔒 **Confirmação**: **Blocos 1–4 intocados.** Mecanismo de resumption
+congelado (commit `b7b142c`) sem alteração funcional. Nenhuma
+migration. Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge,
+nenhum PR. Nenhuma regra de segurança relaxada no banco.
 
 ## Como usar isso
 
