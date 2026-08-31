@@ -5727,9 +5727,18 @@ correta. Sinal positivo apesar do erro: prova que
 `triggerInboundMessage`/a rota/a autenticação funcionam exatamente
 como desenhado, e que o tratamento de erro (nunca derruba a página,
 mensagem limpa) se comporta como esperado mesmo numa falha de
-infraestrutura real, não simulada. Usuário corrigiu o valor da
-`SUPABASE_SERVICE_ROLE_KEY` na Vercel; este commit força outro
-deployment novo pra pegar o valor corrigido.
+infraestrutura real, não simulada.
+
+**Atualização 3**: segunda tentativa (deployment `dfc930e`, já Ready)
+repetiu o MESMO erro. Causa raiz real encontrada: ao tentar restringir
+`SUPABASE_SERVICE_ROLE_KEY` por branch, a UI da Vercel criou DUAS
+variáveis com o mesmo nome (uma "Preview" genérica + uma "Preview" +
+branch específica) — ambiguidade de qual valor o build de fato lia.
+Resolvido apagando as duas e recriando uma única, escopada só
+"Preview" (sem restrição de branch, mesmo escopo que `OPENAI_API_KEY`
+já tinha desde o início — mais simples e suficiente). Este commit
+força mais um deployment pra pegar essa versão, agora sem
+ambiguidade.
 
 ## Como usar isso
 
