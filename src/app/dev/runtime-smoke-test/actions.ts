@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
 import { triggerInboundMessage } from '@/lib/beta-integration/trigger';
+import { sendProfessionalReplyAction } from '@/app/dashboard/professional-reply-action';
 import type { RuntimeCycleOutcome } from '@/lib/runtime';
 import type { Conversation } from '@/lib/supabase/types';
 
@@ -94,24 +95,23 @@ export async function sendSmokeTestClientMessageAction(params: {
 // Simula o PRÓPRIO PROFISSIONAL respondendo na MESMA conversa (nunca
 // uma conversa professional_self separada — é a própria thread com o
 // cliente que carrega o commercial root; ver comentário em
-// beta-integration/trigger.ts). authorProfileId é sempre o usuário
-// logado, nunca um parâmetro vindo do client.
+// beta-integration/trigger.ts).
+//
+// Passo 4b: delega inteiramente pra sendProfessionalReplyAction
+// (dashboard/professional-reply-action.ts) — nunca chama
+// triggerInboundMessage direto mais. É exatamente o boundary do
+// painel real que o passo 4b introduziu, sendo validado aqui, na
+// mesma UI de sempre (zero UI nova) — só trocado o que o botão
+// "enviar como profissional" chama por baixo. submissionId gerado
+// aqui, uma vez por clique — mesmo contrato de idempotência que uma
+// UI de produto real teria que respeitar.
 export async function sendSmokeTestProfessionalMessageAction(params: {
   conversationId: string;
   body: string;
 }): Promise<SmokeTestActionResult> {
-  const { user } = await requireProfessional();
-  const ownership = await assertOwnsConversation(params.conversationId);
-  if (!ownership.ok) return { kind: 'action_error', error: ownership.error };
-
-  try {
-    return await triggerInboundMessage({
-      conversationId: params.conversationId,
-      authorType: 'professional',
-      authorProfileId: user.id,
-      body: params.body,
-    });
-  } catch (err) {
-    return { kind: 'action_error', error: err instanceof Error ? err.message : 'erro desconhecido' };
-  }
+  return sendProfessionalReplyAction({
+    conversationId: params.conversationId,
+    submissionId: crypto.randomUUID(),
+    body: params.body,
+  });
 }

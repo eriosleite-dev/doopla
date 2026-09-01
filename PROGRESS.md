@@ -6472,6 +6472,37 @@ limpos.
 migration. Nenhuma mudança em Approval Engine/Planner/Gate/
 Orchestrator. Nenhuma UI. Nenhum sistema genérico de ações/tools.
 
+## 55. Beta Runtime Integration — passo 4b: preparação pra validação real em Preview (A e E)
+
+Usuário aprovou a estrutura do 4b mas não considera o passo fechado
+sem validar em Preview os dois comportamentos que dependem do model
+real (happy path e resumption) — mesma disciplina de evidência do
+passo 3. Nenhuma UI nova permitida.
+
+### Mudança mínima: `/dev/runtime-smoke-test` passa a exercitar o boundary do 4b
+
+`sendSmokeTestProfessionalMessageAction` (`/dev/runtime-smoke-test/actions.ts`)
+não chama mais `triggerInboundMessage` direto — delega inteiramente
+pra `sendProfessionalReplyAction` (`dashboard/professional-reply-action.ts`,
+passo 4b), gerando um `submissionId` novo por clique. **Zero UI
+nova** — a mesma página/formulário de sempre, só trocado o que o
+botão "enviar como profissional" chama por baixo. É exatamente o
+boundary que precisa ser validado (a mensagem do cliente continua
+simulada via `triggerInboundMessage` direto — fora do escopo do 4b).
+Nenhuma lógica de Runtime/Approval Engine tocada — mudança
+estritamente de wiring. `tsc`/`eslint`/`build` limpos; `66_professional_reply_action_test.ts`
+(4 PASS) reconfirmado sem alteração (não depende deste arquivo).
+
+### Pendente — validação real (só possível em Preview)
+
+A (happy path) e E (resumption) exigem Approval Engine real (OpenAI)
+— ver roteiro entregue ao usuário na própria conversa, com as
+consultas SQL de evidência objetiva (mensagem → resolução →
+approval_record; e, no caso E, `runtime_pending_reply` saindo de
+`pending` pelo mecanismo normal + `outbound_intent` correspondente,
+tudo correlacionado por IDs reais). Resultado será registrado aqui
+assim que confirmado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
