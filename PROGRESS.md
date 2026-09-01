@@ -6263,6 +6263,85 @@ smoke 3b real com a MESMA consulta SQL de evidência
 (`approval_resolutions.outcome`/`approval_records.operation_type`/
 `approved_value`).
 
+## 53. Beta Runtime Integration — passo 4a: leitura real do painel sob RLS (runtime_pending_replies + outbound_intents)
+
+Primeira peça do passo 4 (painel) do roadmap aprovado. Escopo
+estritamente audit-then-implement, conforme autorizado: só prova que
+o profissional autenticado lê exclusivamente o próprio estado
+persistido pelo Runtime — nenhuma reinterpretação de produto, nenhuma
+UI ainda.
+
+### Auditoria (antes de qualquer código)
+
+- Nenhuma página/componente do painel lia `runtime_pending_replies`
+  ou `outbound_intents` antes desta rodada — só usados dentro de
+  `src/lib/runtime/*`.
+- `runtime_pending_replies` tinha RLS **habilitado mas sem nenhuma
+  policy** (migration 0053, deliberado: "estado interno do
+  Orchestrator") — leitura real do painel era estruturalmente
+  impossível até esta migration.
+- `outbound_intents` já tinha `"outbound_intents: select own"`
+  (migration 0051, `professional_id = auth.uid()` direto) — só
+  faltava o código de leitura.
+- Nenhum mock encontrado em nenhuma página do dashboard — toda a área
+  já lê dado real.
+- Padrão de autenticação único: `getSessionProfile()` via
+  `createClient()` (client autenticado, cookie-based) — nunca
+  `service_role` no painel.
+
+### Migration
+
+`0056_runtime_pending_replies_select_own.sql` — **só** a policy de
+SELECT, seguindo exatamente o padrão já estabelecido em
+`"conversation_messages: select via conversation"` (migration 0039):
+posse resolvida via `conversations.represented_professional_id`
+(única fonte de verdade de dono), nunca uma coluna
+`professional_id` duplicada em `runtime_pending_replies`.
+Deliberadamente **sem** policy de INSERT/UPDATE/DELETE pra
+`authenticated` — toda escrita continua exclusiva das functions
+security definer já existentes.
+
+### Leitura TS
+
+`src/app/dashboard/runtime-state-reads.ts` (novo arquivo, isolado da
+lógica de "attention items" pré-Runtime que já existe em
+`dashboard/data.ts`) — duas funções, `getRuntimePendingReplies()` e
+`getOutboundIntents()`, cada uma um `select('*')` puro, **sem**
+`.eq()` de profissional/conversation (a filtragem é 100% da RLS, de
+propósito — um filtro adicional no código mascararia uma RLS
+quebrada em vez de expor o problema). Nenhuma lógica de decisão,
+nenhuma inferência de "precisa de você" a partir de `status`, nenhuma
+reconstrução a partir de `policy_gate_decisions`/`approval_records`.
+Retornam exatamente as colunas das duas tabelas, tipadas.
+
+### Testes (prova de isolamento RLS)
+
+Novo `65_runtime_pending_replies_rls_test.ts` (7 PASS, Postgres
+real, dois profissionais reais A/B): A vê só o próprio
+`runtime_pending_replies`; A não vê o de B (e simétrico, B não vê o
+de A); `authenticated` não consegue INSERT/UPDATE/DELETE em
+`runtime_pending_replies` (RLS nega, zero linhas afetadas, sem
+exceção estranha — comportamento padrão de "sem policy de escrita");
+`outbound_intents` mantém o comportamento pré-existente intacto (A
+vê só o próprio) — confirma zero regressão da migration nova.
+
+### Regressão
+
+Suíte completa re-rodada: `55/56/58/59/60/61/62/63/64/65` +
+`gate-no-root` + `gate-readiness` + `runtime-closing-scenarios` —
+100% verde. `tsc --noEmit`, `eslint` (arquivo novo) e `next build`
+(34 rotas — nenhuma rota nova nesta etapa, o número não mudou desde
+o painel) limpos.
+
+🔒 **Confirmação de escopo**: 1 migration (só a policy), 1 arquivo TS
+novo (só leitura). Nenhuma mudança em Approval Engine/Planner/Gate/
+Orchestrator. Nenhuma UI nova. `/orcamento/[slug]` (achado da
+auditoria de "entrada de clientes" — legacy, `formulário →
+opportunities`, paralelo ao `conversa → Runtime`, precisará ser
+reconciliado quando o passo 6 conectar canal real) não foi tocado.
+Nenhum Código Doopla implementado (fica pro passo 6, por decisão
+explícita — "baixo risco" não é motivo pra antecipar).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
