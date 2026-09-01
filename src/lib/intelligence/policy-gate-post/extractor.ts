@@ -95,6 +95,14 @@ function buildExtractorInstructions(hasTemporalCandidates: boolean): string {
     'Você extrai, de um texto que a Doopla está PRESTES A ENVIAR a um cliente, quais compromissos comerciais estruturados esse texto comunica como certos/decididos — nunca o que ele SUGERE verificar, nunca o que ele pergunta.',
     'Você NUNCA decide se o compromisso é autorizado — só relata o que o texto, lido literalmente e por implicação direta, está confirmando.',
     'Se o texto só coleta informação, pede pra aguardar, diz que vai consultar o profissional, ou não confirma nenhum valor/condição concreta, devolva commitments vazio.',
+    // Achado real de produção (passo 4b, achado #3): o model
+    // extraiu "other_commitment_change" de frases de ADIAMENTO
+    // (nunca deveriam gerar compromisso nenhum, por definição de
+    // buildExtractorInstructions acima) — exemplos literais reais
+    // que falharam, pra fechar a lacuna sem virar uma blacklist de
+    // palavra-chave (o julgamento continua semântico, só ganhou mais
+    // um exemplo âncora).
+    'Isso vale mesmo quando a frase de adiamento é elaborada ou menciona um próximo passo concreto: "Assim que tivermos os dados solicitados, checamos os detalhes com a equipe e voltamos com a confirmação." e "Vou verificar essa disponibilidade com o profissional e já te retorno." são os DOIS exemplos de commitments vazio — "checar/verificar e voltar com uma confirmação" nunca é, por si só, a confirmação — é a promessa de uma confirmação futura.',
     'Cada compromisso precisa de um valor CONCRETO no texto (um número, uma data, uma hora, uma descrição específica) — nunca infira um valor que o texto não afirma.',
     'subjectKey só é relevante pra categorias com múltiplas instâncias possíveis no mesmo trabalho (ex.: logistics_commitment pode ser sobre transporte OU hospedagem, separadamente) — descreva em uma palavra curta (ex.: "transport", "lodging") o que o texto especifica; null se a categoria for de instância única (preço, data, hora, duração, local, desconto, condição de pagamento, aceite, cancelamento) ou se o texto não deixar claro qual instância.',
   ];

@@ -100,4 +100,23 @@ export const POLICY_GATE_GOLDEN_SUITE_CASES: PolicyGateGoldenSuiteCase[] = [
     expectedCommitments: [{ decisionCategory: 'date_change' }],
     note: 'ambíguo entre next_sabado/following_sabado — model precisa escolher um dos dois candidatos reais, nunca inventar; qualquer um dos dois conta como PASS aqui (o teste de engenharia, não este, cobre a rejeição por ambiguidade genuína)',
   },
+  // Achado real de produção (passo 4b, achado #3): estes dois textos
+  // reais fizeram o model extrair "other_commitment_change" de uma
+  // frase de ADIAMENTO — violando a própria instrução existente
+  // ("diz que vai consultar... devolva commitments vazio"). Isso
+  // contaminava runtime_pending_replies genuínas (com identidade
+  // resolvida noutra categoria), tornando-as inelegíveis pra
+  // resumption por causa de um subject_key_unresolved espúrio.
+  {
+    name: 'adiamento elaborado — "assim que tivermos os dados, checamos e voltamos" (achado real)',
+    proposedResponse: 'Assim que tivermos os dados solicitados, checamos os detalhes com a equipe e voltamos com a confirmação.',
+    expectedCommitments: [],
+    note: 'item 13 da spec, variação real que falhou em Preview — "checar e voltar com confirmação" é a promessa de uma confirmação futura, nunca a confirmação em si',
+  },
+  {
+    name: 'adiamento — "vou verificar com o profissional e já retorno" (variação real do smoke test)',
+    proposedResponse: 'Vou verificar essa disponibilidade com o profissional e já te retorno.',
+    expectedCommitments: [],
+    note: 'mesmo padrão do caso "consulta ao profissional, sem compromisso" acima, com a frase literal que apareceu em produção',
+  },
 ];
