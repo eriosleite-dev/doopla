@@ -6680,6 +6680,114 @@ com uma pista concreta de por que ele é necessário (retry de
 `conversation_busy` em pendências de conversas compartilhadas), não
 mais especulativo.
 
+## 58. Beta Runtime Integration — passo 5: reconciler/cron real (implementação técnica fechada, disparo automático da Vercel pendente de Production)
+
+### Auditoria e decisão de arquitetura
+
+Antes de implementar, auditoria read-only cobrindo: contrato atual do
+reconciler (`reconcileDueRuntimePendingReplies`, já existente desde a
+rodada anterior — nunca fiado a nenhum cron); infraestrutura disponível
+(Vercel Cron, zero fila/worker/serviço novo); frequência (backoff
+30s-1800s, safety net 900s → 1min aprovado, projeto confirmado em
+Vercel Pro); segurança (`CRON_SECRET`, mesma disciplina de
+`SUPABASE_SERVICE_ROLE_KEY`); concorrência/idempotência (provadas por
+código: `select...for update`, claims atômicos, heartbeat de
+segurança); falhas (`needs_attention` já alcançável desde a migration
+0054 — correção de uma nota de dívida desatualizada no PROGRESS.md,
+nunca foi blocker de verdade).
+
+### Achado arquitetural — `subject_key_unresolved` nunca era retomado, nem misto
+
+O teste E (seção 57) revelou que uma `runtime_pending_reply` real pode
+nascer com checks MISTOS (alguns com `subjectKey` resolvido, outros
+`subject_key_unresolved` na mesma pending) — `isEligibleForAutoMatch`
+desqualificava a pendência INTEIRA do fluxo automático nesse caso,
+mesmo quando parte dela tinha identidade real resolvível.
+
+Decisão do usuário, depois de rodada de confirmação técnica
+(`freshChecksAddressPendingIdentities` provada suficiente também no
+caminho `allowed`, via `matcher.ts`/`touchedIdentities`): extensão
+event-driven, nunca time-driven — uma approval nova na MESMA
+`decisionCategory` de um check `subject_key_unresolved` AUTORIZA uma
+nova tentativa (nunca decide resolução sozinha); a avaliação fresca
+(Planner+Gate) continua sendo a única autoridade real. Pending nunca
+ganha `next_attempt_at` por passagem de tempo só por estar
+`subject_key_unresolved` — só pelo evento de categoria.
+
+### Implementação
+
+- `src/lib/runtime/pending-replies-matching.ts`: `shouldAttemptResume`
+  ganha um segundo gatilho independente (categoria, sem exigir
+  `subjectKey`) ao lado do matching por identidade completa já
+  existente; `freshChecksAddressPendingIdentities` ganha a checagem
+  correspondente do lado "endereçado" — cada blocker (resolvido ou
+  não) avaliado independente, nunca resume parcial, nunca resolve uma
+  categoria implicitamente resolvendo outra. `isEligibleForAutoMatch`/
+  `shouldSupersedeOnCreation` intocados (fora do escopo desta rodada,
+  decisão do usuário).
+- `src/app/api/runtime/reconcile-pending-replies/route.ts` (novo): GET
+  autenticado por `CRON_SECRET` (`Authorization: Bearer`), chama
+  `reconcileDueRuntimePendingReplies` — nenhuma lógica de retomada
+  nova, só o disparo.
+- `vercel.json` (novo): cron `* * * * *` (1min) apontando pra rota
+  acima.
+- `.env.local.example`: `CRON_SECRET` documentado, mesma disciplina de
+  server-only.
+- Nenhuma migration necessária — toda a mecânica (claim/lease/backoff/
+  idempotência) já existia desde 0053/0054.
+
+### Testes
+
+- 14 casos determinísticos puros (sem I/O): regressão da pending pura
+  resolvida (comportamento original intocado), pending pura
+  `subject_key_unresolved`, pending MISTA, múltiplas categorias
+  independentes (resolver uma nunca resolve outra), adversarial
+  (ambiguidade que persiste no fresh check nunca conta como
+  endereçada), motivo não-elegível nunca entra em nenhum grupo,
+  `shouldSupersedeOnCreation` intocado.
+- 2 casos contra Postgres real provando a transição `needs_attention`
+  pela RPC de produção (`begin_runtime_pending_reply_attempt`), via
+  fixture (`attempt_count = MAX-1`), sem alterar
+  `RUNTIME_PENDING_REPLY_MAX_ATTEMPTS` nem esperar tempo real.
+- Regressão completa: 13 cenários de fechamento do Runtime + RLS de
+  `runtime_pending_replies` (7) + boundary do 4b (4), sem quebras.
+- `tsc`/`eslint`/`build` limpos.
+
+### Validação em Preview
+
+Achado de plataforma, sinalizado antes de validar: **Vercel Cron Jobs
+só disparam contra o deployment de Production, nunca Preview** —
+limitação documentada da própria Vercel, não configuração. Por decisão
+do usuário, validação em Preview feita chamando a rota real via
+`fetch`/`curl` com `Authorization: Bearer $CRON_SECRET` (mesmo código
+que o cron chamaria), cobrindo tudo exceto o agendamento automático em
+si:
+
+- 401 sem secret, 401 com secret errado, 200 com secret correto.
+- Cenário real recriado (cliente → orçamento; profissional → preço,
+  já nasce pending com 2 checks resolvidos, `date_change`/`primary` e
+  `price_or_cache`/`primary`; profissional confirma a data →
+  `attemptResumptionsAfterApproval` dispara, `conversation_busy_retry_scheduled`,
+  `attemptCount: 1`).
+- `fetch` na rota (secret correto) processou a pending:
+  `{"processed":1,"outcomes":[{"kind":"resolved","outboundIntentId":"cc83af97-..."}]}`.
+- SQL: `runtime_pending_replies.status = 'completed'`, `attempt_count = 2`,
+  `resolved_at` == `outbound_intents.created_at` exatamente. Conteúdo do
+  outbound referencia corretamente os DOIS blockers resolvidos (data
+  E preço), confirmando a extensão pra checks mistos funcionando de
+  ponta a ponta contra o model real.
+- Reprocessar (`fetch` de novo) devolveu `{"processed":0,"outcomes":[]}`
+  — zero duplicação. Total de `outbound_intents` no commercial root:
+  2 (o da resposta inicial ao cliente + o da resolução da pending,
+  ambos legítimos e distintos).
+
+**Fechamento**: implementação técnica do passo 5 fechável com essa
+evidência. Item restante, explicitamente não-bloqueante: confirmar,
+depois de um deploy de Production, que o Vercel Cron de fato dispara
+sozinho no intervalo configurado — **"Production verification
+pending"**, não impede considerar o passo 5 tecnicamente concluído
+agora.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
