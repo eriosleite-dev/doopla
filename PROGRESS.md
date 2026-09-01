@@ -7180,13 +7180,25 @@ NUNCA chama a Meta, NUNCA converte pra template.
 
 ### Fechamento (6A+6B Fase 2)
 
-Implementação técnica fechada com a evidência acima. Ainda depende de
-Meta real (template aprovado de verdade, credenciais, URL estável) pra
-validação E2E completa — mesma classe de pendência não-bloqueante já
-registrada na Fase 1. Por instrução explícita do usuário, **não
-avançar para 6C (identidade profissional + OTP) nem 6D (demais entry
-paths — link individual, Código Doopla, onboarding) sem nova
-autorização.**
+Implementação e testes aprovados. Ainda depende de Meta real (template
+aprovado de verdade, credenciais, URL estável) pra validação E2E
+completa — mesma classe de pendência não-bloqueante já registrada na
+Fase 1; checklist operacional exata pra essa validação entregue
+separadamente ao usuário (não repetida aqui). Por instrução explícita
+do usuário, **não avançar para 6C (identidade profissional + OTP) nem
+6D (demais entry paths — link individual, Código Doopla, onboarding)
+sem nova autorização.**
+
+### Dívida arquitetural consciente (registrada, não-blocker)
+
+`pipeline.ts` — historicamente 100% channel-agnostic — passou a
+importar `channels/whatsapp/cold-outreach-template.ts` (ver nota da
+Fase 2 acima). Aceito pelo usuário PARA ESTE VERTICAL, explicitamente
+**não generalizável**: antes de adicionar qualquer canal novo (email,
+outro provider), avaliar uma abstração de capability/policy de canal
+que evite acoplamento crescente do Runtime a módulos de canal
+específicos — decisão de arquitetura a discutir no momento de um
+próximo canal, nunca decidida por inércia/repetição do padrão atual.
 
 ## Como usar isso
 
