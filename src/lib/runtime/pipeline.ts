@@ -10,9 +10,10 @@ import { AI_FEATURE_RESPONSE_PLANNING, planResponse } from '../intelligence/plan
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
 import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision } from '../intelligence/policy-gate-post';
 import '../intelligence/tools';
-import type { ToolContext } from '../intelligence/types';
+import type { ActorContext, MinimalConversation, ToolContext } from '../intelligence/types';
 import { ensureOpportunityForConversation, resolveEffectiveCommercialRoot } from './commercial-root';
 import { acquireConversationLease, releaseConversationLease } from './conversation-lease';
+import { getLastWhatsappInboundAt, shouldSendColdOutreachTemplate } from './cold-outreach';
 import { resolveRuntimeDisposition } from './disposition';
 import { claimInboundEvent, finishInboundEvent } from './inbound-events';
 import { persistInboundMessage, resolveOrCreateExternalParticipant } from './intake';
@@ -20,12 +21,14 @@ import { createOutboundIntent } from './outbound';
 import { createRuntimePendingReply, fetchPolicyGateDecisionChecks, listPendingRuntimeReplies } from './pending-replies';
 import { shouldCreatePendingReply, shouldSupersedeOnCreation } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
+import { resolveProfessionalDisplayName } from './professional-identity';
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { attemptResumptionsAfterApproval, type ResumptionOutcome } from './resumption';
 import { buildStructuralFacts } from './structural-facts';
 import { resolveSystemActorContext } from './system-actor';
 import type { InboundEvent, RuntimeCycleOutcome } from './types';
+import { renderColdOutreachTemplateContent } from '../channels/whatsapp/cold-outreach-template';
 
 // Doopla Intelligence Core v1 — Orchestrator/Runtime: pipeline
 // principal. Encadeia os Blocos 1–6 numa única execução determinística
@@ -139,6 +142,32 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     return { kind: 'conversation_not_found' };
   }
   const conversation = refreshed.conversation;
+
+  // Passo 6A+6B Fase 2 — ramo determinístico do primeiro outreach frio
+  // ("profissional manda contato -> Doopla inicia" sem CSW aberta).
+  // Decidido AQUI, antes de qualquer chamada a classifyIntent/
+  // planResponse/runApprovalEngine/evaluatePostModelGate (Blocos 3-6) —
+  // nenhuma delas tem o que fazer com um template fixo pré-aprovado
+  // pela Meta: o conteúdo não é gerado nem negociável, não há nada a
+  // classificar/planejar/aprovar. Único boundary/trilha de auditoria
+  // preservados: mesmo claimInboundEvent/lease/intake já rodados acima,
+  // mesmo orchestrator_run abaixo — nunca um create_outbound_intent
+  // paralelo fora do Runtime (decisão do usuário).
+  if (conversation.external_participant_id) {
+    const lastWhatsappInboundAt = await getLastWhatsappInboundAt(supabase, { externalParticipantId: conversation.external_participant_id });
+    const coldOutreach = shouldSendColdOutreachTemplate({
+      authorType: event.authorType,
+      channel: event.channel,
+      conversationType: conversation.conversation_type,
+      externalParticipantId: conversation.external_participant_id,
+      lastWhatsappInboundAt,
+      now: new Date(),
+    });
+
+    if (coldOutreach) {
+      return await runColdOutreachTemplateBranch(supabase, event, inboundEventId, actorContext, conversation, message.id);
+    }
+  }
 
   const run = await startOrchestratorRun(supabase, {
     conversationId: event.conversationId,
@@ -429,5 +458,72 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     aiMessageId,
     pendingReplyId,
     resumptions,
+  };
+}
+
+// Passo 6A+6B Fase 2 — extraído de runCycle pra deixar o early-return
+// (linha acima do call site) auditável de relance: NENHUMA chamada a
+// classifyIntent/planResponse/runApprovalEngine/evaluatePostModelGate
+// existe neste caminho, só leitura determinística (nome de exibição da
+// profissional) + escrita já existente (create_outbound_intent,
+// send_as='template') + a MESMA dupla start/finishOrchestratorRun de
+// qualquer outro ciclo, pra manter uma única trilha de auditoria mesmo
+// sem Planner. Nunca chamado fora de runCycle (não é exportado).
+async function runColdOutreachTemplateBranch(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  event: InboundEvent,
+  inboundEventId: string,
+  actorContext: ActorContext,
+  conversation: MinimalConversation,
+  triggerMessageId: string
+): Promise<RuntimeCycleOutcome> {
+  const run = await startOrchestratorRun(supabase, {
+    conversationId: event.conversationId,
+    representedProfessionalId: actorContext.representedProfessionalId,
+    actorType: actorContext.actorType,
+    actorProfileId: actorContext.actorProfileId,
+    externalParticipantId: conversation.external_participant_id,
+    triggerSource: actorContext.triggerSource,
+    eligibleTools: [],
+  });
+
+  const professionalDisplayName = await resolveProfessionalDisplayName(supabase, actorContext.representedProfessionalId);
+  // profiles.full_name é NOT NULL (migration 0001) — este fallback é
+  // só uma guarda defensiva pro caso teórico de representedProfessionalId
+  // não resolver nenhuma linha (nunca deveria ocorrer aqui: já é a
+  // dona da conversation), nunca a expectativa normal.
+  const renderedContent = renderColdOutreachTemplateContent(professionalDisplayName ?? 'a profissional');
+
+  const intent = await createOutboundIntent(supabase, {
+    conversationId: event.conversationId,
+    triggerMessageId,
+    runId: run?.id ?? null,
+    policyDecisionId: null,
+    channel: event.channel,
+    // conversation.external_participant_id já foi checado not-null pelo
+    // chamador (shouldSendColdOutreachTemplate exige isso) — non-null
+    // assertion segura, mesmo padrão já usado em pipeline.ts pro ramo
+    // normal (action === 'create_outbound_intent').
+    recipientExternalParticipantId: conversation.external_participant_id!,
+    content: renderedContent,
+    sendAs: 'template',
+  });
+
+  await finishOrchestratorRun(supabase, {
+    runId: run?.id ?? '',
+    status: 'completed',
+    calledTools: [],
+    error: null,
+    fallbackUsed: false,
+  });
+
+  await finishInboundEvent(supabase, { eventId: inboundEventId, status: 'processed', conversationMessageId: triggerMessageId, error: null });
+
+  return {
+    kind: 'cold_outreach_template',
+    conversationMessageId: triggerMessageId,
+    runId: run?.id ?? null,
+    outboundIntentId: intent.id,
   };
 }

@@ -23,6 +23,11 @@ export async function createOutboundIntent(
     channel: string;
     recipientExternalParticipantId: string;
     content: string;
+    // Passo 6A+6B Fase 2 — default 'free_text' preserva 100% do
+    // comportamento anterior pra todo chamador que não passa isto
+    // (mesmo default da RPC, espelhado aqui só pra deixar explícito no
+    // tipo — nunca uma segunda fonte de verdade sobre o default real).
+    sendAs?: 'free_text' | 'template';
   }
 ): Promise<{ id: string }> {
   const { data, error } = await supabase
@@ -34,6 +39,7 @@ export async function createOutboundIntent(
       p_channel: params.channel,
       p_recipient_external_participant_id: params.recipientExternalParticipantId,
       p_content: params.content,
+      p_send_as: params.sendAs ?? 'free_text',
     })
     .single();
   if (error || !data) throw new Error(`create_outbound_intent falhou: ${error?.message ?? 'sem dado'}`);
@@ -135,6 +141,11 @@ export type OutboundIntentRow = {
   recipientExternalParticipantId: string | null;
   content: string;
   deliveryState: string;
+  // Passo 6A+6B Fase 2 — intenção registrada na criação (ver
+  // migration 0058). O sender NUNCA confia nisso sozinho pra
+  // 'free_text': revalida a CSW no momento do envio (cold-outreach.ts/
+  // resolveSendAction).
+  sendAs: 'free_text' | 'template';
 };
 
 export async function listClaimableOutboundIntents(
@@ -154,6 +165,7 @@ export async function listClaimableOutboundIntents(
       recipient_external_participant_id: string | null;
       content: string;
       delivery_state: string;
+      send_as: 'free_text' | 'template';
     }>
   ).map((r) => ({
     id: r.id,
@@ -164,6 +176,7 @@ export async function listClaimableOutboundIntents(
     recipientExternalParticipantId: r.recipient_external_participant_id,
     content: r.content,
     deliveryState: r.delivery_state,
+    sendAs: r.send_as,
   }));
 }
 

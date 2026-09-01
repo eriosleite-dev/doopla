@@ -7003,12 +7003,190 @@ fechamento do passo 5). Nenhum desses bloqueia o fechamento técnico do
 6A+6B — são a mesma classe de item que passo 5 já fechou como pendência
 não-bloqueante.
 
-### Fechamento
+### Fechamento (6A+6B Fase 1 — infraestrutura)
 
-6A+6B fechado tecnicamente com a evidência acima. Por instrução
-explícita do usuário, **não avançar para 6C (identidade profissional +
-OTP) nem 6D (demais entry paths — link individual, Código Doopla,
-onboarding) sem nova autorização.**
+Fase 1 fechada tecnicamente com a evidência acima.
+
+## 60. Beta Runtime Integration — passo 6A+6B Fase 2: primeiro outreach real ("profissional manda contato -> Doopla inicia" sem CSW aberta)
+
+### Achado bloqueante que motivou a Fase 2 (auditoria de validação E2E)
+
+Antes de configurar Meta/Vercel pra um E2E real, auditoria read-only
+dos 12 pontos pedidos (o que criar na Meta, credenciais, env vars,
+URL/webhook, número de teste, template/CSW, como testar cada peça)
+revelou um achado bloqueante: a Cloud API só aceita texto livre dentro
+de uma Customer Service Window (CSW) de 24h aberta pelo CLIENTE — um
+contato que nunca falou com a Doopla não tem janela aberta, então a
+PRIMEIRA mensagem de um outreach frio precisa ser um Message Template
+pré-aprovado, nunca texto livre. Isso bloqueava especificamente o
+entry path de produto do 6A, mas não a prova de infraestrutura (que
+usa uma CSW aberta por outro meio). Decisão do usuário: fechar em duas
+fases — Fase 1 (infraestrutura, já fechada) e Fase 2 (este outreach
+real).
+
+### Decisão de arquitetura (opção b, escolhida pelo usuário)
+
+Duas opções foram propostas pra onde viveria a decisão determinística
+do template: (a) pular Planner/Gate inteiramente numa Server Action
+separada, ou (b) manter tudo dentro da pipeline/Runtime normal, com um
+curto-circuito interno reconhecendo "cold start, sem CSW". O usuário
+escolheu (b) explicitamente: **um único boundary, uma única trilha de
+auditoria**, mesmo quando não há necessidade de inteligência
+generativa — nunca um `create_outbound_intent` paralelo fora do
+Runtime.
+
+Duas correções obrigatórias, incorporadas antes de implementar:
+
+1. **`send_as` nunca substitui a revalidação da CSW no envio.** O
+   sender SEMPRE revalida a condição legal imediatamente antes de
+   chamar a Meta — `send_as='template'` sempre pode mandar (não
+   depende de CSW); `send_as='free_text'` + CSW ainda aberta manda
+   texto, sem mudança; `send_as='free_text'` + CSW fechada faz fail
+   closed, usando o MESMO estado/function já existentes
+   (`failed_permanent` via `markOutboundIntentFailed`) — nunca
+   converte automaticamente pra template (o texto livre aprovado pelo
+   Runtime pode ter semântica completamente diferente do template fixo
+   de introdução).
+2. **`outbound_intents.content` precisa representar o que foi REALMENTE
+   comunicado.** Como não há Planner neste ramo, `content` é gerado
+   deterministicamente (template + nome da profissional), nunca um
+   draft descartado. O payload técnico enviado à Meta (nome do
+   template + idioma + `components`) continua separado — `content` é a
+   representação humana, nunca a segunda fonte de verdade sobre o quê
+   foi decidido comunicar.
+
+### Migration 0058 — `cold_outreach_template`
+
+Confirmada como mínima pela auditoria (nenhum dado adicional necessário
+pra reproduzir/entender um envio):
+
+- `outbound_intents.send_as` (`'free_text' | 'template'`, default
+  `'free_text'` — zero mudança de comportamento pra qualquer chamador
+  existente). A ÚNICA coluna nova.
+- `create_outbound_intent` estendida com `p_send_as default 'free_text'`
+  — precisou de `drop function` explícito antes do `create` (adicionar
+  parâmetro muda a assinatura; sem o drop, o Postgres cria um SEGUNDO
+  overload ambíguo em vez de substituir).
+- `get_last_whatsapp_inbound_at(p_external_participant_id)` — leitura
+  pura, `is_system_caller()` guardada, deriva CSW de
+  `conversation_messages` REAL (`channel='whatsapp' and direction='inbound'`,
+  `max(created_at)`) escopada por `external_participant_id` (não por
+  `conversation_id` — a CSW é do par número-Doopla↔número-cliente,
+  atravessa qualquer conversation nova que a raiz comercial terminal
+  force criar). Nenhum estado de CSW persistido à parte.
+
+### Fluxo determinístico cold-start (`pipeline.ts`)
+
+Novo branch em `runCycle`, avaliado logo após intake (mensagem da
+profissional já persistida, contexto da conversation já atualizado) e
+**antes** de `buildContextPackage`/`classifyIntent`/`ensureOpportunityForConversation`/
+`detectInboundProposal`/`planResponse`/`runApprovalEngine`/
+`evaluatePostModelGate` — nenhuma dessas peças tem o que fazer com um
+template fixo pré-aprovado pela Meta (conteúdo não é gerado nem
+negociável). Elegibilidade (`shouldSendColdOutreachTemplate`, pura):
+autor profissional + canal whatsapp + `conversation_type='external_inquiry'`
++ `external_participant_id` presente + CSW fechada (`isCswOpen`,
+derivada de `get_last_whatsapp_inbound_at`). Quando elegível, o ramo
+(`runColdOutreachTemplateBranch`) resolve o nome de exibição real da
+profissional (`resolveProfessionalDisplayName` — mesma precedência
+`stage_name ?? full_name` já usada por `get-professional-profile.ts`,
+fatorada num módulo novo pra nunca ter duas implementações da mesma
+regra), renderiza o `content` humano-legível determinístico
+(`renderColdOutreachTemplateContent`), cria o `outbound_intent`
+(`send_as='template'`) e produz o MESMO par `start_orchestrator_run`/
+`finish_orchestrator_run` de qualquer outro ciclo (com
+`classification`/`plan` ausentes — já suportado, `finishOrchestratorRun`
+grava `null` nesses campos sem exigir nada extra) — trilha de auditoria
+uniforme mesmo sem Planner. Novo outcome dedicado no tipo
+`RuntimeCycleOutcome` (`kind: 'cold_outreach_template'`), nunca
+sobrecarregando `'completed'` com campos de classificação/plano que não
+fazem sentido aqui.
+
+**Nota de arquitetura, sinalizada explicitamente**: `pipeline.ts`
+(historicamente 100% channel-agnostic ao longo de toda a sessão) passa
+a importar `renderColdOutreachTemplateContent` de
+`channels/whatsapp/cold-outreach-template.ts` — uma exceção estreita e
+deliberada, já que o próprio ramo só existe quando `event.channel==='whatsapp'`.
+Constantes/renderização do template continuam fora de `runtime/`
+(mesmo padrão de `channels/whatsapp/` já estabelecido no 6A), só a
+DECISÃO de quando usá-las vive dentro da pipeline.
+
+### Revalidação de CSW no sender (`send-outbound-intents/route.ts`)
+
+`resolveSendAction(sendAs, cswOpen)` — função pura, único lugar que
+decide entre os 3 ramos fechados — chamada a cada envio, nunca confia
+no `send_as` congelado na criação:
+`getLastWhatsappInboundAt`+`isCswOpen` são recalculados NA HORA do
+envio. `send_as='template'` → `sendWhatsappTemplateMessage` (nome/
+idioma fixos em código, `components` com o nome da profissional
+resolvido de novo no momento do envio — nunca duplicado como coluna,
+já é derivável de `professional_id`, já presente no outbound_intent).
+`send_as='free_text'` + CSW aberta → `sendWhatsappTextMessage`, sem
+mudança. `send_as='free_text'` + CSW fechada →
+`markOutboundIntentFailed(permanent:true, reason:'csw_fechada_antes_do_envio_de_texto_livre')`,
+NUNCA chama a Meta, NUNCA converte pra template.
+
+### Testes
+
+- 17 testes puros novos (`shouldSendColdOutreachTemplate`/`isCswOpen`/
+  `resolveSendAction`/renderização do template) — incl. limite exato de
+  24h (23h59 ainda aberta, exatamente 24h já fechada), os 7 motivos de
+  inelegibilidade, e os 3 ramos de `resolveSendAction`. 17/17 PASS.
+- `client.ts` estendido com `sendWhatsappTemplateMessage` — 5 testes
+  novos de `fetch` mockado (2xx+wamid → `sent_confirmed`; código
+  transient conhecido → `failed_transient`; código permanent conhecido
+  (template não existe/não aprovado) → `failed_permanent`; exceção de
+  rede → `sent_unknown`; payload real enviado usa `type:"template"`
+  com nome/idioma/components corretos, nunca `type:"text"`) — suíte
+  completa de `client.ts` (texto + template) em 13/13 PASS.
+- Integração real contra Postgres (via `processInboundEvent`, shim) —
+  **prova central pedida pelo usuário**: nenhuma model call ocorre no
+  ramo cold-outreach. Prova em duas camadas: (1) o teste roda até o
+  fim sem lançar mesmo com `OPENAI_API_KEY` ausente do ambiente
+  (`getOpenAIClient()` só lança quando CHAMADO — se `classifyIntent`/
+  `planResponse` tivessem sido alcançados, o teste teria falhado
+  imediatamente); (2) prova definitiva, não só inferida: `select ...
+  from ai_usage_events where run_id = <o run deste ciclo>` retorna
+  ZERO linhas, e `orchestrator_runs.primary_intent`/`response_plan`
+  ficam `null` pra esse run — nunca um valor forçado/inventado.
+  Confirma também: `outbound_intent` com `send_as='template'` e
+  `content` exatamente igual à renderização determinística
+  (`renderColdOutreachTemplateContent('Profissional A')`, fixture
+  real); mensagem inbound da profissional persistida normalmente;
+  dedupe de `providerEventId` intacto (replay → `duplicate_event`,
+  sem outbound_intent duplicado).
+- Revalidação de CSW no sender, **janela expirando entre criação e
+  envio** (o cenário pedido explicitamente): fixture com uma mensagem
+  inbound real de 25h atrás (CSW fechada por dado real, nunca
+  suposição) + um `outbound_intent` criado como `send_as='free_text'`
+  já em estado `queued` (claimable de verdade). Prova, contra Postgres
+  real, as MESMAS functions que a rota do sender chama:
+  `getLastWhatsappInboundAt` reflete a mensagem real;
+  `resolveSendAction('free_text', false)` → `fail_closed_csw_expired`;
+  aplicar o fail-closed real (`claim` + `markOutboundIntentFailed`)
+  resulta em `delivery_state='failed_permanent'`,
+  `send_as` PRESERVADO como `'free_text'` (nunca reescrito pra
+  `'template'`), `provider_message_id` continua `null` (nunca chegou a
+  mandar nada), e o intent nunca mais aparece em
+  `list_claimable_outbound_intents` (nunca reenviado automaticamente).
+- Regressão completa re-executada (13 cenários de fechamento, RLS de
+  `runtime_pending_replies`, boundary do 4b, `needs_attention`, 32
+  asserções de `pending-replies-matching.ts`, 10 de outbound/isolamento
+  do 6A+6B Fase 1): zero regressões — `outbound.ts`/`pipeline.ts`/
+  `types.ts`/`index.ts` mudaram, nenhum comportamento anterior mudou.
+- `tsc`/`eslint`/`build` limpos, incl. as rotas já existentes
+  (`/api/runtime/send-outbound-intents`, `/dashboard/whatsapp`) e a
+  migration aplicada com sucesso ao banco de teste local.
+
+### Fechamento (6A+6B Fase 2)
+
+Implementação técnica fechada com a evidência acima. Ainda depende de
+Meta real (template aprovado de verdade, credenciais, URL estável) pra
+validação E2E completa — mesma classe de pendência não-bloqueante já
+registrada na Fase 1. Por instrução explícita do usuário, **não
+avançar para 6C (identidade profissional + OTP) nem 6D (demais entry
+paths — link individual, Código Doopla, onboarding) sem nova
+autorização.**
 
 ## Como usar isso
 

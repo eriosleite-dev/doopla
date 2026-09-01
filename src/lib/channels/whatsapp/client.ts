@@ -1,5 +1,6 @@
 import { classifyMetaSendError } from './error-classification';
 import { toWhatsappApiRecipient } from './phone';
+import type { WhatsappTemplateComponent } from './cold-outreach-template';
 
 // Doopla Intelligence Core v1 — canal WhatsApp (passo 6B): client fino
 // sobre a WhatsApp Cloud API (Graph API). Único ponto do projeto que
@@ -43,6 +44,38 @@ type MetaSendSuccessBody = {
 };
 
 export async function sendWhatsappTextMessage(config: WhatsappClientConfig, params: { to: string; body: string }): Promise<WhatsappSendResult> {
+  return postWhatsappMessage(config, {
+    messaging_product: 'whatsapp',
+    to: toWhatsappApiRecipient(params.to),
+    type: 'text',
+    text: { body: params.body },
+  });
+}
+
+// Passo 6A+6B Fase 2 — primeiro contato sem CSW aberta. Nunca decide
+// SE deve mandar template (isso é do chamador, ver cold-outreach.ts/
+// send-outbound-intents/route.ts) — só monta o payload no formato que
+// a Cloud API exige (nome/idioma/components, nunca texto livre) e
+// reaproveita a MESMA classificação de resultado de sendWhatsappTextMessage
+// (postWhatsappMessage abaixo) — 2xx+wamid/ambíguo/erro classificado
+// por código são agnósticos ao tipo de mensagem enviada.
+export async function sendWhatsappTemplateMessage(
+  config: WhatsappClientConfig,
+  params: { to: string; templateName: string; languageCode: string; components: WhatsappTemplateComponent[] }
+): Promise<WhatsappSendResult> {
+  return postWhatsappMessage(config, {
+    messaging_product: 'whatsapp',
+    to: toWhatsappApiRecipient(params.to),
+    type: 'template',
+    template: {
+      name: params.templateName,
+      language: { code: params.languageCode },
+      components: params.components,
+    },
+  });
+}
+
+async function postWhatsappMessage(config: WhatsappClientConfig, payload: Record<string, unknown>): Promise<WhatsappSendResult> {
   const apiVersion = config.apiVersion ?? 'v20.0';
   const url = `https://graph.facebook.com/${apiVersion}/${config.phoneNumberId}/messages`;
 
@@ -54,12 +87,7 @@ export async function sendWhatsappTextMessage(config: WhatsappClientConfig, para
         Authorization: `Bearer ${config.accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: toWhatsappApiRecipient(params.to),
-        type: 'text',
-        text: { body: params.body },
-      }),
+      body: JSON.stringify(payload),
     });
   } catch {
     // Exceção de rede/timeout/conexão — nunca sabemos se a Meta

@@ -3,12 +3,17 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
 import {
   claimOutboundIntentForSend,
+  getLastWhatsappInboundAt,
+  isCswOpen,
   listClaimableOutboundIntents,
   markOutboundIntentFailed,
   markOutboundIntentSendUnknown,
   markOutboundIntentSentConfirmed,
+  resolveProfessionalDisplayName,
+  resolveSendAction,
 } from '@/lib/runtime';
-import { sendWhatsappTextMessage } from '@/lib/channels/whatsapp/client';
+import { sendWhatsappTemplateMessage, sendWhatsappTextMessage } from '@/lib/channels/whatsapp/client';
+import { buildColdOutreachTemplateComponents, COLD_OUTREACH_TEMPLATE_LANGUAGE, COLD_OUTREACH_TEMPLATE_NAME } from '@/lib/channels/whatsapp/cold-outreach-template';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 
 // Doopla Intelligence Core v1 — Runtime, passo 6B: sender real. É
@@ -54,7 +59,7 @@ export async function GET(request: NextRequest) {
 async function sendOneOutboundIntent(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
-  intent: { id: string; recipientExternalParticipantId: string | null; content: string }
+  intent: { id: string; professionalId: string; recipientExternalParticipantId: string | null; content: string; sendAs: 'free_text' | 'template' }
 ): Promise<{ outboundIntentId: string; outcome: string }> {
   const claim = await claimOutboundIntentForSend(supabase, { outboundIntentId: intent.id, workerId: 'cron:send-outbound-intents' });
   if (!claim.granted || !claim.sendAttemptId) {
@@ -82,10 +87,47 @@ async function sendOneOutboundIntent(
     return { outboundIntentId: intent.id, outcome: 'failed_permanent: identidade não encontrada' };
   }
 
-  const result = await sendWhatsappTextMessage(
-    { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
-    { to: identity.identifier, body: intent.content }
-  );
+  // Passo 6A+6B Fase 2 — REVALIDAÇÃO da condição legal (CSW) no momento
+  // do envio, nunca uma confiança cega em intent.sendAs (registrado na
+  // criação, pode ter ficado desatualizado no intervalo até o cron
+  // reclamar este intent). resolveSendAction é o único lugar que decide
+  // isto — 3 ramos fechados, nenhuma conversão automática entre eles.
+  const lastWhatsappInboundAt = await getLastWhatsappInboundAt(supabase, { externalParticipantId: intent.recipientExternalParticipantId });
+  const cswOpen = isCswOpen(lastWhatsappInboundAt, new Date());
+  const sendAction = resolveSendAction(intent.sendAs, cswOpen);
+
+  if (sendAction === 'fail_closed_csw_expired') {
+    // send_as='free_text' mas a CSW fechou entre a criação e este
+    // envio — NUNCA converte pro template sozinho (o texto livre
+    // aprovado pelo Runtime pode ter semântica completamente diferente
+    // do template fixo de introdução). Fail closed usando o MESMO
+    // estado/function já existentes (failed_permanent via
+    // markOutboundIntentFailed) — nenhum estado novo inventado pra
+    // este caso, nunca chama a Meta.
+    await markOutboundIntentFailed(supabase, {
+      outboundIntentId: intent.id,
+      sendAttemptId,
+      permanent: true,
+      reason: 'csw_fechada_antes_do_envio_de_texto_livre',
+    });
+    return { outboundIntentId: intent.id, outcome: 'failed_permanent: csw fechada antes do envio (free_text)' };
+  }
+
+  const result =
+    sendAction === 'send_template'
+      ? await sendWhatsappTemplateMessage(
+          { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
+          {
+            to: identity.identifier,
+            templateName: COLD_OUTREACH_TEMPLATE_NAME,
+            languageCode: COLD_OUTREACH_TEMPLATE_LANGUAGE,
+            components: buildColdOutreachTemplateComponents((await resolveProfessionalDisplayName(supabase, intent.professionalId)) ?? 'a profissional'),
+          }
+        )
+      : await sendWhatsappTextMessage(
+          { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
+          { to: identity.identifier, body: intent.content }
+        );
 
   switch (result.kind) {
     case 'sent_confirmed':

@@ -71,3 +71,8 @@ export { resolveCommercialRootForResumption } from './commercial-root';
 
 export { attemptResumptionsAfterApproval, resumeOnePendingReply, reconcileDueRuntimePendingReplies } from './resumption';
 export type { ResumptionOutcome, ResumptionModelCalls } from './resumption';
+
+export { resolveProfessionalDisplayName } from './professional-identity';
+
+export { shouldSendColdOutreachTemplate, resolveSendAction, isCswOpen, getLastWhatsappInboundAt, CSW_WINDOW_MS } from './cold-outreach';
+export type { SendAction } from './cold-outreach';

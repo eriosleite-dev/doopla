@@ -100,4 +100,18 @@ export type RuntimeCycleOutcome =
       // de OUTRA conversation (a do cliente), reprocessada do zero.
       resumptions: ResumptionOutcome[];
     }
+  // Passo 6A+6B Fase 2 — ramo determinístico do primeiro outreach frio
+  // ("profissional manda contato -> Doopla inicia", sem CSW aberta).
+  // Distinto de 'completed' de propósito: nenhuma chamada a
+  // classifyIntent/planResponse/runApprovalEngine aconteceu neste
+  // ciclo (cold-outreach.ts decide isso puro, sem model), então os
+  // campos de classificação/plano de 'completed' não fazem sentido
+  // aqui — nunca forçados como null dentro do mesmo shape, um outcome
+  // próprio deixa a ausência explícita no tipo, não implícita.
+  | {
+      kind: 'cold_outreach_template';
+      conversationMessageId: string;
+      runId: string | null;
+      outboundIntentId: string;
+    }
   | { kind: 'failed'; error: string };
