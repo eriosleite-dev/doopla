@@ -6342,6 +6342,136 @@ reconciliado quando o passo 6 conectar canal real) não foi tocado.
 Nenhum Código Doopla implementado (fica pro passo 6, por decisão
 explícita — "baixo risco" não é motivo pra antecipar).
 
+## 54. Beta Runtime Integration — passo 4b: ação real do profissional pelo painel, mesmo boundary do Runtime
+
+Segunda peça do passo 4 (painel). Auditoria read-only prévia (ver
+conversa) provou o contrato inteiro antes de qualquer código —
+implementação aqui é só a versão mínima já aprovada.
+
+### Conclusão arquitetural registrada
+
+Confirmado pela auditoria e vale registrar formalmente: **o profissional
+nunca precisa "aprovar" nada explicitamente pelo painel — ele só fala,
+igual falaria no WhatsApp.** `triggerInboundMessage(authorType='professional')`
+entra pelo mesmo `processInboundEvent`, o Approval Engine decide
+sozinho o que a declaração resolve, e `attemptResumptionsAfterApproval`
+(já dentro de `pipeline.ts`, automático) retoma qualquer
+`runtime_pending_reply` elegível — nenhuma lógica de "resolver
+pendência X" existe nem precisa existir em nenhuma superfície.
+WhatsApp/painel/app são só entradas diferentes pra mesma Doopla — a
+decisão e o estado operacional nunca mudam de lugar.
+
+### Arquivos alterados
+
+`src/app/dashboard/professional-reply-action.ts` (novo, único
+arquivo de código) — `sendProfessionalReplyAction()`, mesmo padrão de
+`requireProfessional()`/`assertOwnsConversation()` já usado em
+`/dev/runtime-smoke-test/actions.ts`, chamando
+`triggerInboundMessage({authorType:'professional', channel:'painel', ...})`.
+Nenhuma migration (não foi necessária).
+
+### Contrato da Server Action
+
+```ts
+sendProfessionalReplyAction(params: {
+  conversationId: string;
+  submissionId: string; // ver idempotência abaixo
+  body: string;
+}): Promise<RuntimeCycleOutcome | { kind: 'action_error'; error: string }>
+```
+
+Duas camadas de posse, nenhuma dependendo só da outra: (1) RLS,
+client `authenticated`, ANTES de qualquer chamada ao Runtime; (2)
+`persist_inbound_message` (dentro do Runtime) revalida
+`author_profile_id = conversations.represented_professional_id` de
+novo, fail-closed. **Nunca** usa a policy de INSERT direto em
+`conversation_messages` (ver dívida registrada abaixo).
+
+### Idempotência — submission identity
+
+`submissionId` é um identificador **gerado por quem chama a action**
+(o futuro componente de UI, uma vez por submissão real — ex.
+`crypto.randomUUID()` no momento em que o profissional inicia aquela
+resposta específica) e usado diretamente como `providerEventId`.
+Retry da MESMA submissão (falha de rede, duplo clique no mesmo
+estado) precisa reenviar o MESMO valor; uma nova submissão
+deliberada — mesmo texto idêntico, mesma conversa, segundos depois —
+precisa vir com um valor NOVO. A action nunca gera nem deriva esse
+valor sozinha (não seria capaz de distinguir retry de nova intenção
+só pelo conteúdo, exatamente a restrição pedida). A proteção real é
+`claim_inbound_event` (migration 0051, `unique(channel,
+provider_event_id)`) — nunca depende de UI desabilitar botão.
+
+**Achado da implementação, documentado explicitamente**: uma
+submissão cujo primeiro ciclo termina em `status='failed'`
+(qualquer erro real — não só falta de credencial) É reivindicável de
+novo pelo MESMO `providerEventId` (`claim_inbound_event`, ramo
+`processing_status = 'failed'` — comportamento correto e proposital,
+retry de falha transitória precisa poder progredir). A dedupe real
+("já processado, nunca reprocessa") só vale depois de um ciclo que
+terminou `status='processed'` — é exatamente esse contrato que o
+teste C prova diretamente.
+
+### Testes
+
+Novo `66_professional_reply_action_test.ts` (4 PASS, Postgres real,
+código de produção real — `processInboundEvent` importado direto de
+`runtime/index.ts`, nunca copiado):
+
+- **B (cross-tenant)**: a MESMA query de posse que a action usa nega
+  leitura da conversa de A quando quem pergunta é B (0 linhas) —
+  prova que a ação nunca chegaria a chamar o Runtime; e confirma o
+  caminho positivo (A lê a própria conversa).
+- **C (idempotência)**: `claim_inbound_event` → `finish_inbound_event('processed')`
+  → segunda `claim_inbound_event` do MESMO `providerEventId` →
+  `claimed=false, already_processed=true`, mesmo `event_id` — nunca
+  reprocessa. Testado direto no mecanismo (não pelo pipeline
+  completo — ver nota abaixo).
+- **D (nova submissão legítima)**: duas chamadas reais a
+  `processInboundEvent`, `providerEventId` diferente, mesma conversa,
+  texto IDÊNTICO — resultam em 2 `conversation_messages` distintas,
+  nunca deduplicadas entre si.
+
+**Nota sobre A (happy path) e E (resumption)**: exigem o Approval
+Engine resolvendo de verdade (OpenAI real) e, no caso de E, uma
+`runtime_pending_reply` sendo retomada por uma decisão nova — mesma
+limitação de todo o resto desta sessão (`OPENAI_API_KEY` indisponível
+neste sandbox). Só validáveis em Preview, mesma disciplina de
+evidência objetiva já usada no passo 3 (não só
+`RuntimeCycleOutcome.status`, conferir em `approval_resolutions`/
+`runtime_pending_replies.status` diretamente).
+
+### Regressão
+
+Suíte completa: `55` a `66` + `gate-no-root` + `gate-readiness` +
+`runtime-closing-scenarios` — 100% verde. `tsc`/`eslint`/`build`
+limpos.
+
+### Dívidas registradas (nenhuma resolvida agora, fora do escopo do 4b)
+
+1. **Policy `"conversation_messages: insert own professional message"`
+   (migration 0039) permite escrever uma mensagem do profissional
+   fora do Runtime, deixando-a órfã** — nunca aciona
+   `claim_inbound_event`/lease/Classifier/Planner/Approval Engine/
+   resumption. Precisa de decisão futura (fechar quando todas as
+   superfícies passarem pelo Runtime, ou confirmar alguma finalidade
+   legítima ainda existente) — não decidido agora, sem análise de
+   call sites.
+2. **`RuntimePendingReply.status` (TS) inclui `'needs_attention'`,
+   nunca alcançável** (CHECK constraint da tabela só permite
+   `'pending'|'completed'|'superseded'`) — divergência vestigial,
+   não bloqueia nada.
+3. **`evaluateToolCallGate`** — confirmado dead/unreachable, o 4b não
+   introduziu nenhum caminho de tool-calling. Continua dívida classe
+   B, autorizada só depois.
+4. **`revocation`/`counterproposal`/variação de `professional_initiated`
+   na golden suite** (achado dos itens 51/52) — mantido como dívida
+   conhecida, por decisão explícita do usuário.
+
+🔒 **Confirmação de escopo**: 1 arquivo de código novo. Nenhuma
+migration. Nenhuma mudança em Approval Engine/Planner/Gate/
+Orchestrator. Nenhuma UI. Nenhum sistema genérico de ações/tools.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
