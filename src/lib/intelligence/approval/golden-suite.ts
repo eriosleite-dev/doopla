@@ -247,4 +247,37 @@ export const APPROVAL_GOLDEN_SUITE_CASES: ApprovalGoldenSuiteCase[] = [
     expectedOutcome: 'inconclusive',
     note: 'aceite curto SEM candidato algum pra confirmar — nunca vira professional_initiated sozinho (não carrega valor/condição própria); a instrução do resolver exige referente inequívoco pra este tipo de frase',
   },
+
+  // ============================================================
+  // Achado real do smoke test 3b (auditoria do fechamento do passo 3):
+  // a frase "Pode fechar por R$3.000." resolvia sozinha (caso acima),
+  // mas continuava inconclusive no pipeline real — porque o
+  // messageWindow real SEMPRE tem a pergunta do cliente logo antes
+  // ("quanto custa...?"), nunca a frase isolada. Nenhum caso anterior
+  // reproduzia esse formato de 2 mensagens (pergunta sem valor +
+  // resposta decisiva). Este caso reproduz fielmente a forma real do
+  // contexto (mesmas 2 mensagens, mesmos textos, structuralFacts de
+  // opportunity — não booking) pra provar a correção antes de pedir
+  // outro smoke test real.
+  // ============================================================
+  {
+    name: 'pergunta do cliente + resposta decisiva do profissional (formato real do smoke test 3b)',
+    category: 'professional_initiated',
+    professionalStatementText: 'Pode fechar por R$3.000.',
+    context: ctx({
+      structuralFacts: { opportunityStatus: 'novo' },
+      messageWindow: [
+        { messageId: 'gm-19', authorType: 'external_participant', contentDigest: 'd19' },
+        { messageId: 'gm-20', authorType: 'professional', contentDigest: 'd20' },
+      ],
+      messageContents: [
+        { messageId: 'gm-19', usableText: 'oi, quanto custa tocar no meu casamento 20/12?' },
+        { messageId: 'gm-20', usableText: 'Pode fechar por R$3.000.' },
+      ],
+      communicatedProposalCandidates: [],
+    }),
+    expectedOutcome: 'resolved',
+    expectedOperationType: 'professional_initiated',
+    note: 'reproduz o formato real do smoke test 3b — pergunta do cliente (sem valor, nunca vira candidato) seguida da resposta decisiva do profissional; ainda autocontida, nunca inconclusive só por ter uma pergunta antes',
+  },
 ];

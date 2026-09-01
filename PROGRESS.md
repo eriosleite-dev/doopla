@@ -6201,6 +6201,68 @@ aceite curto exige referente inequívoco.
    (não só `RuntimeCycleOutcome.status = 'committed'`, que nunca
    provou isso sozinho).
 
+## 52. Beta Runtime Integration — passo 3: cobertura real de "pergunta do cliente + resposta decisiva" no Approval Resolver
+
+Continuação do item 51. Golden suite real (Preview) rodou 11/14 —
+zero aprovação indevida (todos os 8 casos adversariais continuaram
+`inconclusive` corretamente; achado registrado à parte, não bloqueou
+esta validação). "Pode fechar por R$3.000." isolado resolveu
+`professional_initiated` como esperado.
+
+Repetido o smoke 3b real (várias idas e vindas de infraestrutura —
+cache de navegador, conversa reaproveitada por engano — até isolar
+uma execução limpa, numa conversa nova, com o fluxo correto: cliente
+pergunta primeiro, profissional responde depois). Resultado:
+`approval_resolutions.outcome = 'inconclusive'` de novo, mesmo com o
+fix do passo 51 já validado (confirmado deployment certo, commit
+`9976102`, via tela de detalhes do deployment).
+
+### Causa raiz desta rodada
+
+Consulta ao histórico real da conversa (`conversation_messages`)
+mostrou exatamente 2 mensagens: a pergunta do cliente ("oi, quanto
+custa tocar no meu casamento 20/12?") imediatamente antes da resposta
+do profissional ("Pode fechar por R$3.000."). Nenhum caso da golden
+suite testava esse formato — todos os casos de `professional_initiated`
+tinham a frase do profissional ISOLADA no `messageWindow` (uma única
+mensagem, sem nada antes). No pipeline real, o `messageWindow` sempre
+inclui as mensagens recentes da conversa — a pergunta do cliente
+aparece ali, mesmo nunca tendo virado um candidato comunicado
+(pergunta não propõe valor). O model, vendo a pergunta logo antes,
+parece interpretar a resposta como precisando de um candidato pra
+confirmar — não achando nenhum, cai em `inconclusive` de novo, mesmo
+sendo estruturalmente o mesmo caso autocontido já provado isolado.
+
+Confirmado que o candidato circular (item 51) segue corretamente
+filtrado — não é regressão daquele fix; é uma forma real de contexto
+nunca testada.
+
+### Correção
+
+`buildResolverInstructions()` ganha uma linha explícita cobrindo esse
+padrão: pergunta do cliente sem valor concreto NUNCA gera candidato,
+então a resposta decisiva do profissional continua
+`professional_initiated` mesmo com a pergunta aparecendo antes no
+histórico — com exemplo literal usando o texto real do smoke test.
+`golden-suite.ts` ganha um caso novo reproduzindo fielmente o formato
+real (2 mensagens: pergunta do cliente + resposta do profissional,
+`structuralFacts` de opportunity — não booking, mesmos textos exatos
+da conversa real testada) — a única forma de provar a correção antes
+de gastar outro ciclo de deploy/teste real.
+
+### Testes e regressão
+
+Regressão completa re-rodada: `55/56/58/59/60/61/62/63/64` +
+`gate-no-root` + `gate-readiness` + `runtime-closing-scenarios` — 100%
+verde (nenhum destes depende de model real, então nenhum muda com
+ajuste de instrução/golden suite). `tsc`/`eslint`/`build` limpos.
+
+Ainda pendente (só validável em Preview): golden suite real
+confirmando o novo caso `resolved/professional_initiated`, e novo
+smoke 3b real com a MESMA consulta SQL de evidência
+(`approval_resolutions.outcome`/`approval_records.operation_type`/
+`approved_value`).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
