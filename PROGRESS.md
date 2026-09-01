@@ -6946,6 +6946,44 @@ resto do Runtime, nunca depende só do client usado):
 - `tsc`/`eslint`/`build` limpos, todas as rotas novas listadas no build
   (`/api/runtime/send-outbound-intents`, `/api/whatsapp/webhook`,
   `/dashboard/whatsapp`).
+- **Gap fechado (autorizado após a auditoria de validação real)**: 8
+  testes novos de `client.ts` com `fetch` mockado/controlado (sem rede
+  real) — 2xx+wamid → `sent_confirmed`; 2xx sem wamid → `sent_unknown`;
+  código transient conhecido → `failed_transient`; código permanent
+  conhecido → `failed_permanent`; código desconhecido → `failed_permanent`
+  (fail-closed); exceção de rede (fetch rejeita) → `sent_unknown`;
+  corpo cortado no meio da leitura → `sent_unknown`; corpo de erro não-JSON
+  → `failed_permanent` com reason genérica, nunca lança. 8/8 PASS. Mais 1
+  teste novo contra Postgres real provando que `sent_unknown` nunca
+  aparece em `list_claimable_outbound_intents` (fixture SQL direta, mesma
+  técnica já aceita pra `needs_attention` — forçar um timeout real contra
+  a Meta de forma determinística não é possível, a garantia que importa é
+  estrutural). 10/10 PASS na suíte de outbound/isolamento.
+
+### Auditoria de configuração pra E2E real (Meta/Vercel) — achado bloqueante
+
+Antes de configurar qualquer coisa, auditoria read-only cobrindo os 12
+pontos pedidos (o que criar na Meta, credenciais, env vars/environments
+na Vercel, URL estável, registro do webhook, número de teste, preparo do
+cliente de teste, template/CSW, como testar sender/inbound/estado no
+banco, prova de fail-closed em timeout). **Achado bloqueante**: a Cloud
+API só aceita texto livre dentro de uma Customer Service Window (CSW) de
+24h aberta pelo CLIENTE — um contato que nunca falou com a Doopla não
+tem janela aberta, então a primeira mensagem de um outreach precisa ser
+um Message Template pré-aprovado, nunca texto livre. Isso bloqueia
+especificamente o entry path de produto do 6A ("profissional manda
+contato → Doopla inicia"), mas não bloqueia provar a infraestrutura
+(webhook/correlação/Runtime/sender/delivery) usando uma CSW aberta por
+outro meio (`hello_world` de teste, ou o cliente de teste mandando a
+primeira mensagem).
+
+**Decisão do usuário**: fechar 6A+6B em duas fases. Fase 1 — E2E de
+infraestrutura com CSW aberta por fora do fluxo de produto, explicitamente
+**não registrada como validação do entry path "profissional manda
+contato → Doopla inicia"**. Fase 2 — suportar esse entry path de verdade
+via template aprovado; proposta técnica entregue nesta rodada, sem
+implementação ainda (ver `PROGRESS.md` — pendente registrar a decisão
+final quando a Fase 2 for autorizada a implementar).
 
 ### O que foi validado sem Meta real vs. o que ainda depende de URL estável + WhatsApp real
 
