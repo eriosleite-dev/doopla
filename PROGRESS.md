@@ -6788,6 +6788,46 @@ sozinho no intervalo configurado — **"Production verification
 pending"**, não impede considerar o passo 5 tecnicamente concluído
 agora.
 
+### "Production verification pending" fechado
+
+Auditoria antes de agir revelou um achado maior do que o esperado:
+Production nunca tinha recebido nenhum código de nenhuma sessão desde
+o "Bloco 4" (Structured Decision + Response Planner, dry-run) — nem
+Approval Engine, nem Policy Gate, nem o Runtime inteiro, nem nada do
+6A+6B. O branch configurado como produção
+(`claude/doopla-backend-login-db-fj5j3y`) tinha divergido do branch de
+trabalho atual há muito tempo (histórias com commits diferentes pro
+mesmo recurso — ex.: Bloco 3/4 num "dry-run" antigo vs. a versão madura
+e testada que já usamos esse tempo todo), então um `git merge` direto
+entre os dois foi descartado por risco de conflito real entre duas
+versões do mesmo recurso. Caminho adotado: **"Promote to Production"**
+na Vercel de um deployment já existente do branch atual
+(`claude/new-session-3hdkui`, commit `6af4490`), que força um build
+novo lendo as env vars de Production — sem tocar em git, sem merge.
+
+Pré-requisito resolvido antes de promover: `SUPABASE_SERVICE_ROLE_KEY`
+e `OPENAI_API_KEY` estavam faltando no environment Production da Vercel
+(só existiam em Preview) — a rota do reconciler quebraria em runtime
+sem a primeira, e o `resumption.ts` (classifyIntent/planResponse reais)
+sem a segunda. Ambas cadastradas em Production antes da promoção.
+
+Evidência real, pós-promoção:
+- `curl` manual autenticado contra
+  `https://doopla-zr9p.vercel.app/api/runtime/reconcile-pending-replies`
+  → `200 {"processed":0,"outcomes":[]}` (0 é o esperado, sem pendência
+  real vencida no momento).
+- **Log de Runtime da Vercel, filtrado por `requestPath:/api/runtime/reconcile-pending-replies`**,
+  janela de ~15 minutos: chamadas `GET 200` automáticas a cada 60
+  segundos exatos (`12:21:01`, `12:22:01`, `12:23:01`, ...,
+  `12:35:01`), batendo com o `* * * * *` do `vercel.json` — sem
+  nenhuma chamada manual nesse intervalo (a única exceção visível no
+  log, um `401` isolado às `12:30:30`, corresponde exatamente ao
+  momento do `curl` manual de teste feito com o `CRON_SECRET` antigo,
+  antes da troca+redeploy — explicado pela própria timeline, não é uma
+  falha real).
+
+**Passo 5 fechado por completo, incluindo a validação de Production.**
+
 ## 59. Beta Runtime Integration — passo 6A+6B: primeiro canal real (WhatsApp) + sender de outbound_intents
 
 ### Auditoria e decisão de arquitetura (antes de implementar)
