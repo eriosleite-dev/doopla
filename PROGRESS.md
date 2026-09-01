@@ -6503,6 +6503,110 @@ approval_record; e, no caso E, `runtime_pending_reply` saindo de
 tudo correlacionado por IDs reais). Resultado será registrado aqui
 assim que confirmado.
 
+## 56. Beta Runtime Integration — passo 4b, teste A validado; achado #2 (loop de resposta ao cliente) investigado e corrigido
+
+### Teste A (happy path pelo boundary do 4b) — validado em Preview
+
+Mensagem do profissional passando por `sendProfessionalReplyAction`
+(não mais `triggerInboundMessage` direto) resultou em
+`approvalOutcome: 'committed'`. Evidência SQL objetiva confirmada:
+`outcome='resolved'`, `resolved_approval_record_ids` não-vazio,
+`operation_type='professional_initiated'`,
+`approved_value={"amountCents":300000}`.
+
+### Teste E (resumption via `runtime_pending_replies`) — 9 tentativas reais em Preview, não reproduzido organicamente
+
+Tentativas de reproduzir organicamente um `runtime_pending_reply`
+genuíno (sem resolver/inserir manualmente, por restrição explícita do
+usuário) esbarraram numa cadeia de precondições estruturais reais,
+cada uma diferente, nenhuma um bug:
+1. Caminho antecipado do Planner (`resolveRequiresProfessionalReviewBeforeSend`)
+   intercepta a maioria das frases de preço antes do Gate.
+2. `runtime_pending_replies` só é criável quando já existe commercial
+   root (`policy_gate_decisions.commercial_root_id` é `NOT NULL`).
+3. `time_change` exige formato estrito `HH:MM` (`value-schemas.ts`) —
+   valores como "14h" falham em `invalid_extracted_value`, motivo não
+   elegível pra pendência.
+4. `professional_not_operationally_ready` bloqueia qualquer commitment
+   antes mesmo de checar approval, se o profissional de teste não tem
+   dados de recebimento (Pix) configurados — precondição de dado, não
+   de código.
+5. Confusão de campo `location`/`description` no extrator pra
+   conteúdo com palavras de local.
+6. Auto-consistência do ciclo: quando a mesma mensagem da profissional
+   é origem do compromisso E o Approval Engine já o comete no mesmo
+   ciclo, o draft de saída sempre casa com a approval recém-criada
+   (nunca bloqueia).
+
+**Não reproduzido, registrado como achado empírico documentado — não
+bloqueia o restante do 4b.** Mecanismo (`shouldCreatePendingReply`/
+`attemptResumptionsAfterApproval`) permanece coberto pelos testes
+determinísticos/SQL já existentes (sessões anteriores); só a
+reprodução ponta-a-ponta via painel real não foi alcançada.
+
+### Achado #2 — profissional respondendo a pergunta interna da Doopla podia deixar o cliente sem retorno nenhum
+
+Durante a investigação do teste E, uma tentativa real revelou algo
+mais sério que uma dificuldade de reprodução: depois de
+`professional_action_required` (Doopla pergunta algo à profissional),
+a resposta decisiva da profissional podia resultar em **nenhuma**
+comunicação — nem ao cliente, nem pedindo revisão de novo — deixando
+o cliente sem retorno.
+
+**Causa raiz, provada deterministicamente** (`plan.ts`, sem depender
+de OpenAI — `modelCall` injetado): `draftStillValid` descartava o
+draft do model (`proposedResponse` viraria `null`) sempre que o piso
+de `resolveResponsePlan` mudava o plano final pra algo fora de
+`{clarify_ambiguity, acknowledge, plano original do model}`. O
+RÓTULO final nunca ficava silencioso (o piso já garantia isso), mas o
+TEXTO sim — e `pipeline.ts` só roda o resto do ciclo
+(Gate/outbound/`persist_ai_message`) quando há texto.
+
+**Investigação confirmou, via SQL real** (`approval_resolution_backoff`
+da mensagem em questão: `rate_tokens` 5→4, claim concedido, resolver
+rodou): o Approval Engine rejeitou corretamente essa resposta
+(`not_eligible`/`invalid_provenance`) porque a pergunta do cliente
+nunca foi um `communicated_proposal_candidate` real (pergunta aberta,
+não proposta de valor) — comportamento certo, fail-closed, não é o
+bug. A correlação pergunta interna ↔ pergunta original do cliente já
+existia estruturalmente (mesma `conversation_messages` thread,
+`buildPlannerContext` inclui até 2 mensagens anteriores) — funcionou
+no caso em que o draft sobreviveu.
+
+**Correção implementada** (`src/lib/intelligence/planner/invariants.ts`,
+`plan.ts`; nenhuma mudança em ordem Planner↔Approval Engine, nenhum
+tipo novo de resumption):
+1. `deterministicFallbackResponse()` — texto fixo, determinístico,
+   nunca inventa fato. Cobre os dois planos que o próprio piso pode
+   produzir sem o model ter escrito pra eles (`consult_professional`
+   rebaixado; `acknowledge` promovido de `no_response_needed`).
+2. `resolveResponsePlan()` — quando o gatilho é a própria profissional
+   respondendo decisivamente (`professionalDecisionSignal ===
+   'candidate_contextual'`, mecanismo existente e já ancorado numa
+   mensagem real — não alterado), o piso não rebaixa mais
+   `answer_with_known_information` pra `consult_professional` só por
+   existir uma categoria de decisão envolvida. Checagem de zero
+   evidência continua incondicional (nunca confia só no sinal bruto do
+   model). Post-model Policy Gate (Bloco 6) continua validando o
+   CONTEÚDO real antes de qualquer envio — a mudança só evita
+   perguntar de novo pra quem acabou de responder.
+
+`golden-suite.ts` (planner): caso existente ajustado (nova família de
+plano válida) + caso novo reproduzindo o padrão real.
+
+**Validação**: teste determinístico local (5 cenários, sem OpenAI)
+prova o bug original e confirma o fix; teste adversarial confirma que
+resposta sem referente/ancoragem real continua barrada
+(`candidate_ambiguous` → `clarify_ambiguity`, nunca vaza pro cliente);
+suíte de regressão de fechamento do Runtime (13 cenários) sem
+quebras; `tsc`/`eslint`/`build` limpos. **Validado em Preview
+end-to-end**: cliente pergunta sobre logística → profissional responde
+decisivamente → evidência SQL correlacionada (`conversation_messages`
++ `outbound_intents.content`) confirma que a resposta real ao cliente
+referencia corretamente a decisão da profissional
+(`delivery_state='policy_allowed'`), fechando o loop que antes ficava
+mudo. Commit `e10c9ab`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
