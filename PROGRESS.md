@@ -6788,6 +6788,190 @@ sozinho no intervalo configurado — **"Production verification
 pending"**, não impede considerar o passo 5 tecnicamente concluído
 agora.
 
+## 59. Beta Runtime Integration — passo 6A+6B: primeiro canal real (WhatsApp) + sender de outbound_intents
+
+### Auditoria e decisão de arquitetura (antes de implementar)
+
+Auditoria read-only cobrindo os 15 pontos pedidos (infra existente,
+`outbound_intents`/`inbound_events`/`create_conversation`/
+`resolve_or_create_external_participant`, `profiles.slug`, boundary do
+Post-model Gate, etc.) confirmou: zero infra real de canal no repo
+(só enum values), toda a state machine de `outbound_intents`
+(migration 0051) e o dedup de `inbound_events` já existiam sem nenhum
+caller real.
+
+Investigação técnica decisiva (decisão do usuário, não invenção): link
+individual de clique-para-WhatsApp orgânico (não-anúncio) **não carrega
+identidade opaca/verificável até o webhook da Meta** — `ctwa_clid`/
+`referral` só existe pra Click-to-WhatsApp Ads pagos;
+`metadata.phone_number_id` identifica o número da Doopla, nunca o
+profissional, sob número compartilhado. Registrado como restrição real
+da plataforma (não dívida escondida) e usado para redesenhar o vertical
+mínimo do 6A: em vez de "cliente clica em link individual", o vertical
+mínimo passou a ser **"profissional compartilha o contato do
+cliente → Doopla inicia"** — a Doopla nunca depende de um mecanismo que
+a Meta não oferece pra correlacionar identidade.
+
+Confirmado também, por leitura direta do schema: `create_conversation`
+(migration 0039) só aceita chamada de uma sessão autenticada real
+correspondendo a `p_represented_professional_id` (sem bypass de
+`is_system_caller()`) — o webhook (service_role, sem sessão) **nunca
+pode criar conversa nova**, só reaproveitar uma existente; sem uma
+reaproveitável, falha fechado (loga, não processa). Isolamento
+cross-professional confirmado pelo desenho de
+`external_participant_channel_identities`, chave
+`(professional_id, channel, identifier)`: o mesmo telefone falando com
+dois profissionais produz duas linhas distintas por design — a
+correlação do webhook precisa lidar com 0/1/2+ matches, nunca advinhar
+no caso 2+.
+
+Três correções finais de produto/engenharia, todas aprovadas
+explicitamente antes de implementar:
+
+1. **Conversation reuse**: `conversations.current_state` ainda não tem
+   state machine real (comentário da própria
+   `advance_conversation_state`, migration 0039) — a regra de reúso
+   ancora no status terminal da raiz comercial
+   (`is_commercial_root_terminal`, RPC já existente), documentada como
+   regra operacional atual, não definitiva.
+2. **Matriz outcome HTTP → `delivery_state`**: 2xx+wamid →
+   `sent_confirmed`; qualquer ausência de resposta HTTP definitiva
+   (timeout, exceção de rede, 2xx sem wamid parseável) →
+   `sent_unknown`, nunca retry automático; erro HTTP definitivo
+   classificado pelo **código/semântica real de erro da Meta**
+   (`error.code`), nunca por status HTTP genérico — tabela fechada,
+   hand-curated (`classifyMetaSendError`), fail-closed pra
+   `failed_permanent` em qualquer código desconhecido.
+3. **Secret dedicado**: `OUTBOUND_SENDER_CRON_SECRET`, separado de
+   `CRON_SECRET` do passo 5 — processos com capacidades diferentes
+   (este fala com um provider externo) usam credenciais diferentes.
+
+### Migration 0057 — `outbound_intent_delivery_status`
+
+Três funções novas, todas `security definer` guardadas por
+`is_system_caller()` (mesma disciplina de defesa em profundidade do
+resto do Runtime, nunca depende só do client usado):
+
+- `mark_outbound_intent_delivered(p_provider_message_id)` — transição
+  `sent_confirmed → delivered`; replay do mesmo evento é idempotente
+  (`found=false`, nunca erro).
+- `mark_outbound_intent_read(p_provider_message_id)` — aceita a partir
+  de `sent_confirmed` OU `delivered` (o evento `delivered` pode nunca
+  chegar antes do `read`).
+- `list_claimable_outbound_intents(p_channel, p_limit)` — espelha os
+  critérios de elegibilidade de `claim_outbound_intent_for_send`,
+  somente leitura, fila global do sender por canal.
+
+### Módulo `src/lib/channels/whatsapp/`
+
+- `phone.ts` — `normalizeWhatsappPhone`/`toWhatsappApiRecipient` (E.164,
+  DDI 55 default).
+- `webhook-verify.ts` — verificação HMAC-SHA256 da assinatura
+  (`X-Hub-Signature-256`, `timingSafeEqual`) + handshake do
+  `hub.challenge`.
+- `error-classification.ts` — `classifyMetaSendError`, tabela fechada
+  de códigos transient/permanent da Cloud API, fallback sempre
+  `'permanent'` pra código desconhecido (decisão do usuário: nunca
+  força retry às cegas).
+- `client.ts` — `sendWhatsappTextMessage`, união discriminada
+  `sent_confirmed | sent_unknown | failed_transient | failed_permanent`
+  seguindo a matriz acima.
+- `conversation.ts` — `findReusableWhatsappConversation`, lógica de
+  seleção **compartilhada** (nunca duplicada) entre a Server Action de
+  outreach e o webhook — nenhum dos dois cria conversa nova por si.
+
+### Três entry points novos
+
+- **`whatsapp-outreach-action.ts`** (Server Action) — profissional
+  autenticada informa contato do cliente; boundary de posse idêntico ao
+  4b (`requireProfessional`), boundary de Runtime idêntico ao 3/4b
+  (`triggerInboundMessage` → `processInboundEvent`, texto passa pelo
+  Planner/Approval Engine/Gate normalmente). `resolve_or_create_external_participant`
+  → reusa ou cria conversa → dispara o ciclo.
+- **`api/whatsapp/webhook/route.ts`** — `GET` (handshake) + `POST`
+  (mensagens/status), sempre 200 após autenticação (nunca aciona o
+  retry agressivo em lote da Meta). Correlaciona por
+  `(channel='whatsapp', identifier)`; fail-closed em `!==1` match
+  (loga, não processa); nunca cria conversa (boundary do
+  `create_conversation`); usa o `wamid` como `provider_event_id` em
+  `inbound_events` (dedup reaproveitando o schema já preparado pra
+  replay de provider). `delivered`/`read` atualizam `outbound_intents`;
+  `sent`/`failed` explicitamente fora de escopo (documentado, não
+  ignorado por descuido).
+- **`api/runtime/send-outbound-intents/route.ts`** — cron autenticado
+  por `OUTBOUND_SENDER_CRON_SECRET`, `listClaimableOutboundIntents` →
+  `claimOutboundIntentForSend` (idempotência por `send_attempt`,
+  mesmo padrão de `begin_runtime_pending_reply_attempt`) → envia →
+  marca o resultado real. Executor puro: nunca decide o que enviar,
+  nunca é tool do Planner.
+- **`/dashboard/whatsapp`** — UI mínima aditiva (formulário de
+  outreach), sem redesenho do painel.
+
+### Testes
+
+- 21 testes puros (sem I/O): normalização de telefone (incl.
+  equivalência entre formatos), verificação de assinatura (incl. corpo
+  alterado, secret errado, header ausente/malformado), handshake,
+  classificação de erro (incl. fail-closed pra código desconhecido).
+  21/21 PASS.
+- 9 testes contra Postgres real (migration 0057 + isolamento): as 3
+  RPCs novas (transição, replay idempotente, `provider_message_id`
+  inexistente, `read` a partir de `sent_confirmed` OU `delivered`,
+  listagem por presença/ausência — nunca contagem exata, a tabela é
+  compartilhada entre fixtures da sessão) + prova de isolamento
+  cross-professional (mesmo telefone, dois profissionais → duas linhas
+  distintas, nunca merge; mesmo telefone, um profissional → resolve
+  exatamente 1; telefone sem profissional nenhum → 0, fora de escopo do
+  6A). 9/9 PASS.
+- Regressão completa re-executada (nada em 6A+6B toca estas tabelas/
+  funções, mas confirmado de novo por disciplina): 13 cenários de
+  fechamento do Runtime, RLS de `runtime_pending_replies` (7), boundary
+  do 4b (4), transição `needs_attention` (2), 32 asserções puras de
+  `pending-replies-matching.ts` — zero regressões reais.
+- **Achado (não-bloqueante, teste corrigido)**: 1 dos testes puros
+  pré-existentes de `shouldAttemptResume` (escrito antes da extensão do
+  passo 5) esperava `false` numa pendência MISTA (identidade batendo +
+  `subject_key_unresolved` ao lado). Isso ficou desatualizado pela
+  própria extensão do passo 5, aprovada e documentada em
+  `pending-replies-matching.ts:74-88`: `shouldAttemptResume` agora
+  autoriza uma TENTATIVA por qualquer um dos dois gatilhos
+  (identidade OU categoria), nunca decide sozinho completude — "nunca
+  resume parcial" é garantido do lado da completude, por
+  `freshChecksAddressPendingIdentities`. Corrigido o teste pra refletir
+  o comportamento atual e adicionado um novo caso comprovando que
+  `freshChecksAddressPendingIdentities` ainda recusa completar essa
+  mesma pendência mista quando só a identidade (não a categoria) foi
+  endereçada — o invariante real continua garantido, só não mais na
+  função que este teste antigo checava.
+- `tsc`/`eslint`/`build` limpos, todas as rotas novas listadas no build
+  (`/api/runtime/send-outbound-intents`, `/api/whatsapp/webhook`,
+  `/dashboard/whatsapp`).
+
+### O que foi validado sem Meta real vs. o que ainda depende de URL estável + WhatsApp real
+
+**Validado sem Meta** (Postgres real + funções puras, evidência acima):
+toda a state machine de `outbound_intents` (incl. as 3 funções novas),
+isolamento cross-professional na correlação de identidade, replay/dedupe
+idempotente, verificação de assinatura HMAC, classificação de erro
+fail-closed, normalização de telefone.
+
+**Ainda depende de URL estável + credenciais reais da Meta** (não
+testável neste ambiente): o handshake real de verificação do webhook
+contra a Meta, o envio real de mensagem via Cloud API (incl. confirmar
+que a resposta 2xx+wamid chega no formato esperado), o recebimento real
+de eventos `delivered`/`read`, e o disparo automático do Vercel Cron em
+Production (mesmo "Production verification pending" registrado no
+fechamento do passo 5). Nenhum desses bloqueia o fechamento técnico do
+6A+6B — são a mesma classe de item que passo 5 já fechou como pendência
+não-bloqueante.
+
+### Fechamento
+
+6A+6B fechado tecnicamente com a evidência acima. Por instrução
+explícita do usuário, **não avançar para 6C (identidade profissional +
+OTP) nem 6D (demais entry paths — link individual, Código Doopla,
+onboarding) sem nova autorização.**
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

@@ -17,3 +17,12 @@ export const supabaseAnonKey = () =>
 // só existe no processo Node do servidor). Lido só por
 // src/lib/supabase/service-role.ts.
 export const supabaseServiceRoleKey = () => requireEnv('SUPABASE_SERVICE_ROLE_KEY');
+
+// Canal WhatsApp (passo 6A+6B) — todas server-only, nunca
+// NEXT_PUBLIC_. Lidas só por src/lib/channels/whatsapp/ e pelas rotas
+// de webhook/sender (src/app/api/whatsapp/, src/app/api/runtime/
+// send-outbound-intents).
+export const whatsappAccessToken = () => requireEnv('WHATSAPP_ACCESS_TOKEN');
+export const whatsappPhoneNumberId = () => requireEnv('WHATSAPP_PHONE_NUMBER_ID');
+export const whatsappAppSecret = () => requireEnv('WHATSAPP_APP_SECRET');
+export const whatsappWebhookVerifyToken = () => requireEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN');

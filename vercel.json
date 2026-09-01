@@ -3,6 +3,10 @@
     {
       "path": "/api/runtime/reconcile-pending-replies",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/runtime/send-outbound-intents",
+      "schedule": "* * * * *"
     }
   ]
 }

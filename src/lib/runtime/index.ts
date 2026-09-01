@@ -29,8 +29,12 @@ export {
   markOutboundIntentSentConfirmed,
   markOutboundIntentSendUnknown,
   markOutboundIntentFailed,
+  markOutboundIntentDelivered,
+  markOutboundIntentRead,
+  listClaimableOutboundIntents,
   cancelOutboundIntent,
 } from './outbound';
+export type { OutboundIntentRow } from './outbound';
 
 export { resolveSystemActorContext } from './system-actor';
 export { buildStructuralFacts } from './structural-facts';

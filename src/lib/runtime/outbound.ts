@@ -99,6 +99,74 @@ export async function markOutboundIntentFailed(
   return data === true;
 }
 
+// Passo 6A+6B — status assíncrono de entrega (webhook da Meta),
+// correlacionado por provider_message_id (wamid), nunca por
+// outbound_intent_id (o webhook de status não carrega esse dado).
+export async function markOutboundIntentDelivered(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { providerMessageId: string }
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('mark_outbound_intent_delivered', { p_provider_message_id: params.providerMessageId });
+  if (error) throw new Error(`mark_outbound_intent_delivered falhou: ${error.message}`);
+  return data === true;
+}
+
+export async function markOutboundIntentRead(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { providerMessageId: string }
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('mark_outbound_intent_read', { p_provider_message_id: params.providerMessageId });
+  if (error) throw new Error(`mark_outbound_intent_read falhou: ${error.message}`);
+  return data === true;
+}
+
+// Descoberta pro sender worker (passo 6B) — mesmo padrão de
+// listDueRuntimePendingReplies, sempre via RPC (nunca select direto
+// mesmo com service_role — defesa em profundidade na fronteira, não
+// só na policy).
+export type OutboundIntentRow = {
+  id: string;
+  conversationId: string;
+  professionalId: string;
+  triggerMessageId: string | null;
+  channel: string;
+  recipientExternalParticipantId: string | null;
+  content: string;
+  deliveryState: string;
+};
+
+export async function listClaimableOutboundIntents(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { channel: string; limit?: number }
+): Promise<OutboundIntentRow[]> {
+  const { data, error } = await supabase.rpc('list_claimable_outbound_intents', { p_channel: params.channel, p_limit: params.limit ?? 50 });
+  if (error) throw new Error(`list_claimable_outbound_intents falhou: ${error.message}`);
+  return (
+    (data ?? []) as Array<{
+      id: string;
+      conversation_id: string;
+      professional_id: string;
+      trigger_message_id: string | null;
+      channel: string;
+      recipient_external_participant_id: string | null;
+      content: string;
+      delivery_state: string;
+    }>
+  ).map((r) => ({
+    id: r.id,
+    conversationId: r.conversation_id,
+    professionalId: r.professional_id,
+    triggerMessageId: r.trigger_message_id,
+    channel: r.channel,
+    recipientExternalParticipantId: r.recipient_external_participant_id,
+    content: r.content,
+    deliveryState: r.delivery_state,
+  }));
+}
+
 export async function cancelOutboundIntent(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
