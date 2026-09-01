@@ -7047,6 +7047,50 @@ não-bloqueante.
 
 Fase 1 fechada tecnicamente com a evidência acima.
 
+### Migrations 0056-0058 aplicadas ao projeto Supabase real (achado + correção)
+
+Auditoria pré-teste WhatsApp (independente da Meta) revelou que o
+projeto Supabase real tinha parado de receber migrations logo após a
+0055 — 0056, 0057 e 0058 nunca tinham sido aplicadas lá, só validadas
+contra o Postgres local (`doopla_rls_test`) o tempo todo. Verificado
+via consulta read-only (`pg_proc`/`pg_policies`/`information_schema`)
+no SQL Editor do Supabase antes de qualquer ação.
+
+**Achado mais sério que "feature faltando"**: a ausência de 0058
+significava que `create_outbound_intent` no banco real ainda tinha a
+assinatura ANTIGA (7 parâmetros, sem `p_send_as`) — e o código já em
+Production (`outbound.ts`) chama essa RPC sempre passando `p_send_as`.
+Ou seja, **todo ciclo do Runtime que tentasse criar um outbound_intent
+em Production estava quebrado** desde a promoção do deployment atual —
+não uma lacuna do 6A+6B, uma regressão no caminho que já funcionava.
+
+Aplicadas em ordem controlada (0056 → 0057 → 0058), cada uma
+confirmada individualmente antes da próxima:
+- **0056**: policy `runtime_pending_replies: select own` criada e
+  confirmada (`cmd=SELECT`, `roles={authenticated}`).
+- **0057**: `mark_outbound_intent_delivered`, `mark_outbound_intent_read`,
+  `list_claimable_outbound_intents` criadas, assinaturas confirmadas
+  batendo com o código.
+- **0058**: coluna `outbound_intents.send_as` confirmada (`text`,
+  default `'free_text'`); `create_outbound_intent` recriada com o
+  `drop function` explícito da assinatura antiga antes do `create` —
+  confirmado por query em `pg_proc` que existe **exatamente 1**
+  overload agora (8 parâmetros, `p_send_as text default 'free_text'`),
+  nunca as duas convivendo de forma ambígua; `get_last_whatsapp_inbound_at`
+  criada e confirmada.
+
+**Smoke test** (sem criar nenhum dado real em Production): chamada a
+`create_outbound_intent` com `p_send_as='template'` e um
+`p_conversation_id` propositalmente inexistente — resultado
+`ERROR P0002: conversation_not_found`, levantado na linha certa do
+corpo da function, ANTES do `insert`. Prova que a assinatura nova
+aceita `p_send_as` e executa corretamente, sem gravar nenhuma linha.
+
+**Regressão de Production identificada e corrigida.** As três
+migrations e o smoke test não alteraram nenhum arquivo do repositório
+(os arquivos de migration já estavam commitados desde o 6A+6B) — só o
+estado do banco real, que agora bate com o código já deployado.
+
 ## 60. Beta Runtime Integration — passo 6A+6B Fase 2: primeiro outreach real ("profissional manda contato -> Doopla inicia" sem CSW aberta)
 
 ### Achado bloqueante que motivou a Fase 2 (auditoria de validação E2E)
