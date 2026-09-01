@@ -3,8 +3,10 @@
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/service-role';
 import { triggerInboundMessage } from '@/lib/beta-integration/trigger';
 import { sendProfessionalReplyAction } from '@/app/dashboard/professional-reply-action';
+import { reconcileDueRuntimePendingReplies, type ResumptionOutcome } from '@/lib/runtime';
 import type { RuntimeCycleOutcome } from '@/lib/runtime';
 import type { Conversation } from '@/lib/supabase/types';
 
@@ -114,4 +116,27 @@ export async function sendSmokeTestProfessionalMessageAction(params: {
     submissionId: crypto.randomUUID(),
     body: params.body,
   });
+}
+
+// Validação do teste E (passo 4b) — chamada manual e única ao
+// reconciler que JÁ EXISTE (resumption.ts, reconcileDueRuntimePendingReplies,
+// escrito numa rodada anterior como "o ponto de entrada que um worker/
+// trigger futuro chamaria periodicamente"). Isto NÃO é o passo 5:
+// nenhum cron, fila, scheduler ou infraestrutura persistente — só um
+// botão dev-only que invoca, uma vez, a MESMA função real de produção
+// que qualquer worker futuro chamaria, sobre QUALQUER runtime_pending_reply
+// que já esteja due (agendada por begin_runtime_pending_reply_attempt/
+// record_runtime_pending_reply_busy) — nunca escopado a uma conversa
+// específica, nunca um UPDATE manual na linha, nunca lógica paralela.
+// service_role igual ao resto do Runtime (a própria função já revalida
+// posse/ownership internamente via resolveSystemActorContext).
+export async function runReconcileDueRuntimePendingRepliesAction(): Promise<{ outcomes: ResumptionOutcome[] } | { kind: 'action_error'; error: string }> {
+  await requireProfessional();
+  try {
+    const supabase = createServiceRoleClient();
+    const outcomes = await reconcileDueRuntimePendingReplies(supabase, { workerId: 'dev:runtime-smoke-test:manual-reconcile' });
+    return { outcomes };
+  } catch (err) {
+    return { kind: 'action_error', error: err instanceof Error ? err.message : 'erro desconhecido' };
+  }
 }

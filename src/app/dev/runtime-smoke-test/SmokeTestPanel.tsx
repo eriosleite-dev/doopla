@@ -7,10 +7,10 @@ import {
   createSmokeTestConversationAction,
   sendSmokeTestClientMessageAction,
   sendSmokeTestProfessionalMessageAction,
-  type SmokeTestActionResult,
+  runReconcileDueRuntimePendingRepliesAction,
 } from './actions';
 
-type LogEntry = { label: string; result: SmokeTestActionResult };
+type LogEntry = { label: string; result: unknown };
 
 export function SmokeTestPanel({ conversations }: { conversations: Conversation[] }) {
   const [conversationId, setConversationId] = useState(conversations[0]?.id ?? '');
@@ -26,6 +26,14 @@ export function SmokeTestPanel({ conversations }: { conversations: Conversation[
   const [sendingProfessional, setSendingProfessional] = useState(false);
 
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [reconciling, setReconciling] = useState(false);
+
+  async function handleReconcile() {
+    setReconciling(true);
+    const res = await runReconcileDueRuntimePendingRepliesAction();
+    setReconciling(false);
+    setLog((prev) => [{ label: 'reconcileDueRuntimePendingReplies (manual, dev-only)', result: res }, ...prev]);
+  }
 
   async function handleCreate() {
     setCreating(true);
@@ -116,28 +124,43 @@ export function SmokeTestPanel({ conversations }: { conversations: Conversation[
         </button>
       </section>
 
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid #ddd', borderRadius: 6, padding: 12 }}>
+        <strong>4. reconciler (validação do teste E — dev-only, chamada manual e única)</strong>
+        <p style={{ margin: 0, color: '#666' }}>
+          Não é o passo 5. Só invoca <code>reconcileDueRuntimePendingReplies</code> (já existente em resumption.ts) uma vez,
+          sobre qualquer <code>runtime_pending_reply</code> que já esteja due — nenhum cron/fila/scheduler.
+        </p>
+        <button type="button" onClick={handleReconcile} disabled={reconciling} style={buttonStyle}>
+          {reconciling ? 'rodando reconciler…' : 'rodar reconciler uma vez'}
+        </button>
+      </section>
+
       {log.length > 0 && (
         <section>
           <strong>Resultado (RuntimeCycleOutcome bruto, mais recente primeiro)</strong>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-            {log.map((entry, i) => (
-              <div key={i}>
-                <div style={{ color: '#555', marginBottom: 4 }}>{entry.label}</div>
-                <pre
-                  style={{
-                    background: '#111',
-                    color: entry.result.kind === 'completed' ? '#7ee787' : entry.result.kind === 'action_error' || entry.result.kind === 'failed' ? '#ff7b72' : '#e3b341',
-                    padding: 12,
-                    borderRadius: 6,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    margin: 0,
-                  }}
-                >
-                  {JSON.stringify(entry.result, null, 2)}
-                </pre>
-              </div>
-            ))}
+            {log.map((entry, i) => {
+              const kind = entry.result && typeof entry.result === 'object' && 'kind' in entry.result ? (entry.result as { kind?: string }).kind : undefined;
+              const color = kind === 'completed' ? '#7ee787' : kind === 'action_error' || kind === 'failed' ? '#ff7b72' : '#e3b341';
+              return (
+                <div key={i}>
+                  <div style={{ color: '#555', marginBottom: 4 }}>{entry.label}</div>
+                  <pre
+                    style={{
+                      background: '#111',
+                      color,
+                      padding: 12,
+                      borderRadius: 6,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      margin: 0,
+                    }}
+                  >
+                    {JSON.stringify(entry.result, null, 2)}
+                  </pre>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
