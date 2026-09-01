@@ -10,6 +10,7 @@ import { PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import {
   boundMissingInformation,
   computeDecisionCategories,
+  deterministicFallbackResponse,
   missingInformationFallback,
   resolveCommitmentNature,
   resolveProfessionalDecisionSignal,
@@ -182,7 +183,13 @@ export async function planResponse(
   // fora do contexto pra que foi escrito. clarify_ambiguity/acknowledge
   // ainda fazem sentido com o draft original na maioria dos casos.
   const draftStillValid = responsePlan === parsed.responsePlan || responsePlan === 'clarify_ambiguity' || responsePlan === 'acknowledge';
-  const proposedResponse = draftStillValid ? parsed.proposedResponse : null;
+  // Nunca silêncio quando há texto humano real no gatilho: se o draft
+  // foi descartado (piso mudou o plano pra algo que o texto do model
+  // não cobre) ou nunca existiu (no_response_needed legitimamente não
+  // escreve nada), um fallback determinístico fecha a lacuna — ver
+  // comentário em deterministicFallbackResponse (invariants.ts).
+  const rawProposedResponse = draftStillValid ? parsed.proposedResponse : null;
+  const proposedResponse = rawProposedResponse ?? (triggerHasUsableText ? deterministicFallbackResponse(responsePlan) : null);
 
   return {
     decision: {

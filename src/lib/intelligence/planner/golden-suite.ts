@@ -94,8 +94,34 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     ],
     bookingFacts: {},
     expectedProfessionalDecisionSignal: 'candidate_contextual',
-    expectedResponsePlanFamily: ['acknowledge', 'consult_professional'],
+    // 'answer_with_known_information' passou a ser família válida aqui
+    // (achado #2 do passo 4b, invariants.ts): com professionalDecisionSignal
+    // ancorado ('candidate_contextual'), o piso não rebaixa mais isso
+    // pra consult_professional — a resposta decisiva da própria
+    // profissional pode seguir direto pro cliente (Bloco 6/Gate
+    // continua validando o CONTEÚDO antes de qualquer envio real).
+    expectedResponsePlanFamily: ['acknowledge', 'consult_professional', 'answer_with_known_information'],
     note: 'candidate_contextual nunca é aprovação — só sinal; nenhum plano deste bloco pode representar execução/aprovação',
+  },
+  {
+    // Caso novo (achado #2 do passo 4b): reproduz o padrão real que
+    // revelou a lacuna em produção — a Doopla pergunta algo à
+    // profissional (professional_action_required, Bloco 4), e a
+    // resposta decisiva dela precisa virar comunicação real de volta
+    // ao cliente, nunca silêncio nem uma segunda pergunta à mesma
+    // profissional sobre o que ela acabou de decidir.
+    name: 'profissional responde decisivamente a pergunta interna da Doopla sobre logística',
+    category: 'professionalDecisionSignal',
+    input: 'Não precisa, a gente leva nosso próprio palco.',
+    triggerAuthorType: 'professional',
+    previousMessages: [
+      { authorType: 'external_participant', text: 'Vocês já têm palco montado ou a gente precisa alugar?' },
+      { authorType: 'ai', text: 'O cliente perguntou se vocês já têm palco ou se ele precisa alugar. Pode confirmar?' },
+    ],
+    bookingFacts: {},
+    expectedProfessionalDecisionSignal: 'candidate_contextual',
+    expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+    note: 'nunca mais consult_professional aqui — a profissional já decidiu, ancorada na própria mensagem; a resposta deve seguir pro cliente',
   },
   {
     name: 'profissional confirma sem referente',

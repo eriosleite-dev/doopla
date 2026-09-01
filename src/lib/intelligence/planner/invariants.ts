@@ -186,13 +186,31 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
   const planAsAny = plan as any;
   if (planAsAny === 'wait_for_external_participant') plan = 'ask_external_participant';
   if (planAsAny === 'wait_for_professional') plan = 'consult_professional';
-  // answer_with_known_information: nunca quando há decisão nova em
-  // jogo — "tenho o fato" nunca vira "posso confirmar/oferecer". E
-  // nunca SEM nenhuma evidência grounded por trás — "responder com
-  // fato conhecido" sem fato nenhum validado é uma contradição em
-  // termos, não uma leitura permissiva.
-  if (plan === 'answer_with_known_information' && (input.requiresProfessionalDecision || input.evidenceUsedCount === 0)) {
-    plan = 'consult_professional';
+  // answer_with_known_information: nunca SEM nenhuma evidência
+  // grounded por trás — "responder com fato conhecido" sem fato
+  // nenhum validado é uma contradição em termos, não uma leitura
+  // permissiva (checagem incondicional, não depende de quem fala).
+  //
+  // requiresProfessionalDecision sozinho só rebaixa quando o GATILHO
+  // deste turno NÃO é a própria profissional decidindo agora
+  // (professionalDecisionSignal !== 'candidate_contextual', já
+  // validado acima como ancorado numa mensagem real da conversa —
+  // nunca 'candidate_ambiguous', esse caso já caiu no piso de cima).
+  // Achado real de produção (passo 4b, achado #2): sem esta exceção,
+  // a PRÓPRIA profissional respondendo decisivamente uma pergunta de
+  // logística (ex.: "não precisa, a gente leva nosso próprio palco")
+  // era sempre rebaixada pra consult_professional — pedindo a mesma
+  // decisão de volta pra ela, em vez de deixar a resposta seguir pro
+  // cliente. O Post-model Policy Gate (Bloco 6) continua sendo quem
+  // valida o CONTEÚDO real do texto antes de qualquer envio — esta
+  // exceção só evita perguntar de novo pra quem acabou de responder,
+  // nunca pula a checagem de compromisso/approval.
+  if (plan === 'answer_with_known_information') {
+    const noEvidence = input.evidenceUsedCount === 0;
+    const decisionNeedsReview = input.requiresProfessionalDecision && input.professionalDecisionSignal !== 'candidate_contextual';
+    if (noEvidence || decisionNeedsReview) {
+      plan = 'consult_professional';
+    }
   }
   // no_response_needed reservado pra gatilho sem texto utilizável —
   // qualquer mensagem humana real com conteúdo merece ao menos um
@@ -205,6 +223,35 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
 
 export function missingInformationFallback(field: string): MissingInformationItem[] {
   return [{ field, reason: 'unavailable', blocksProfessionalDecision: true }];
+}
+
+// Fallback determinístico — nunca um segundo model call, nunca um
+// fato inventado (texto fixo, sem citar valor/data/local nenhum).
+// Fecha uma lacuna real de produção (passo 4b, achado #2): o piso de
+// resolveResponsePlan acima já garante que o RÓTULO final nunca é
+// silencioso (no_response_needed vira acknowledge; evidência
+// insuficiente vira consult_professional), mas plan.ts descarta o
+// TEXTO do model sempre que o plano final diverge do que o model
+// propôs (exceto pra clarify_ambiguity/acknowledge) — e o texto do
+// model, quando o próprio no_response_needed foi escolhido por ele,
+// naturalmente já vem null. Sem este fallback, o rótulo final
+// cumpria a promessa "nunca silêncio" mas o ciclo inteiro (Gate/
+// outbound/persist_ai_message) nunca chegava a rodar, porque
+// pipeline.ts só age quando decision.proposedResponse é truthy.
+// Só cobre os dois planos que o piso PODE produzir sem o model ter
+// escrito pra eles — os demais (ask_external_participant/
+// clarify_ambiguity/answer_with_known_information) sempre dependem
+// do texto real do model; sem fallback seguro pra eles (inventaria
+// conteúdo), continuam null se o model falhar — risco residual já
+// existente, não introduzido aqui.
+export function deterministicFallbackResponse(plan: ResponsePlan): string | null {
+  if (plan === 'consult_professional') {
+    return 'Preciso que você confirme esse ponto antes de eu responder ao cliente — pode revisar a conversa e me dar uma posição?';
+  }
+  if (plan === 'acknowledge') {
+    return 'Combinado, obrigado por avisar!';
+  }
+  return null;
 }
 
 // Deriva requiresProfessionalReviewBeforeSend a partir do responsePlan
