@@ -6607,6 +6607,79 @@ referencia corretamente a decisão da profissional
 (`delivery_state='policy_allowed'`), fechando o loop que antes ficava
 mudo. Commit `e10c9ab`.
 
+## 57. Beta Runtime Integration — passo 4b: teste E completo (achado #3 corrigido) — 4b formalmente fechado
+
+Depois do fix do achado #2 (seção 56), o usuário pediu uma nova
+rodada curta e controlada do teste E — os 9 testes anteriores foram
+feitos ANTES da correção que passou a deixar respostas decisivas da
+profissional chegarem ao Gate como draft real, então não provavam
+mais a alcançabilidade no código atual.
+
+### Achado #3 — extrator (Bloco 6) extraindo compromisso de frase de adiamento
+
+Reproduzindo o Cenário 1 (aceite de trabalho + logística), uma
+`runtime_pending_reply` real nasceu com identidade resolvida
+(`no_matching_approval`, `logistics_commitment`/`transport`), mas
+contaminada por um 4º check espúrio: `subject_key_unresolved`
+(`other_commitment_change`, extraído de "Assim que tivermos os dados
+solicitados, checamos os detalhes com a equipe e voltamos com a
+confirmação."). `isEligibleForAutoMatch()` desqualifica a pendência
+INTEIRA quando qualquer check tem `subject_key_unresolved` (por
+desenho — "nunca resume parcial") — mesmo havendo uma identidade
+válida noutro check.
+
+Investigação confirmou: não é bug de schema/código — o extrator já
+tinha a instrução certa ("diz que vai consultar... devolva
+commitments vazio"), o model só não seguiu numa variação de frase
+mais elaborada que a golden suite não cobria ainda. Fix: reforça
+`buildExtractorInstructions` (`policy-gate-post/extractor.ts`) com os
+dois exemplos literais reais que falharam — julgamento continua
+semântico, nunca virou blacklist de palavra-chave; nenhuma mudança em
+`matcher.ts`/`isEligibleForAutoMatch()`/`subject_key_unresolved` como
+mecanismo. `golden-suite.ts` (policy-gate-post) ganhou os dois casos
+reais. Commit `f5f2ace`.
+
+### Teste E — completo, ponta a ponta, evidência SQL correlacionada
+
+Repetindo o Cenário 1 pós-fix: pending nasceu limpa (`no_matching_approval`,
+`date_change`/`primary`, sem contaminação). `attemptResumptionsAfterApproval`
+disparou automaticamente após a profissional aprovar a data, mas
+caiu em `conversation_busy_retry_scheduled` — achado real: nesse
+desenho (cliente e profissional na MESMA conversa), a retomada no
+mesmo ciclo sempre esbarra na lease já em uso pelo ciclo externo,
+precisando de retry.
+
+`reconcileDueRuntimePendingReplies` (`resumption.ts`) já existia,
+escrito numa rodada anterior como "o ponto de entrada que um worker/
+trigger futuro chamaria periodicamente" — nunca fiado a nenhum
+cron/scheduler. Adicionado um botão dev-only no
+`/dev/runtime-smoke-test` (seção 4) pra chamar essa função UMA VEZ,
+manualmente — nenhuma infraestrutura de agendamento criada, nenhum
+`UPDATE` manual na pendência, nenhuma lógica paralela. **Isto não é o
+passo 5** — só expõe, pra teste, uma função já pronta. Commit
+`43d50a6`.
+
+Evidência final, tudo correlacionado por ID real:
+- `runtime_pending_replies`: `status: 'completed'`, `attempt_count: 2`
+  (1ª tentativa busy, 2ª via reconciler manual), `resolved_at` ==
+  `outbound_intents.created_at` exatamente.
+- `outbound_intents`: conteúdo referencia corretamente a decisão
+  aprovada ("a Eduarda informou que está disponível em 20/12/2026"),
+  `delivery_state: 'policy_allowed'`.
+- Zero duplicação: 1 único `outbound_intent` em todo o commercial
+  root.
+- Adversarial (resposta sem referente não escapa): já provado
+  deterministicamente antes do fix `e10c9ab` — mecanismo de grounding
+  (`resolveProfessionalDecisionSignal`) não foi alterado por nenhum
+  dos fixes desta rodada.
+
+**Passo 4b formalmente fechado**: teste A (validado, seção 55/56) +
+teste E (validado ponta a ponta, esta seção) + achados #2 e #3
+corrigidos e validados. Próximo: passo 5 (reconciler/cron) — agora
+com uma pista concreta de por que ele é necessário (retry de
+`conversation_busy` em pendências de conversas compartilhadas), não
+mais especulativo.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
