@@ -7284,6 +7284,37 @@ que evite acoplamento crescente do Runtime a módulos de canal
 específicos — decisão de arquitetura a discutir no momento de um
 próximo canal, nunca decidida por inércia/repetição do padrão atual.
 
+### `OUTBOUND_SENDER_CRON_SECRET` cadastrado em Production — segunda pendência independente da Meta fechada
+
+Segundo item aprovado na auditoria pré-teste WhatsApp: a variável nunca
+tinha sido cadastrada em nenhum environment (nem Preview, nem
+Production) — sem ela, `/api/runtime/send-outbound-intents` ficaria
+inacessível mesmo depois do desbloqueio da Meta. Cadastrada em
+Production na Vercel.
+
+**Achado operacional durante a validação**: um `Redeploy` disparado a
+partir da lista de Deployments nem sempre substitui o deployment
+"Current" de Production de fato — em pelo menos uma tentativa, o
+deployment que continuou servindo `doopla-zr9p.vercel.app` ficou
+marcado **"Ready Stale"** (Vercel sinalizando explicitamente que as env
+vars mudaram desde aquele build), mesmo depois de múltiplos cliques em
+"Redeploy" em linhas da lista. Resolvido disparando o Redeploy de
+**dentro da página de detalhes do deployment confirmado como
+"Environment: Production, Current"** — o resultado, `WvzVRPBUn`, veio
+sem o aviso "Stale" ("Ready Latest"). Registrado como nota operacional
+pra qualquer próximo redeploy manual: sempre confirmar "Current" +
+ausência de "Stale" na página de detalhes antes de considerar uma
+mudança de env var como propagada.
+
+Evidência: `curl` autenticado contra
+`https://doopla-zr9p.vercel.app/api/runtime/send-outbound-intents` →
+`200 {"processed":0,"results":[]}` (sem pendência real de outbound no
+momento, comportamento esperado).
+
+**As duas pendências independentes da Meta aprovadas nesta rodada
+estão fechadas.** Sem mais nenhum item técnico bloqueando o primeiro
+teste real assim que a Meta liberar a conta.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
