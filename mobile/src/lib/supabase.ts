@@ -1,6 +1,13 @@
 import 'react-native-url-polyfill/auto';
+// Precisa vir ANTES de qualquer uso de crypto.getRandomValues (usado
+// dentro de LargeSecureStore._encrypt abaixo) — o Hermes não expõe
+// isso nativamente, esse import só tem efeito colateral de polyfill,
+// nunca é referenciado diretamente.
+import 'react-native-get-random-values';
 import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as aesjs from 'aes-js';
 import { createClient } from '@supabase/supabase-js';
 
 import { supabaseAnonKey, supabaseUrl } from './env';
@@ -13,23 +20,67 @@ import { supabaseAnonKey, supabaseUrl } from './env';
 // como o client de browser do painel (src/lib/supabase/client.ts no
 // projeto Next.js).
 //
-// Diferença real em relação ao web: lá a sessão vive em cookie
-// httpOnly gerenciado pelo `@supabase/ssr`; aqui não existe cookie de
-// navegador, então o SDK puro (`@supabase/supabase-js`) precisa de um
-// adapter de storage explícito. Optamos por expo-secure-store (Keychain
-// no iOS, Keystore no Android) em vez de AsyncStorage simples — Async­
-// Storage é só persistente, não é criptografado no dispositivo; como
-// o requisito foi "armazenamento seguro/persistente", SecureStore é a
-// escolha que atende as duas palavras, não só uma.
-const SecureStoreAdapter = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-};
+// Storage de sessão — decisão revisada (achado real, confirmado contra
+// a documentação atual da própria Supabase, não só suposição): o
+// expo-secure-store sozinho NÃO SUPORTA valores maiores que 2048 bytes
+// (limite documentado do Keychain/Keystore por trás dele). Uma sessão
+// Supabase completa (access_token JWT + refresh_token + objeto de
+// usuário com identities/metadata) frequentemente ultrapassa isso —
+// usar SecureStore como storage direto da sessão inteira é um risco
+// real de falha de persistência em produção, não teórico.
+//
+// Padrão adotado: LargeSecureStore — o mesmo adapter que a própria
+// Supabase documenta pra Expo/React Native. Só a CHAVE de criptografia
+// AES-256 (32 bytes, sempre cabe) fica no SecureStore (Keychain/
+// Keystore, protegida pelo hardware); o valor da sessão em si fica no
+// AsyncStorage, mas sempre CRIPTOGRAFADO — nunca em texto plano, e sem
+// limite de tamanho relevante pro nosso caso. Resolve as duas
+// exigências ao mesmo tempo (segurança E ausência de risco de payload
+// grande), em vez de escolher uma só.
+class LargeSecureStore {
+  private async encrypt(key: string, value: string): Promise<string> {
+    const encryptionKey = crypto.getRandomValues(new Uint8Array(256 / 8));
+
+    const cipher = new aesjs.ModeOfOperation.ctr(encryptionKey, new aesjs.Counter(1));
+    const encryptedBytes = cipher.encrypt(aesjs.utils.utf8.toBytes(value));
+
+    await SecureStore.setItemAsync(key, aesjs.utils.hex.fromBytes(encryptionKey));
+
+    return aesjs.utils.hex.fromBytes(encryptedBytes);
+  }
+
+  private async decrypt(key: string, value: string): Promise<string | null> {
+    const encryptionKeyHex = await SecureStore.getItemAsync(key);
+    if (!encryptionKeyHex) {
+      return null;
+    }
+
+    const cipher = new aesjs.ModeOfOperation.ctr(aesjs.utils.hex.toBytes(encryptionKeyHex), new aesjs.Counter(1));
+    const decryptedBytes = cipher.decrypt(aesjs.utils.hex.toBytes(value));
+
+    return aesjs.utils.utf8.fromBytes(decryptedBytes);
+  }
+
+  async getItem(key: string): Promise<string | null> {
+    const encrypted = await AsyncStorage.getItem(key);
+    if (!encrypted) return null;
+    return this.decrypt(key, encrypted);
+  }
+
+  async removeItem(key: string): Promise<void> {
+    await AsyncStorage.removeItem(key);
+    await SecureStore.deleteItemAsync(key);
+  }
+
+  async setItem(key: string, value: string): Promise<void> {
+    const encrypted = await this.encrypt(key, value);
+    await AsyncStorage.setItem(key, encrypted);
+  }
+}
 
 export const supabase = createClient(supabaseUrl(), supabaseAnonKey(), {
   auth: {
-    storage: SecureStoreAdapter,
+    storage: new LargeSecureStore(),
     autoRefreshToken: true,
     persistSession: true,
     // Nunca existe callback de OAuth por URL neste client (isso é
