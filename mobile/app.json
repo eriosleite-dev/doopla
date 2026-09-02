@@ -2,6 +2,7 @@
   "expo": {
     "name": "Doopla",
     "slug": "doopla-mobile",
+    "owner": "doopla-ia",
     "scheme": "doopla",
     "version": "1.0.0",
     "orientation": "portrait",
