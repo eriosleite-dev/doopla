@@ -1,152 +1,103 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors } from '@/theme/tokens';
+import { useAuth } from '@/hooks/useAuth';
 import { HomeTopbar } from '@/components/home/HomeTopbar';
 import { HomeHero } from '@/components/home/HomeHero';
 import { StatsCarousel } from '@/components/home/StatsCarousel';
 import { StatCard } from '@/components/home/StatCard';
 import { AccordionSection } from '@/components/home/AccordionSection';
-import { DealCard } from '@/components/home/DealCard';
 import { BookingRow } from '@/components/home/BookingRow';
-import { ActivityRow } from '@/components/home/ActivityRow';
-import { ChartCard } from '@/components/home/ChartCard';
 import { ChannelsCard } from '@/components/home/ChannelsCard';
 import { IndiqueGanheCard } from '@/components/home/IndiqueGanheCard';
 import { FalarComDooplaCard } from '@/components/home/FalarComDooplaCard';
-import { BottomSheet } from '@/components/shared/BottomSheet';
-import { DecisionSheetContent } from '@/components/home/DecisionSheetContent';
 import { useToast } from '@/components/shared/Toast';
-import {
-  DealTagIcon,
-  ClockIcon,
-  NegotiationIcon,
-  HourglassIcon,
-  CheckIcon,
-  MoneyIcon,
-  MailIcon,
-  LinkIcon,
-  ChatBubbleOutlineIcon,
-  HashIcon,
-} from '@/components/icons/Icons';
-import {
-  mockUser,
-  mockStats,
-  mockDeals,
-  mockBookings,
-  mockActivity,
-  mockChartMetrics,
-  mockChannels,
-  mockIndique,
-  type DecisionModalKind,
-} from '@/data/homeMock';
-
-const STAT_ICONS = {
-  negociacoes: <NegotiationIcon size={14} color={colors.red} />,
-  aguardando: <HourglassIcon size={14} color={colors.amber} />,
-  confirmados: <CheckIcon size={14} color={colors.green} />,
-  mes: <MoneyIcon size={14} color={colors.off} />,
-} as const;
-
-const DEAL_ICONS = {
-  marina: <DealTagIcon size={12} color={colors.red} />,
-  alma: <ClockIcon size={12} color={colors.red} />,
-} as const;
-
-const ACTIVITY_ICONS = {
-  chat: <NegotiationIcon size={11} color={colors.tx70} />,
-  mail: <MailIcon size={11} color={colors.tx70} />,
-} as const;
+import { NegotiationIcon, HourglassIcon, CheckIcon, MoneyIcon, LinkIcon, HashIcon } from '@/components/icons/Icons';
+import { STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookings';
+import { fetchReferralSummary, type ReferralSummary } from '@/lib/data/referrals';
+import { formatCentsAsBRL, monthDayParts } from '@/lib/format';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { show } = useToast();
-  const [sheetKind, setSheetKind] = useState<DecisionModalKind | null>(null);
+  const { professionalId, profile } = useAuth();
+  const [bookings, setBookings] = useState<BookingWithOtherParty[]>([]);
+  const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
+
+  useEffect(() => {
+    if (!professionalId) return;
+    fetchUserBookings(professionalId).then(setBookings).catch(() => setBookings([]));
+    if (profile?.referral_code) {
+      fetchReferralSummary(professionalId, profile.referral_code).then(setReferralSummary).catch(() => setReferralSummary(null));
+    }
+  }, [professionalId, profile?.referral_code]);
+
+  const stats = computeArtistStats(bookings);
+  const upcoming = bookings
+    .filter((b) => ['proposta_enviada', 'aceita', 'aguardando_pagamento'].includes(b.status))
+    .slice(0, 5);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <HomeTopbar notificationsCount={3} forumHasNew onOpenForum={() => router.push('/forum')} />
+        <HomeTopbar notificationsCount={0} forumHasNew={false} onOpenForum={() => router.push('/forum')} />
 
         <View style={styles.main}>
-          <HomeHero firstName={mockUser.firstName} />
+          <HomeHero firstName={profile?.full_name?.split(' ')[0] ?? ''} />
 
           <StatsCarousel>
-            {mockStats.map((s) => (
-              <StatCard key={s.key} icon={STAT_ICONS[s.key as keyof typeof STAT_ICONS]} tone={s.tone} num={s.num} label={s.label} />
-            ))}
+            <StatCard icon={<NegotiationIcon size={14} color={colors.red} />} tone="red" num={String(stats.activeCount)} label="Em andamento" />
+            <StatCard icon={<HourglassIcon size={14} color={colors.amber} />} tone="amber" num={String(stats.awaitingPaymentCount)} label="Aguardando pagamento" />
+            <StatCard icon={<CheckIcon size={14} color={colors.green} />} tone="green" num={String(stats.closedCount)} label="Concluídos" />
+            <StatCard icon={<MoneyIcon size={14} color={colors.off} />} tone="off" num={formatCentsAsBRL(stats.monthNetReceivedCents)} label="Este mês" />
           </StatsCarousel>
 
-          <AccordionSection title="Precisa de você" count={mockDeals.length} linkLabel="Ver todas" onLinkPress={() => show('Em breve: lista completa.')}>
-            {mockDeals.map((deal) => (
-              <DealCard
-                key={deal.key}
-                icon={DEAL_ICONS[deal.key as keyof typeof DEAL_ICONS]}
-                name={deal.name}
-                meta={deal.meta}
-                note={deal.note}
-                when={deal.when}
-                onDetalhes={() => setSheetKind('conversation')}
-                onDecidir={() => setSheetKind(deal.modal)}
-              />
-            ))}
+          <AccordionSection title="Próximos bookings" linkLabel="Ver todos" onLinkPress={() => router.push('/(tabs)/bookings')}>
+            {upcoming.length === 0 ? (
+              <BookingRow month="" day="—" name="Nenhum booking em andamento" place="" statusLabel="" statusTone="green" />
+            ) : (
+              upcoming.map((b, i) => {
+                const { month, day } = b.event_date ? monthDayParts(b.event_date) : { month: '', day: '—' };
+                return (
+                  <BookingRow
+                    key={b.id}
+                    month={month}
+                    day={day}
+                    name={b.description || b.otherPartyName}
+                    place={b.event_location ?? ''}
+                    statusLabel={STATUS_LABELS[b.status]}
+                    statusTone={b.status === 'aceita' || b.status === 'aguardando_pagamento' ? 'green' : 'amber'}
+                    bordered={i > 0}
+                  />
+                );
+              })
+            )}
           </AccordionSection>
-
-          <AccordionSection title="Próximos bookings" linkLabel="Ver agenda" onLinkPress={() => router.push('/(tabs)/agenda')}>
-            {mockBookings.map((b, i) => (
-              <BookingRow
-                key={b.key}
-                month={b.month}
-                day={b.day}
-                name={b.name}
-                place={b.place}
-                statusLabel={b.statusLabel}
-                statusTone={b.statusTone}
-                bordered={i > 0}
-              />
-            ))}
-          </AccordionSection>
-
-          <AccordionSection title="Atividade da Doopla" linkLabel="Ver todas" onLinkPress={() => show('Em breve: histórico completo.')}>
-            {mockActivity.map((a, i) => (
-              <ActivityRow
-                key={a.key}
-                icon={ACTIVITY_ICONS[a.kind]}
-                text={a.text}
-                boldPart={a.boldPart}
-                sub={a.sub}
-                time={a.time}
-                bordered={i > 0}
-              />
-            ))}
-          </AccordionSection>
-
-          <ChartCard metrics={mockChartMetrics} onVerPress={() => show('Em breve: analytics completo.')} />
 
           <ChannelsCard
             title="Seus canais de booking"
             rows={[
-              { key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: mockChannels.link, onCopy: () => show('Link copiado.') },
-              { key: 'wa', icon: <ChatBubbleOutlineIcon size={13} color={colors.off} />, label: 'WhatsApp da Doopla', value: mockChannels.whatsapp },
-              { key: 'code', icon: <HashIcon size={13} color={colors.off} />, label: 'Seu código ID', value: mockChannels.code, onCopy: () => show('Código copiado.') },
+              ...(profile?.slug
+                ? [{ key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: `doopla.com/${profile.slug}`, onCopy: () => show('Link copiado.') }]
+                : []),
+              ...(profile?.referral_code
+                ? [{ key: 'code', icon: <HashIcon size={13} color={colors.off} />, label: 'Seu código', value: profile.referral_code, onCopy: () => show('Código copiado.') }]
+                : []),
             ]}
           />
 
           <IndiqueGanheCard
-            earned={mockIndique.earned}
-            activeSubscribers={mockIndique.activeSubscribers}
-            onVerGanhos={() => show('Em breve: seus ganhos.')}
+            earnedCents={referralSummary?.qualifiedTotalCents ?? null}
+            pendingCount={referralSummary?.pendingCount ?? 0}
+            onVerGanhos={() => router.push('/(tabs)/mais/indique-e-ganhe')}
           />
 
           <FalarComDooplaCard onPress={() => show('Abrindo WhatsApp… (mock)')} />
         </View>
       </ScrollView>
-
-      <BottomSheet visible={sheetKind !== null} onClose={() => setSheetKind(null)}>
-        {sheetKind && <DecisionSheetContent kind={sheetKind} onDone={() => setSheetKind(null)} />}
-      </BottomSheet>
     </SafeAreaView>
   );
 }

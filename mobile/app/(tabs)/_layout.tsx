@@ -41,7 +41,6 @@ export default function TabsLayout() {
         name="bookings"
         options={{
           title: 'Bookings',
-          tabBarBadge: 4,
           tabBarIcon: ({ color, size }) => <BookingsTabIcon color={String(color)} size={size} />,
         }}
       />

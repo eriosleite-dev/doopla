@@ -1,35 +1,38 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii } from '@/theme/tokens';
+import { formatCentsAsBRL } from '@/lib/format';
 
-// Ganhos e assinantes ativos só devem aparecer quando existir
-// histórico real — nesta fase (dados mockados) sempre mostramos o
-// exemplo do protótipo, mas o componente já aceita null pra cobrir o
-// estado "sem histórico ainda" (empty state) no futuro.
+// Ganhos só aparecem quando existir indicação QUALIFICADA de verdade
+// (rows com status='qualificada' em referrals) — "assinantes ativos"
+// nunca existiu como métrica real no backend, removido de propósito
+// (não é um "ainda não implementado na UI", é um número que não deve
+// ser inventado). pendingCount é real (indicações aguardando
+// qualificação), mostrado só como contexto, nunca como ganho.
 export function IndiqueGanheCard({
-  earned,
-  activeSubscribers,
+  earnedCents,
+  pendingCount,
   onVerGanhos,
 }: {
-  earned: string | null;
-  activeSubscribers: number | null;
+  earnedCents: number | null;
+  pendingCount: number;
   onVerGanhos: () => void;
 }) {
-  const hasHistory = earned !== null && activeSubscribers !== null;
-
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Indique e ganhe</Text>
       <View style={styles.glow}>
         <Text style={styles.glowText}>$</Text>
       </View>
-      {hasHistory ? (
+      {earnedCents != null && earnedCents > 0 ? (
         <>
-          <Text style={styles.earned}>{earned}</Text>
-          <Text style={styles.earnedLabel}>{activeSubscribers} assinantes ativos</Text>
+          <Text style={styles.earned}>{formatCentsAsBRL(earnedCents)}</Text>
+          <Text style={styles.earnedLabel}>
+            {pendingCount > 0 ? `${pendingCount} indicações pendentes` : 'Ganhos já qualificados'}
+          </Text>
         </>
       ) : (
-        <Text style={styles.earnedLabel}>Ainda sem histórico de indicações</Text>
+        <Text style={styles.earnedLabel}>Seus ganhos aparecerão aqui quando suas indicações forem qualificadas.</Text>
       )}
       <Pressable style={styles.btn} onPress={onVerGanhos}>
         <Text style={styles.btnText}>Ver meus ganhos →</Text>
