@@ -227,12 +227,97 @@ async function resolveParticipantAndConversation(
 // de WhatsApp, no lugar do handleInboundMessage antigo.
 // ============================================================
 
+async function resolveVerifiedProfessionalId(supabase: AnySupabaseClient, normalizedPhone: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('professional_whatsapp_identities')
+    .select('professional_id')
+    .eq('verified_number', normalizedPhone)
+    .maybeSingle<{ professional_id: string }>();
+  return data?.professional_id ?? null;
+}
+
+async function resolveProfessionalSelfAndFinish(
+  supabase: AnySupabaseClient,
+  params: { professionalId: string; currentMessage: WhatsappInboundHandlerParams }
+): Promise<WhatsappInboundHandlerResult> {
+  const { data, error } = await supabase
+    .rpc('create_conversation', {
+      p_represented_professional_id: params.professionalId,
+      p_conversation_type: 'professional_self',
+      p_origin: 'whatsapp',
+      p_channel: 'whatsapp',
+    })
+    .single<{ id: string }>();
+  if (error || !data) throw new Error(`create_conversation (professional_self) falhou: ${error?.message ?? 'sem dado'}`);
+  const conversationId = data.id;
+
+  // professional_self nunca passa por intake/backlog/prompt de
+  // desambiguação — identidade verificada resolve incondicionalmente
+  // no passo 1 do algoritmo, sempre. Nunca confundido com conversas de
+  // cliente (author_type='professional', nunca 'external_participant').
+  await triggerInboundMessage({
+    conversationId,
+    authorType: 'professional',
+    authorProfileId: params.professionalId,
+    body: params.currentMessage.body,
+    channel: 'whatsapp',
+    providerEventId: params.currentMessage.providerMessageId,
+    providerMessageId: params.currentMessage.providerMessageId,
+    workerId: 'whatsapp:webhook',
+  });
+
+  return { kind: 'routed', conversationId, method: 'verified_professional' };
+}
+
 export async function handleWhatsappInboundMessage(
   supabase: AnySupabaseClient,
   normalizedPhone: string,
   params: WhatsappInboundHandlerParams
 ): Promise<WhatsappInboundHandlerResult> {
   const providerSentAt = params.providerTimestampSeconds ? new Date(params.providerTimestampSeconds * 1000).toISOString() : null;
+
+  // Identidade verificada — checada incondicionalmente, ANTES de
+  // qualquer sessão de intake/prompt/backlog (esses mecanismos são
+  // exclusivos de identidade NÃO verificada). Responde só QUEM fala
+  // (Professional WhatsApp Identity, 0064) — nunca decide destino
+  // sozinha: um token determinístico pra OUTRO profissional nesta
+  // mesma mensagem ainda vence (mesmo algoritmo, nunca alterado desde
+  // 0062), texto livre nunca sobrepõe a identidade.
+  const verifiedProfessionalId = await resolveVerifiedProfessionalId(supabase, normalizedPhone);
+  if (verifiedProfessionalId) {
+    const tokenSlug = await (async () => {
+      const slug = extractDooplaSlugToken(params.body);
+      return slug ? await resolveProfessionalBySlug(supabase, slug) : null;
+    })();
+
+    const decision = evaluateWhatsappRouting({
+      verifiedProfessionalId,
+      token: tokenSlug ? { professionalId: tokenSlug.professionalId, slug: tokenSlug.label } : null,
+      nameMentionCandidates: [],
+      historyMatches: [],
+      recentActivityProfessionalId: null,
+    });
+
+    // Passo 1 do algoritmo nunca devolve outro outcome quando
+    // verifiedProfessionalId != null — sempre 'resolved', sempre
+    // 'verified_professional' (padrão) ou 'token' (override
+    // determinístico pra outro profissional).
+    if (decision.outcome === 'resolved' && decision.method === 'verified_professional') {
+      return await resolveProfessionalSelfAndFinish(supabase, { professionalId: decision.professionalId, currentMessage: params });
+    }
+    if (decision.outcome === 'resolved') {
+      return await resolveAndFinish(supabase, null, {
+        method: decision.method,
+        professionalId: decision.professionalId,
+        normalizedPhone,
+        contactName: params.contactName,
+        currentMessage: params,
+        providerSentAt,
+        existingExternalParticipantId: null,
+        originReference: tokenSlug ? tokenSlug.label : null,
+      });
+    }
+  }
 
   const { data: existingSessionRows } = await supabase
     .from('channel_inbound_intakes')
