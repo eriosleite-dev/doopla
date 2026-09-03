@@ -23,6 +23,7 @@ import {
 } from './pending-replies';
 import { freshChecksAddressPendingIdentities, shouldAttemptResume, type BlockedIdentity } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
+import { recordOrchestratorRunContextEvidence, recordProductEvent } from '../beta-instrumentation';
 import { resolveOutboundAction, resolveRecipientType } from './recipient';
 import { computeRuntimeRetryBackoffSeconds, RUNTIME_PENDING_REPLY_MAX_ATTEMPTS, RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS } from './retry-backoff';
 import { buildStructuralFacts } from './structural-facts';
@@ -297,8 +298,8 @@ async function runResumptionCycle(
     professionalId: actorContext.representedProfessionalId,
   });
 
-  const finish = (status: 'completed' | 'failed', error: string | null) =>
-    finishOrchestratorRun(supabase, {
+  const finish = async (status: 'completed' | 'failed', error: string | null) => {
+    const result = await finishOrchestratorRun(supabase, {
       runId: run?.id ?? '',
       status,
       calledTools: buildResult.calledTools,
@@ -327,6 +328,19 @@ async function runResumptionCycle(
         requiresProfessionalReviewBeforeSend: decision.requiresProfessionalReviewBeforeSend,
       },
     });
+
+    // Beta Instrumentation — camada A completa, mesmo idioma de
+    // pipeline.ts. Nunca decide nada sozinha.
+    if (run?.id) {
+      await recordOrchestratorRunContextEvidence(supabase, {
+        runId: run.id,
+        professionalId: actorContext.representedProfessionalId,
+        evidence: decision.evidenceUsed,
+      });
+    }
+
+    return result;
+  };
 
   if (!decision.proposedResponse) {
     // Nada a decidir sobre enviar nesta reavaliação — o Gate nem chega
@@ -419,6 +433,7 @@ async function runResumptionCycle(
   const action = resolveOutboundAction(recipientType, gate.outcome, conversation.external_participant_id !== null);
   let outboundIntentId: string | null = null;
   let aiMessageId: string | null = null;
+  let claimed = false;
 
   if (action === 'create_outbound_intent' && decision.proposedResponse) {
     const result = await resolveRuntimePendingReplyAllowed(supabase, {
@@ -428,20 +443,45 @@ async function runResumptionCycle(
       outbound: { channel: triggerRow.channel, recipientExternalParticipantId: conversation.external_participant_id!, content: decision.proposedResponse },
     });
     outboundIntentId = result.outboundIntentId;
+    claimed = result.claimed;
   } else if (action === 'persist_ai_message' && decision.proposedResponse) {
     // Caso raro (recipientType virou 'professional' nesta reavaliação)
     // — claim primeiro (sem outbound_intent), depois persist_ai_message
     // por fora, best-effort — mesmo tradeoff documentado na migration
     // 0053 (não atômico com o claim; duplicação de mensagem interna ao
     // profissional é o risco aceito, nunca duplicação client-facing).
-    await resolveRuntimePendingReplyAllowed(supabase, { pendingReplyId: pending.id, newPolicyGateDecisionId: newPolicyDecisionId, runId: run?.id ?? null, outbound: null });
+    const result = await resolveRuntimePendingReplyAllowed(supabase, { pendingReplyId: pending.id, newPolicyGateDecisionId: newPolicyDecisionId, runId: run?.id ?? null, outbound: null });
+    claimed = result.claimed;
     const aiMessage = await persistAiMessage(supabase, { conversationId: pending.conversationId, contentType: 'text', body: decision.proposedResponse });
     aiMessageId = aiMessage.id;
   } else {
     // allowed sem action correspondente (guarda defensiva, mesmo
     // raciocínio de resolveOutboundAction no ciclo normal) — só faz o
     // claim, nunca inventa destinatário.
-    await resolveRuntimePendingReplyAllowed(supabase, { pendingReplyId: pending.id, newPolicyGateDecisionId: newPolicyDecisionId, runId: run?.id ?? null, outbound: null });
+    const result = await resolveRuntimePendingReplyAllowed(supabase, { pendingReplyId: pending.id, newPolicyGateDecisionId: newPolicyDecisionId, runId: run?.id ?? null, outbound: null });
+    claimed = result.claimed;
+  }
+
+  // Beta Instrumentation — value.operational_task_resolved: o critério
+  // É a transição em si (claim bem-sucedido de uma pendência real) —
+  // nenhuma composição adicional de sinais. claimed=false (retry
+  // concorrente perdeu a corrida) nunca emite — quem já resolveu já
+  // emitiu.
+  if (claimed) {
+    await recordProductEvent(supabase, {
+      professionalId: actorContext.representedProfessionalId,
+      category: 'value',
+      eventType: 'value.operational_task_resolved',
+      occurredAt: new Date(),
+      idempotencyKey: `value.operational_task_resolved:${pending.id}`,
+      subjectType: 'conversation',
+      subjectId: pending.conversationId,
+      commercialRootId: pending.commercialRootId,
+      conversationId: pending.conversationId,
+      runId: run?.id ?? null,
+      actorType: 'system',
+      source: 'runtime',
+    });
   }
 
   await finish('completed', null);

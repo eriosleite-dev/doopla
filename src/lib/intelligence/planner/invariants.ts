@@ -74,13 +74,21 @@ function factSection(ctx: PlannerContext, sourceType: EvidenceUsed['sourceType']
 // ver factSection acima) nunca entram aqui — preferência declarada não
 // autoriza nada, precedente histórico não autoriza repeti-lo, mesmo
 // citado/grounded/real.
-const COMMITMENT_AUTHORIZING_SOURCE_TYPES: ReadonlySet<EvidenceUsed['sourceType']> = new Set([
+// Exportado (não só local) — Beta Instrumentation reaproveita esta
+// MESMA lista pra rotular is_commitment_authorizing ao persistir a
+// camada A em detalhe (orchestrator_run_context_evidence), nunca uma
+// segunda cópia do whitelist que poderia dessincronizar.
+export const COMMITMENT_AUTHORIZING_SOURCE_TYPES: ReadonlySet<EvidenceUsed['sourceType']> = new Set([
   'professional_profile',
   'opportunity',
   'booking',
   'external_participant',
   'conversation_message',
 ]);
+
+export function isCommitmentAuthorizingSourceType(sourceType: EvidenceUsed['sourceType']): boolean {
+  return COMMITMENT_AUTHORIZING_SOURCE_TYPES.has(sourceType);
+}
 
 // Único ponto que decide se uma EvidenceUsed é real — nunca confia no
 // que o model afirma sem checar contra o PlannerContext de verdade.

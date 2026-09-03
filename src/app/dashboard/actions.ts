@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
 import { isArtistBlockedForBooker } from '@/lib/subscription';
@@ -331,6 +332,19 @@ export async function respondBookingAction(formData: FormData) {
     actor_profile_id: user.id,
     event_type: newStatus,
   });
+
+  // Beta Instrumentation — product.booking_closed sempre; value.booking_closed
+  // só quando há correlação real com uma conversa/run da Doopla (a
+  // checagem roda dentro da RPC, com privilégio elevado, porque quem
+  // aceita pode ser o booker, sem RLS de leitura sobre as tabelas do
+  // artista). Nunca lançável — falha aqui é telemetria.
+  if (newStatus === 'aceita') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: eventError } = await (supabase as SupabaseClient<any>).rpc('record_booking_closed_event', { p_booking_id: bookingId });
+    if (eventError) {
+      console.error(`record_booking_closed_event falhou (telemetria — ação principal não é afetada): ${eventError.message}`);
+    }
+  }
 
   revalidatePath(`/dashboard/bookings/${bookingId}`);
   revalidatePath('/dashboard');

@@ -13,7 +13,11 @@ export { PROFESSIONAL_DECISION_CATEGORIES, INTENT_MANDATORY_DECISION_CATEGORIES 
 export type { ProfessionalDecisionCategory } from './decision-categories';
 export { RESPONSE_PLANS, PLANNER_MODEL_RESPONSE_PLANS } from './response-plan';
 export type { ResponsePlan, PlannerModelResponsePlan } from './response-plan';
-export { filterCommitmentAuthorizingEvidence, resolveRequiresProfessionalReviewBeforeSend } from './invariants';
+export {
+  filterCommitmentAuthorizingEvidence,
+  isCommitmentAuthorizingSourceType,
+  resolveRequiresProfessionalReviewBeforeSend,
+} from './invariants';
 export { buildPlannerContext } from './planner-context';
 export { buildPlannerInstructions } from './prompt';
 export { AI_FEATURE_RESPONSE_PLANNING, PLANNER_MAX_RETRIES, PLANNER_MODEL } from './config';

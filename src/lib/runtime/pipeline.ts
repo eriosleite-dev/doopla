@@ -25,6 +25,7 @@ import { resolveProfessionalDisplayName } from './professional-identity';
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { attemptResumptionsAfterApproval, type ResumptionOutcome } from './resumption';
+import { evaluateDecisionPrepared, evaluateMeaningfulClientAction, recordOrchestratorRunContextEvidence, recordProductEvent } from '../beta-instrumentation';
 import { buildStructuralFacts } from './structural-facts';
 import { resolveSystemActorContext } from './system-actor';
 import type { InboundEvent, RuntimeCycleOutcome } from './types';
@@ -142,6 +143,35 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     return { kind: 'conversation_not_found' };
   }
   const conversation = refreshed.conversation;
+
+  // Beta Instrumentation — product.demand_received: primeiro sinal real
+  // de interesse de um cliente chegando pra este profissional (marco do
+  // funil de TTV). Critério determinístico: esta é a PRIMEIRA mensagem
+  // de author_type='external_participant' desta conversation — nunca um
+  // heurística de tempo, uma contagem real pós-inserção. Nunca lançável
+  // (telemetria) — falha aqui nunca derruba o ciclo principal.
+  if (event.authorType === 'external_participant' && conversation.conversation_type === 'external_inquiry') {
+    const { count } = await supabase
+      .from('conversation_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversation_id', event.conversationId)
+      .eq('author_type', 'external_participant');
+    if (count === 1) {
+      await recordProductEvent(supabase, {
+        professionalId: actorContext.representedProfessionalId,
+        category: 'product',
+        eventType: 'product.demand_received',
+        occurredAt: new Date(message.createdAt),
+        idempotencyKey: `product.demand_received:${event.conversationId}`,
+        subjectType: 'conversation',
+        subjectId: event.conversationId,
+        conversationId: event.conversationId,
+        sourceMessageId: message.id,
+        actorType: 'external_participant',
+        source: 'runtime',
+      });
+    }
+  }
 
   // Passo 6A+6B Fase 2 — ramo determinístico do primeiro outreach frio
   // ("profissional manda contato -> Doopla inicia" sem CSW aberta).
@@ -266,6 +296,27 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     runId: run?.id ?? null,
     professionalId: actorContext.representedProfessionalId,
   });
+
+  // Beta Instrumentation — value.decision_prepared: avaliado sobre a
+  // decisão do PLANNER, antes do Gate/Approval Engine — "a Doopla
+  // preparou" é sobre o que ela montou, não sobre o que sobrevive depois.
+  if (evaluateDecisionPrepared(decision)) {
+    await recordProductEvent(supabase, {
+      professionalId: actorContext.representedProfessionalId,
+      category: 'value',
+      eventType: 'value.decision_prepared',
+      occurredAt: new Date(message.createdAt),
+      idempotencyKey: `value.decision_prepared:${run?.id ?? message.id}`,
+      subjectType: 'conversation',
+      subjectId: event.conversationId,
+      commercialRootId,
+      conversationId: event.conversationId,
+      runId: run?.id ?? null,
+      sourceMessageId: message.id,
+      actorType: 'ai',
+      source: 'runtime',
+    });
+  }
 
   let approvalOutcome: string | null = null;
   let resumptions: ResumptionOutcome[] = [];
@@ -398,6 +449,34 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         content: decision.proposedResponse,
       });
       outboundIntentId = intent.id;
+
+      // Beta Instrumentation — value.meaningful_client_action: prova só
+      // EXECUÇÃO de uma ação client-facing validada, nunca "avanço" (sem
+      // evidência de resposta/resultado do cliente).
+      if (
+        evaluateMeaningfulClientAction({
+          responsePlan: decision.responsePlan,
+          gateOutcome: policyGateOutcome,
+          outboundIntentCreated: true,
+          recipientType,
+        })
+      ) {
+        await recordProductEvent(supabase, {
+          professionalId: actorContext.representedProfessionalId,
+          category: 'value',
+          eventType: 'value.meaningful_client_action',
+          occurredAt: new Date(),
+          idempotencyKey: `value.meaningful_client_action:${outboundIntentId}`,
+          subjectType: 'conversation',
+          subjectId: event.conversationId,
+          commercialRootId,
+          conversationId: event.conversationId,
+          runId: run?.id ?? null,
+          sourceMessageId: message.id,
+          actorType: 'ai',
+          source: 'runtime',
+        });
+      }
     } else if (action === 'persist_ai_message' && decision.proposedResponse) {
       // persist_ai_message (migration 0052) — mesma infraestrutura de
       // conversations/conversation_messages, nunca outbound_intents
@@ -438,16 +517,28 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       missingInformationCount: decision.missingInformation.length,
       // evidence_used_count preserva a semântica de sempre (camada B —
       // commitment-authorizing evidence, ver planner/invariants.ts):
-      // decision.evidenceUsed agora é a lista completa (camada A,
-      // auditável, inclui Professional Intelligence Context), então o
-      // filtro aqui é obrigatório pra esta coluna não passar a contar
-      // preferência/histórico como se fossem evidência de compromisso.
-      // Persistência detalhada da camada A fica pro bloco Beta
-      // Instrumentation — gap registrado, não implementado aqui.
+      // decision.evidenceUsed é a lista completa (camada A, auditável,
+      // inclui Professional Intelligence Context), então o filtro aqui é
+      // obrigatório pra esta coluna não passar a contar preferência/
+      // histórico como se fossem evidência de compromisso. Persistência
+      // detalhada da camada A: ver recordOrchestratorRunContextEvidence
+      // logo abaixo (Beta Instrumentation).
       evidenceUsedCount: filterCommitmentAuthorizingEvidence(decision.evidenceUsed).length,
       requiresProfessionalReviewBeforeSend: decision.requiresProfessionalReviewBeforeSend,
     },
   });
+
+  // Beta Instrumentation — camada A completa (context/reasoning
+  // evidence) persistida em detalhe, uma linha por EvidenceUsed
+  // grounded. Nunca decide nada sozinha (ver comentário acima) — só
+  // auditoria de "o que a Doopla usou". Sem run real, nada a persistir.
+  if (run?.id) {
+    await recordOrchestratorRunContextEvidence(supabase, {
+      runId: run.id,
+      professionalId: actorContext.representedProfessionalId,
+      evidence: decision.evidenceUsed,
+    });
+  }
 
   await finishInboundEvent(supabase, { eventId: inboundEventId, status: 'processed', conversationMessageId: message.id, error: null });
 
