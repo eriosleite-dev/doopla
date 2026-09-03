@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
+import { getConversationIdForBooking, getConversationOperationalFacts } from '@/lib/conversations/data';
 
 import {
   markCompletedAction,
@@ -21,6 +22,8 @@ import {
   accentButtonClass,
   avatarClass,
   cardClass,
+  CONVERSATION_STATE_LABELS,
+  conversationStatePillClasses,
   cpDotClass,
   cpLabelClass,
   eyebrowClass,
@@ -138,6 +141,17 @@ export default async function BookingDetailPage(
       ? await getBookingReviews(booking.id, user.id, supabase)
       : null;
 
+  // Conversas Bloco 2 — "Ver conversa" só existe pra quem a Doopla
+  // representa (represented_professional_id É sempre o artista, nunca
+  // o booker): um booker olhando este mesmo booking nunca tem
+  // conversation nenhuma sua aqui, RLS devolveria vazio de qualquer
+  // forma, mas a checagem de role evita a query à toa.
+  const conversationId =
+    profile.role === 'artista' && booking.artist_profile_id === user.id
+      ? await getConversationIdForBooking(supabase, booking.id, user.id)
+      : null;
+  const conversationFacts = conversationId ? await getConversationOperationalFacts(supabase, conversationId) : null;
+
   return (
     <main className="flex flex-col gap-8">
       <div>
@@ -163,6 +177,27 @@ export default async function BookingDetailPage(
           {STATUS_LABELS[booking.status]}
         </span>
       </header>
+
+      {conversationId && conversationFacts && (
+        <section className={`${cardClass} flex flex-wrap items-center justify-between gap-4`}>
+          <div>
+            <p className={eyebrowClass}>Conversa com {booking.otherPartyName}</p>
+            <p className="mt-1 text-sm text-[var(--ink)]/70">
+              {conversationFacts.lastMessageCreatedAt
+                ? `Última mensagem ${formatRelativeDate(conversationFacts.lastMessageCreatedAt)}`
+                : 'Nenhuma mensagem ainda'}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={conversationStatePillClasses[conversationFacts.state]}>
+              {CONVERSATION_STATE_LABELS[conversationFacts.state]}
+            </span>
+            <Link href={`/dashboard/bookings/${booking.id}/conversa/${conversationId}`} className={ghostButtonClass}>
+              Ver conversa
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className={cardClass}>
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

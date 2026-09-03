@@ -1,11 +1,16 @@
 import { Tabs } from 'expo-router';
 
 import { colors, fonts } from '@/theme/tokens';
-import { HomeTabIcon, BookingsTabIcon, NegotiationIcon, AgendaTabIcon, MaisTabIcon } from '@/components/icons/Icons';
+import { HomeTabIcon, BookingsTabIcon, AgendaTabIcon, MaisTabIcon } from '@/components/icons/Icons';
 
-// Bottom nav fixa com 5 destinos (Início · Bookings · Conversas ·
-// Agenda · Mais), mesma ordem/ícones do protótipo mobile. Contador
-// só aparece em Bookings, mesmo que no HTML (bn-count).
+// Bottom nav fixa com 4 destinos (Início · Bookings · Agenda · Mais).
+// Conversas Bloco 2 (revisão de roadmap, 03/09/2026): a aba "Conversas"
+// era um PlaceholderScreen (nunca teve dado real) e foi removida — a
+// spec CURRENT nunca previu Conversas como aba primária, "Ver
+// conversa" agora é contextual a partir do booking (app/conversas/
+// [conversationId].tsx + seção em bookings/[id].tsx), mesma decisão já
+// tomada pro painel web. Contador do bn-count só aparece em Bookings,
+// mesmo que no HTML original.
 export default function TabsLayout() {
   return (
     <Tabs
@@ -43,10 +48,6 @@ export default function TabsLayout() {
           title: 'Bookings',
           tabBarIcon: ({ color, size }) => <BookingsTabIcon color={String(color)} size={size} />,
         }}
-      />
-      <Tabs.Screen
-        name="conversas"
-        options={{ title: 'Conversas', tabBarIcon: ({ color, size }) => <NegotiationIcon color={String(color)} size={size} /> }}
       />
       <Tabs.Screen
         name="agenda"

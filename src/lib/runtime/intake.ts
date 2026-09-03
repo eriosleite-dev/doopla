@@ -33,8 +33,11 @@ export async function persistInboundMessage(
     channel: string;
     contentType: string;
     body: string;
+    // Conversas Bloco 2 (migration 0066) — ver comentário em types.ts
+    // (InboundEvent.repliedToOutboundIntentId).
+    repliedToOutboundIntentId?: string | null;
   }
-): Promise<{ id: string; createdAt: string }> {
+): Promise<{ id: string; createdAt: string; repliedToOutboundIntentId: string | null; preparedResponseOutcome: 'sent' | 'edited' | null }> {
   const { data, error } = await supabase
     .rpc('persist_inbound_message', {
       p_conversation_id: params.conversationId,
@@ -44,9 +47,21 @@ export async function persistInboundMessage(
       p_channel: params.channel,
       p_content_type: params.contentType,
       p_body: params.body,
+      p_origin_intake_id: null,
+      p_replied_to_outbound_intent_id: params.repliedToOutboundIntentId ?? null,
     })
     .single();
   if (error || !data) throw new Error(`persist_inbound_message falhou: ${error?.message ?? 'sem dado'}`);
-  const row = data as { id: string; created_at: string };
-  return { id: row.id, createdAt: row.created_at };
+  const row = data as {
+    id: string;
+    created_at: string;
+    replied_to_outbound_intent_id: string | null;
+    prepared_response_outcome: 'sent' | 'edited' | null;
+  };
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    repliedToOutboundIntentId: row.replied_to_outbound_intent_id,
+    preparedResponseOutcome: row.prepared_response_outcome,
+  };
 }

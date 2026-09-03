@@ -53,6 +53,14 @@ export type InboundEvent = {
   externalParticipantIdentifier: { channel: string; identifier: string; name: string | null } | null;
   contentType: 'text';
   body: string;
+  // Conversas Bloco 2 — preenchido só quando authorType='professional' e
+  // esta mensagem responde a um draft específico já autorizado pelo
+  // Post-model Gate (outbound_intents). persist_inbound_message
+  // (migration 0066) valida que pertence à MESMA conversation e grava,
+  // no mesmo INSERT, o fato observado (prepared_response_outcome:
+  // 'sent'/'edited') — nunca recomputado depois, nunca um Intervention
+  // Moment, nunca aprovação/satisfação/takeover.
+  repliedToOutboundIntentId?: string | null;
   workerId: string;
 };
 

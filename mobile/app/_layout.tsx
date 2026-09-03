@@ -12,8 +12,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // AuthProvider continua só restaurando a sessão (nenhuma tela real
 // depende disso ainda nesta fase). ToastProvider fica acima do Stack
-// pra qualquer tela poder disparar toast. "forum" é apresentado como
-// modal de tela cheia, empilhado sobre (tabs).
+// pra qualquer tela poder disparar toast. "forum" e "conversas" são
+// apresentados como modal de tela cheia, empilhados sobre (tabs).
 export default function RootLayout() {
   const { fontsLoaded, fontsError } = useAppFonts();
 
@@ -33,6 +33,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="forum" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="conversas" options={{ presentation: 'modal' }} />
         </Stack>
       </ToastProvider>
     </AuthProvider>

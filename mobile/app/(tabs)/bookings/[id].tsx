@@ -20,6 +20,9 @@ import {
 import type { BookingEvent } from '@/types/booking';
 import { fetchActiveApprovalsForBooking } from '@/lib/data/approvals';
 import type { ApprovalRecord } from '@/types/approval';
+import { fetchConversationIdForBooking, fetchConversationOperationalFacts } from '@/lib/data/conversations';
+import { CONVERSATION_STATE_LABELS, conversationStateColor } from '@/lib/conversation-labels';
+import type { ConversationOperationalFacts } from '@/types/conversation';
 
 type Phase = 'loading' | 'ready' | 'error';
 
@@ -31,6 +34,8 @@ export default function BookingDetailScreen() {
   const [booking, setBooking] = useState<BookingWithOtherParty | null>(null);
   const [events, setEvents] = useState<BookingEvent[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationFacts, setConversationFacts] = useState<ConversationOperationalFacts | null>(null);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -44,6 +49,17 @@ export default function BookingDetailScreen() {
           fetchActiveApprovalsForBooking(professionalId, id)
             .then(setApprovals)
             .catch(() => setApprovals([]));
+          // "Ver conversa" só existe pra quem a Doopla representa
+          // (represented_professional_id É sempre o artista) — mesma
+          // checagem já feita no painel web.
+          if (bookingData.artist_profile_id === professionalId) {
+            fetchConversationIdForBooking(id, professionalId)
+              .then((cid) => {
+                setConversationId(cid);
+                if (cid) fetchConversationOperationalFacts(cid).then(setConversationFacts).catch(() => setConversationFacts(null));
+              })
+              .catch(() => setConversationId(null));
+          }
         }
       })
       .catch(() => setPhase('error'));
@@ -64,6 +80,25 @@ export default function BookingDetailScreen() {
           <DetailSection title="Status">
             <DetailRow label="Situação atual" value={STATUS_LABELS[booking.status]} />
           </DetailSection>
+
+          {conversationId && conversationFacts && (
+            <DetailSection title="Conversa">
+              <Pressable style={styles.conversationRow} onPress={() => router.push(`/conversas/${conversationId}`)}>
+                <View style={styles.conversationInfo}>
+                  <View style={styles.conversationStateRow}>
+                    <View style={[styles.conversationDot, { backgroundColor: conversationStateColor(conversationFacts.state) }]} />
+                    <Text style={[styles.conversationState, { color: conversationStateColor(conversationFacts.state) }]}>
+                      {CONVERSATION_STATE_LABELS[conversationFacts.state]}
+                    </Text>
+                  </View>
+                  <Text style={styles.conversationSub}>
+                    {conversationFacts.lastMessageCreatedAt ? `Última mensagem ${formatDateTimePt(conversationFacts.lastMessageCreatedAt)}` : 'Nenhuma mensagem ainda'}
+                  </Text>
+                </View>
+                <Text style={styles.link}>Ver conversa</Text>
+              </Pressable>
+            </DetailSection>
+          )}
 
           <DetailSection title="Cliente / evento">
             <DetailRow label={booking.client_name ? 'Cliente' : 'Contraparte'} value={booking.client_name ?? booking.otherPartyName} />
@@ -181,6 +216,37 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontFamily: fonts.subBold,
     fontSize: 12.5,
+  },
+  conversationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  conversationInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  conversationStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  conversationDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  conversationState: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  conversationSub: {
+    color: colors.tx50,
+    fontFamily: fonts.body,
+    fontSize: 11,
   },
   approvalsNote: {
     color: colors.tx50,

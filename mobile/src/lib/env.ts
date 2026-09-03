@@ -22,3 +22,10 @@ function requireEnv(name: string): string {
 
 export const supabaseUrl = () => requireEnv('EXPO_PUBLIC_SUPABASE_URL');
 export const supabaseAnonKey = () => requireEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY');
+
+// Conversas Bloco 2 — base URL do painel web (Next.js), único server
+// real que o Mobile tem pra escritas que precisam de service_role
+// (submitProfessionalReply -> Runtime). Nunca usado pra leitura — toda
+// leitura do Mobile continua direto no Supabase via RLS, mesmo client
+// de sempre (supabase.ts).
+export const apiBaseUrl = () => requireEnv('EXPO_PUBLIC_API_BASE_URL');

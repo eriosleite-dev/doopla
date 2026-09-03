@@ -41,6 +41,10 @@ export type TriggerInboundMessageParams = {
   // sem isso.
   externalParticipantIdentifier?: { channel: string; identifier: string; name: string | null } | null;
   body: string;
+  // Conversas Bloco 2 (migration 0066) — só relevante quando
+  // authorType='professional'. Ver comentário em runtime/types.ts
+  // (InboundEvent.repliedToOutboundIntentId).
+  repliedToOutboundIntentId?: string | null;
   // 'painel' é o valor honesto pro simulador/painel de hoje — só um
   // adaptador de canal real futuro deveria passar outro valor aqui.
   channel?: InboundEvent['channel'];
@@ -67,6 +71,7 @@ export async function triggerInboundMessage(params: TriggerInboundMessageParams)
     externalParticipantIdentifier: params.authorType === 'external_participant' ? (params.externalParticipantIdentifier ?? null) : null,
     contentType: 'text',
     body: params.body,
+    repliedToOutboundIntentId: params.authorType === 'professional' ? (params.repliedToOutboundIntentId ?? null) : null,
     workerId: params.workerId ?? 'beta-integration:manual-trigger',
   };
 

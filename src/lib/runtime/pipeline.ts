@@ -123,6 +123,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       channel: event.channel,
       contentType: event.contentType,
       body: event.body,
+      repliedToOutboundIntentId: event.authorType === 'professional' ? (event.repliedToOutboundIntentId ?? null) : null,
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : '';

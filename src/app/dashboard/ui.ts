@@ -98,6 +98,23 @@ export const EVENT_LABELS: Record<string, string> = {
   nf_comissao_paga: 'Comissão do Booker marcada como paga',
 };
 
+// Conversas Bloco 2 — os 4 estados CURRENT (src/lib/conversations/state.ts).
+// "Você respondeu" NÃO tem entrada aqui de propósito: é um fato de
+// mensagem individual, nunca um destes 4 estados de conversa.
+export const CONVERSATION_STATE_LABELS: Record<string, string> = {
+  needs_you: 'Precisa de você',
+  waiting_client: 'Aguardando cliente',
+  in_progress: 'Em andamento',
+  closed: 'Encerrada',
+};
+
+export const conversationStatePillClasses: Record<string, string> = {
+  needs_you: `${STATUS_PILL_BASE} bg-[var(--alert)]/15 text-[var(--alert)]`,
+  waiting_client: `${STATUS_PILL_BASE} bg-[var(--accent-ink)]/15 text-[var(--accent-ink)]`,
+  in_progress: `${STATUS_PILL_BASE} border border-[var(--line-light)] text-[var(--ink)]/60`,
+  closed: `${STATUS_PILL_BASE} bg-[var(--paper-dim)] text-[var(--ink)]/40`,
+};
+
 export const avatarClass =
   'flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[var(--ink)] font-doopla-display text-sm font-semibold text-[var(--accent)]';
 
