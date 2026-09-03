@@ -1,19 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { createServiceRoleClient } from '@/lib/supabase/service-role';
-import { triggerInboundMessage } from '@/lib/beta-integration/trigger';
 import { markOutboundIntentDelivered, markOutboundIntentRead } from '@/lib/runtime';
-import { findReusableWhatsappConversation } from '@/lib/channels/whatsapp/conversation';
+import { handleWhatsappInboundMessage } from '@/lib/channels/whatsapp/intake-orchestration';
 import { normalizeWhatsappPhone } from '@/lib/channels/whatsapp/phone';
 import { verifyWhatsappWebhookChallenge, verifyWhatsappWebhookSignature } from '@/lib/channels/whatsapp/webhook-verify';
 import { whatsappAppSecret, whatsappWebhookVerifyToken } from '@/lib/supabase/env';
 
-// Doopla Intelligence Core v1 — canal WhatsApp (passo 6A+6B): único
-// ponto que recebe webhooks reais da Meta. Nunca chama nada do
-// Runtime/Intelligence Core diretamente além de triggerInboundMessage
-// (o mesmo boundary já provado em 4b/passo 3) — este arquivo só
-// resolve identidade/conversa e traduz o payload da Meta pro contrato
-// já existente, nunca reimplementa nada do Runtime.
+// Doopla Intelligence Core v1 — canal WhatsApp (passo 6A+6B, WhatsApp
+// Inbound Foundation): único ponto que recebe webhooks reais da Meta.
+// Nunca chama nada do Runtime/Intelligence Core diretamente além de
+// triggerInboundMessage — feito indiretamente aqui via
+// handleWhatsappInboundMessage (intake-orchestration.ts), que resolve
+// identidade/conversa (inclusive contato novo/ambíguo, WhatsApp
+// Inbound Foundation) e só então entrega pro boundary já existente.
+// Nunca reimplementa nada do Runtime.
 
 // ============================================================
 // GET — handshake de verificação (configurado uma vez no painel da
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
 // (delivered/read). Corpo BRUTO lido antes de qualquer parse — a
 // assinatura é sobre os bytes exatos que a Meta enviou.
 // ============================================================
-type WhatsappWebhookMessage = { id: string; from: string; type: string; text?: { body: string } };
+type WhatsappWebhookMessage = { id: string; from: string; type: string; timestamp?: string; text?: { body: string } };
 type WhatsappWebhookStatus = { id: string; status: string };
 type WhatsappWebhookContact = { wa_id?: string; profile?: { name?: string } };
 type WhatsappWebhookPayload = {
@@ -115,56 +116,19 @@ async function handleInboundMessage(supabase: any, message: WhatsappWebhookMessa
   const normalizedPhone = normalizeWhatsappPhone(message.from.startsWith('+') ? message.from : `+${message.from}`);
   if (!normalizedPhone) return;
 
-  // Correlação fail-closed — ver channels/whatsapp/conversation.ts e
-  // o relatório do 6A: 0 ou 2+ profissionais com essa identidade nunca
-  // é resolvido por adivinhação. 0 = número geral sem contexto (fora
-  // de escopo, aguarda Código Doopla). 2+ = mesmo telefone falando com
-  // profissionais diferentes através do número compartilhado da
-  // Doopla — ambíguo de verdade, nenhum dos dois recebe a mensagem
-  // até existir um mecanismo de desambiguação (Código Doopla ou
-  // números dedicados).
-  const { data: identities } = await supabase
-    .from('external_participant_channel_identities')
-    .select('professional_id, external_participant_id')
-    .eq('channel', 'whatsapp')
-    .eq('identifier', normalizedPhone);
-
-  if (!identities || identities.length !== 1) {
-    console.warn(`whatsapp webhook: correlação não-determinística pra ${normalizedPhone} (${identities?.length ?? 0} matches) — fora de escopo do 6A, ignorado`);
-    return;
-  }
-  const { professional_id: professionalId, external_participant_id: externalParticipantId } = identities[0] as {
-    professional_id: string;
-    external_participant_id: string;
-  };
-
-  // Nunca cria conversa aqui — create_conversation (migration 0039)
-  // só aceita chamada de uma sessão autenticada real (auth.uid() ===
-  // p_represented_professional_id), o webhook roda como service_role
-  // sem sessão nenhuma. Se todas as conversas existentes já têm
-  // commercial root terminal, esta mensagem fica fora de escopo do
-  // 6A (registrado, não um bug silencioso) — precisaria de um
-  // caminho de criação autorizado pra service_role, decisão de
-  // arquitetura pra uma rodada futura, não deste vertical mínimo.
-  const conversationId = await findReusableWhatsappConversation(supabase, { professionalId, externalParticipantId });
-  if (!conversationId) {
-    console.warn(`whatsapp webhook: nenhuma conversa reaproveitável pra professional=${professionalId} participant=${externalParticipantId} — fora de escopo do 6A`);
-    return;
-  }
-
-  await triggerInboundMessage({
-    conversationId,
-    authorType: 'external_participant',
-    externalParticipantIdentifier: { channel: 'whatsapp', identifier: normalizedPhone, name: contactNames.get(message.from) ?? null },
-    body: message.text.body,
-    channel: 'whatsapp',
-    // wamid como identidade de idempotência do EVENTO — claimInboundEvent
-    // (dentro de processInboundEvent, chamado por triggerInboundMessage)
-    // já garante que uma reentrega do mesmo webhook pela Meta nunca
-    // reprocessa.
-    providerEventId: message.id,
+  // WhatsApp Inbound Foundation: identidade/representação nunca mais
+  // descarta um contato desconhecido — resolve (identidade verificada
+  // > token determinístico > relação histórica única > menção de
+  // nome, com confirmação sempre que ambíguo) ou preserva a mensagem
+  // numa sessão de intake até resolver. Nunca cria conversation antes
+  // de saber quem está sendo representado.
+  const timestampSeconds = message.timestamp ? parseInt(message.timestamp, 10) : null;
+  await handleWhatsappInboundMessage(supabase, normalizedPhone, {
     providerMessageId: message.id,
-    workerId: 'whatsapp:webhook',
+    from: message.from,
+    body: message.text.body,
+    contactName: contactNames.get(message.from) ?? null,
+    providerTimestampSeconds: Number.isFinite(timestampSeconds) ? timestampSeconds : null,
   });
 }
 
