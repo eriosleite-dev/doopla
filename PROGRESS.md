@@ -7315,6 +7315,194 @@ momento, comportamento esperado).
 estão fechadas.** Sem mais nenhum item técnico bloqueando o primeiro
 teste real assim que a Meta liberar a conta.
 
+---
+
+**Nota de manutenção (03/09/2026)**: as seções 61-66 abaixo cobrem 6
+blocos entregues entre o fechamento da seção 60 e agora, que tinham
+ficado de fora deste arquivo por várias sessões seguidas. Marcadas
+`[CURRENT]` (estado vigente hoje), `[SUPERSEDED]` (existiu, foi
+substituído por decisão posterior — nunca ressuscitar sem nova
+instrução) ou `[REJECTED]` (proposto, avaliado, descartado antes de
+implementar) onde relevante.
+
+## 61. Conversas Bloco 1 — RPC read-only de fatos operacionais (migration 0060) — `[CURRENT]`
+
+Commit `36ff446`. Auditoria de Conversas/Precisa-de-você/negotiation
+intelligence (formato A-K) revisada e aprovada com uma correção: em
+vez dos 5 estados de UX propostos originalmente na auditoria
+(`[SUPERSEDED]` — nunca implementados), o Bloco 1 expõe **fatos
+operacionais brutos** — última mensagem+autoria, `runtime_pending_reply`
+existente, último `outbound_intent`+estado de entrega, aberta/fechada,
+mandate, timestamps, booking/root relacionado. `get_conversation_operational_facts`
+é `SECURITY INVOKER` deliberadamente (herda RLS das tabelas
+subjacentes, zero lógica de ownership nova) — padrão arquitetural
+citado depois em blocos seguintes. UX que a Doopla "está cuidando"
+sozinha, sem sinal real por trás — `[REJECTED]`, nunca implementar sem
+evidência real de que algo está em andamento.
+
+## 62. Fecha bypass de insert direto em `conversation_messages` (migration 0061) — `[CURRENT]`
+
+Commit `815b397`. Fechamento do blocker de segurança identificado no
+Bloco 1: `conversation_messages` aceitava INSERT direto de
+`authenticated` fora do boundary do Runtime. Investigação prévia de
+quais RPCs precisavam de privilégio de INSERT antes de escolher entre
+`DROP POLICY` e `REVOKE` — decisão registrada e testada, sem quebrar
+nenhum caminho existente (Runtime, `professional-reply-action.ts`,
+`persist_ai_message`).
+
+## 63. WhatsApp Inbound Foundation (migrations 0062 + 0063) — `[CURRENT]` — entregue
+
+Commits `95068f0` (schema+RPCs+TS+webhook+CTA `/orcamento/[slug]`) e
+`aaa18db` (lineage 1:1). Primeiro canal real de entrada por WhatsApp:
+`channel_inbound_intakes`/`channel_inbound_intake_messages` (sessão de
+roteamento, 1 pendente por `channel+from_identifier`, nunca perde
+mensagem — múltiplas mensagens da mesma sessão são preservadas e
+reavaliadas antes de reperguntar). Algoritmo `evaluateWhatsappRouting`
+(`intake-routing.ts`, congelado desde então — nenhum bloco posterior
+alterou): prioridade (1) identidade profissional verificada
+(com sub-caso de token de outro profissional), (2) token da mensagem
+atual, (3) menção de nome só com histórico concordante/ausente, (4)
+histórico sozinho, (5) confirmação em caso de ambiguidade real.
+Lineage 1:1 garantida por constraint física (não só lógica de RPC):
+`conversation_messages.origin_intake_id` → `channel_inbound_intake_messages.id`
+→ `inbound_events.id`, bidirecional, `UNIQUE` nos dois sentidos.
+Retenção/purge de dados do canal: deliberadamente adiado, timestamps já
+suportam quando for priorizado.
+
+## 64. Professional WhatsApp Identity (migration 0064) — `[CURRENT]` — entregue
+
+Commit `a5efc30`. Vínculo confiável `professional_id ↔ verified_whatsapp_number`
+via OTP (código hash+salt via `sha256()`, nunca texto puro persistido,
+expiração 10min, cooldown 45s, teto 5/hora, zero RLS na tabela de
+challenges — só alcançável via retorno das RPCs). Princípio central
+preservado em todo bloco seguinte: **identidade verificada responde
+"quem fala", nunca "em que papel"** — o webhook resolve o
+`professional_id` pelo número verificado, mas o algoritmo de roteamento
+(congelado, seção 63) continua decidindo `professional_self` vs.
+`external_inquiry` quando a mensagem carrega o token de outro
+profissional. `create_conversation` ganhou o branch `professional_self`
+(advisory lock, mesmo padrão do `external_inquiry`). UI de
+configurações para o profissional inserir o número/código: **não
+construída** — boundary Server-Action-only, gap preservado (ver
+roadmap).
+
+## 65. Professional Intelligence Context — `[CURRENT]` — entregue, sem migration nova
+
+Commit `dff30b3`. Duas novas seções no Context Builder existente —
+`professionalBusinessContext` (preferências já declaradas em
+`/dashboard/perfil`) e `professionalCommercialHistory` (histórico real
+de bookings do profissional, retrieval V1 determinístico por recência,
+contrato (`retrievalStrategy`) já preparado pra evoluir pra relevância
+sem redesenho) — reaproveitando 100% as fontes de verdade existentes
+(`artist_profiles`/`bookings`), zero tabela nova. Introduziu a
+separação de evidência em duas camadas em `planner/invariants.ts`,
+mantida por todo bloco seguinte:
+
+- **Camada A** (context/reasoning evidence) — toda citação validada e
+  grounded, inclui as 2 novas fontes; nunca decide autorização sozinha.
+- **Camada B** (commitment-authorizing evidence) — só as 5 fontes
+  originais (`professional_profile`/`opportunity`/`booking`/
+  `external_participant`/`conversation_message`); é a única que
+  influencia `resolveCommitmentNature`/`resolveResponsePlan`/
+  `professionalDecisionSignal`.
+- **Camada C** (autorização) — Mandate/Approval/Policy Gate,
+  inalterados, nunca leem `ContextPackage`.
+
+Preferência declarada e precedente histórico **nunca** autorizam nada
+sobre o compromisso atual, mesmo citados e grounded — regra estrutural,
+não convenção de prompt. `authorized_collaborator` (Booker) continua
+com capabilities vazias — nenhuma concedida neste bloco, arquitetura
+deixada pronta pra evoluir sem redesign quando o produto decidir.
+
+## 66. Beta Instrumentation (migration 0065) — `[CURRENT]` — entregue
+
+Commit `023172a`. 5 tabelas: `product_events` (envelope único
+Product+Value Events; `category` restrita por CHECK — `'product'|'value'|'lifecycle'`,
+essa última reservada sem uso ainda; `event_type` livre no banco,
+validado só pelo registry canônico em código,
+`src/lib/beta-instrumentation/event-types.ts`), `intervention_moments`
++ `intervention_moment_reason_events` (append-only), 
+`professional_feedback_checkins`, `orchestrator_run_context_evidence`
+(persistência detalhada da camada A, com snapshot de
+`is_commitment_authorizing` no momento da escrita — nunca recalculado
+depois).
+
+Contratos semânticos fixados, válidos daqui pra frente:
+- `product.*` = fato operacional; `value.*` = valor atribuível à
+  atuação da Doopla por critério determinístico, nunca por inferência.
+- **`value.meaningful_client_action`** (nome revisado —
+  `value.client_request_advanced` `[SUPERSEDED]` antes de qualquer
+  commit, nunca chegou a existir em produção) prova só **execução**
+  client-facing validada, nunca avanço/resultado/sucesso.
+- `intervention_type` V1 = `correction|edit|rejection|undo|takeover` —
+  **`approval` nunca pertence aqui** `[REJECTED]`: aprovação positiva é
+  behavioral feedback derivável de `approval_records`/
+  `approval_resolutions`, nunca duplicado. **Ausência de intervenção
+  NUNCA é lida como sinal positivo** — premissa explicitamente
+  corrigida antes de implementar (não há lógica em lugar nenhum do
+  código que infira isso).
+- Career Signals: nenhuma tabela nova — deriváveis das tabelas já
+  existentes quando Career Intelligence existir.
+- `onboarding_completed` como marco de TTV: **`[REJECTED]`** usar
+  `artist_profiles.created_at` como proxy — fica `UNKNOWN`/não
+  instrumentado até existir um evento real de conclusão de onboarding.
+
+Gaps explicitamente preservados (não resolvidos, não escondidos):
+detecção automática de Intervention Moments (schema/RPC prontos, sem
+trigger — depende de Conversas Bloco 2 existir); scheduling de feedback
+check-ins (schema/RPC prontos, sem gatilho); classificação assíncrona
+de `probable_reason` (arquitetura pronta via `reason_status`, job não
+construído); custo de canal WhatsApp (proveniência preservada em
+`outbound_intents`, cálculo adiado); granularidade futura de Product
+Events além do core wireado (`demand_received`/`booking_closed`/
+`booking_cancelled`) quando necessária; capabilities reais de Booker;
+`external_participant`↔`bookings` sem FK (recorrência de cliente
+indisponível); golden suites Planner/Classification pendentes de
+ambiente com `OPENAI_API_KEY` real.
+
+## Roadmap pré-beta revisado (03/09/2026)
+
+Substitui qualquer leitura anterior de ordem de blocos. Career
+Intelligence **não** é assumido como próximo automaticamente só por ter
+sido citado como "passo 3" em blocos anteriores — depende de volume
+real de uso via Beta Instrumentation, não de outro bloco de código.
+
+1. **Conversas — Bloco 2** `[FUTURE, próximo bloco de código]` — retomado
+   depois de pausado (ver seção 96, revisão de produto). Spec vigente:
+   acesso **secundário** a partir do Booking ("Ver conversa") —
+   **Conversas como aba primária foi `[SUPERSEDED]`, nunca ressuscitar**
+   sem nova instrução explícita.
+2. **WhatsApp Identity UI + "Falar com minha Doopla" real** `[FUTURE]`
+   — boundary já existe (seção 64), falta só a tela e o deep link real.
+3. **Lifecycle + Transactional + Operational Messaging V1** `[FUTURE,
+   pré-beta]` — revisado 03/09/2026: **não é mais integralmente
+   pós-beta.** A Doopla é WhatsApp-first; o profissional não pode
+   depender de abrir o painel pra saber que uma decisão está pendente.
+   V1 precisa cobrir pelo menos `DECISION`/`RISK`/`RESOLVED` e
+   compromissos temporais relevantes, respeitando `why_now`,
+   revalidação de estado, dedup, suppression/cancellation e smart
+   silence. A versão completa (todos os `signal_type`, todo o vocabulário
+   `scheduled/due/suppressed/sent/delivered/responded/resolved/cancelled/escalated`)
+   pode evoluir depois do beta. `product_events.why_now`/`signal_type`
+   (seção 66) já nasceram reservados pra isso.
+4. **Wiring de Intervention Moments + Feedback/check-ins** `[FUTURE]` —
+   onde houver trigger real (depende principalmente do item 1 existir).
+5. **QA/E2E/readiness do beta** `[FUTURE]`.
+
+**Depois do beta rodar com dado real**: Career Intelligence V1
+(Pattern/Insight/Recommendation Engine sobre os sinais já capturados
+pelo Beta Instrumentation).
+
+**Decisão de produto em aberto, não classificada como definitivamente
+pós-beta**: Booker — não bloqueia o primeiro fluxo mono-profissional,
+mas sua entrada no beta comercial é uma decisão de produto ainda não
+tomada. Todo o modelo já definido (carteira multi-profissional,
+permissões, cobertura de assinatura) precisa continuar preservado sem
+implementação até essa decisão vir.
+
+**Gaps que não bloqueiam beta, mas seguem em aberto**: `external_participant`↔`bookings`
+sem FK; golden suites pendentes de ambiente real.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

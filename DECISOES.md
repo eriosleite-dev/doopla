@@ -8,6 +8,81 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Conversas: aba primária foi descartada, acesso é secundário via Booking — 03/09/2026
+
+A primeira versão do produto tratava "Conversas" como área própria de
+navegação (aba primária do painel). Revisão de produto (registrada em
+`PROGRESS.md`, seção "Revisão de produto Home/Bookings/Conversas/
+Precisa-de-você/WhatsApp") decidiu o contrário: a Doopla **representa**
+o profissional — o objetivo nunca foi transformar o profissional em
+operador de chat. Conversas virou um ponto de acesso **secundário**
+("Ver conversa"), alcançado a partir do Booking/oportunidade a que ela
+pertence, nunca uma aba própria. Isso é `[SUPERSEDED]`, não uma opção
+em aberto — qualquer trabalho futuro em Conversas (Bloco 2) parte dessa
+spec, nunca da versão de aba primária.
+
+## Camada A/B/C de evidência: conhecer nunca é autorizar, mesmo citado e real — 03/09/2026
+
+Estabelecida no bloco Professional Intelligence Context, preservada
+sem alteração em Beta Instrumentation. Três camadas, nunca misturadas:
+(A) context/reasoning evidence — toda citação validada contra o
+`ContextPackage` real, usada só pra o Planner se preparar/redigir
+melhor; (B) commitment-authorizing evidence — subconjunto restrito
+(`professional_profile`/`opportunity`/`booking`/`external_participant`/
+`conversation_message`) que sozinho pode sustentar
+`report_existing_fact`/`answer_with_known_information`; (C) autorização
+real — Mandate/Approval/Policy Gate, que nem leem `ContextPackage`.
+Preferência declarada (`professional_business_context`) e histórico
+comercial (`professional_commercial_history`) **nunca** entram na
+camada B, mesmo grounded e citados — cachê de um booking passado nunca
+é o cachê deste booking. Se algum bloco futuro precisar que uma fonte
+nova influencie autorização, isso é uma mudança deliberada em
+`COMMITMENT_AUTHORIZING_SOURCE_TYPES` (`planner/invariants.ts`), nunca
+um acidente de fonte nova "vazando" pra camada B.
+
+## Intervention Moments: `approval` nunca é um tipo válido, ausência de intervenção não é sinal positivo — 03/09/2026
+
+Rascunho inicial do Beta Instrumentation incluía `approval` como um
+`intervention_type` e cogitava tratar "nenhuma correção detectada" como
+aprovação implícita. As duas premissas foram corrigidas antes de
+implementar: aprovação/aceitação positiva é **behavioral feedback**,
+sempre derivado de estruturas que já provam um sinal positivo real
+(`approval_records`/`approval_resolutions`), nunca uma linha nova em
+`intervention_moments` nem a ausência de uma. Motivo: ausência de
+intervenção pode significar tanto "o profissional aprovou" quanto
+"o profissional nunca viu/nunca teve chance de reagir" — são coisas
+diferentes, e só a primeira é sinal positivo real. Uma futura métrica
+`action_without_intervention` pode existir, mas precisa de janela/estado
+terminal definidos e nunca deve ser lida como aprovação.
+
+## Lifecycle + Transactional + Operational Messaging: V1 é pré-beta, não pós-beta — 03/09/2026
+
+Decisão revisada nesta data (contradiz uma leitura anterior, do mesmo
+dia, que tinha classificado o bloco inteiro como pós-beta). Motivo: a
+Doopla é WhatsApp-first — o profissional não pode depender de abrir o
+painel pra descobrir que uma decisão está pendente. A versão completa
+(todo o vocabulário `scheduled/due/suppressed/sent/delivered/responded/
+resolved/cancelled/escalated` e todos os `signal_type`) continua podendo
+evoluir depois do beta; um V1 cobrindo pelo menos `DECISION`/`RISK`/
+`RESOLVED` e compromissos temporais, com `why_now`/revalidação de
+estado/dedup/suppression/smart silence, é pré-beta.
+
+## Booker: não classificado como definitivamente pós-beta — 03/09/2026
+
+Booker/`authorized_collaborator` não bloqueia o primeiro fluxo
+mono-profissional (o beta funciona sem ele). Mas sua entrada no beta
+comercial continua sendo uma decisão de produto em aberto, não uma
+conclusão técnica — não presumir "fica pra depois" como definitivo.
+Enquanto a decisão não vier: preservar todo o modelo já desenhado
+(carteira multi-profissional, permissões por `professional_id`,
+cobertura de assinatura) sem implementar nada novo — `resolveCapabilities`/
+`resolveActorContext` (`src/lib/intelligence/actor-context.ts`)
+continuam com `authorized_collaborator` em capabilities vazias até essa
+decisão vir, e o mecanismo de extensão (capability-gating, nunca
+actor-type hardcoded) já está pronto pra receber isso sem redesign.
+
+---
+
 ## "Precisa da sua atenção" (artista): não incluí "contrato aguardando validação" — 19/08/2026
 
 O pedido de revisão da Visão Geral do artista dá como exemplo "Seu
