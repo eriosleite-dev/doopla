@@ -49,13 +49,43 @@ function factSection(ctx: PlannerContext, sourceType: EvidenceUsed['sourceType']
       return ctx.booking;
     case 'external_participant':
       return ctx.externalParticipant;
+    // Professional Intelligence Context — grounding funciona igual às
+    // fontes acima (nunca aceita uma citação sem checar contra o
+    // PlannerContext real), mas o sourceType em si fica de fora de
+    // COMMITMENT_AUTHORIZING_SOURCE_TYPES abaixo: uma citação real
+    // dessas fontes prova que o Planner TEM/usou o dado (camada A —
+    // contexto/raciocínio), nunca que isso autoriza relatar/confirmar
+    // um compromisso sobre o booking/oportunidade ATUAL (camada B).
+    case 'professional_business_context':
+      return ctx.professionalBusinessContext;
+    case 'professional_commercial_history':
+      return ctx.professionalCommercialHistory;
     case 'conversation_message':
       return null;
   }
 }
 
+// Camada B — "commitment-authorizing evidence". Só estas fontes podem
+// sustentar commitmentNature='report_existing_fact', o piso de
+// answer_with_known_information, e o anchor-check de
+// professionalDecisionSignal — exatamente o conjunto que já existia
+// antes do Professional Intelligence Context (nenhuma mudança de
+// comportamento pras 5 fontes originais). As 2 novas fontes (camada A,
+// ver factSection acima) nunca entram aqui — preferência declarada não
+// autoriza nada, precedente histórico não autoriza repeti-lo, mesmo
+// citado/grounded/real.
+const COMMITMENT_AUTHORIZING_SOURCE_TYPES: ReadonlySet<EvidenceUsed['sourceType']> = new Set([
+  'professional_profile',
+  'opportunity',
+  'booking',
+  'external_participant',
+  'conversation_message',
+]);
+
 // Único ponto que decide se uma EvidenceUsed é real — nunca confia no
 // que o model afirma sem checar contra o PlannerContext de verdade.
+// Aplica-se às DUAS camadas (A e B) igualmente: mesmo uma citação só
+// pra fins de auditoria/raciocínio nunca é aceita sem essa prova.
 export function isEvidenceGrounded(evidence: EvidenceUsed, ctx: PlannerContext): boolean {
   if (evidence.sourceType === 'conversation_message') {
     if (ctx.triggerMessage?.messageId === evidence.sourceId) return true;
@@ -71,6 +101,12 @@ export function isEvidenceGrounded(evidence: EvidenceUsed, ctx: PlannerContext):
 // deduplicado) aplicado aqui de propósito antes de qualquer outro
 // cálculo. O corte de MAX_EVIDENCE_USED é determinístico (preserva a
 // ordem, sempre os primeiros) — nunca aleatório.
+//
+// Resultado = camada A completa ("context evidence used") — auditável,
+// pensada pra responder no futuro "que fatos/contexto a Doopla usou
+// pra preparar isto" (Beta Instrumentation). Nunca, sozinha, decide
+// autorização — ver filterCommitmentAuthorizingEvidence abaixo pra
+// camada B, a única que os invariantes de compromisso consultam.
 export function validateEvidenceUsed(rawEvidence: readonly EvidenceUsed[], ctx: PlannerContext): EvidenceUsed[] {
   const seen = new Set<string>();
   const result: EvidenceUsed[] = [];
@@ -83,6 +119,16 @@ export function validateEvidenceUsed(rawEvidence: readonly EvidenceUsed[], ctx: 
     result.push(e);
   }
   return result;
+}
+
+// Camada B — subconjunto de uma lista JÁ validada (validateEvidenceUsed)
+// restrito a COMMITMENT_AUTHORIZING_SOURCE_TYPES. Nunca re-valida
+// grounding (a lista de entrada já passou por isso) — só filtra por
+// sourceType. Esta é a única lista/contagem que resolveCommitmentNature/
+// resolveResponsePlan/resolveProfessionalDecisionSignal podem consultar
+// pra decidir autorização — nunca a lista completa (camada A).
+export function filterCommitmentAuthorizingEvidence(evidence: readonly EvidenceUsed[]): EvidenceUsed[] {
+  return evidence.filter((e) => COMMITMENT_AUTHORIZING_SOURCE_TYPES.has(e.sourceType));
 }
 
 export function boundMissingInformation(raw: readonly MissingInformationItem[]): MissingInformationItem[] {

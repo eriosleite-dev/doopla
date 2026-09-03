@@ -103,6 +103,16 @@ export type PlannerContext = {
   representedProfessionalDisplayName: string | null;
   externalParticipantName: string | null;
   professional: ContextSection<ContextFact>;
+  // Professional Intelligence Context — CONHECIMENTO (declarado +
+  // histórico real), nunca autorização. Citável em evidenceUsed (prova
+  // pra auditoria que o Planner de fato usou isso pra preparar a
+  // resposta — camada A/"context evidence"), mas EXCLUÍDO do whitelist
+  // de evidência que autoriza compromisso sobre o booking/oportunidade
+  // ATUAL (camada B, COMMITMENT_AUTHORIZING_SOURCE_TYPES em
+  // invariants.ts) — preferência declarada não autoriza nada,
+  // precedente histórico não autoriza repeti-lo.
+  professionalBusinessContext: ContextSection<ContextFact>;
+  professionalCommercialHistory: ContextSection<ContextFact>;
   opportunity: ContextSection<ContextFact>;
   booking: ContextSection<ContextFact>;
   externalParticipant: ContextSection<ContextFact>;

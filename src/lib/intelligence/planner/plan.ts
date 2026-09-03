@@ -11,6 +11,7 @@ import {
   boundMissingInformation,
   computeDecisionCategories,
   deterministicFallbackResponse,
+  filterCommitmentAuthorizingEvidence,
   missingInformationFallback,
   resolveCommitmentNature,
   resolveProfessionalDecisionSignal,
@@ -39,6 +40,12 @@ const evidenceUsedSchema = z.discriminatedUnion('sourceType', [
   z.object({ sourceType: z.literal('opportunity'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('booking'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('external_participant'), sourceId: z.string(), field: z.string() }),
+  // Professional Intelligence Context — camada A ("context evidence"),
+  // ver invariants.ts. Citável pelo model (prova que usou o dado pra
+  // preparar a resposta), mas nunca conta como camada B (autorização de
+  // compromisso) — filterCommitmentAuthorizingEvidence exclui as duas.
+  z.object({ sourceType: z.literal('professional_business_context'), sourceId: z.string(), field: z.string() }),
+  z.object({ sourceType: z.literal('professional_commercial_history'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('conversation_message'), sourceId: z.string() }),
 ]);
 
@@ -157,14 +164,22 @@ export async function planResponse(
     };
   }
 
+  // evidenceUsed = camada A completa (context/reasoning evidence,
+  // auditável) — nunca usada diretamente pelos invariantes de
+  // compromisso abaixo. commitmentEvidence = camada B (subconjunto
+  // restrito a COMMITMENT_AUTHORIZING_SOURCE_TYPES, ver invariants.ts)
+  // — a única que pode influenciar commitmentNature/responsePlan/
+  // professionalDecisionSignal. Mesmo comportamento de antes do
+  // Professional Intelligence Context pras 5 fontes originais.
   const evidenceUsed = validateEvidenceUsed(parsed.evidenceUsed, plannerContext);
+  const commitmentEvidence = filterCommitmentAuthorizingEvidence(evidenceUsed);
   const allIntents = [intentClassification.primaryIntent, ...intentClassification.secondaryIntents];
-  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, evidenceUsed.length, allIntents);
+  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, commitmentEvidence.length, allIntents);
   const { categories, requiresProfessionalDecision } = computeDecisionCategories(allIntents, commitmentNature, parsed.proposedDecisionCategory);
   const professionalDecisionSignal = resolveProfessionalDecisionSignal(
     parsed.professionalDecisionSignal,
     plannerContext.triggerMessage?.authorType,
-    evidenceUsed
+    commitmentEvidence
   );
   const responsePlan = resolveResponsePlan({
     modelPlan: parsed.responsePlan,
@@ -173,7 +188,7 @@ export async function planResponse(
     requiresProfessionalDecision,
     professionalDecisionSignal,
     triggerHasUsableText,
-    evidenceUsedCount: evidenceUsed.length,
+    evidenceUsedCount: commitmentEvidence.length,
   });
 
   // O draft do model foi escrito pensando no plano QUE ELE propôs — se

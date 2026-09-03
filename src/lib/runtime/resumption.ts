@@ -4,7 +4,7 @@ import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION, type ClassifierModelC
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
 import { finishOrchestratorRun, logAiUsageEvent, startOrchestratorRun } from '../intelligence/observability';
-import { AI_FEATURE_RESPONSE_PLANNING, planResponse, type PlannerModelCall } from '../intelligence/planner';
+import { AI_FEATURE_RESPONSE_PLANNING, filterCommitmentAuthorizingEvidence, planResponse, type PlannerModelCall } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
 import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision, type PolicyGateExtractorModelCall } from '../intelligence/policy-gate-post';
 import '../intelligence/tools';
@@ -320,7 +320,10 @@ async function runResumptionCycle(
         professionalDecisionCategory: decision.professionalDecisionCategory,
         professionalDecisionSignal: decision.professionalDecisionSignal,
         missingInformationCount: decision.missingInformation.length,
-        evidenceUsedCount: decision.evidenceUsed.length,
+        // evidence_used_count = camada B (commitment-authorizing),
+        // mesma semântica de sempre — ver comentário equivalente em
+        // pipeline.ts.
+        evidenceUsedCount: filterCommitmentAuthorizingEvidence(decision.evidenceUsed).length,
         requiresProfessionalReviewBeforeSend: decision.requiresProfessionalReviewBeforeSend,
       },
     });

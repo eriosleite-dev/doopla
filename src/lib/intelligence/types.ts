@@ -34,7 +34,9 @@ export type Capability =
   | 'read_professional_profile'
   | 'read_opportunity'
   | 'read_booking'
-  | 'read_external_participant';
+  | 'read_external_participant'
+  | 'read_professional_business_context'
+  | 'read_professional_commercial_history';
 
 export type ActorContext = {
   representedProfessionalId: string;
@@ -91,7 +93,9 @@ export type ContextSource =
   | 'conversation_messages'
   | 'opportunity'
   | 'booking'
-  | 'external_participant';
+  | 'external_participant'
+  | 'professional_business_context'
+  | 'professional_commercial_history';
 
 export type ToolContext = {
   representedProfessionalId: string;

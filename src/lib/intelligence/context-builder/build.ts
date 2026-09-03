@@ -1,6 +1,13 @@
 import type { ContextSource, ToolContext } from '../types';
 import { buildMessagesSection } from './messages';
-import { buildBookingSection, buildExternalParticipantSection, buildOpportunitySection, buildProfessionalSection } from './sections';
+import {
+  buildBookingSection,
+  buildExternalParticipantSection,
+  buildOpportunitySection,
+  buildProfessionalBusinessContextSection,
+  buildProfessionalCommercialHistorySection,
+  buildProfessionalSection,
+} from './sections';
 import type { ContextBuildResult, ContextPackageSectionName, UnavailableSource } from './types';
 
 // Doopla Intelligence Core v1 — Context Builder v1 (Bloco 2).
@@ -32,6 +39,18 @@ export async function buildContextPackage(
   if (professional.calledTool) calledTools.push(professional.calledTool);
   noteIfUnavailable('professional', professional.section.status, professional.unavailableReason);
 
+  const professionalBusinessContext = await buildProfessionalBusinessContextSection(toolCtx, gate, now);
+  if (professionalBusinessContext.calledTool) calledTools.push(professionalBusinessContext.calledTool);
+  noteIfUnavailable('professionalBusinessContext', professionalBusinessContext.section.status, professionalBusinessContext.unavailableReason);
+
+  const professionalCommercialHistory = await buildProfessionalCommercialHistorySection(toolCtx, gate, now);
+  if (professionalCommercialHistory.calledTool) calledTools.push(professionalCommercialHistory.calledTool);
+  noteIfUnavailable(
+    'professionalCommercialHistory',
+    professionalCommercialHistory.section.status,
+    professionalCommercialHistory.unavailableReason
+  );
+
   const opportunity = await buildOpportunitySection(toolCtx, gate, now);
   if (opportunity.calledTool) calledTools.push(opportunity.calledTool);
   noteIfUnavailable('opportunity', opportunity.section.status, opportunity.unavailableReason);
@@ -55,6 +74,8 @@ export async function buildContextPackage(
       representedProfessionalId: toolCtx.representedProfessionalId,
       builtAt: now.toISOString(),
       professional: professional.section,
+      professionalBusinessContext: professionalBusinessContext.section,
+      professionalCommercialHistory: professionalCommercialHistory.section,
       messages,
       opportunity: opportunity.section,
       booking: booking.section,

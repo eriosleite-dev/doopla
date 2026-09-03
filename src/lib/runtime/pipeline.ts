@@ -6,7 +6,7 @@ import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
 import { detectInboundProposal } from '../intelligence/inbound-proposal';
 import { finishOrchestratorRun, logAiUsageEvent, startOrchestratorRun } from '../intelligence/observability';
-import { AI_FEATURE_RESPONSE_PLANNING, planResponse } from '../intelligence/planner';
+import { AI_FEATURE_RESPONSE_PLANNING, filterCommitmentAuthorizingEvidence, planResponse } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
 import { applyGateOutcome, evaluatePostModelGate, logPolicyGateDecision } from '../intelligence/policy-gate-post';
 import '../intelligence/tools';
@@ -436,7 +436,15 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       professionalDecisionCategory: decision.professionalDecisionCategory,
       professionalDecisionSignal: decision.professionalDecisionSignal,
       missingInformationCount: decision.missingInformation.length,
-      evidenceUsedCount: decision.evidenceUsed.length,
+      // evidence_used_count preserva a semântica de sempre (camada B —
+      // commitment-authorizing evidence, ver planner/invariants.ts):
+      // decision.evidenceUsed agora é a lista completa (camada A,
+      // auditável, inclui Professional Intelligence Context), então o
+      // filtro aqui é obrigatório pra esta coluna não passar a contar
+      // preferência/histórico como se fossem evidência de compromisso.
+      // Persistência detalhada da camada A fica pro bloco Beta
+      // Instrumentation — gap registrado, não implementado aqui.
+      evidenceUsedCount: filterCommitmentAuthorizingEvidence(decision.evidenceUsed).length,
       requiresProfessionalReviewBeforeSend: decision.requiresProfessionalReviewBeforeSend,
     },
   });

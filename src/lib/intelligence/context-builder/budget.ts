@@ -12,6 +12,14 @@ export const CONTEXT_MESSAGE_WINDOW_DAYS = 30;
 export const CONTEXT_MAX_MESSAGE_TEXT_CHARS = 1000;
 export const CONTEXT_MAX_PROFILE_FIELD_CHARS = 2000;
 
+// Professional Intelligence Context — retrieval V1 (recency_bounded_v1,
+// ver context-builder/types.ts). Bounded pequeno de propósito (custo de
+// token + a lista inteira ainda cabe fácil no contexto) — evoluir pra
+// relevância no futuro não muda este número sozinho, muda a estratégia
+// de seleção inteira.
+export const CONTEXT_MAX_COMMERCIAL_HISTORY_ITEMS = 5;
+export const CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS = 2000;
+
 export function truncateText(value: string, maxChars: number): { value: string; truncated: boolean } {
   if (value.length <= maxChars) {
     return { value, truncated: false };
