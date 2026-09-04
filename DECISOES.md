@@ -8,6 +8,48 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Professional Product UI — Foundation fechada: contratos preparados, nenhuma UI nova, um achado de segurança corrigido — 04/09/2026
+
+Bloco de fundação técnica pro futuro Professional Product UI (Web+App)
+— explicitamente NUNCA a interface final, só contratos/read
+models/boundaries. Três decisões valem registrar:
+
+1. **`request_whatsapp_verification` nunca pode ser chamada direto do
+   Mobile** — achado real durante o bloco, corrigido antes de qualquer
+   código de produto usar o desenho errado. A RPC devolve o código OTP
+   em texto puro (única vez que ele existe fora do hash) pro CALLER
+   mandar via WhatsApp — no Web isso sempre foi um Server Action
+   (segredo `WHATSAPP_ACCESS_TOKEN` nunca sai do servidor). Uma
+   primeira versão do boundary Mobile chamaria a RPC direto, o que
+   vazaria o código em texto puro pro dispositivo sem nunca mandar
+   pelo WhatsApp de verdade. Corrigido extraindo a lógica pra
+   `src/lib/whatsapp-identity/request-verification.ts`, compartilhada
+   por Web (Server Action) e Mobile (rota de API nova, Bearer→
+   `resolveUserFromToken`, mesmo padrão já usado em Conversas Bloco 2).
+   `confirm`/`revoke` não têm esse problema (nunca expõem segredo) —
+   Mobile chama essas duas RPCs direto.
+2. **`get_professional_home_facts()` (migration 0067) é o único read
+   model canônico dos fatos da Home** — decisão explícita de ter UMA
+   fonte server-side (não duas implementações client divergindo aos
+   poucos), justificada especificamente porque Web e Mobile não
+   compartilham grafo de import nesta base de código (mesma razão que
+   já justificava duplicar funções puras como `deriveConversationState()`
+   — aqui a resposta é centralizar no servidor em vez de duplicar,
+   porque é agregação, não lógica pura barata). Escopo deliberadamente
+   estreito: nunca reimplementa `getAttentionItems()` (representation_requests/
+   opportunities/invites) — só fatos objetivamente contáveis. Gap
+   registrado, não resolvido silenciosamente.
+3. **Resíduo do fluxo REMOVED "Doopla Verified" removido do código**
+   (`isDooplaVerified()`, `verifyBadgeClass`, o badge e o botão
+   desabilitado "Reenviar link de validação" no detalhe do booking) —
+   `validated_at` comprovadamente nunca é escrito em nenhum código,
+   então eram sempre-falsos. O item "Validado" dentro de
+   `getBookingCheckpoints()` (fileira de 5 checkpoints) foi
+   DELIBERADAMENTE preservado — mesma coluna morta, mas removê-lo
+   mexeria no layout de um componente de 5 itens, fora do escopo desta
+   Foundation ("não redesenhar telas"); registrado como gap, não
+   resolvido.
+
 ## Conversas Bloco 2 fechado: boundary único, proveniência imutável, `Encerrada` não lê `mandate` — 04/09/2026
 
 Revisão adversarial pós-entrega (commit `9d22034`) confirmou dois

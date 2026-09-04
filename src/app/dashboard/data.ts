@@ -64,10 +64,6 @@ export function getBookingCheckpoints(booking: Booking): Checkpoint[] {
   ];
 }
 
-export function isDooplaVerified(booking: Booking): boolean {
-  return booking.validated_at != null;
-}
-
 async function attachOtherPartyNames(
   bookings: Booking[],
   role: Profile['role'],

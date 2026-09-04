@@ -514,6 +514,11 @@ export type ConversationMessage = {
   attachment_metadata: Record<string, unknown> | null;
   generated_by: ConversationMessageGeneratedBy;
   created_at: string;
+  // Conversas Bloco 2 (migration 0066) — proveniência factual draft x
+  // resposta enviada, nunca interpretação. Ver comentário em
+  // src/lib/runtime/types.ts (InboundEvent.repliedToOutboundIntentId).
+  replied_to_outbound_intent_id: string | null;
+  prepared_response_outcome: 'sent' | 'edited' | null;
 };
 
 // Append-only. previous_mandate null = linha de nascimento da
@@ -734,6 +739,319 @@ export type Review = {
   requested_at: string | null;
   submitted_at: string | null;
   edited_at: string | null;
+  created_at: string;
+};
+
+// ============================================================
+// Professional Product UI — Foundation. Tipos que faltavam pra estas
+// tabelas/RPCs (migrations 0045/0047/0049-0051/0053/0059/0064/0065),
+// já em uso real via casts manuais em vários pontos do código
+// (ex.: src/app/dashboard/runtime-state-reads.ts). Nullability/enums
+// copiados exatamente das CREATE TABLE/CHECK das migrations — nenhum
+// campo inventado.
+// ============================================================
+
+// --- outbound_intents (migration 0051) ---------------------------
+export type OutboundIntentDeliveryState =
+  | 'policy_allowed'
+  | 'queued'
+  | 'sending'
+  | 'sent_unknown'
+  | 'sent_confirmed'
+  | 'delivered'
+  | 'read'
+  | 'failed_transient'
+  | 'failed_permanent'
+  | 'cancelled';
+
+export type OutboundIntent = {
+  id: string;
+  conversation_id: string;
+  professional_id: string;
+  trigger_message_id: string | null;
+  run_id: string | null;
+  policy_decision_id: string | null;
+  channel: ConversationChannel;
+  recipient_external_participant_id: string | null;
+  // Rascunho ainda não entregue — nunca exposto por
+  // get_conversation_operational_facts (0060), só por leitura direta
+  // sob "outbound_intents: select own".
+  content: string;
+  delivery_state: OutboundIntentDeliveryState;
+  send_attempt_id: string | null;
+  send_lease_expires_at: string | null;
+  provider_message_id: string | null;
+  failure_reason: string | null;
+  conversation_message_id: string | null;
+  created_at: string;
+  queued_at: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+  updated_at: string;
+};
+
+// --- runtime_pending_replies (migration 0053) ---------------------
+// Sem policy pra authenticated nesta tabela (0053) até a leitura ser
+// autorizada explicitamente em 0056 — "select own" via
+// conversations.represented_professional_id, nunca coluna própria.
+export type RuntimePendingReplyStatus = 'pending' | 'completed' | 'superseded';
+
+export type RuntimePendingReply = {
+  id: string;
+  conversation_id: string;
+  commercial_root_id: string;
+  trigger_message_id: string;
+  policy_gate_decision_id: string;
+  run_id: string | null;
+  status: RuntimePendingReplyStatus;
+  superseded_by_id: string | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+
+// --- approval_records (migration 0045) ----------------------------
+export type ApprovalOperationType =
+  | 'contextual_decision'
+  | 'explicit_decision'
+  | 'counterproposal'
+  | 'revocation'
+  | 'professional_initiated';
+
+export type ApprovalRecord = {
+  id: string;
+  professional_id: string;
+  // Sempre resolve_commercial_root_id() — id de booking OU de
+  // opportunity, sem FK direta a uma tabela só.
+  commercial_root_id: string;
+  decision_category: string;
+  subject_key: string;
+  version: number;
+  operation_type: ApprovalOperationType;
+  // null se e somente se operation_type='revocation'.
+  approved_value: Record<string, unknown> | null;
+  professional_statement_message_id: string;
+  communicated_proposal_message_ids: string[];
+  referred_value: Record<string, unknown> | null;
+  created_at: string;
+};
+
+// --- policy_gate_decisions (migration 0049, enum estendido em 0051) ---
+export type PolicyGateOutcome = 'allowed' | 'blocked';
+export type PolicyGateBlockReason =
+  | 'no_matching_approval'
+  | 'value_mismatch'
+  | 'subject_key_unresolved'
+  | 'commercial_root_terminal'
+  | 'invalid_extracted_value'
+  | 'extraction_unavailable'
+  | 'stale_dependency'
+  | 'professional_not_operationally_ready';
+
+export type PolicyGateDecision = {
+  id: string;
+  professional_id: string;
+  conversation_id: string;
+  commercial_root_id: string;
+  message_id: string | null;
+  run_id: string | null;
+  outcome: PolicyGateOutcome;
+  policy_version: string;
+  // Preenchido só quando outcome='blocked' (CHECK simétrico no banco).
+  primary_block_reason: PolicyGateBlockReason | null;
+  checks: unknown[];
+  created_at: string;
+};
+
+// --- product_events (migration 0065) ------------------------------
+export type ProductEventCategory = 'product' | 'value' | 'lifecycle';
+export type ProductEventActorType = 'professional' | 'external_participant' | 'ai' | 'system';
+// Reservado pro futuro Lifecycle Messaging — nenhum event_type atual usa.
+export type ProductEventSignalType = 'decision' | 'risk' | 'resolved' | 'opportunity';
+export type ProductEventSource = 'runtime' | 'dashboard' | 'webhook' | 'cron';
+
+export type ProductEvent = {
+  id: string;
+  professional_id: string;
+  category: ProductEventCategory;
+  // Livre no banco, validado pelo registry em código
+  // (src/lib/beta-instrumentation/event-types.ts) — nunca um union
+  // fechado aqui, isso duplicaria a fonte de verdade.
+  event_type: string;
+  occurred_at: string;
+  recorded_at: string;
+  idempotency_key: string;
+  subject_type: string;
+  subject_id: string;
+  commercial_root_id: string | null;
+  conversation_id: string | null;
+  run_id: string | null;
+  source_message_id: string | null;
+  actor_type: ProductEventActorType | null;
+  payload: Record<string, unknown>;
+  // Reservados pro futuro Lifecycle Messaging — sempre null hoje.
+  why_now: string | null;
+  signal_type: ProductEventSignalType | null;
+  source: ProductEventSource;
+  created_at: string;
+};
+
+// --- professional_whatsapp_identities (migration 0064) ------------
+export type ProfessionalWhatsappIdentityStatus =
+  | 'unverified'
+  | 'pending_verification'
+  | 'verified'
+  | 'pending_replacement'
+  | 'revoked';
+
+export type ProfessionalWhatsappIdentity = {
+  professional_id: string;
+  status: ProfessionalWhatsappIdentityStatus;
+  // Só populado em 'verified'/'pending_replacement'.
+  verified_number: string | null;
+  verified_at: string | null;
+  // Número em processo de verificação (primeira vez OU troca).
+  candidate_number: string | null;
+  candidate_requested_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProfessionalWhatsappIdentityEventType = 'candidate_submitted' | 'verified' | 'replaced' | 'revoked';
+
+export type ProfessionalWhatsappIdentityEvent = {
+  id: string;
+  professional_id: string;
+  event_type: ProfessionalWhatsappIdentityEventType;
+  number: string | null;
+  previous_status: string | null;
+  new_status: string | null;
+  created_at: string;
+};
+
+// --- Comunidade (migration 0059) -----------------------------------
+// V1 é artista-only (community_profiles/RPCs recusam role != 'artista'
+// — nunca reforçado só no client). Escrita sempre via RPC security
+// definer, exceto community_saved_topics (única exceção, RLS direta).
+export type CommunityCategory = {
+  id: string;
+  slug: string;
+  label: string;
+  sort_order: number;
+  active: boolean;
+};
+
+export type CommunityTag = {
+  id: string;
+  slug: string;
+  label: string;
+  active: boolean;
+};
+
+// Domínio exclusivo de moderação (bloco futuro) — nunca setado pelo
+// próprio profissional (trigger prevent_self_community_moderation_change
+// bloqueia isso no banco, não só por convenção de RPC).
+export type CommunityVisibilityStatus = 'active' | 'restricted' | 'blocked';
+
+export type CommunityProfile = {
+  profile_id: string;
+  visibility_status: CommunityVisibilityStatus;
+  available_for_referrals: boolean;
+  show_city: boolean;
+  show_avatar: boolean;
+  show_bio: boolean;
+  show_specialties: boolean;
+  show_work_types: boolean;
+  show_instagram: boolean;
+  show_portfolio: boolean;
+  activated_at: string;
+  updated_at: string;
+};
+
+// Leitura seletiva de OUTRO profissional na Comunidade — única fonte
+// seura pra isso (aplica as preferências show_*, nunca o client
+// escondendo depois). visibility_status nunca é exposto aqui de
+// propósito (moderação é assunto interno).
+export type CommunityProfilePublic = {
+  profile_id: string;
+  display_name: string;
+  profession_label: string | null;
+  profession_id: string | null;
+  is_pro: boolean;
+  available_for_referrals: boolean;
+  is_incomplete: boolean;
+  city: string | null;
+  state: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  specialties: string[] | null;
+  work_types: string[] | null;
+  instagram_url: string | null;
+  portfolio_url: string | null;
+};
+
+export type CommunityTopicAudience = 'niche' | 'all';
+// Soft delete sempre — a linha nunca é apagada, pra nunca quebrar
+// reply_to_post_id de terceiros nem o contexto de outras respostas.
+export type CommunityContentStatus = 'published' | 'removed_by_author' | 'removed_by_moderator';
+
+export type CommunityTopic = {
+  id: string;
+  author_profile_id: string;
+  title: string;
+  body: string;
+  category_id: string;
+  audience: CommunityTopicAudience;
+  status: CommunityContentStatus;
+  // Conta TODAS as respostas já criadas, inclusive removidas depois —
+  // sinal de atividade, não de conteúdo visível agora.
+  reply_count: number;
+  participant_count: number;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommunityTopicTag = {
+  topic_id: string;
+  tag_id: string;
+};
+
+export type CommunityPost = {
+  id: string;
+  topic_id: string;
+  author_profile_id: string;
+  body: string;
+  reply_to_post_id: string | null;
+  status: CommunityContentStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommunityMention = {
+  id: string;
+  post_id: string;
+  mentioned_profile_id: string;
+  created_at: string;
+};
+
+export type CommunitySavedTopic = {
+  profile_id: string;
+  topic_id: string;
+  created_at: string;
+};
+
+export type CommunityNotificationType = 'reply_to_topic' | 'reply_to_post' | 'mention';
+
+export type CommunityNotification = {
+  id: string;
+  recipient_profile_id: string;
+  actor_profile_id: string;
+  type: CommunityNotificationType;
+  topic_id: string;
+  post_id: string | null;
+  read_at: string | null;
   created_at: string;
 };
 
@@ -995,8 +1313,114 @@ export type Database = {
         Update: Partial<ArtistLinkRouting>;
         Relationships: [];
       };
+      // Professional Product UI — Foundation. Escrita exclusiva via RPC
+      // security definer em todas as tabelas abaixo (Insert/Update
+      // `never` reflete a garantia real de RLS/grant, não preferência
+      // de código) — exceto community_saved_topics, único caso com
+      // policy de insert/delete direta pra authenticated (0059).
+      outbound_intents: {
+        Row: OutboundIntent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      runtime_pending_replies: {
+        Row: RuntimePendingReply;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      approval_records: {
+        Row: ApprovalRecord;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      policy_gate_decisions: {
+        Row: PolicyGateDecision;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      product_events: {
+        Row: ProductEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      professional_whatsapp_identities: {
+        Row: ProfessionalWhatsappIdentity;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      professional_whatsapp_identity_events: {
+        Row: ProfessionalWhatsappIdentityEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_categories: {
+        Row: CommunityCategory;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_tags: {
+        Row: CommunityTag;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_profiles: {
+        Row: CommunityProfile;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_topics: {
+        Row: CommunityTopic;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_topic_tags: {
+        Row: CommunityTopicTag;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_posts: {
+        Row: CommunityPost;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_mentions: {
+        Row: CommunityMention;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_saved_topics: {
+        Row: CommunitySavedTopic;
+        Insert: Pick<CommunitySavedTopic, 'profile_id' | 'topic_id'>;
+        Update: never;
+        Relationships: [];
+      };
+      community_notifications: {
+        Row: CommunityNotification;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      community_profiles_public: {
+        Row: CommunityProfilePublic;
+        Relationships: [];
+      };
+    };
     Functions: {
       // Doopla Intelligence OS v1 (migration 0039) — únicos caminhos
       // de escrita pra conversations/conversation_mandate_events/
@@ -1145,6 +1569,73 @@ export type Database = {
       get_invite_by_token: {
         Args: { p_token: string };
         Returns: InviteByToken[];
+      };
+      // Professional Product UI — Foundation. RPCs de WhatsApp Identity
+      // (migration 0064) — auth.uid() sempre revalidado contra
+      // p_professional_id por dentro da function, nunca confiado do
+      // parâmetro sozinho.
+      request_whatsapp_verification: {
+        Args: { p_professional_id: string; p_candidate_number: string };
+        Returns: { challenge_id: string; code: string; expires_at: string }[];
+      };
+      confirm_whatsapp_verification: {
+        Args: { p_professional_id: string; p_code: string };
+        Returns: { confirmed: boolean; reason: string | null }[];
+      };
+      revoke_whatsapp_verification: {
+        Args: { p_professional_id: string };
+        Returns: boolean;
+      };
+      // Professional Product UI — Foundation. RPCs de Comunidade
+      // (migration 0059) — auth.uid() é sempre a fonte de identidade
+      // dentro da function, nunca um parâmetro vindo do client.
+      activate_community_profile: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      update_community_profile: {
+        Args: {
+          p_available_for_referrals: boolean;
+          p_show_city: boolean;
+          p_show_avatar: boolean;
+          p_show_bio: boolean;
+          p_show_specialties: boolean;
+          p_show_work_types: boolean;
+          p_show_instagram: boolean;
+          p_show_portfolio: boolean;
+        };
+        Returns: undefined;
+      };
+      create_community_topic: {
+        Args: {
+          p_title: string;
+          p_body: string;
+          p_category_id: string;
+          p_audience?: CommunityTopicAudience;
+          p_tag_ids?: string[];
+        };
+        Returns: string;
+      };
+      remove_community_topic: {
+        Args: { p_topic_id: string };
+        Returns: undefined;
+      };
+      create_community_post: {
+        Args: {
+          p_topic_id: string;
+          p_body: string;
+          p_reply_to_post_id?: string | null;
+          p_mentioned_profile_ids?: string[];
+        };
+        Returns: string;
+      };
+      remove_community_post: {
+        Args: { p_post_id: string };
+        Returns: undefined;
+      };
+      mark_community_notification_read: {
+        Args: { p_notification_id: string };
+        Returns: undefined;
       };
     };
   };

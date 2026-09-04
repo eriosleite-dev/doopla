@@ -71,11 +71,6 @@ export const cpLabelClass = (done: boolean) =>
     done ? 'text-[var(--ink)]/45' : 'font-semibold text-[var(--alert)]'
   }`;
 
-export const verifyBadgeClass = (verified: boolean) =>
-  `font-doopla-mono inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10.5px] uppercase tracking-[.03em] ${
-    verified ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]' : 'bg-[var(--alert)]/10 text-[var(--alert)]'
-  }`;
-
 export const EVENT_LABELS: Record<string, string> = {
   proposta_enviada: 'Proposta enviada',
   contraproposta: 'Contraproposta',

@@ -29,3 +29,9 @@ export const supabaseAnonKey = () => requireEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY')
 // leitura do Mobile continua direto no Supabase via RLS, mesmo client
 // de sempre (supabase.ts).
 export const apiBaseUrl = () => requireEnv('EXPO_PUBLIC_API_BASE_URL');
+
+// Professional Product UI — Foundation. Mesmo número público usado no
+// Web (NEXT_PUBLIC_WHATSAPP_NUMBER, src/app/orcamento/[slug]/page.tsx)
+// — nunca um número por profissional, valor já público (aparece no
+// HTML de qualquer página /orcamento/[slug]), nunca um segredo.
+export const dooplaWhatsappNumber = () => requireEnv('EXPO_PUBLIC_WHATSAPP_NUMBER');

@@ -7545,6 +7545,145 @@ nunca só um dos dois:
 Gaps explicitamente preservados: takeover; wiring de Intervention
 Moments/`probable_reason`; gap de `mandate` acima.
 
+## 68. Professional Product UI — Foundation (migration 0067) — `[DELIVERED]`
+
+Bloco técnico de fundação — **nunca produz a nova interface final**,
+só contratos/boundaries pra Web+App consumirem depois. Escopo
+completo, nenhum item pulado.
+
+**Tipagem** (`src/lib/supabase/types.ts`): tabelas/RPCs que faltavam
+ficaram tipadas — `outbound_intents`, `runtime_pending_replies`,
+`approval_records`, `policy_gate_decisions`, `product_events`,
+`professional_whatsapp_identities` (+`_events`), toda a Comunidade
+(`community_categories/tags/profiles/topics/topic_tags/posts/
+mentions/saved_topics/notifications` + a view `community_profiles_public`),
+mais as RPCs de WhatsApp Identity e Comunidade no `Database.Functions`.
+`ConversationMessage` ganhou `replied_to_outbound_intent_id`/
+`prepared_response_outcome` (migration 0066, nunca tipados antes).
+Estratégia daqui pra frente: sem projeto Supabase linkado neste
+sandbox pra `supabase gen types`, a sincronização continua manual,
+seguindo exatamente as `CREATE TABLE`/`CHECK` das migrations (nunca um
+tipo inventado) — recomendado rodar `supabase gen types` num ambiente
+com acesso real e diffar contra este arquivo antes de qualquer UI
+nova. Efeito colateral positivo: `src/app/dashboard/whatsapp-identity-actions.ts`
+perdeu os 3 casts `as SupabaseClient<any>` que só existiam por falta
+desses tipos.
+
+**Home** (`get_professional_home_facts()`, migration 0067, `SECURITY INVOKER`
+sobre RLS já testada — mesmo padrão de `get_conversation_operational_facts`):
+único read model canônico dos fatos objetivamente contáveis (contas de
+booking por status, próximo booking, contagem de conversas
+`needs_you` — mesmo critério exato de `deriveConversationState()`,
+identidade WhatsApp, referral, plano). Consumido por
+`src/lib/professional-home/data.ts` (Web) e
+`mobile/src/lib/data/home-facts.ts` (Mobile), mesmo mapeamento.
+**Nunca inclui a lista completa de "Precisa de você"**
+(`getAttentionItems`, `src/app/dashboard/data.ts` continua sendo a
+fonte — reimplementar aquela lógica em SQL seria arriscar divergência,
+gap registrado, não escondido).
+
+**Decisões/Approvals** (`src/lib/decisions/data.ts` + espelho Mobile):
+contrato `DecisionItem` (`pending_reply`/`prepared_draft`) compondo
+`runtime_pending_replies`+`policy_gate_decisions`+`outbound_intents`+
+`conversations` já existentes — nenhuma lógica nova de aprovação,
+nenhuma segunda fonte de verdade. `runtime-state-reads.ts` (passo 4a)
+parou de duplicar `RuntimePendingReplyRow`/`OutboundIntentRow` — agora
+reexporta os tipos canônicos.
+
+**WhatsApp Identity** (RPCs 0064 já `[DELIVERED]`, zero UI antes
+deste bloco): leitura (`src/lib/whatsapp-identity/data.ts` +
+`mobile/.../whatsapp-identity.ts`) somada aos 3 boundaries de escrita
+já existentes. **Achado de segurança real, corrigido nesta rodada**:
+o desenho original do Mobile chamaria `request_whatsapp_verification`
+direto via RPC — isso devolveria o código OTP em texto puro pro
+dispositivo sem ninguém nunca mandar pelo WhatsApp de verdade (ou
+exigiria o app carregar `WHATSAPP_ACCESS_TOKEN`, segredo de servidor).
+Corrigido extraindo a lógica pra um boundary compartilhado
+(`src/lib/whatsapp-identity/request-verification.ts`) — Web continua
+via Server Action, Mobile passou a ir por uma rota de API nova
+(`src/app/api/mobile/whatsapp-identity/request`, Bearer→
+`resolveUserFromToken`, mesmo padrão de Conversas). `confirm`/`revoke`
+não expõem segredo nenhum — Mobile chama essas duas RPCs direto.
+
+**"Falar com minha Doopla"** (`src/lib/professional-doopla-cta.ts` +
+espelho Mobile): documentado que o mecanismo já existe por inteiro
+(mesmo número público `NEXT_PUBLIC_WHATSAPP_NUMBER`, `professional_self`
+resolvido pelo algoritmo CONGELADO de roteamento via identidade
+verificada, prioridade 1 desde WhatsApp Inbound Foundation) — só
+faltava o helper de URL + a documentação do contrato, nunca um sistema
+de identidade paralelo. Pré-condição: `whatsappIdentityStatus === 'verified'`.
+
+**Comunidade** (`src/lib/community/data.ts` + espelho Mobile): boundary
+completo sobre o schema real já pronto (migration 0059, commitado
+02/09/2026, achado da auditoria: estava sentado sem nenhuma UI
+conectada) — perfil/privacidade, categorias/tags, tópicos/posts,
+menções estruturadas, reply-to, salvos, notificações da Comunidade.
+Sem busca por texto (0059 nunca teve tsvector, gap explícito, não
+inventado agora). O Fórum mobile (`app/forum/*`) continua 100% mock
+(`forumMock.ts`) — este bloco não tocou nele, só deixou o boundary
+real pronto pra quando a reconexão acontecer.
+
+**Booker do ponto de vista do profissional** (`src/lib/professional-booker/data.ts`
++ espelho Mobile): `getMyBookerFacts` devolve LISTAS (ativos + pendentes
+com direção `incoming`/`outgoing`) sobre `representations`/
+`representation_requests` já reais — nunca um estado singular
+"o booker", porque o schema já permite múltiplos (carteira, dos dois
+lados). `authorized_collaborator` capabilities continuam vazias, nada
+ativado. Gap registrado: não existe hoje uma action pra cancelar um
+convite que o PRÓPRIO profissional enviou (`respondRepresentationRequestAction`
+bloqueia explicitamente o iniciador).
+
+**Plano/entitlement**: `hasDooplaPro()` (Web, já existia) ganhou
+espelho Mobile (`mobile/src/lib/subscription.ts`) — só o gate do
+artista, `hasProAccess`/`isArtistBlockedForBooker` (booker) ficam de
+fora de propósito (fora do escopo profissional deste macrobloco).
+
+**Notificações**: só mapeado, nenhuma central criada (instrução
+explícita — reconciliar com Lifecycle Messaging antes). Produtor único
+hoje: `community_notifications` (0059), escopo estreito, nunca a
+central genérica do produto.
+
+**Doopla Verified — resíduo removido**: `isDooplaVerified()`/
+`verifyBadgeClass` (definições + os 2 usos no detalhe do booking: o
+badge e o botão desabilitado "Reenviar link de validação") removidos —
+`validated_at` comprovadamente nunca é escrito em nenhum código
+(auditado), então essas 2 UI eram sempre-falsas, mortas, sem
+dependência real. **Não removido, registrado como gap** (removê-lo
+seria mexer em layout, não só código morto): o item "Validado" dentro
+de `getBookingCheckpoints()`/`Checkpoint[]` (a fileira de 5 checkpoints
+no detalhe do booking) — mesma coluna `validated_at`, mas entrelaçado
+num componente de 5 itens, remoção arriscaria redesenho fora do
+escopo desta Foundation.
+
+**Segurança**: `get_professional_home_facts()` testado adversarialmente
+(isolamento cross-professional + `anon`/`service_role` sem EXECUTE — 4
+cenários, todos OK). Decisões/Booker/Comunidade reaproveitam RLS/RPCs
+já testadas nos blocos originais (Approval Engine, Policy Gate,
+Runtime, migration 0059) — não re-testadas do zero aqui, só as novas
+leituras TS sobre elas, sem `.eq()` de posse adicional (mesma
+filosofia de `get_conversation_operational_facts`). Nenhuma migration
+alterou RLS existente.
+
+**Migration**: só uma, `0067_professional_home_facts.sql` (RPC nova,
+justificada — nenhum contrato existente compunha esses fatos num só
+lugar; sem ela, "mesmo fato, mesma definição" entre Web e Mobile não
+seria garantido, já que os dois códigos não compartilham grafo de
+import). Nenhuma alteração de schema/RLS existente.
+
+**Testes**: 4 asserções SQL novas (`get_professional_home_facts`,
+isolamento + anon/service_role bloqueados) + regressão completa (0062-0067,
+todas as suites SQL anteriores + as 88 asserções TS de PIC/Beta
+Instrumentation/Conversas Bloco 2/estado de conversa) — tudo verde.
+`tsc`/`eslint`/`next build` limpos nos dois projetos.
+
+**Explicitamente NÃO implementado** (fora de escopo, sem UI/redesign/
+migration nova além da listada): novo visual Web/App; Materiais Pro;
+Career Intelligence; Analytics final; Minha Doopla/Treinar final;
+Booker Dashboard/App; Booker capabilities; billing coverage/PSP;
+Lifecycle/Transactional/Operational Messaging; central global de
+notificações; referral financeiro final; qualquer feature "Em breve"
+nova.
+
 ## Roadmap pré-beta revisado (03/09/2026)
 
 Substitui qualquer leitura anterior de ordem de blocos. Career
@@ -7688,6 +7827,16 @@ por estar mais acima na lista:
   cobertura de assinatura — ver `DECISOES.md`, "Booker: não
   classificado como definitivamente pós-beta"). O modelo atual
   prevalece em qualquer conflito.
+
+**Atualização (04/09/2026, mesmo dia — Professional Product UI Foundation,
+seção 68 `[DELIVERED]`)**: os contratos/boundaries pra Web+App das
+áreas listadas acima como PENDING/FUTURE foram preparados (tipos,
+read models, boundaries de escrita seguros) — isso NÃO promove nenhuma
+dessas áreas pra DELIVERED como PRODUTO. Continuam PENDING/FUTURE como
+superfície de UI: WhatsApp Identity UX, Community/Fórum (Web + App
+real), Minha equipe (Web + App), Analytics, Materiais, Minha Doopla/Treinar,
+Booker Web/App. A Foundation só reduz o trabalho de UI que falta,
+nunca antecipa o próprio UI.
 
 ## Como usar isso
 

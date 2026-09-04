@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import type { OutboundIntent, RuntimePendingReply } from '@/lib/supabase/types';
 
 // Doopla Intelligence Core v1 — Passo 4a (Beta Runtime Integration:
 // painel). Leitura PURAMENTE read-only do estado que o Runtime já
@@ -17,43 +18,12 @@ import { createClient } from '@/lib/supabase/server';
 // de apresentação (o que "pending" significa pro profissional) é uma
 // decisão de produto pra depois, fora do escopo deste passo.
 
-export type RuntimePendingReplyRow = {
-  id: string;
-  conversation_id: string;
-  commercial_root_id: string;
-  trigger_message_id: string;
-  policy_gate_decision_id: string;
-  run_id: string | null;
-  status: string;
-  superseded_by_id: string | null;
-  created_at: string;
-  resolved_at: string | null;
-};
-
-export type OutboundIntentRow = {
-  id: string;
-  conversation_id: string;
-  professional_id: string;
-  trigger_message_id: string | null;
-  run_id: string | null;
-  policy_decision_id: string | null;
-  channel: string;
-  recipient_external_participant_id: string | null;
-  content: string;
-  delivery_state: string;
-  send_attempt_id: string | null;
-  send_lease_expires_at: string | null;
-  provider_message_id: string | null;
-  failure_reason: string | null;
-  conversation_message_id: string | null;
-  created_at: string;
-  queued_at: string | null;
-  sent_at: string | null;
-  delivered_at: string | null;
-  read_at: string | null;
-  failed_at: string | null;
-  updated_at: string;
-};
+// Professional Product UI — Foundation: os tipos agora vivem em
+// src/lib/supabase/types.ts (RuntimePendingReply/OutboundIntent) —
+// nunca mais duplicados aqui, fonte única. Exportados de novo por este
+// arquivo só pra não quebrar imports existentes.
+export type RuntimePendingReplyRow = RuntimePendingReply;
+export type OutboundIntentRow = OutboundIntent;
 
 export async function getRuntimePendingReplies(): Promise<RuntimePendingReplyRow[]> {
   const supabase = await createClient();

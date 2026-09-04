@@ -1,12 +1,9 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
-import { sendWhatsappTextMessage } from '@/lib/channels/whatsapp/client';
-import { normalizeWhatsappPhone } from '@/lib/channels/whatsapp/phone';
-import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
+import { requestWhatsappVerification, type RequestWhatsappVerificationResult } from '@/lib/whatsapp-identity/request-verification';
 
 // Doopla Intelligence Core v1 — Professional WhatsApp Identity: único
 // boundary de escrita do vínculo professional_id <-> verified_whatsapp_number.
@@ -15,6 +12,11 @@ import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 // internamente, nunca is_system_caller(). Nenhuma UI nova neste bloco
 // (a tela de configurações que chama isto vem depois) — só o boundary
 // necessário pra existir e ser testável ponta a ponta.
+//
+// Professional Product UI — Foundation: requestWhatsappVerificationAction
+// agora delega pro boundary compartilhado com o Mobile
+// (src/lib/whatsapp-identity/request-verification.ts) — mesmo padrão
+// já usado em professional-reply-action.ts/submitProfessionalReply.
 
 async function requireProfessional() {
   const supabase = await createClient();
@@ -25,51 +27,11 @@ async function requireProfessional() {
   return { supabase, user };
 }
 
-export type RequestWhatsappVerificationResult =
-  | { kind: 'sent'; expiresAt: string }
-  | { kind: 'error'; error: string };
+export type { RequestWhatsappVerificationResult };
 
-// Gera o código (RPC, hash gravado, nunca texto puro persistido),
-// manda via WhatsApp (client de baixo nível, mesmo usado pelo sender
-// de outbound_intents) — o código só existe em texto puro entre estas
-// duas linhas, nunca antes nem depois.
 export async function requestWhatsappVerificationAction(params: { candidateNumber: string }): Promise<RequestWhatsappVerificationResult> {
   const { supabase, user } = await requireProfessional();
-
-  const normalized = normalizeWhatsappPhone(params.candidateNumber);
-  if (!normalized) {
-    return { kind: 'error', error: 'Número inválido — confira o DDD e o número.' };
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as SupabaseClient<any>;
-
-  const { data, error } = await client
-    .rpc('request_whatsapp_verification', { p_professional_id: user.id, p_candidate_number: normalized })
-    .single<{ challenge_id: string; code: string; expires_at: string }>();
-
-  if (error || !data) {
-    if (error?.message.includes('resend_too_soon')) {
-      return { kind: 'error', error: 'Aguarde alguns segundos antes de pedir um novo código.' };
-    }
-    if (error?.message.includes('too_many_requests')) {
-      return { kind: 'error', error: 'Muitas tentativas — aguarde um pouco antes de pedir outro código.' };
-    }
-    return { kind: 'error', error: `Não foi possível gerar o código: ${error?.message ?? 'sem dado'}` };
-  }
-
-  const send = await sendWhatsappTextMessage(
-    { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
-    { to: normalized, body: `Seu código Doopla de verificação: ${data.code}. Válido por 10 minutos.` }
-  );
-  if (send.kind === 'failed_permanent') {
-    return { kind: 'error', error: 'Não foi possível enviar o código pra este número pelo WhatsApp.' };
-  }
-  // sent_unknown/failed_transient: código já existe (hash gravado),
-  // profissional pode tentar reenviar depois do cooldown — nunca
-  // reexpõe o código puro numa segunda tentativa manual.
-
-  return { kind: 'sent', expiresAt: data.expires_at };
+  return requestWhatsappVerification(supabase, user.id, params.candidateNumber);
 }
 
 export type ConfirmWhatsappVerificationResult = { kind: 'confirmed' } | { kind: 'error'; error: string };
@@ -77,12 +39,9 @@ export type ConfirmWhatsappVerificationResult = { kind: 'confirmed' } | { kind: 
 export async function confirmWhatsappVerificationAction(params: { code: string }): Promise<ConfirmWhatsappVerificationResult> {
   const { supabase, user } = await requireProfessional();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as SupabaseClient<any>;
-
-  const { data, error } = await client
+  const { data, error } = await supabase
     .rpc('confirm_whatsapp_verification', { p_professional_id: user.id, p_code: params.code.trim() })
-    .single<{ confirmed: boolean; reason: string | null }>();
+    .single();
 
   if (error || !data) {
     return { kind: 'error', error: `Não foi possível confirmar: ${error?.message ?? 'sem dado'}` };
@@ -105,10 +64,7 @@ export type RevokeWhatsappVerificationResult = { kind: 'revoked'; hadVerificatio
 export async function revokeWhatsappVerificationAction(): Promise<RevokeWhatsappVerificationResult> {
   const { supabase, user } = await requireProfessional();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client = supabase as SupabaseClient<any>;
-
-  const { data, error } = await client.rpc('revoke_whatsapp_verification', { p_professional_id: user.id });
+  const { data, error } = await supabase.rpc('revoke_whatsapp_verification', { p_professional_id: user.id });
   if (error) {
     return { kind: 'error', error: `Não foi possível remover a verificação: ${error.message}` };
   }

@@ -16,7 +16,7 @@ import {
   markPaidAction,
   respondBookingAction,
 } from '../../actions';
-import { getBookingCheckpoints, getBookingDetail, getBookingReviews, isDooplaVerified } from '../../data';
+import { getBookingCheckpoints, getBookingDetail, getBookingReviews } from '../../data';
 import { getSessionProfile } from '../../session';
 import {
   accentButtonClass,
@@ -33,7 +33,6 @@ import {
   primaryButtonClass,
   STATUS_LABELS,
   statusPillClasses,
-  verifyBadgeClass,
 } from '../../ui';
 import { CancelBookingForm } from './cancel-booking-form';
 import { ContractSection } from './contract-section';
@@ -134,7 +133,6 @@ export default async function BookingDetailPage(
 
   const { booking, events, isProposer } = detail;
   const checkpoints = getBookingCheckpoints(booking);
-  const verified = isDooplaVerified(booking);
   const hasActiveCheckpoints = !['proposta_enviada', 'recusada', 'cancelada'].includes(booking.status);
   const reviews =
     booking.status === 'concluida'
@@ -354,29 +352,6 @@ export default async function BookingDetailPage(
             ))}
           </div>
 
-          <div className="mt-4 border-t border-[var(--line-light)] pt-4">
-            <span className={verifyBadgeClass(verified)}>
-              {verified ? '✓ Doopla Verified' : '○ Aguardando validação'}
-            </span>
-            {!verified && profile.role === 'artista' && (
-              <p className="mt-2 text-[12.5px] text-[var(--ink)]/60">
-                Este trabalho ainda não possui Doopla Verified. Fale com {booking.otherPartyName}{' '}
-                para enviar a validação ao cliente.
-              </p>
-            )}
-            {!verified && profile.role === 'booker' && (
-              <div className="mt-2 flex items-center gap-3">
-                <button
-                  type="button"
-                  disabled
-                  className="font-doopla-mono cursor-not-allowed rounded-full border border-[var(--ink)]/15 px-4 py-2 text-[11px] uppercase tracking-[.06em] text-[var(--ink)]/35"
-                >
-                  Reenviar link de validação
-                </button>
-                <span className="text-[12.5px] text-[var(--ink)]/45">Em breve</span>
-              </div>
-            )}
-          </div>
         </section>
       )}
 
