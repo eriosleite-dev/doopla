@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts, radii } from '@/theme/tokens';
 import { MascotBall } from '@/components/shared/MascotBall';
 
-export function HomeHero({ firstName }: { firstName: string }) {
+export function HomeHero({ firstName, needsYouCount = 0 }: { firstName: string; needsYouCount?: number }) {
   return (
     <View style={styles.hero}>
       <Text style={styles.h1}>
@@ -13,7 +13,11 @@ export function HomeHero({ firstName }: { firstName: string }) {
       <Text style={styles.p}>Sua Doopla negocia, organiza e cuida dos seus bookings.</Text>
       <View style={styles.statusRow}>
         <View style={styles.pulse} />
-        <Text style={styles.statusText}>Ativa, trabalhando 24h por você</Text>
+        <Text style={styles.statusText}>
+          {needsYouCount > 0
+            ? `Ativa — ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
+            : 'Ativa, trabalhando por você'}
+        </Text>
       </View>
       <View style={styles.mascotRow}>
         <MascotBall size={120} />

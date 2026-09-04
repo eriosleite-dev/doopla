@@ -34,6 +34,54 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
+/* Professional Shell + Home — Shell/Home bloco (04/09/2026). Tokens
+   escopados a `.pro-shell` de propósito: nunca vazam pro resto do
+   painel (legado, ainda bege/--paper), nunca colidem com os nomes já
+   usados em --paper/--ink/--accent/--sidebar acima. */
+.pro-shell {
+  --pro-bg: #0c0b0b;
+  --pro-panel: rgba(255, 255, 255, 0.04);
+  --pro-panel-solid: #161414;
+  --pro-line: rgba(255, 255, 255, 0.08);
+  --pro-off: #fbf9f2;
+  --pro-tx-70: rgba(251, 249, 242, 0.7);
+  --pro-tx-50: rgba(251, 249, 242, 0.5);
+  --pro-tx-30: rgba(251, 249, 242, 0.3);
+  --pro-red: #e2291c;
+  --pro-red-glow: rgba(226, 41, 28, 0.55);
+  --pro-black: #121110;
+  --pro-amber: #f5a623;
+  --pro-green: #3ecf6e;
+  --pro-whatsapp: #25d366;
+  background: var(--pro-bg);
+  color: var(--pro-off);
+}
+
+.pro-glow-bg {
+  background:
+    radial-gradient(ellipse 900px 500px at 70% -10%, rgba(226, 41, 28, 0.16), transparent 60%),
+    var(--pro-bg);
+}
+
+.font-pro-display {
+  font-family: 'Anton', sans-serif;
+}
+
+.font-pro-sub {
+  font-family: 'Familjen Grotesk', sans-serif;
+}
+
+.font-pro-body {
+  font-family: 'Inter', sans-serif;
+}
+
+.pro-scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.pro-scrollbar-none {
+  scrollbar-width: none;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

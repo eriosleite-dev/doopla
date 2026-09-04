@@ -1,30 +1,41 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii } from '@/theme/tokens';
 import { WhatsAppLogoIcon } from '@/components/icons/Icons';
 
-// Nesta fase (telas estáticas, sem integração real) o card não abre
-// o WhatsApp de verdade — só reproduz a interação visual. Ligar isso
-// ao WhatsApp real é integração de regra de negócio, fora do escopo
-// desta etapa.
-export function FalarComDooplaCard({ onPress }: { onPress: () => void }) {
+// Shell + Home bloco — CTA real (não mais mock). whatsappUrl vem de
+// buildTalkToYourDooplaUrl (professional-doopla-cta.ts), nunca reusa o
+// CTA de cliente. identityVerified só decide o texto de contexto — o
+// botão sempre abre o WhatsApp quando whatsappUrl existe (nenhum modal
+// intermediário, nenhum bloqueio: representar o estado real, não
+// impedir a ação).
+export function FalarComDooplaCard({ whatsappUrl, identityVerified }: { whatsappUrl: string | null; identityVerified: boolean }) {
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <View style={styles.card}>
       <View style={styles.head}>
         <View style={styles.ball}>
           <View style={styles.eye} />
           <View style={styles.eye} />
         </View>
-        <View>
+        <View style={styles.headText}>
           <Text style={styles.title}>Falar com minha Doopla</Text>
           <Text style={styles.sub}>Pergunte algo ou peça uma ação</Text>
         </View>
       </View>
-      <View style={styles.waBtn}>
-        <WhatsAppLogoIcon size={17} color="#fff" />
-        <Text style={styles.waText}>Abrir WhatsApp</Text>
-      </View>
-    </Pressable>
+      {!identityVerified && (
+        <Text style={styles.warn}>
+          Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.
+        </Text>
+      )}
+      {whatsappUrl ? (
+        <Pressable style={styles.waBtn} onPress={() => Linking.openURL(whatsappUrl)}>
+          <WhatsAppLogoIcon size={17} color="#fff" />
+          <Text style={styles.waText}>Abrir WhatsApp</Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.warn}>Número da Doopla indisponível no momento.</Text>
+      )}
+    </View>
   );
 }
 
@@ -42,6 +53,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginBottom: 14,
+  },
+  headText: {
+    flex: 1,
   },
   ball: {
     width: 38,
@@ -68,6 +82,13 @@ const styles = StyleSheet.create({
     color: colors.tx50,
     fontFamily: fonts.body,
     fontSize: 10.5,
+  },
+  warn: {
+    color: colors.tx50,
+    fontFamily: fonts.body,
+    fontSize: 10.5,
+    lineHeight: 15,
+    marginBottom: 10,
   },
   waBtn: {
     flexDirection: 'row',

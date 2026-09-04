@@ -7838,6 +7838,118 @@ real), Minha equipe (Web + App), Analytics, Materiais, Minha Doopla/Treinar,
 Booker Web/App. A Foundation só reduz o trabalho de UI que falta,
 nunca antecipa o próprio UI.
 
+## 69. Professional Product UI — Shell + Home (Web + App) — `[DELIVERED]`
+
+Primeiro bloco visual do novo Professional Product UI. Escopo exato:
+novo Shell Web (sidebar/topbar dark), nova Home Web, nova Home App
+(mesma tela já existente, rewired pros contratos da Foundation) — só
+isso. **Nunca** o Professional Web Dashboard final completo, nunca
+Bookings/Agenda/Decisões/Financeiro/Community/Booker como telas
+próprias. Nenhuma migration nova — 100% sobre os contratos já
+preparados na Foundation (seção 68).
+
+**Escopo por role**: o novo Shell/Home dark é exclusivo de
+`role !== 'booker'` (a superfície "profissional"/artista, incluindo o
+legado `role='agencia'`, que já era tratado como "não-booker" no
+código antigo). Booker segue 100% no shell/Home legado (bege,
+`legacy-shell.tsx`/`booker-home-view.tsx`, extraídos de
+`layout.tsx`/`page.tsx` sem NENHUMA mudança de comportamento, só pra
+isolar o narrowing de tipos do branch novo) — Booker Web Dashboard
+segue fora de escopo (DECISOES.md "Quatro superfícies distintas").
+
+**Web Shell** (`src/app/dashboard/pro-shell.tsx` +
+`pro-sidebar-nav.tsx`/`pro-sidebar-referral-link.tsx`/`pro-forum-panel.tsx`):
+sidebar dark fixa com Início/Bookings/Agenda/Decisões/Financeiro
+(badges reais: `bookingsAwaitingResponseCount`/
+`conversationsNeedingYouCount` de `get_professional_home_facts()`) +
+grupo secundário Minha equipe/Configurações + "Indique e ganhe" (abre
+o `ReferralModal` já existente via contexto, nunca uma rota nova).
+**"Conversas" não entra na sidebar** (SUPERSEDED, seção 4 do pedido).
+Materiais/Analytics omitidos (sem rota real, sem legado pra apontar —
+nunca criada página falsa). Topbar com sino (mesmo `getAttentionItems`
+de sempre, só restyled), Fórum (painel lateral, ver Community abaixo)
+e Configurações (`/dashboard/perfil`).
+
+**Web Home** (`src/app/dashboard/professional-home-view.tsx`):
+hero com mascote (`pro-mascot.tsx`, eye-tracking client-side,
+`prefers-reduced-motion` respeitado) + saudação dinâmica por
+`conversationsNeedingYouCount`; 4 stat cards 100% de
+`get_professional_home_facts()` (aguardando resposta/conversas que
+precisam de você/confirmados/concluídos — **nenhum valor monetário
+mock**, o protótipo tinha "valor negociado" que não existe como fato
+real hoje, omitido de propósito); accordion "Precisa de você" (id
+`precisa-de-voce`, nasce fechado) sobre `listActionableDecisions()`
+(Foundation), cada card só lê/leva pra conversa real, nenhuma escrita
+nova; accordion "Próximos bookings" sobre bookings reais
+(`aceita`/`aguardando_pagamento`, nunca inferido de agenda livre);
+accordion "Atividade da Doopla" — **gap real encontrado**: on
+`getRecentActivity()` (`src/app/dashboard/data.ts`) só popula itens
+pra `role === 'booker'`, nunca pra artista — accordion sempre honesto
+("Nenhuma atividade registrada ainda.") pro público-alvo desta Home,
+gap registrado, não inventado; "Sua Doopla em ação" virou um resumo
+sem gráfico (sem série temporal real disponível — decisão explícita
+de não fabricar tendência, gap registrado em vez de simular). Coluna
+direita: canais de booking (link de orçamento real via
+`getOrcamentoLinkInfo`, número WhatsApp da Doopla via
+`whatsappPublicNumber()`, indicador discreto de Booker via
+`getMyBookerFacts()` só quando existe relação — nunca card grande);
+"Indique e ganhe" (`referralTotalCount`/`referralQualifiedCount` da
+Foundation + `ReferralModal` real); "Falar com minha Doopla" via
+`buildTalkToYourDooplaUrl()` — sempre abre WhatsApp, com aviso honesto
+quando `whatsappIdentityStatus !== 'verified'` (nunca bloqueia o
+clique, nunca modal intermediário).
+
+**App Home** (`mobile/app/(tabs)/index.tsx` — já estava praticamente
+pronta visualmente de um bloco anterior, dark/mascote/carrossel já
+existiam): rewired pra `fetchProfessionalHomeFacts()`/
+`fetchActionableDecisions()`/`fetchMyBookerFacts()` (Foundation) em vez
+de só bookings/referral ad hoc; adicionado accordion "Precisa de você"
+(`DecisionCard.tsx` novo) e "Atividade da Doopla" (mesmo gap honesto
+do Web); `FalarComDooplaCard` deixou de ser mock (`onPress` fake) e
+abre `Linking.openURL(buildTalkToYourDooplaUrl(...))` de verdade, com
+o mesmo aviso de identidade não verificada do Web. 4 tabs confirmadas
+intactas (`Início`/`Bookings`/`Agenda`/`Mais` — a 5ª aba "Conversas"
+já tinha sido removida num bloco anterior, confirmado por auditoria,
+nada a fazer aqui). Carrossel horizontal (`StatsCarousel.tsx`) já
+implementado corretamente sem scroll-snap (bug documentado no próprio
+código) — reutilizado sem alteração.
+
+**Logo**: `EyeLogo` (`src/app/_home/EyeLogo.tsx`) tem CSS só
+escopado a `#home-marketing`/`#site-chrome` (marketing) — fora desse
+escopo renderiza sem estilo nenhum. Não é um asset portável pro
+painel. Em vez de improvisar um novo logo, o Shell usa wordmark em
+texto (Anton), igual ao shell legado já fazia — **asset dark oficial
+reutilizável fica como pendência registrada**, não inventado aqui.
+
+**Community/Fórum**: só o affordance (ícone + painel lateral Web /
+`/forum` já existente no App) — nenhum dado de tópico/post fabricado,
+`forumMock.ts` **não foi usado nem tocado** no lado Web (painel novo
+não busca dado nenhum de Community). **Resíduo confirmado**: a tela
+`/forum` do App (bloco anterior, pré-Foundation) ainda usa dado mock
+— não foi meu escopo mexer nisso (não aprofundar Community é regra
+explícita deste bloco), fica registrado pro subbloco Community
+dedicado consumir `src/lib/community/data.ts`/mirror Mobile.
+
+**Segurança/RLS**: nenhuma policy alterada. Todas as leituras novas
+passam pelos boundaries da Foundation (RLS já testada) ou por queries
+diretas já usadas em produção (`getOrcamentoLinkInfo`/
+`getMyBookerFacts`). Nenhum novo write boundary criado.
+
+**Testes**: `tsc --noEmit` limpo (Web + Mobile), `eslint` limpo (Web),
+`next build` limpo (Web, todas as 39 rotas geradas, incluindo
+`/dashboard` como rota dinâmica). Regressão: nenhum arquivo do Runtime/
+Approval/Policy Gate/Conversas foi tocado — só consumo de leitura via
+Foundation. Smoke test do dev server (`curl` local): `/` e `/login`
+200, `/dashboard` sem sessão redireciona 307 pro login sem crash.
+
+**Visual QA — limitação honesta**: este sandbox não tem projeto
+Supabase real linkado (`NEXT_PUBLIC_SUPABASE_URL=placeholder.supabase.co`),
+então não há como autenticar e renderizar `/dashboard` de verdade
+neste ambiente pra comparar pixel a pixel com o HTML de referência —
+só a árvore JSX/CSS foi validada, mais o smoke test acima. Recomendado
+validar visualmente em Preview antes de dar essa entrega como
+visualmente fechada.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

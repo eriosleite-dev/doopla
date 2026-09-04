@@ -8,6 +8,57 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Professional Product UI — Shell + Home fechado: novo dark é só pra role não-booker, `getRecentActivity` é vazio pra artista, logo virou pendência — 04/09/2026
+
+Primeiro bloco visual (Web Shell + Home, App Home) sobre a Foundation.
+Quatro decisões valem registrar:
+
+1. **O novo Shell/Home dark nunca é visto pelo Booker** — condição
+   exata é `profile.role !== 'booker'` (mesmo critério que o código
+   antigo já usava pra tratar o legado `role='agencia'` como
+   "não-booker"). Booker segue no shell/Home bege de sempre,
+   comportamento bit-a-bit idêntico ao de antes — o código legado foi
+   só EXTRAÍDO pra `legacy-shell.tsx`/`booker-home-view.tsx` (não
+   reescrito), porque o narrowing de tipos do TypeScript depois de um
+   `if (role !== 'booker') return ...` early-return torna qualquer
+   `role === 'booker'` subsequente NA MESMA função um erro de tipo
+   ("no overlap", já que `Profile['role']` é só `'booker' | 'artista'`)
+   — extrair pra uma função separada com parâmetro próprio evita isso
+   sem tocar em nenhuma linha de lógica do Booker.
+2. **Achado real, não fabricado**: `getRecentActivity()`
+   (`src/app/dashboard/data.ts`) só popula itens dentro de
+   `if (role === 'booker')` — pra artista, SEMPRE retorna array vazio.
+   O accordion "Atividade da Doopla" da nova Home (Web e App) portanto
+   está sempre honesto ("Nenhuma atividade registrada ainda.") pro
+   público real desta Home, porque a fonte de fato simplesmente não
+   existe pro lado artista hoje. Não inventei uma versão nova dessa
+   função pra "preencher" o accordion — isso seria construir lógica de
+   negócio nova fora do que a Foundation preparou, então ficou
+   registrado como gap real, não como bug corrigido.
+3. **`EyeLogo` não é um asset portável** — seu CSS
+   (`.eye-logo`/`.dot`/`.pupil`) só existe escopado a
+   `#home-marketing`/`#site-chrome` (as duas stylesheets da área de
+   marketing). Usado fora desses ids, renderiza sem nenhum estilo
+   (texto solto). O novo Shell usa wordmark textual em Anton — mesma
+   estratégia que o shell legado já usava ("doopla" em texto) — em vez
+   de forçar um componente que quebraria visualmente. Fica registrado
+   como pendência de asset real (regra do pedido: nunca improvisar um
+   logo novo).
+4. **"Sua Doopla em ação" perdeu o gráfico de linha do protótipo** —
+   não existe série temporal real hoje pra sustentar aquele SVG
+   animado (bookings conduzidos ao longo do tempo, decisões poupadas
+   etc. eram todos números mock no HTML de referência). Virou um
+   resumo de 2 métricas honestas (`bookingsConfirmedCount +
+   bookingsCompletedCount`, `referralQualifiedCount`) com um empty
+   state quando ambos são zero — gap registrado (falta um evento/
+   agregação real de "eficiência"/"tempo poupado" pra essa seção fazer
+   sentido de novo), nunca simulado.
+
+Nenhuma dessas decisões alterou Runtime/Approval/Policy Gate/Conversas
+— o bloco inteiro é consumo de leitura sobre a Foundation já validada.
+
+---
+
 ## Professional Product UI — Foundation fechada: contratos preparados, nenhuma UI nova, um achado de segurança corrigido — 04/09/2026
 
 Bloco de fundação técnica pro futuro Professional Product UI (Web+App)
