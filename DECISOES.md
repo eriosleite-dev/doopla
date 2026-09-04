@@ -8,6 +8,85 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Conversas Bloco 2 fechado: boundary único, proveniência imutável, `Encerrada` não lê `mandate` — 04/09/2026
+
+Revisão adversarial pós-entrega (commit `9d22034`) confirmou dois
+pontos que valem registrar porque não são óbvios só lendo o código:
+
+1. **Retry não pode alterar o fato histórico persistido** — não bastava
+   provar que uma segunda chamada não acontece (dedupe de
+   `claim_inbound_event`); era preciso provar o ESTADO FINAL. Teste
+   reforçado com o caso `edited` de propósito (o mais importante, já
+   que é o que não pode virar `sent` depois): grava o fato, tenta o
+   retry com a mesma identidade idempotente, releitura confirma UMA
+   única mensagem com `replied_to_outbound_intent_id`/
+   `prepared_response_outcome` idênticos aos da primeira gravação.
+2. **`deriveConversationState()` (estado `closed`/"Encerrada") lê
+   exclusivamente `conversations.status IN ('closed','archived')`** —
+   `conversations.mandate` nunca entra nessa função, hoje nem é
+   passado como parâmetro pra ela. Auditoria confirmou que isso não é
+   um bug: `mandate` não tem CHECK constraint no banco, mas nenhum
+   código de aplicação jamais chama `set_conversation_mandate` com
+   outro valor além do default `'active'` — não existe hoje nenhuma
+   semântica real de pausa/suspensão/transferência que a função
+   estivesse ignorando por engano. **Gap registrado pra quando
+   `mandate` ganhar semântica operacional real**: `deriveConversationState()`
+   vai continuar ignorando mudanças de `mandate` até uma revisão
+   explícita acontecer nesse momento — nunca inventar semântica pra um
+   mecanismo que hoje não é usado por ninguém.
+
+Nenhuma das duas verificações mudou código de produto — só o teste
+adversarial (reforçado) e esta documentação.
+
+## Quatro superfícies distintas do profissional/booker — Professional Web final ≠ painel atual — 04/09/2026
+
+`src/app/dashboard/` (o painel web já em uso em todo bloco de backend
+até aqui — bookings/agenda/dinheiro/conversas etc., real, não mock)
+**não é** o "Professional Web Dashboard final". São 4 superfícies
+distintas, nenhuma superpondo a outra: Professional Web Dashboard final
+(design produzido externamente, ainda não fornecido — não inventar
+antes dele chegar), Professional App (`/mobile`, evolutivo, parcialmente
+real), Booker Web Dashboard (não existe — o booker hoje só vê fatias
+dentro do MESMO painel do profissional) e Booker App (não existe).
+Motivo de registrar: o painel atual é funcional e será continuamente
+usado pra validar backend, mas isso não deve ser lido como "o painel
+final já está pronto" em nenhuma leitura futura deste repositório.
+
+## Fluxos históricos REMOVED/SUPERSEDED: Doopla Verified/link de confirmação, modelo antigo de Booker/marketplace — 04/09/2026
+
+Auditados e confirmados inertes/substituídos, não devem orientar
+implementação nova: **Doopla Verified** (selo calculado por
+`validated_at`, que nenhum código escreve hoje — auditado, zero
+INSERT/UPDATE em `src/`) e o **fluxo de confirmação de booking por
+link do cliente** que o alimentaria (nunca chegou a ser construído,
+incluindo o copy "Você recebeu uma mensagem da Doopla? Precisa
+confirmar o link..." e qualquer reenvio automático desse link) —
+`[REMOVED]`. O modelo de identidade/confirmação vigente é outro
+(WhatsApp verificado por OTP + Runtime/Conversas). O **modelo antigo de
+Booker/marketplace** (bookers/matching/comissão como eixo central) é
+`[SUPERSEDED]` sempre que conflitar com o modelo Booker atual (carteira
+multi-profissional, permissões por `professional_id`, cobertura de
+assinatura, já registrado abaixo em "Booker: não classificado como
+definitivamente pós-beta") — só continua vivo nas páginas públicas de
+marketing ainda não revisadas, gap já conhecido e fora de escopo desta
+reconciliação.
+
+## Lista PENDING/FUTURE do roadmap não é ordem de implementação — 04/09/2026
+
+Checkpoint de documentação (PROGRESS.md, "Checkpoint de documentação —
+reconciliação de roadmap e superfícies") registrou 14 grandes frentes
+pendentes (Professional Web/App final, Booker Web/App, WhatsApp
+Identity UX, Lifecycle Messaging V1, Intervention Moments/Feedback
+wiring, Conversas Bloco 3, Booker capabilities, onboarding/Representation
+Profile, planos/billing/NF Booker, Pro representation email, materiais
+Pro, Community/Fórum, notifications, referral, QA/E2E, legal/LGPD,
+Career Intelligence). Decisão explícita: essa lista é um REGISTRO, não
+uma fila — a ordem dos próximos blocos será decidida depois de uma
+auditoria de dependências e das superfícies finais, nunca inferida da
+posição de um item na lista.
+
+---
+
 ## Conversas: aba primária foi descartada, acesso é secundário via Booking — 03/09/2026
 
 A primeira versão do produto tratava "Conversas" como área própria de

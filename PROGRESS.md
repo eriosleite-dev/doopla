@@ -7317,13 +7317,16 @@ teste real assim que a Meta liberar a conta.
 
 ---
 
-**Nota de manutenção (03/09/2026)**: as seções 61-66 abaixo cobrem 6
-blocos entregues entre o fechamento da seção 60 e agora, que tinham
-ficado de fora deste arquivo por várias sessões seguidas. Marcadas
-`[CURRENT]` (estado vigente hoje), `[SUPERSEDED]` (existiu, foi
-substituído por decisão posterior — nunca ressuscitar sem nova
-instrução) ou `[REJECTED]` (proposto, avaliado, descartado antes de
-implementar) onde relevante.
+**Nota de manutenção (03/09/2026, atualizada 04/09/2026)**: as seções
+61-67 abaixo cobrem os blocos entregues entre o fechamento da seção 60
+e agora. Marcadas `[DELIVERED]` (implementado, testado e commitado —
+fonte de verdade vigente), `[CURRENT]` (estado vigente hoje, sem
+necessariamente ter uma migration/commit de fechamento próprio),
+`[SUPERSEDED]` (existiu, foi substituído por decisão posterior — nunca
+ressuscitar sem nova instrução), `[REMOVED]` (fluxo histórico que não
+existe mais no produto e não deve orientar implementação nova) ou
+`[REJECTED]` (proposto, avaliado, descartado antes de implementar) onde
+relevante.
 
 ## 61. Conversas Bloco 1 — RPC read-only de fatos operacionais (migration 0060) — `[CURRENT]`
 
@@ -7350,7 +7353,7 @@ quais RPCs precisavam de privilégio de INSERT antes de escolher entre
 nenhum caminho existente (Runtime, `professional-reply-action.ts`,
 `persist_ai_message`).
 
-## 63. WhatsApp Inbound Foundation (migrations 0062 + 0063) — `[CURRENT]` — entregue
+## 63. WhatsApp Inbound Foundation (migrations 0062 + 0063) — `[DELIVERED]`
 
 Commits `95068f0` (schema+RPCs+TS+webhook+CTA `/orcamento/[slug]`) e
 `aaa18db` (lineage 1:1). Primeiro canal real de entrada por WhatsApp:
@@ -7369,7 +7372,7 @@ Lineage 1:1 garantida por constraint física (não só lógica de RPC):
 Retenção/purge de dados do canal: deliberadamente adiado, timestamps já
 suportam quando for priorizado.
 
-## 64. Professional WhatsApp Identity (migration 0064) — `[CURRENT]` — entregue
+## 64. Professional WhatsApp Identity (migration 0064) — `[DELIVERED]`
 
 Commit `a5efc30`. Vínculo confiável `professional_id ↔ verified_whatsapp_number`
 via OTP (código hash+salt via `sha256()`, nunca texto puro persistido,
@@ -7386,7 +7389,7 @@ configurações para o profissional inserir o número/código: **não
 construída** — boundary Server-Action-only, gap preservado (ver
 roadmap).
 
-## 65. Professional Intelligence Context — `[CURRENT]` — entregue, sem migration nova
+## 65. Professional Intelligence Context — `[DELIVERED]`, sem migration nova
 
 Commit `dff30b3`. Duas novas seções no Context Builder existente —
 `professionalBusinessContext` (preferências já declaradas em
@@ -7414,7 +7417,7 @@ não convenção de prompt. `authorized_collaborator` (Booker) continua
 com capabilities vazias — nenhuma concedida neste bloco, arquitetura
 deixada pronta pra evoluir sem redesign quando o produto decidir.
 
-## 66. Beta Instrumentation (migration 0065) — `[CURRENT]` — entregue
+## 66. Beta Instrumentation (migration 0065) — `[DELIVERED]`
 
 Commit `023172a`. 5 tabelas: `product_events` (envelope único
 Product+Value Events; `category` restrita por CHECK — `'product'|'value'|'lifecycle'`,
@@ -7460,6 +7463,88 @@ Events além do core wireado (`demand_received`/`booking_closed`/
 indisponível); golden suites Planner/Classification pendentes de
 ambiente com `OPENAI_API_KEY` real.
 
+## 67. Conversas — Bloco 2 (migration 0066) — `[DELIVERED]`
+
+Commit `9d22034`. Revisado adversarialmente e fechado em 04/09/2026
+(reforço do teste de retry/proveniência + auditoria de `Encerrada`,
+ambos sem alteração de código — ver abaixo). Entrega Web **e** Mobile,
+nunca só um dos dois:
+
+- **Acesso contextual, nunca aba primária** — "Ver conversa" a partir
+  do Booking (rota real `bookings/[id]/conversa/[conversationId]` +
+  modal intercepting no Web, mesmo padrão de `avaliar/`; seção no
+  detalhe do booking + tela modal própria no Mobile). A aba placeholder
+  "Conversas" do Mobile (`(tabs)/conversas.tsx`, nunca teve dado real)
+  foi **removida** da navegação — volta a 4 abas (Início/Bookings/
+  Agenda/Mais).
+- **4 estados CURRENT**, derivação pura e determinística
+  (`deriveConversationState()`, duplicada deliberadamente em
+  `src/lib/conversations/state.ts` e
+  `mobile/src/lib/conversation-state.ts` — bundlers/módulos separados,
+  sem grafo de import compartilhado nesta base de código):
+  `needs_you` (Precisa de você) / `waiting_client` (Aguardando
+  cliente) / `in_progress` (Em andamento) / `closed` (Encerrada).
+  "Você respondeu"/"Você editou o rascunho antes de enviar" **não são
+  estados** — são fato de mensagem individual
+  (`prepared_response_outcome`), exibido por bolha no thread.
+- **`Encerrada` deriva EXCLUSIVAMENTE de `conversations.status IN
+  ('closed','archived')`** — `conversations.mandate` (coluna
+  `text not null default 'active'`, sem CHECK constraint nenhum no
+  banco) **não participa** dessa derivação hoje, nem é lido por
+  `deriveConversationState()`. Auditado em 04/09/2026: `mandate` nunca
+  é escrito com outro valor além do default `'active'` em nenhum
+  código da aplicação (a RPC `set_conversation_mandate`, migration
+  0039, existe mas nunca é chamada) — não há hoje nenhum
+  pausa/suspensão/transferência real que `mandate` represente. **Gap
+  futuro registrado**: se `mandate` algum dia ganhar semântica
+  operacional real (pausa, transferência de mandato etc.),
+  `deriveConversationState()` precisa ser revisada explicitamente
+  nesse momento — ela vai continuar ignorando mudanças de `mandate`
+  até essa revisão acontecer, de propósito (nunca inventar semântica
+  pra um mecanismo que hoje não é usado).
+- **Boundary único** `submitProfessionalReply()`
+  (`src/lib/beta-integration/professional-reply.ts`), compartilhado
+  por Web (Server Action com sessão de cookie) e Mobile (rota de API
+  `src/app/api/mobile/conversations/reply/route.ts`, sessão via Bearer
+  token → `src/lib/supabase/token-client.ts` resolve um client
+  Supabase **autenticado como o usuário real do token**, nunca
+  service_role) — os dois caminhos convergem pro MESMO
+  `triggerInboundMessage()`/Runtime já existente, nunca uma
+  implementação paralela semanticamente diferente pro Mobile.
+  Ownership (conversation + outbound_intent) é revalidada
+  server-side, com leitura ao vivo no momento da chamada (nunca um
+  flag vindo do cliente); idempotência via `submissionId` →
+  `providerEventId` → dedupe real em `claim_inbound_event`.
+- **Proveniência factual draft × resposta enviada**
+  (`conversation_messages.replied_to_outbound_intent_id` +
+  `prepared_response_outcome` `'sent'|'edited'`, migration 0066) —
+  calculada e persistida no MESMO INSERT dentro de
+  `persist_inbound_message` (nunca recomputada depois), por comparação
+  determinística com normalização MÍNIMA
+  (`normalize_prepared_response_text()`: só line endings + espaço de
+  borda — nunca semântica, lowercase, pontuação ou IA). Isto NÃO cria
+  Intervention Moment, NÃO classifica `probable_reason`, NÃO significa
+  approval/satisfação/takeover — é só proveniência factual pra
+  Learning/Beta Instrumentation futuro. **Retry preserva
+  imutavelmente** o fato originalmente persistido — provado
+  adversarialmente com o caso `edited` (o mais importante: um retry
+  nunca pode fazer um fato `edited` virar `sent` depois): primeira
+  submissão grava o fato, retry com a mesma identidade idempotente é
+  recusado por `claim_inbound_event` ANTES de qualquer novo
+  `persist_inbound_message`, e a releitura do banco confirma UMA única
+  mensagem com `replied_to_outbound_intent_id`/`prepared_response_outcome`
+  idênticos aos gravados na primeira vez.
+- **Takeover: não inferido neste bloco** — fora de escopo, especificação
+  futura explícita (nunca inferir de `has_pending_runtime_reply=false`
+  ou qualquer outro sinal indireto).
+- **Nenhum Intervention Moment nem `probable_reason` automático** foi
+  disparado por este bloco — o wiring de Intervention Moments/Feedback
+  continua `[FUTURE]` (depende deste bloco existir, mas não foi feito
+  aqui).
+
+Gaps explicitamente preservados: takeover; wiring de Intervention
+Moments/`probable_reason`; gap de `mandate` acima.
+
 ## Roadmap pré-beta revisado (03/09/2026)
 
 Substitui qualquer leitura anterior de ordem de blocos. Career
@@ -7467,11 +7552,11 @@ Intelligence **não** é assumido como próximo automaticamente só por ter
 sido citado como "passo 3" em blocos anteriores — depende de volume
 real de uso via Beta Instrumentation, não de outro bloco de código.
 
-1. **Conversas — Bloco 2** `[FUTURE, próximo bloco de código]` — retomado
-   depois de pausado (ver seção 96, revisão de produto). Spec vigente:
-   acesso **secundário** a partir do Booking ("Ver conversa") —
-   **Conversas como aba primária foi `[SUPERSEDED]`, nunca ressuscitar**
-   sem nova instrução explícita.
+1. **Conversas — Bloco 2** — `[DELIVERED em 04/09/2026, ver seção 67]`.
+   Spec vigente confirmada como implementada: acesso **secundário** a
+   partir do Booking ("Ver conversa") — **Conversas como aba primária
+   segue `[SUPERSEDED]`, nunca ressuscitar** sem nova instrução
+   explícita.
 2. **WhatsApp Identity UI + "Falar com minha Doopla" real** `[FUTURE]`
    — boundary já existe (seção 64), falta só a tela e o deep link real.
 3. **Lifecycle + Transactional + Operational Messaging V1** `[FUTURE,
@@ -7502,6 +7587,107 @@ implementação até essa decisão vir.
 
 **Gaps que não bloqueiam beta, mas seguem em aberto**: `external_participant`↔`bookings`
 sem FK; golden suites pendentes de ambiente real.
+
+## Checkpoint de documentação — reconciliação de roadmap e superfícies (04/09/2026)
+
+Checkpoint só documental — nenhum código mudou nesta rodada. Reconcilia
+este arquivo e `DECISOES.md` com o estado real depois do fechamento de
+Conversas — Bloco 2 (seção 67). A partir daqui, a ORDEM numerada 2-5 da
+seção "Roadmap pré-beta revisado (03/09/2026)" acima deixa de ser lida
+como sequência de implementação — os itens continuam válidos como
+DESCRIÇÃO de escopo, mas a ordem entre eles (e entre eles e o restante
+da lista PENDING/FUTURE abaixo) ainda não foi decidida. **A ordem dos
+próximos grandes blocos será definida depois de uma auditoria de
+dependências e das superfícies finais — esta lista não é uma fila.**
+
+### Superfícies do profissional/booker — 4 blocos distintos, não confundir
+
+Correção de nomenclatura: o painel web que já existe e já é usado em
+produção/teste em todo bloco até aqui (`src/app/dashboard/` —
+bookings/agenda/dinheiro/conversas/etc., real, não mock) **não é** o
+"Professional Web Dashboard final". São coisas diferentes:
+
+- **Professional Web Dashboard final** — `[NÃO IMPLEMENTADO, bloco
+  próprio pendente]`. O design final está sendo produzido externamente
+  e ainda será fornecido — não inventar nem implementar esse painel
+  antes do design chegar. O `src/app/dashboard/` atual segue sendo a
+  superfície funcional usada pra validar cada bloco de backend, mas
+  não é a versão final do painel do profissional.
+- **Professional App** — superfície própria (`/mobile`), parcialmente
+  existente e evolutiva (Home/Bookings/Agenda/Dinheiro/Indique e
+  ganhe/Configurações/Conversas já têm dado real — seções 73-89 e 67
+  deste arquivo). Nunca confundir com Professional Web.
+- **Booker Web Dashboard** — `[NÃO IMPLEMENTADO]`, superfície própria
+  futura. Hoje o booker só enxerga fatias específicas dentro do MESMO
+  `src/app/dashboard/` (ex.: a própria tela de um booking em que
+  participa) — nunca um painel dedicado à experiência do booker.
+- **Booker App** — `[NÃO IMPLEMENTADO]`, superfície própria futura. Não
+  existe hoje em nenhuma forma.
+
+### PENDING/FUTURE — grandes frentes registradas, sem ordem implícita
+
+Registro, não fila — nenhum item abaixo deve ser lido como "próximo" só
+por estar mais acima na lista:
+
+- Professional Web Dashboard final
+- Professional App final
+- WhatsApp Identity UX + CTA "Falar com minha Doopla" (boundary já
+  existe, seção 64 — falta a tela/deep link real)
+- Lifecycle + Transactional + Operational Messaging V1 (pré-beta — ver
+  seção 66 e `DECISOES.md`; o vocabulário completo continua pós-beta)
+- Intervention Moments + Feedback/Learning wiring (schema/RPC prontos
+  desde Beta Instrumentation, seção 66, sem trigger; Conversas Bloco 2
+  agora existe como pré-requisito de origem do sinal, mas o wiring em
+  si não foi feito neste bloco — ver seção 67)
+- Conversas — Bloco 3
+- Booker capabilities/arquitetura (decisão de produto em aberto — ver
+  `DECISOES.md`, "Booker: não classificado como definitivamente
+  pós-beta")
+- Booker Web Dashboard
+- Booker App
+- Onboarding/Representation Profile
+- Planos/trial/billing/NF e cobertura Booker
+- Pro representation email
+- Materiais Pro
+- Community/Fórum
+- Notifications
+- Referral/afiliados
+- QA/E2E/Beta Readiness
+- Legal/LGPD/retention/security
+- Career Intelligence (depende de volume real de uso via Beta
+  Instrumentation, não de outro bloco de código — ver seção 66)
+
+### SUPERSEDED/REMOVED — fluxos históricos que não orientam implementação nova
+
+- **Doopla Verified** (selo por booking, `isDooplaVerified()`/
+  `booking.validated_at` em `src/app/dashboard/data.ts`) —
+  `[REMOVED, de fato inerte]`. Auditado 04/09/2026: nenhum código
+  escreve `validated_at` hoje (zero INSERT/UPDATE em todo `src/`), o
+  selo nunca aparece na prática. O código de leitura continua
+  fisicamente presente no painel atual — não removido nesta rodada
+  (fora de escopo, checkpoint é só documental) — mas não representa um
+  fluxo vivo e não deve ser usado como referência de design.
+- **Confirmação de booking por link do cliente** (o mecanismo que
+  preencheria `validated_at`) — `[REMOVED]`. Nunca chegou a ser
+  construído; era o "falta o link de validação do cliente" registrado
+  antigamente na seção 9. O modelo de identidade/confirmação do
+  produto atual é outro (WhatsApp verificado por OTP, seção 64;
+  Runtime/Conversas, seções 61-67) — não ressuscitar o modelo de link.
+- **Copy "Você recebeu uma mensagem da Doopla? Precisa confirmar o
+  link..."** e qualquer reenvio automático desse link de confirmação —
+  `[REMOVED]`. Auditado 04/09/2026: nenhuma ocorrência em `src/` — não
+  deve orientar copy/fluxo novo nenhum.
+- **Estados antigos dependentes de Verified/link de confirmação** —
+  `[REMOVED]`, mesma razão acima.
+- **Modelo antigo de Booker/marketplace** (bookers, matching, comissão
+  como eixo central do produto — ainda vivo só nas páginas públicas de
+  marketing não revisadas, `/login`/`/sobre`/`/cadastro`/`/seguranca`,
+  gap já registrado antes deste checkpoint, fora de escopo aqui) —
+  `[SUPERSEDED]` sempre que conflitar com o modelo Booker atual
+  (carteira multi-profissional, permissões por `professional_id`,
+  cobertura de assinatura — ver `DECISOES.md`, "Booker: não
+  classificado como definitivamente pós-beta"). O modelo atual
+  prevalece em qualquer conflito.
 
 ## Como usar isso
 
