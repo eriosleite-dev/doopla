@@ -8,6 +8,41 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Professional Product UI — Shell + Home, correções de fechamento: Materiais/Analytics voltam à sidebar, wordmark do logo revertido — 04/09/2026 (mesmo dia, review)
+
+Review pós-entrega pediu duas correções antes de aceitar o bloco como
+tecnicamente pronto (CURRENT seguia OPEN até essas duas):
+
+1. **Materiais e Analytics tinham sido removidos da sidebar por eu
+   julgar "sem rota real" — errado.** A arquitetura de informação
+   aprovada os inclui explicitamente, e removê-los silenciosamente
+   contraria a regra "nunca apagar item da IA aprovada só porque a
+   tela ainda não existe". Corrigido: os dois voltaram como itens
+   `comingSoon: true` em `ProNavLink` (`pro-sidebar-nav.tsx`) —
+   visíveis, ícone apagado, badge "Em breve" em vez de contador,
+   renderizados como `<div>` não-clicável (nunca um `<Link>`, nunca uma
+   rota `/dashboard/materiais`/`/dashboard/analytics` fabricada). Mesmo
+   padrão que `PlaceholderScreen` já usa no App.
+2. **O wordmark "doopla" em Anton que o Shell (e, antes disso, o
+   `LogoPlaceholder` do App) desenhava era, ele mesmo, um logo
+   inventado** — exatamente o que a regra "nunca redesenhar/reinterpretar
+   o logo" proíbe, mesmo sem eu ter percebido isso na primeira entrega.
+   Auditoria completa confirmou de novo (agora incluindo
+   `mobile/assets/`, favicons): nenhum asset de logo oficial existe no
+   repositório — os PNGs em `mobile/assets/` são o template padrão do
+   Expo, nunca customizados pra marca Doopla. Corrigido nos dois lados
+   (Web `pro-shell.tsx`, App `HomeTopbar.tsx`): texto puro "doopla",
+   sem tipografia/cor de marca, só um link funcional — nunca uma
+   tentativa de reproduzir a identidade visual. Pendência de asset real
+   permanece registrada, agora sem nenhum wordmark inventado no lugar.
+
+Nenhuma outra correção foi necessária — Foundation, separação de
+papéis, ausência de Conversas na sidebar, CTA WhatsApp, Decisions
+boundary, dados reais, 4 tabs Mobile e acessibilidade permaneceram
+intactos, confirmado por `tsc`/`eslint`/`build` limpos de novo.
+
+---
+
 ## Professional Product UI — Shell + Home fechado: novo dark é só pra role não-booker, `getRecentActivity` é vazio pra artista, logo virou pendência — 04/09/2026
 
 Primeiro bloco visual (Web Shell + Home, App Home) sobre a Foundation.

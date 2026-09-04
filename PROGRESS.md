@@ -7838,7 +7838,15 @@ real), Minha equipe (Web + App), Analytics, Materiais, Minha Doopla/Treinar,
 Booker Web/App. A Foundation só reduz o trabalho de UI que falta,
 nunca antecipa o próprio UI.
 
-## 69. Professional Product UI — Shell + Home (Web + App) — `[DELIVERED]`
+## 69. Professional Product UI — Shell + Home (Web + App) — `[TECHNICAL IMPLEMENTATION READY, VISUAL QA PENDING]`
+
+**Status explícito, review 04/09/2026**: implementação técnica pronta
+pra revisão (`tsc`/`eslint`/`build` limpos). **Aceitação visual segue
+PENDENTE** — este sandbox não tem projeto Supabase real linkado, então
+não há como autenticar e renderizar `/dashboard` de verdade aqui pra
+comparar contra o HTML de referência. Nenhuma sessão/dado falso foi
+criado só pra viabilizar screenshot. Validar em Preview autenticado
+antes de tratar este bloco como visualmente fechado.
 
 Primeiro bloco visual do novo Professional Product UI. Escopo exato:
 novo Shell Web (sidebar/topbar dark), nova Home Web, nova Home App
@@ -7859,16 +7867,23 @@ segue fora de escopo (DECISOES.md "Quatro superfícies distintas").
 
 **Web Shell** (`src/app/dashboard/pro-shell.tsx` +
 `pro-sidebar-nav.tsx`/`pro-sidebar-referral-link.tsx`/`pro-forum-panel.tsx`):
-sidebar dark fixa com Início/Bookings/Agenda/Decisões/Financeiro
-(badges reais: `bookingsAwaitingResponseCount`/
+sidebar dark fixa com a arquitetura de informação completa e aprovada
+— Início/Bookings/Agenda/Decisões/Financeiro/**Materiais/Analytics**
+(badges reais nos 4 primeiros: `bookingsAwaitingResponseCount`/
 `conversationsNeedingYouCount` de `get_professional_home_facts()`) +
 grupo secundário Minha equipe/Configurações + "Indique e ganhe" (abre
 o `ReferralModal` já existente via contexto, nunca uma rota nova).
-**"Conversas" não entra na sidebar** (SUPERSEDED, seção 4 do pedido).
-Materiais/Analytics omitidos (sem rota real, sem legado pra apontar —
-nunca criada página falsa). Topbar com sino (mesmo `getAttentionItems`
-de sempre, só restyled), Fórum (painel lateral, ver Community abaixo)
-e Configurações (`/dashboard/perfil`).
+**"Conversas" não entra na sidebar** (SUPERSEDED, seção 4 do pedido
+original). **Materiais/Analytics permanecem visíveis** (review
+04/09/2026 pediu explicitamente pra não removê-los silenciosamente) —
+marcados `comingSoon: true` em `ProNavLink`: renderizam como `<div>`
+não-clicável, ícone apagado, badge "Em breve" em vez de contador, sem
+`href` de navegação real — nenhuma página fabricada em
+`/dashboard/materiais`/`/dashboard/analytics` (essas rotas não
+existem). Mesmo padrão já usado em `PlaceholderScreen` no App. Topbar
+com sino (mesmo `getAttentionItems` de sempre, só restyled), Fórum
+(painel lateral, ver Community abaixo) e Configurações
+(`/dashboard/perfil`).
 
 **Web Home** (`src/app/dashboard/professional-home-view.tsx`):
 hero com mascote (`pro-mascot.tsx`, eye-tracking client-side,
@@ -7914,12 +7929,22 @@ nada a fazer aqui). Carrossel horizontal (`StatsCarousel.tsx`) já
 implementado corretamente sem scroll-snap (bug documentado no próprio
 código) — reutilizado sem alteração.
 
-**Logo**: `EyeLogo` (`src/app/_home/EyeLogo.tsx`) tem CSS só
-escopado a `#home-marketing`/`#site-chrome` (marketing) — fora desse
-escopo renderiza sem estilo nenhum. Não é um asset portável pro
-painel. Em vez de improvisar um novo logo, o Shell usa wordmark em
-texto (Anton), igual ao shell legado já fazia — **asset dark oficial
-reutilizável fica como pendência registrada**, não inventado aqui.
+**Logo — corrigido na review de 04/09/2026**: auditoria completa do
+repositório (`public/`, `mobile/assets/`, favicons) confirmou que
+**nenhum asset de logo oficial reutilizável existe** — só ícones
+default do Expo nunca customizados (`icon.png`/`splash-icon.png` são
+literalmente o template genérico do Expo, sem nenhuma referência
+visual à marca Doopla), e `EyeLogo` (`src/app/_home/EyeLogo.tsx`) tem
+CSS escopado só a `#home-marketing`/`#site-chrome` (marketing),
+renderizando sem estilo nenhum fora dali. A primeira versão deste
+bloco tinha desenhado um wordmark novo em Anton pro Shell — **isso foi
+revertido por instrução explícita**: nem o Shell Web nem o
+`LogoPlaceholder` do App (que estilizava o "o" de "doopla" como ponto
+colorido, imitando a geometria dos olhos do logo real) podem inventar
+um wordmark. Tratamento honesto atual nos dois: texto simples "doopla"
+sem tipografia/cor de marca, só um link funcional de volta pra Início
+— **asset dark oficial reutilizável segue como pendência registrada**,
+nada inventado.
 
 **Community/Fórum**: só o affordance (ícone + painel lateral Web /
 `/forum` já existente no App) — nenhum dado de tópico/post fabricado,

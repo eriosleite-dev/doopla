@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export type ProNavLink = { href: string; label: string; badge?: number; icon: React.ReactNode };
+// comingSoon: destino aprovado na arquitetura de informação (spec
+// section 1 da review de 04/09/2026), mas cuja tela real ainda não foi
+// construída — item permanece visível na sidebar (nunca removido
+// silenciosamente), só não navega pra lugar nenhum e mostra "Em breve"
+// em vez de badge, mesmo padrão já usado em PlaceholderScreen no App
+// (mobile/src/components/shared/PlaceholderScreen.tsx). href vira só
+// documentação nesse caso (nunca usado pra navegar).
+export type ProNavLink = { href: string; label: string; badge?: number; icon: React.ReactNode; comingSoon?: boolean };
 
 const iconProps = {
   viewBox: '0 0 24 24',
@@ -53,12 +60,38 @@ export const proNavIcons = {
       <path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-.9c.6.5 1.3.9 2 1.2L10 21h4l.5-2.6c.7-.3 1.4-.7 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.2-.8.2-1.2z" />
     </svg>
   ),
+  materiais: (
+    <svg {...iconProps}>
+      <path d="M6 3h9l3 3v15H6z" />
+      <path d="M9 10h6M9 14h6" />
+    </svg>
+  ),
+  analytics: (
+    <svg {...iconProps}>
+      <path d="M3 17l6-6 4 4 8-8" />
+    </svg>
+  ),
 };
 
 function ProNavItem({ link }: { link: ProNavLink }) {
   const pathname = usePathname();
   const [path] = link.href.split('#');
   const active = path === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(path);
+
+  if (link.comingSoon) {
+    return (
+      <div
+        aria-disabled="true"
+        className="font-pro-sub flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-semibold text-[var(--pro-tx-30)]"
+      >
+        <span className="[&>svg]:h-[17px] [&>svg]:w-[17px]">{link.icon}</span>
+        {link.label}
+        <span className="font-doopla-mono ml-auto rounded-full border border-[var(--pro-line)] px-1.5 py-[1px] text-[9px] uppercase tracking-[.04em] text-[var(--pro-tx-30)]">
+          Em breve
+        </span>
+      </div>
+    );
+  }
 
   return (
     <Link

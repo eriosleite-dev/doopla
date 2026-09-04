@@ -4,17 +4,17 @@ import { colors, fonts } from '@/theme/tokens';
 import { IconButton } from '@/components/shared/IconButton';
 import { BellIcon, ForumPeopleIcon } from '@/components/icons/Icons';
 
-// Logo: o protótipo usa um PNG gerado em baixa escala só pra
-// prototipagem (ver dooplapromptcodehomedark.md). Até recebermos o
-// arquivo fonte oficial (.png transparente, variante dark), uso um
-// wordmark textual como placeholder — nunca a versão de baixa
-// qualidade do protótipo.
+// Nenhum asset de logo oficial reutilizável existe no repositório
+// (auditado 04/09/2026: mobile/assets/ só tem ícones default do Expo,
+// nunca customizados pra marca Doopla). Por instrução explícita
+// (review 04/09/2026): nunca desenhar um wordmark novo pra substituir
+// isso — a versão anterior deste componente estilizava o "o" como um
+// ponto colorido, imitando a geometria dos olhos do logo real, o que
+// já era um wordmark inventado. Tratamento honesto temporário: texto
+// simples, sem tipografia/cor de marca. Pendência de asset real
+// registrada no relatório final.
 function LogoPlaceholder() {
-  return (
-    <Text style={styles.logoText}>
-      D<Text style={styles.logoDot}>o</Text>opla
-    </Text>
-  );
+  return <Text style={styles.logoText}>doopla</Text>;
 }
 
 export function HomeTopbar({
@@ -51,12 +51,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   logoText: {
-    color: colors.off,
-    fontFamily: fonts.subBold,
-    fontSize: 16,
-  },
-  logoDot: {
-    color: colors.red,
+    color: colors.tx50,
+    fontFamily: fonts.body,
+    fontSize: 13,
   },
   icons: {
     flexDirection: 'row',

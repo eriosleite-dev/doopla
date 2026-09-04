@@ -42,6 +42,13 @@ export function ProfessionalShell({
       badge: decisionsCount,
     },
     { href: '/dashboard/dinheiro', label: 'Financeiro', icon: proNavIcons.financeiro },
+    // Materiais/Analytics: arquitetura de informação aprovada (review
+    // 04/09/2026) — a tela real ainda não existe, então o item fica
+    // visível mas não navega ("Em breve", mesmo padrão de
+    // PlaceholderScreen no App). Nunca removido silenciosamente, nunca
+    // uma página fingindo existir.
+    { href: '/dashboard/materiais', label: 'Materiais', icon: proNavIcons.materiais, comingSoon: true },
+    { href: '/dashboard/analytics', label: 'Analytics', icon: proNavIcons.analytics, comingSoon: true },
   ];
 
   const secondaryLinks: ProNavLink[] = [
@@ -53,15 +60,23 @@ export function ProfessionalShell({
     <div className="pro-shell pro-glow-bg flex min-h-screen flex-col font-pro-body md:flex-row">
       <aside className="flex flex-col gap-5 border-b border-[var(--pro-line)] px-3.5 py-4 md:sticky md:top-0 md:h-screen md:w-[250px] md:flex-none md:overflow-y-auto md:border-r md:border-b-0 md:px-3.5 md:py-[18px]">
         <div className="flex items-center justify-between px-2 pb-1">
-          {/* EyeLogo (src/app/_home/EyeLogo.tsx) só tem CSS definido
-              escopado a #home-marketing/#site-chrome (marketing) — fora
-              desse escopo ele renderiza sem estilo nenhum (asset visual
-              não portável pro painel). Não improvisamos um logo novo:
-              wordmark em texto, igual ao shell legado, só re-tipografado
-              em Anton. Asset dark reutilizável fica como pendência
-              registrada (ver relatório final, item 4). */}
-          <Link href="/dashboard" aria-label="Doopla" className="font-pro-display text-[19px] tracking-wide">
+          {/* Nenhum asset de logo oficial reutilizável existe no
+              repositório (auditado 04/09/2026: public/ e mobile/assets/
+              só têm ícones default do Expo, nunca customizados; o único
+              componente de marca, EyeLogo em src/app/_home/EyeLogo.tsx,
+              depende de CSS escopado a #home-marketing/#site-chrome e
+              renderiza sem estilo nenhum fora dali — não é um asset
+              portável). Por instrução explícita (review 04/09/2026):
+              nunca desenhar um wordmark novo pra substituir isso.
+              Tratamento honesto temporário: texto simples, sem
+              tipografia/peso de marca — só um link funcional de volta
+              pra Início, não uma tentativa de logo. Pendência de asset
+              real registrada no relatório final. */}
+          <Link href="/dashboard" aria-label="Doopla — Início" className="text-[13px] text-[var(--pro-tx-50)]">
             doopla
+            <span className="font-doopla-mono ml-1.5 text-[8.5px] uppercase tracking-[.04em] text-[var(--pro-tx-30)]">
+              (logo pendente)
+            </span>
           </Link>
           <form action={logoutAction} className="md:hidden">
             <button
