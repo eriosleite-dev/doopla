@@ -7975,6 +7975,283 @@ só a árvore JSX/CSS foi validada, mais o smoke test acima. Recomendado
 validar visualmente em Preview antes de dar essa entrega como
 visualmente fechada.
 
+**Correções pós-QA autenticado (04/09/2026, mesmo dia — Part A da
+review)**: 3 bugs reais confirmados no Preview autenticado, 2
+corrigidos, 1 investigado/reportado (não é bug de código):
+
+1. **Nav ativo errado** (`pro-sidebar-nav.tsx`) — "Decisões"
+   (`href='/dashboard#precisa-de-voce'`) acendia como ativo sempre que
+   a Home estava aberta, mesmo sem clique. Causa: o cálculo de `active`
+   fazia `link.href.split('#')` e comparava só a parte do path — como
+   "Decisões" e "Início" têm o MESMO path (`/dashboard`), os dois
+   caíam no mesmo ramo do ternário. Corrigido: link com hash nunca
+   recebe estado de nav ativa (é uma âncora de página, não uma rota
+   própria) — estado de atenção/pendência continua exclusivamente no
+   badge numérico, nunca no highlight de fundo.
+2. **Flash branco na navegação** (`loading.tsx`) — o boundary de
+   loading só substitui o slot `{children}` (conteúdo da página); o
+   Shell (sidebar/topbar) é `layout.tsx`, que fica FORA dessa
+   fronteira de Suspense e nunca desmonta entre navegações do mesmo
+   segmento. O bug real: o fallback pintava um retângulo
+   `min-h-screen` sólido em `var(--paper)` (bege) dentro da área de
+   conteúdo — como essa área é a maior parte da tela (sidebar tem só
+   250px), lia como "a tela inteira ficou em branco". Corrigido: fundo
+   transparente (deixa o fundo do Shell já pintado por trás aparecer)
+   + spinner em `currentColor` (herda a cor certa de qualquer um dos
+   dois shells) + sem `min-h-screen`.
+3. **Home mostrando "Não conseguimos carregar seus dados agora"** —
+   investigado, NÃO é bug de código. `getProfessionalHomeFacts()`
+   chama `get_professional_home_facts()` (migration 0067) e retorna
+   `null` quando a RPC erra — o erro real do Postgrest estava sendo
+   engolido em silêncio (nenhum log). Causa mais provável: este
+   sandbox nunca teve um projeto Supabase real linkado — todas as
+   migrations desde a Foundation foram validadas SÓ contra o Postgres
+   de teste local (`doopla_rls_test`), nunca aplicadas a um projeto
+   hospedado; não existe automação de deploy de migration no repo
+   (sem `supabase/config.toml` de push, sem workflow de CI pra isso).
+   Hipótese mais provável: a migration 0067 (e possivelmente outras
+   recentes) nunca foi aplicada ao projeto Supabase real que a Preview
+   usa — a RPC simplesmente não existe lá, e `get_professional_home_facts()`
+   volta um erro tipo "function not found". Correção aplicada: só
+   parar de engolir o erro (`console.error` antes de retornar `null`
+   em `src/lib/professional-home/data.ts`) — nenhum dado fake, nenhuma
+   mudança de contrato/comportamento pro usuário. **Ação real
+   pendente, fora do escopo de código**: aplicar as migrations 0059+ a
+   0067 no projeto Supabase real (`supabase db push` ou equivalente) e
+   conferir os logs da função no painel do Vercel/Supabase pra
+   confirmar a causa exata.
+
+## 70. Professional Product UI — Shell + Home, auditoria read-only de superfícies legadas (Part B) — `[AUDIT ONLY, NENHUM REDESIGN EXECUTADO]`
+
+Auditoria pedida junto com a correção dos 3 bugs da seção 69 — o novo
+Shell (`pro-shell.tsx`) troca só o CHROME (sidebar/topbar); todo
+conteúdo das rotas legadas continua sendo os componentes/páginas de
+sempre, renderizados intactos dentro de `{children}`. Isso já era
+esperado (nunca foi escopo redesenhar telas internas), mas esta foi a
+primeira vez que a divergência visual entre o tema novo (`--pro-*`,
+dark) e o tema legado (`--paper`/`--ink`/`--accent`, bege) ficou visível
+de verdade num Preview autenticado. Nenhum arquivo de superfície legada
+foi alterado nesta rodada — só leitura/classificação.
+
+### Bookings (`/dashboard/trabalhos` + `bookings/[id]` + subrotas avaliar/conversa)
+
+- **Rotas/componentes**: `trabalhos/page.tsx` → `trabalhos-list.tsx` →
+  `bookings-list.tsx`; `bookings/[id]/page.tsx` →
+  `contract-section.tsx`/`counter-form.tsx`/`review-panel.tsx`/
+  `cancel-booking-form.tsx`/`reschedule-form.tsx`/`invoice-term-form.tsx`;
+  `bookings/[id]/avaliar/page.tsx`; `bookings/[id]/conversa/[conversationId]/page.tsx`.
+- **Conteúdo**: lista com filtro, detalhe com stat grid, 5 checkpoints,
+  painel "O que fazer agora", timeline de eventos, formulários inline
+  via Server Action.
+- **Backend**: `getUserBookings`/`getBookingDetail`/`getBookingCheckpoints`/
+  `getBookingReviews` (`data.ts`), `respondBookingAction`/`markCompletedAction`/
+  `markPaidAction`/`markInCollectionAction`/`markDisputeAction`/4x
+  `markInvoice*Action` (`actions.ts`); tabelas `bookings`/`booking_events`/
+  `reviews`/`booking_contracts`.
+- **Reusável/válido**: toda a state machine de status, fluxo de nota
+  fiscal, disputa/chargeback, remarcação, cálculo de vencimento — 100%
+  real e desacoplado da visual.
+  - **Legacy-visual-only**: `cardClass`/`statusPillClasses`/`avatarClass`
+  (cartão branco, `--ink`/`--accent`/`--musgo`/`--alert`, fontes
+  `font-doopla-*`).
+- **Conflito com decisão superseded — achado real**: `getBookingCheckpoints()`
+  (`data.ts` linha 62) ainda inclui `{ key: 'validado', label: 'Validado',
+  done: booking.validated_at != null }`, renderizado na fileira de
+  Checkpoints do detalhe do booking — resíduo direto do fluxo "Doopla
+  Verified"/confirmação por link já `[REMOVED]` (Foundation, seção 68).
+  Preservado deliberadamente até aqui só porque removê-lo mexeria no
+  layout de um componente de 5 itens (fora do escopo da Foundation) —
+  agora reconfirmado como pendência real a resolver num redesign.
+  "Doopla Verified" como texto literal só aparece em `dashboard-footer.tsx`,
+  que só renderiza no shell legado do Booker (não nestas telas).
+- **Dependências pra redesign**: `ui.ts` é importado por todas essas
+  telas (mudar cascata); `bookings-list.tsx`/`BookingRow` é
+  compartilhado com o preview de bookings da Home legada do Booker.
+
+### Agenda (`/dashboard/agenda`)
+
+- **Rotas/componentes**: `agenda/page.tsx`, `agenda/agenda-entry-form.tsx`,
+  `agenda/calendar.ts` (grid puro).
+- **Sistema de cor mostarda/dourado — confirmado e rastreado**: vem de
+  `globals.css` `:root` — `--accent:#c79a4b` (mostarda) / `--accent-ink:#7a5620`.
+  "AGENDA"/"TIPO"/"DE"/"ATÉ"/"NOTA" usam `eyebrowClass` (`ui.ts`):
+  `text-[var(--accent-ink)]`. "+ MARCAR" usa `accentButtonClass`:
+  `bg-[var(--accent)] ... text-[var(--ink)]`. Cabeçalho do mês:
+  `text-[var(--accent-ink)]`. Legenda usa `agendaTagClass()`:
+  `bg-[var(--accent)]/15 text-[var(--accent-ink)]`. **Não é a paleta
+  amarela default do Tailwind** — é o token `--accent` do tema legado
+  inteiro, não algo exclusivo da Agenda.
+- **Quão espalhado**: 78+ arquivos em `src/app/dashboard/` referenciam
+  `var(--accent)`/`var(--ink)`/`font-doopla-*` — é o design system
+  legado inteiro (`ui.ts` + todas as páginas exceto as 9 que já usam
+  `pro-*`: `pro-shell.tsx`, `pro-ui.tsx`, `professional-home-view.tsx`,
+  `pro-sidebar-nav.tsx` e afins). Só o Shell/Home novos migraram.
+- **Contraste ruim da legenda — causa raiz identificada**: o cabeçalho
+  da Agenda (onde fica a legenda) NÃO está dentro de um `cardClass`
+  (`bg-white`) como o calendário/eventos abaixo dele — fica direto
+  sobre o fundo `.pro-shell` (`--pro-bg:#0c0b0b`, quase preto), mas o
+  texto da legenda continua usando a cor legada
+  `text-[var(--ink)]/55` (preto a 55% de opacidade) — preto sobre
+  quase-preto, daí "quase ilegível". Isso é um efeito colateral direto
+  do Shell novo (dark) ter passado a envolver conteúdo que assume fundo
+  claro — não um bug isolado da Agenda, é sistêmico em qualquer tela
+  legada cujo topo não esteja dentro de um card branco.
+- **Backend**: `getAgendaEvents`/`getArtistAgendaEntries`/
+  `getBookerArtistRelationships` (`data.ts`) + `addAgendaEntryAction`/
+  `removeAgendaEntryAction` (`actions.ts`) sobre tabela real
+  `agenda_entries` com RLS — real e reusável, desacoplado da visual.
+- **Outros achados visuais legados**: título "Sua agenda" em
+  `font-doopla-display` (Fraunces, serifada); painéis grandes brancos
+  via `cardClass`; inputs `rounded-full border ... bg-white` no
+  formulário de marcação.
+- **Conflito de decisão**: nenhum além do choque de paleta/contraste —
+  sem resíduo "Booker"/"Doopla Verified" nos arquivos da Agenda.
+
+### Financeiro (`/dashboard/dinheiro`)
+
+- **Rotas/componentes**: `dinheiro/page.tsx`, `payment-details-card.tsx`,
+  `payment-details-actions.ts`, `payout-form.tsx`.
+- **Conteúdo**: hero de saldo (`bg-[var(--ink)]`), `PayoutForm` de
+  saque (desabilitado — decisão documentada, espera integração
+  Pagar.me), `PaymentDetailsCard` (chave Pix, RPC `set_payment_details`),
+  lista de solicitações de saque, créditos de indicação (artista).
+- **Backend**: `computeArtistStats`/`computeBookerStats`/`getPayoutBalance`/
+  `getReferralSummary`/`getUserBookings` (`data.ts`); RPC
+  `set_payment_details` (migration 0046, SECURITY DEFINER) sobre tabela
+  `payment_details`. Tudo real, nada mock.
+- **Visual**: já usa o mesmo tema legado (`--paper`/`--ink`/`--accent`,
+  Fraunces) — **nenhum resíduo mostarda isolado aqui além do que já é
+  sistêmico no tema inteiro**; nenhum conflito de decisão de produto
+  encontrado.
+- **Preservar**: toda a lógica de saldo/Pix/referral — nenhuma UI fake,
+  nada a esconder.
+
+### Minha equipe (`/dashboard/bookers` + `[id]`)
+
+- **Rotas/componentes**: `bookers/page.tsx`, `booker-row.tsx`,
+  `discover-bookers.tsx`, `incoming-requests.tsx`, `[id]/page.tsx`,
+  `[id]/booker-profile-view.tsx`, `../favorite-button.tsx`.
+- **Modelo canônico atual (representations/representation_requests/
+  invites) — confirmado correto e presente**: `getArtistBookerRelationships`/
+  `getIncomingRepresentationRequests`/`getOutgoingRepresentationRequestsForArtist`/
+  `getSentInvites`/`getPendingInvites` + `confirmInviteAction`/
+  `respondRepresentationRequestAction`. Isso é exatamente o modelo
+  vigente (vínculo explícito, convite bidirecional, múltiplos
+  professional_id por Booker) — **nada a corrigir na lógica**.
+- **Conflito real confirmado — modelo antigo de marketplace/favoritos
+  ainda exposto na UI atual**:
+  - `id="favoritos"` ("Meus favoritos") em `page.tsx` — lista salva
+    separada, SEM relação nenhuma com `representations` (comentário no
+    próprio `data.ts`: *"Favoritar é uma lista salva própria, sem
+    relação nenhuma com representations"*).
+  - `id="descubra"` ("Encontrar bookers") + `discover-bookers.tsx` —
+    browsing paginado/buscável de TODOS os bookers da plataforma,
+    exatamente o padrão de descoberta/marketplace que a decisão atual
+    de Booker (vínculo explícito, nunca discovery como UX primária)
+    substitui.
+  - `favorite-button.tsx` (coração) usado em `booker-row.tsx` e
+    `[id]/booker-profile-view.tsx`, escrevendo numa tabela `favorites`
+    real e independente (`user_id`/`favorited_user_id`).
+  - Nenhum "match"/"bookers pra você" com razão de recomendação
+    encontrado (isso já não existe nesta base de código).
+- **O que preservar mesmo escondendo da UI**: a tabela `favorites` em
+  si é simples e desacoplada de `representations` — pode continuar
+  existindo como dado (ex.: "lista de observação" futura) mesmo que o
+  conceito de descoberta/favoritos suma da UI atual. Toda a pilha de
+  `representations`/`representation_requests`/convites e o bloco de
+  avaliação/review do perfil do booker são código atual, preservar sem
+  discussão.
+- **Dependências pra redesign**: `page.tsx` (remover as duas seções +
+  chamadas `getFavoriteBookers`/`getFavoriteIds`/`getDiscoverBookers`),
+  `booker-row.tsx` (tirar `FavoriteButton`), `discover-bookers.tsx`
+  (aposentar ou repropor), `[id]/booker-profile-view.tsx` (tirar
+  favorito), `actions.ts` (`toggleFavoriteAction`) — decisão de produto
+  pendente sobre manter `favorites` como dado morto ou repropor.
+
+### Configurações (`/dashboard/perfil`)
+
+Inventário completo por seção, classificado:
+
+| Seção | Classificação | Nota |
+|---|---|---|
+| Cabeçalho (nome/e-mail) | CURRENT | Só leitura de `getSessionProfile()` |
+| "Conta" (tipo de conta) | NEEDS REVALIDATION | Usa `ROLE_LABELS` que ainda inclui `agencia: 'Agência'` |
+| PlanCard (Booker) | CURRENT | `getSubscription()` real |
+| Foto (avatar) | CURRENT | `uploadAvatarAction` real, Storage + `profiles.avatar_url` |
+| Formulário de perfil (Artista/Booker) | CURRENT | `updateArtistProfileAction`/`updateBookerProfileAction`, campos estruturados reais |
+| "Preferências de matching" | CURRENT | Mesma action do formulário acima |
+| "Meu perfil público" (artista) | CURRENT | `enable/disablePublicProfileAction`, `updatePublicLinksAction` |
+| "Seu link de orçamento" (artista) | CURRENT | `updateLinkRoutingAction`, valida contra `representations` |
+| "Sua rede" (Booker) | CURRENT | Texto estático + link pra convites |
+| **"Respostas do cadastro" (`RoleDetails`)** | **NEEDS REVALIDATION** | Duplica dado já editável nos formulários acima, mostrado read-only com copy antiga do onboarding — provável resíduo do fluxo de cadastro |
+| **Branch `role === 'agencia'` inteiro (`AgencyDetails`)** | **LEGACY / HIDE FROM CURRENT UI** | `ROLE_LABELS.agencia`, query/tipo `AgencyDetails`, seção mostrando "Agência"/"Nº de artistas"/"Nº de agentes"/"Principal mercado" — DECISOES.md já registra que "agência" não é mais um conceito à parte, é só um Booker; este branch é código morto exposto pra qualquer conta `role='agencia'` remanescente |
+
+- **Nenhum resíduo encontrado** de Doopla Verified/`validated_at`/
+  confirmação por link/WhatsApp Identity UI/pills de
+  autonomia-conservador nesta tela especificamente.
+- **Visual**: LEGACY-VISUAL-ONLY — mesmo tema bege (`cardClass`,
+  `--paper`, `--ink`, `--accent`) dentro do Shell novo dark; nenhuma
+  mistura indevida de controles Booker↔Artista (o branch `agencia` é
+  um terceiro caminho morto, não vazamento entre os dois papéis reais).
+- **Backend a preservar**: todas as Server Actions listadas na tabela
+  são reais e continuam válidas mesmo que a apresentação mude —
+  exceto o branch `agencia`, que é candidato a remoção completa (dado
+  e UI) numa decisão de produto separada, já que `role='agencia'` é
+  legado de cadastro que não é mais criado.
+
+### Decisões (nav item → `/dashboard#precisa-de-voce`)
+
+Sem superfície legada exposta — o item da sidebar aponta pra uma âncora
+dentro da própria Home nova (`professional-home-view.tsx`), não existe
+rota dedicada `/dashboard/decisoes` no Shell novo. Nada a auditar aqui
+além do que a seção 69 já cobre.
+
+### Achados transversais (itens G–J do pedido)
+
+- **G. Materiais/Analytics — contraste**: itens `comingSoon` usam
+  `text-[var(--pro-tx-30)]` (off-white a 30% sobre `--pro-bg` quase
+  preto) tanto pro texto quanto pra borda da tag "Em breve" — contraste
+  estimado bem abaixo de WCAG AA (~2:1). Aceitável como "esmaecido de
+  propósito" pra indicar item desabilitado, mas vale revisão futura
+  (não corrigido nesta rodada — Part B é só leitura).
+- **H. Logo**: confirmado — "doopla (logo pendente)" é só texto de
+  desenvolvimento (`pro-shell.tsx`), sem nenhum wordmark/tipografia de
+  marca. Nenhum asset oficial existe no repositório (já auditado na
+  rodada anterior). Nada a mudar aqui até o asset real chegar.
+- **I. Botão circular flutuante à direita**: **não encontrado em
+  nenhum arquivo do repositório** — busca por `fixed`/`floating`/`FAB`/
+  "Falar com minha Doopla" em `src/` não encontrou nenhum componente
+  próprio que renderize um botão circular fixo sobreposto ao conteúdo
+  (o CTA "Falar com minha Doopla" real vive dentro do card da coluna
+  direita da Home, nunca como elemento `position: fixed`). **Hipótese
+  específica verificada e descartada**: não é um resíduo de tentativa
+  incompleta do assistente flutuante já desenhado pro protótipo do
+  Booker — não existe esse componente em lugar nenhum do código,
+  completo ou incompleto. Explicação mais provável, dado que só
+  aparece na Preview (nunca visto em `next build`/`tsc` nem em
+  inspeção de código): é injetado pela própria Vercel (barra de
+  feedback/comentários de Preview deployment) ou é um indicador nativo
+  de dev/preview do Next.js — ferramenta externa, não código do
+  produto. **Não removível/identificável a partir do repositório** —
+  precisa confirmação via inspecionar elemento na Preview real (nome
+  da classe/atributo `data-*` vai dizer a origem exata).
+- **J. Topbar (3 controles)**: bell → `/dashboard#precisa-de-voce`,
+  badge de `getAttentionItems` (mesmo mecanismo de sempre), sem
+  tooltip visível (só `aria-label`, sem atributo `title`). Fórum →
+  abre painel lateral local (`pro-forum-panel.tsx`), sem navegação, sem
+  badge (deliberado — nenhum fato Community real barato o bastante
+  ainda). Configurações (engrenagem) → `/dashboard/perfil`. **Achado
+  real: duplicação confirmada** — o gear do topbar e o item
+  "Configurações" da sidebar levam pro MESMO destino exato
+  (`/dashboard/perfil`), controle redundante. Nenhum dos 3 tem tooltip
+  visível pra mouse (só `aria-label` pra leitor de tela).
+
+CURRENT: Professional Product UI — Shell + Home.
+STATUS: Implementação técnica passou por 2 rodadas de correção (bugs
+de nav/flash corrigidos; erro de dados investigado, causa é ambiente).
+Auditoria de superfícies legadas concluída, NENHUM redesign executado.
+NÃO FECHADO.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

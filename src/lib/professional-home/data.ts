@@ -77,6 +77,16 @@ function mapHomeFactsRow(row: RawHomeFactsRow): ProfessionalHomeFacts {
 
 export async function getProfessionalHomeFacts(supabase: AnySupabaseClient): Promise<ProfessionalHomeFacts | null> {
   const { data, error } = await supabase.rpc('get_professional_home_facts').maybeSingle();
-  if (error || !data) return null;
+  // Achado da review 04/09/2026 ("Home data error"): o erro real do
+  // Postgrest era engolido em silêncio aqui — a Home só mostrava a
+  // mensagem genérica, sem nenhum rastro em log. Nunca muda o
+  // contrato (continua null pro caller, nunca lança), só torna o erro
+  // real visível nos logs do servidor (Vercel/Supabase) — não é dado
+  // fake, não é UI de erro nova, só observabilidade.
+  if (error) {
+    console.error('getProfessionalHomeFacts: RPC get_professional_home_facts falhou', error);
+    return null;
+  }
+  if (!data) return null;
   return mapHomeFactsRow(data as RawHomeFactsRow);
 }

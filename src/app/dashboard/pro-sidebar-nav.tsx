@@ -75,8 +75,15 @@ export const proNavIcons = {
 
 function ProNavItem({ link }: { link: ProNavLink }) {
   const pathname = usePathname();
-  const [path] = link.href.split('#');
-  const active = path === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(path);
+  const [path, hash] = link.href.split('#');
+  // Bug real (review 04/09/2026): Decisões (href '/dashboard#precisa-de-voce')
+  // ficava com o mesmo `path` de Início ('/dashboard') depois do split, então
+  // caía no MESMO ramo do ternário e acendia como "ativo" sempre que a Home
+  // estava aberta — mesmo sem o usuário ter clicado nele. Âncora de página
+  // nunca é uma rota própria: link com hash nunca recebe o estado de nav
+  // ativa (isso é estado de navegação, não de atenção/pendência — o badge
+  // já cobre isso).
+  const active = !hash && (path === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(path));
 
   if (link.comingSoon) {
     return (

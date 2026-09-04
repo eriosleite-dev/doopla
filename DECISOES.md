@@ -8,6 +8,53 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Professional Product UI — Shell + Home, QA autenticado (Part A): 3 bugs reais, Shell continua exclusivamente CSS de conteúdo — 04/09/2026 (mesmo dia, segunda review)
+
+Primeira vez que o Shell foi testado num Preview autenticado de
+verdade — 3 bugs reais que só apareciam com sessão real, invisíveis
+pra `tsc`/`eslint`/`build`. Duas correções de código + uma investigação
+que concluiu não ser bug de aplicação:
+
+1. **Nav ativo**: link com `#hash` (Decisões → `/dashboard#precisa-de-voce`)
+   comparava só a parte do path depois do split, colidindo com Início
+   (mesmo path `/dashboard`). Corrigido pra nunca marcar link-âncora
+   como rota ativa — princípio geral pra qualquer item futuro da
+   sidebar que aponte pra uma âncora em vez de rota própria.
+2. **Flash branco**: `loading.tsx` só substitui `{children}` — o Shell
+   (layout.tsx) fica fora da fronteira de Suspense e nunca desmonta.
+   O bug era cosmético mas na área errada: um retângulo bege
+   `min-h-screen` sólido pintado dentro do slot de conteúdo, que domina
+   a maior parte da tela (sidebar é só 250px). Fix: fundo transparente
+   + `currentColor`, deixando o fundo do Shell (dark ou legado) já
+   pintado por trás aparecer. **Regra geral daqui pra frente**: nenhum
+   boundary de loading/erro dentro de `/dashboard` pode pintar um fundo
+   próprio — sempre transparente, herdando o tema de quem já está
+   montado.
+3. **Home com erro pra todo mundo**: não é bug de `professional-home-view.tsx`
+   nem de `get_professional_home_facts()` em si — é ausência de
+   aplicação da migration no ambiente real. Este sandbox nunca teve
+   Supabase real linkado; toda migration desde a Foundation só foi
+   validada contra Postgres de teste local. Não existe hoje nenhuma
+   automação (CI/config) que aplique migrations num projeto hospedado
+   — cada `supabase/migrations/*.sql` precisa ser aplicado manualmente
+   antes de qualquer Preview poder funcionar de verdade. Corrigido só
+   o sintoma colateral (erro real agora vai pro log do servidor em vez
+   de sumir em silêncio); a causa real é uma ação de infra, não código.
+
+**Achado adicional relevante pro audit de Part B**: `pro-shell.tsx`
+(`ProfessionalShell`) já estava correto quanto a só trocar o CHROME —
+o conteúdo de Bookings/Agenda/Financeiro/Minha equipe/Configurações
+continua sendo os componentes/páginas legados de sempre, renderizados
+`{children}` dentro do Shell novo, sem nenhuma tentativa de reescrevê-los.
+Isso é esperado (nunca foi escopo deste bloco redesenhar telas
+internas) mas expôs visualmente, pela primeira vez, o quão grande é a
+divergência entre o tema `--pro-*` (dark, só 9 arquivos) e o tema
+`--paper`/`--accent`/`--ink` legado (78+ arquivos) que ainda cobre
+praticamente todo o resto do painel — ver auditoria Part B completa no
+relatório desta revisão.
+
+---
+
 ## Professional Product UI — Shell + Home, correções de fechamento: Materiais/Analytics voltam à sidebar, wordmark do logo revertido — 04/09/2026 (mesmo dia, review)
 
 Review pós-entrega pediu duas correções antes de aceitar o bloco como
