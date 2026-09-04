@@ -72,7 +72,7 @@ export function ProfessionalShell({
               tipografia/peso de marca — só um link funcional de volta
               pra Início, não uma tentativa de logo. Pendência de asset
               real registrada no relatório final. */}
-          <Link href="/dashboard" aria-label="Doopla — Início" className="text-[13px] text-[var(--pro-tx-50)]">
+          <Link href="/dashboard" aria-label="Ir para Início" className="text-[13px] text-[var(--pro-tx-50)]">
             doopla
             <span className="font-doopla-mono ml-1.5 text-[8.5px] uppercase tracking-[.04em] text-[var(--pro-tx-30)]">
               (logo pendente)

@@ -125,10 +125,10 @@ export default function HomeScreen() {
 
           <AccordionSection title="Próximos bookings" linkLabel="Ver todos" onLinkPress={() => router.push('/(tabs)/bookings')}>
             {upcoming.length === 0 ? (
-              <BookingRow month="" day="—" name="Nenhum booking em andamento" place="" statusLabel="" statusTone="green" />
+              <BookingRow month="" day="-" name="Nenhum booking em andamento" place="" statusLabel="" statusTone="green" />
             ) : (
               upcoming.map((b, i) => {
-                const { month, day } = b.event_date ? monthDayParts(b.event_date) : { month: '', day: '—' };
+                const { month, day } = b.event_date ? monthDayParts(b.event_date) : { month: '', day: '-' };
                 return (
                   <BookingRow
                     key={b.id}

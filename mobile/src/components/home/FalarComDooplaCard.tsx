@@ -24,7 +24,7 @@ export function FalarComDooplaCard({ whatsappUrl, identityVerified }: { whatsapp
       </View>
       {!identityVerified && (
         <Text style={styles.warn}>
-          Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.
+          Seu WhatsApp ainda não está verificado. A Doopla pode não te reconhecer automaticamente nessa conversa.
         </Text>
       )}
       {whatsappUrl ? (

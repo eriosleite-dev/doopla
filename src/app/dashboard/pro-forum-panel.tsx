@@ -53,7 +53,7 @@ export function ProForumPanel() {
           <p className="font-pro-sub text-[15px] font-bold">A comunidade de profissionais Doopla está chegando.</p>
           <p className="mt-2 text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
             Um espaço só de artistas pra trocar ideia, indicar trabalho e tirar dúvida com quem já passou pela mesma
-            coisa — com privacidade sob seu controle. Estamos construindo essa tela com calma; quando estiver pronta
+            coisa, com privacidade sob seu controle. Estamos construindo essa tela com calma; quando estiver pronta
             de verdade, ela abre aqui.
           </p>
         </div>

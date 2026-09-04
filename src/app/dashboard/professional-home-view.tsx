@@ -100,7 +100,7 @@ export async function ProfessionalHomeView({
                       </p>
                       <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
                         {d.kind === 'prepared_draft'
-                          ? 'A Doopla preparou uma resposta — revise antes de enviar.'
+                          ? 'A Doopla preparou uma resposta. Revise antes de enviar.'
                           : decisionBlockReasonLabel(d.blockReason)}
                       </p>
                       {d.kind === 'prepared_draft' && d.preparedContent && (
@@ -133,7 +133,7 @@ export async function ProfessionalHomeView({
                   <div key={b.id} className="flex items-center gap-3 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
                     <div className="font-doopla-mono w-9 flex-none text-center text-[10.5px] text-[var(--pro-tx-50)]">
                       <b className="font-pro-display block text-[16px] font-normal text-[var(--pro-off)]">
-                        {b.event_date ? new Date(`${b.event_date}T00:00:00`).getDate() : '—'}
+                        {b.event_date ? new Date(`${b.event_date}T00:00:00`).getDate() : '-'}
                       </b>
                       {b.event_date &&
                         new Date(`${b.event_date}T00:00:00`).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase()}
@@ -232,7 +232,7 @@ function ProHero({ fullName, needsYouCount }: { fullName: string; needsYouCount:
             <span className="absolute inset-[-4px] rounded-full bg-[var(--pro-green)] opacity-50 [animation:pro-pulse_1.8s_ease-out_infinite]" />
           </span>
           {needsYouCount > 0
-            ? `Sua Doopla está ativa — ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
+            ? `Sua Doopla está ativa, com ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
             : 'Sua Doopla está ativa, trabalhando por você'}
         </div>
       </div>
@@ -409,7 +409,7 @@ function RightColumn({
         </div>
         {whatsappIdentityStatus !== 'verified' && (
           <p className="mb-3 text-[11px] leading-snug text-[var(--pro-tx-50)]">
-            Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.
+            Seu WhatsApp ainda não está verificado. A Doopla pode não te reconhecer automaticamente nessa conversa.
           </p>
         )}
         {talkUrl ? (

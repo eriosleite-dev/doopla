@@ -89,11 +89,11 @@ function ProNavItem({ link }: { link: ProNavLink }) {
     return (
       <div
         aria-disabled="true"
-        className="font-pro-sub flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-semibold text-[var(--pro-tx-30)]"
+        className="font-pro-sub flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-semibold text-[var(--pro-tx-45)]"
       >
         <span className="[&>svg]:h-[17px] [&>svg]:w-[17px]">{link.icon}</span>
         {link.label}
-        <span className="font-doopla-mono ml-auto rounded-full border border-[var(--pro-line)] px-1.5 py-[1px] text-[9px] uppercase tracking-[.04em] text-[var(--pro-tx-30)]">
+        <span className="font-doopla-mono ml-auto rounded-full border border-[var(--pro-line)] px-1.5 py-[1px] text-[9px] uppercase tracking-[.04em] text-[var(--pro-tx-45)]">
           Em breve
         </span>
       </div>

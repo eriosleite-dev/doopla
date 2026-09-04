@@ -8252,6 +8252,99 @@ de nav/flash corrigidos; erro de dados investigado, causa é ambiente).
 Auditoria de superfícies legadas concluída, NENHUM redesign executado.
 NÃO FECHADO.
 
+## 71. Professional Product UI — Shell + Home, QA closure pass (3ª rodada) — `[VISUAL QA — NÃO FECHADO]`
+
+**Confirmação do erro de dados da Home — permanece hipótese, sem
+acesso a infra real**: este ambiente não tem `.vercel/`,
+`supabase/config.toml` nem nenhuma referência a um projeto Supabase
+real em nenhum arquivo do repositório — `.env.local` é literalmente o
+template (`NEXT_PUBLIC_SUPABASE_URL=placeholder.supabase.co`, comentário
+"copie este arquivo... e preencha com os dados do seu projeto"). Não
+existe ferramenta de acesso ao dashboard do Vercel/Supabase disponível
+nesta sessão. **Não é possível confirmar a partir daqui** qual projeto
+Supabase a Preview autenticada usa, se a migration 0067 existe lá, ou
+qual é o erro exato do PostgREST — só o código que engolia o erro em
+silêncio foi corrigido (seção 69/70), o resto continua hipótese.
+**Ação que só o founder pode fazer**: no dashboard do Vercel, abrir o
+projeto → Settings → Environment Variables → conferir
+`NEXT_PUBLIC_SUPABASE_URL` da Preview; no dashboard do Supabase desse
+projeto → Database → Migrations (ou rodar `supabase migration list`
+localmente apontando pro projeto real) → conferir se `0067_professional_home_facts`
+consta como aplicada; se não, aplicar `supabase/migrations/0059` a
+`0067` nesse projeto (`supabase db push` ou equivalente); depois, nos
+logs de função do Vercel (Functions → `/dashboard`) ou nos logs do
+Supabase (Logs → Postgrest), procurar a linha
+`getProfessionalHomeFacts: RPC get_professional_home_facts falhou`
+(adicionada nesta revisão) pra ver o erro exato.
+
+**Mascote "sumido" — causa raiz encontrada, é o MESMO incidente do
+item acima, não um bug novo**: `ProMascot` só é renderizado dentro de
+`ProHero`, que só é renderizado dentro do branch `if (!homeFacts) {
+return (...) } return (&lt;div&gt;&lt;ProHero .../&gt;...` de
+`professional-home-view.tsx` (linhas 63-73). Enquanto
+`get_professional_home_facts()` falhar no ambiente real, a Home INTEIRA
+cai no fallback de erro e `&lt;ProHero&gt;`/`&lt;ProMascot&gt;` nunca chegam a
+montar no DOM — não é um bug de CSS/visibilidade/z-index no
+`ProMascot` em si (o componente foi lido de novo, ponto a ponto: sem
+`display:none`, sem `opacity:0`, sem z-index conflitante, glow +
+bola + 2 olhos pretos + pupilas brancas centralizadas corretamente,
+tracking de mouse e `prefers-reduced-motion` implementados como
+documentado). **Nenhuma alteração de código foi feita no
+`pro-mascot.tsx`/`ProHero` nesta rodada** porque não há nada errado
+neles pra corrigir — resolver o item acima (aplicar as migrations)
+resolve os dois ao mesmo tempo.
+
+**Correções de identidade/copy aplicadas** (só `pro-*.tsx`/
+`professional-home-view.tsx`/`globals.css` no Web, só os 4 arquivos da
+Home no App — nenhum token `--accent` legado tocado):
+- Contraste dos itens "Em breve" (Materiais/Analytics): novo token
+  `--pro-tx-45` (off-white a 45%, antes 30%) — label e badge "Em breve"
+  ficam visivelmente mais legíveis sem perder a aparência de item
+  desabilitado.
+- Nenhuma classe Tailwind default (`text-yellow-*`/`bg-amber-*`/etc.)
+  encontrada em nenhum arquivo `pro-*` — confirmado por busca; o
+  sistema de cor do Shell/Home novo é 100% `--pro-*`.
+- Tipografia confirmada 100% `font-pro-display`(Anton)/`font-pro-sub`
+  (Familjen Grotesk)/`font-pro-body`(Inter) + `font-doopla-mono`(IBM
+  Plex Mono, compartilhada de propósito) — zero uso de
+  `font-doopla-display`(Fraunces, serifada/legada) dentro do Shell/Home
+  novo.
+- **6 ocorrências de travessão (—) em copy voltada ao usuário
+  removidas** (Web: `aria-label` do link do logo, texto do painel do
+  Fórum, "resposta preparada" do card de Decisão, saudação da Home com
+  contagem de conversas, aviso de WhatsApp não verificado, e o
+  placeholder `'—'` de data ausente num booking; App: os mesmos 3 textos
+  espelhados + o placeholder de data em 2 lugares) — travessões dentro
+  de comentários de código (não voltados ao usuário) foram
+  deliberadamente preservados, fora do escopo do pedido.
+
+**Duplicação do topbar (Configurações no gear × Configurações na
+sidebar) — recomendação, NÃO implementada**: do ponto de vista de
+UX/IA, manter os dois é redundante mas não incorreto — padrão comum em
+produtos com sidebar fixa é o ícone do topbar ser um atalho rápido pra
+quem está numa tela profunda sem sidebar visível (ex.: mobile/tela
+estreita) ou pra ações contextuais (notificações/busca), nunca
+duplicar 1:1 o mesmo destino da sidebar. Recomendação: quando o
+Shell ganhar um destino genuinamente distinto pra Configurações
+rápidas (ex.: um dropdown com "Sair"/tema/idioma em vez de navegar pra
+`/dashboard/perfil`), o ícone do topbar passa a fazer sentido como
+algo além de um atalho puro; até lá, a opção mais simples é remover o
+ícone de engrenagem do topbar e deixar só sino+fórum ali, com
+Configurações vivendo exclusivamente na sidebar — mas isso é uma
+mudança de IA e não foi executada aqui, só recomendada.
+
+**Segurança/autonomia**: nenhum arquivo de `src/lib/runtime/`,
+`src/lib/intelligence/approval/`, `src/lib/intelligence/policy-gate-post/`
+ou qualquer lógica de autonomia foi tocado nesta rodada — confirmado
+por `git status` (só arquivos do Shell/Home novo + `globals.css`
+mudaram).
+
+CURRENT: Professional Product UI — Shell + Home.
+STATUS: VISUAL QA — NÃO FECHADO. Bloqueador real restante: aplicar as
+migrations da Foundation no projeto Supabase real da Preview (ação de
+infra, fora do que código resolve) — depois disso, Home/mascote devem
+renderizar; recomendado nova rodada de QA autenticado depois.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

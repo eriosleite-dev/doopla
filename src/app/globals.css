@@ -46,6 +46,12 @@
   --pro-off: #fbf9f2;
   --pro-tx-70: rgba(251, 249, 242, 0.7);
   --pro-tx-50: rgba(251, 249, 242, 0.5);
+  /* QA de identidade (04/09/2026): tokens dedicados a estado
+     desabilitado/"em breve" — precisam continuar visivelmente mais
+     apagados que um item de nav normal (--pro-tx-50), mas legíveis.
+     --pro-tx-30 sozinho (off-white a 30% sobre --pro-bg quase preto)
+     ficava perto de 2:1 de contraste, abaixo do aceitável. */
+  --pro-tx-45: rgba(251, 249, 242, 0.45);
   --pro-tx-30: rgba(251, 249, 242, 0.3);
   --pro-red: #e2291c;
   --pro-red-glow: rgba(226, 41, 28, 0.55);

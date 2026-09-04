@@ -15,7 +15,7 @@ export function HomeHero({ firstName, needsYouCount = 0 }: { firstName: string; 
         <View style={styles.pulse} />
         <Text style={styles.statusText}>
           {needsYouCount > 0
-            ? `Ativa — ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
+            ? `Ativa, com ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
             : 'Ativa, trabalhando por você'}
         </Text>
       </View>

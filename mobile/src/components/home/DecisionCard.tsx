@@ -45,7 +45,7 @@ export function DecisionCard({
     <View style={[styles.card, bordered && styles.bordered]}>
       <Text style={styles.name}>{otherPartyName}</Text>
       <Text style={styles.note}>
-        {kind === 'prepared_draft' ? 'A Doopla preparou uma resposta — revise antes de enviar.' : blockReasonLabel(blockReason)}
+        {kind === 'prepared_draft' ? 'A Doopla preparou uma resposta. Revise antes de enviar.' : blockReasonLabel(blockReason)}
       </Text>
       {kind === 'prepared_draft' && preparedContent && (
         <Text style={styles.preview} numberOfLines={2}>

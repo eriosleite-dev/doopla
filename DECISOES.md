@@ -8,6 +8,33 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Professional Product UI — Shell + Home, QA closure pass: mascote "sumido" é o mesmo incidente do erro de dados — 04/09/2026 (mesmo dia, terceira review)
+
+Achado que vale registrar pra nunca mais investigar do zero: o
+founder reportou dois sintomas separados (Home com erro de dados;
+mascote não aparece no hero) que na verdade são **o mesmo incidente**.
+`ProMascot` só existe dentro de `ProHero`, que só é alcançado depois
+do `if (!homeFacts) return (fallback de erro)` em
+`professional-home-view.tsx` — enquanto `get_professional_home_facts()`
+falhar no ambiente (migration não aplicada no Supabase real da
+Preview, ver seção 69 do PROGRESS.md), a Home inteira cai no fallback
+e nada abaixo dele — incluindo o mascote — chega a montar no DOM.
+`ProMascot` em si foi relido linha por linha e está correto (olho
+preto, pupila branca, tracking, `prefers-reduced-motion`) — não foi
+tocado nesta rodada porque não há nada pra corrigir nele. **Lição**:
+antes de investigar um elemento visual "sumido" como bug de CSS/render,
+checar se ele está atrás do mesmo early-return de um fetch que já
+está com erro conhecido.
+
+Também nesta rodada: contraste dos itens "Em breve" da sidebar
+melhorado (`--pro-tx-45` novo token, era `--pro-tx-30`) e 6
+travessões removidos de copy voltada ao usuário no Shell/Home novo
+(Web+App) — nenhum deles alterava fato/contrato, só pontuação/cor.
+Nenhum token `--accent` legado foi tocado (a regra explícita foi não
+fazer replace global — isso redesenharia telas legadas sem querer).
+
+---
+
 ## Professional Product UI — Shell + Home, QA autenticado (Part A): 3 bugs reais, Shell continua exclusivamente CSS de conteúdo — 04/09/2026 (mesmo dia, segunda review)
 
 Primeira vez que o Shell foi testado num Preview autenticado de
