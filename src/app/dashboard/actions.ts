@@ -1157,7 +1157,13 @@ export async function uploadAvatarAction(
 
   await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
 
+  // Compartilhada por Booker/Agência (AvatarUploader em
+  // /dashboard/perfil, intocado) e Artista (AvatarUploader movido pra
+  // /dashboard/perfil/editar na rodada de correção/consistência,
+  // 06/09/2026 — "Perfil profissional" saiu da navegação, mas o
+  // formulário real continua existindo e ativo naquela rota).
   revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/editar');
   revalidatePath('/dashboard');
   return {};
 }
@@ -1220,7 +1226,11 @@ export async function enablePublicProfileAction() {
     .update({ public_enabled: true })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil');
+  // PublicProfileCard vive em /dashboard/perfil/editar (Artista) —
+  // nunca mais em /dashboard/perfil (essa rota agora é Configurações,
+  // sem esse form). /dashboard revalida a Home (orçamentoUrl depende
+  // de public_enabled).
+  revalidatePath('/dashboard/perfil/editar');
   revalidatePath('/dashboard');
 }
 
@@ -1235,7 +1245,7 @@ export async function disablePublicProfileAction() {
     .update({ public_enabled: false })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/editar');
   revalidatePath('/dashboard');
 }
 
@@ -1259,7 +1269,7 @@ export async function updatePublicLinksAction(
     })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/editar');
   return {};
 }
 
@@ -1321,7 +1331,7 @@ export async function updateArtistProfileAction(
     })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/editar');
   revalidatePath('/dashboard');
   return {};
 }
@@ -1412,7 +1422,7 @@ export async function updateLinkRoutingAction(
   );
   if (error) return { error: 'Não foi possível salvar o roteamento.' };
 
-  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/editar');
   revalidatePath('/dashboard');
   return { success: true };
 }

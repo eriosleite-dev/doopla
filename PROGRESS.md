@@ -8441,6 +8441,111 @@ STATUS: implementado e validado (tsc/eslint/build). Aguardando nova
 rodada de QA visual autenticada do usuário na Preview antes de
 considerar o bloco fechado.
 
+## 73. Professional Web Dashboard — rodada de correção e consistência (Configurações/Minha equipe/Decisões/Canais de booking/Falar com minha Doopla) — `[DELIVERED]`
+
+Depois da revisão completa (§72), o usuário testou o painel redesenhado
+na Preview e apontou regressões/gaps concretos, escopados só a 5
+superfícies (nunca um redesign indiscriminado de novo): Configurações,
+Minha equipe → Gerenciar, Decisões, Canais de booking, Falar com minha
+Doopla. Antes de codar, inspeção completa registrada e 2 forks
+confirmados pelo usuário (ver DECISOES.md): (a) sem migration nova pra
+autoria de decisão — hoje só o profissional resolve, então "Resolvida
+por você" é um rótulo estático, não uma coluna; quando o Booker ganhar
+capability de decisão, autoria/auditoria entra junto daquele bloco; (b)
+"Editar informações públicas" NÃO migra pra Canais de booking — essa
+área é só entrada/roteamento (link de orçamento, WhatsApp da Doopla,
+código), nunca uma porta nova pro antigo "Perfil profissional".
+
+Entregue:
+- **Configurações**: removido o card "Perfil profissional"
+  (`pro-configuracoes-view.tsx`) — descontinuada como SUPERFÍCIE DE
+  NAVEGAÇÃO do profissional. `artist_profiles` e o formulário real
+  (`/dashboard/perfil/editar`, `ArtistProfileForm`/`AvatarUploader`/
+  `PublicProfileCard`/`LinkRoutingCard`) continuam existindo intocados
+  — só deixaram de ter link de entrada no painel. Nenhuma nova entrada
+  genérica criada agora, por instrução explícita — a superfície futura
+  de edição é um bloco separado.
+- **Bug de `revalidatePath` corrigido** (`actions.ts`, 6 Server
+  Actions): `enablePublicProfileAction`/`disablePublicProfileAction`/
+  `updatePublicLinksAction`/`updateArtistProfileAction`/
+  `updateLinkRoutingAction` (todas artista-only) revalidavam
+  `/dashboard/perfil`, rota que esses formulários já não habitam desde
+  o redesign do §72 — corrigido pra `/dashboard/perfil/editar`.
+  `uploadAvatarAction` (compartilhada Booker/Artista) passa a revalidar
+  os dois paths, já que o componente é usado nas duas rotas.
+  `updateBookerProfileAction` (booker-only) conferido e mantido — já
+  apontava pro lugar certo.
+- **Minha equipe → Gerenciar** (`bookers/[id]/booker-profile-view.tsx`
+  + `page.tsx`): re-skin completo pro sistema `--pro-*` (era a última
+  tela do painel artista ainda 100% legada — `--ink`/`--paper`/
+  `eyebrowClass`/`font-doopla-display`). Puramente visual: mesmas
+  queries (rating, reviews, representação, favorito), mesma lógica,
+  nenhuma coluna/ação nova.
+- **Decisões** (`decisoes/page.tsx` + novo `pro-decisoes-view.tsx`):
+  duas VISÕES PRIMÁRIAS em abas — "Precisa de você" (mesma lógica de
+  sempre, prioridade > idade) e "Resolvidas" (nova), nunca um dropdown
+  escondendo essa separação. "Resolvidas" lê só fatos já gravados por
+  Runtime/Approval Engine/Policy Gate, nunca reinterpreta:
+  `runtime_pending_replies` com `status IN ('completed','superseded')`
+  + `conversation_messages` com `replied_to_outbound_intent_id`
+  preenchido (migration 0066, `prepared_response_outcome`) —
+  `listResolvedDecisions` (`src/lib/decisions/data.ts`, nova). Cards de
+  "Resolvidas" são compactos e não-acionáveis (sem CTA de aprovar/
+  rejeitar), com rótulo estático "Resolvida por você". Controle de
+  ordenação (recentes/antigas) vive só dentro da aba Resolvidas — é
+  onde faz sentido (histórico cronológico); "Precisa de você" mantém a
+  ordenação por prioridade, nunca substituída por ordenação crua. O
+  badge da sidebar e o "Precisa de você (N)" continuam vindo do MESMO
+  `getCachedConversationStateSummary`/`groupDecisionsByConversation` de
+  sempre — "Resolvidas" nunca entra nessa contagem.
+- **Canais de booking**: nova linha "Seu código" em "Seus canais de
+  booking" (`professional-home-view.tsx`), usando `profile.slug` —
+  aprovado como fonte canônica por já ser o token real de roteamento
+  (`extractDooplaSlugToken`/`evaluateWhatsappRouting`), nunca um campo
+  novo nem `referral_code`. Estado ausente honesto quando `slug` é
+  nulo, nunca um valor de exemplo hardcoded.
+- **Falar com minha Doopla**: 3 estados agora explicitamente separados
+  no mesmo bloco — (i) canal + identidade OK → CTA ativa só; (ii) canal
+  existe mas WhatsApp do profissional não verificado → CTA continua
+  ativa, mas com aviso + link real pro fluxo de verificação já
+  existente (`/dashboard/perfil` → `ProWhatsappIdentityCard`), nunca um
+  atalho que ignore OTP/WhatsApp Identity; (iii) sem `talkUrl`
+  (`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente) → "Canal da Doopla
+  indisponível no momento", nunca um número fake. O código/lógica já
+  existia desde o §72 (`buildTalkToYourDooplaUrl`) — o que faltava era
+  só a variável de ambiente configurada, não código; ver pendência
+  abaixo.
+- Como pedido separadamente (item 2, spec do header/sidebar): topbar
+  (`pro-shell.tsx`) — os 3 ícones globais (Notificações/Comunidade/
+  Configurações) movidos pro canto superior direito do conteúdo
+  principal via `justify-end` no container existente, sem duplicar
+  componente.
+
+Pendências reais, não escondidas:
+- **Logo real da sidebar**: bloqueado. O usuário anexou o PNG oficial
+  da doopla (wordmark preto + dois pontos brancos) inline no chat, mas
+  nenhuma ferramenta deste agente consegue ler uma imagem colada como
+  arquivo no disco — precisa ser commitada em `public/` ou apontada por
+  path/URL real. Proibido desenhar o logo via texto/CSS (instrução
+  explícita). Placeholder "(logo pendente)" em `pro-shell.tsx`
+  permanece até o asset chegar.
+- **`NEXT_PUBLIC_WHATSAPP_NUMBER` no ambiente de Preview**: achado do
+  próprio usuário — o sumiço simultâneo de "WhatsApp da Doopla" e do
+  botão "Falar com minha Doopla" no Preview vem dessa env var ausente,
+  não de um bug de código (`whatsappPublicNumber()` já é opcional por
+  design). Redesenhar o bloco não resolve isso — precisa ser
+  configurada na Vercel, fora do escopo de código deste patch.
+
+Validado: `tsc --noEmit`, `eslint` (arquivos alterados) e `next build`
+limpos.
+
+CURRENT: Professional Web Dashboard — Foundation + revisão completa
+(§72) + rodada de correção/consistência (§73).
+STATUS: implementado e validado (tsc/eslint/build). Logo real da
+sidebar e `NEXT_PUBLIC_WHATSAPP_NUMBER` em Preview são as duas
+pendências que dependem do usuário (asset de arquivo / configuração de
+ambiente), não de código.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

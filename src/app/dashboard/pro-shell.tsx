@@ -135,7 +135,7 @@ export function ProfessionalShell({
 
       <div className="flex flex-1 flex-col md:flex-row">
         <main className="min-w-0 flex-1 px-5 py-6 sm:px-8 sm:py-7">
-          <div className="mb-4 flex items-center gap-2.5">
+          <div className="mb-4 flex items-center justify-end gap-2.5">
             <Link
               href="/dashboard#precisa-de-voce"
               aria-label={

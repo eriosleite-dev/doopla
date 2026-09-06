@@ -8,13 +8,20 @@ import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 
 // Item 12/13 da revisão Professional Web Dashboard (06/09/2026) —
 // Configurações deixa de ser o antigo Perfil (nome gigante serifado,
-// cards brancos, formulário inteiro na raiz). Perfil profissional
-// continua existindo como tela própria (/dashboard/perfil/editar,
-// mesmos componentes reais de sempre: ArtistProfileForm/AvatarUploader/
-// PublicProfileCard/LinkRoutingCard) — Configurações só aponta pra lá.
-// Notificações/Segurança/Privacidade: só o que já é real hoje. Nenhum
-// toggle funcional falso — backend genérico dessas 3 seções ainda não
-// existe, registrado como pendência (não escondido).
+// cards brancos, formulário inteiro na raiz). Notificações/Segurança/
+// Privacidade: só o que já é real hoje. Nenhum toggle funcional falso
+// — backend genérico dessas 3 seções ainda não existe, registrado como
+// pendência (não escondido).
+//
+// Rodada de correção/consistência (06/09/2026) — decisão explícita do
+// usuário: "Perfil profissional" descontinuada como SUPERFÍCIE DE
+// NAVEGAÇÃO do profissional (nenhum card/link daqui em diante). Os
+// dados (`artist_profiles`) e o formulário real (ArtistProfileForm/
+// AvatarUploader/PublicProfileCard/LinkRoutingCard,
+// `/dashboard/perfil/editar`) continuam existindo intocados — só não
+// são mais alcançáveis por nenhum link do painel profissional. Nunca
+// deletar o formulário/rota "pra resolver UI"; a superfície futura de
+// edição é um bloco separado, decisão do usuário, não deste patch.
 export function ProConfiguracoesView({
   fullName,
   email,
@@ -100,15 +107,6 @@ export function ProConfiguracoesView({
           <p className="mt-2 text-[12.5px] text-[var(--pro-tx-50)]">
             Controles de privacidade e dados ainda não são configuráveis por aqui — em breve. (Diferente da privacidade do seu perfil na Comunidade, que tem tela própria.)
           </p>
-        </ProCard>
-
-        <ProCard>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="font-pro-sub text-[13.5px] font-bold">Perfil profissional</p>
-            <Link href="/dashboard/perfil/editar" className={proGhostButtonClass}>
-              Editar perfil profissional →
-            </Link>
-          </div>
         </ProCard>
 
         <ProCard>

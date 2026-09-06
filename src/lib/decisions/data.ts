@@ -201,3 +201,100 @@ export function sortDecisionsByPriority(decisions: DecisionItem[]): DecisionItem
     return a.createdAt.localeCompare(b.createdAt);
   });
 }
+
+// Rodada de correção/consistência (06/09/2026) — histórico de
+// "Resolvidas". Mesma filosofia de listActionableDecisions: só LÊ fatos
+// já gravados por Runtime/Approval Engine/Policy Gate, nunca reinterpreta.
+// Duas fontes reais de "isto já foi decidido", nunca uma terceira
+// inventada:
+//   - runtime_pending_replies com status IN ('completed','superseded')
+//     — a pendência que bloqueava o turno deixou de existir.
+//   - conversation_messages com replied_to_outbound_intent_id
+//     preenchido (migration 0066) — um rascunho preparado (prepared_draft)
+//     foi respondido (prepared_response_outcome 'sent'/'edited').
+// "Resolvida por você": hoje só o profissional resolve (nenhuma
+// capability de decisão do Booker existe ainda) — decisão explícita do
+// usuário de NÃO adicionar coluna de autoria antecipadamente; quando o
+// Booker ganhar essa capability, autoria/auditoria entra junto daquele
+// bloco, não aqui.
+export type ResolvedDecisionItem = {
+  id: string;
+  conversationId: string;
+  relatedBookingId: string | null;
+  resolvedAt: string;
+  outcomeLabel: string;
+};
+
+type RawResolvedPendingReplyRow = {
+  id: string;
+  conversation_id: string;
+  status: string;
+  resolved_at: string | null;
+  superseded_by_id: string | null;
+};
+
+type RawResolvedMessageRow = {
+  id: string;
+  conversation_id: string;
+  created_at: string;
+  prepared_response_outcome: string | null;
+};
+
+function pendingReplyOutcomeLabel(status: string, supersededById: string | null): string {
+  if (status === 'completed') return 'Você respondeu e a Doopla retomou a conversa.';
+  if (supersededById) return 'Substituída por uma decisão mais recente na mesma conversa.';
+  return 'Encerrada — a negociação nesta conversa chegou ao fim.';
+}
+
+function preparedDraftOutcomeLabel(outcome: string | null): string {
+  if (outcome === 'edited') return 'Você editou o rascunho da Doopla antes de enviar.';
+  return 'Você aprovou e enviou o rascunho da Doopla.';
+}
+
+export async function listResolvedDecisions(supabase: AnySupabaseClient, limit = 50): Promise<ResolvedDecisionItem[]> {
+  const [resolvedRepliesResult, resolvedMessagesResult] = await Promise.all([
+    supabase
+      .from('runtime_pending_replies')
+      .select('id, conversation_id, status, resolved_at, superseded_by_id')
+      .in('status', ['completed', 'superseded'])
+      .order('resolved_at', { ascending: false })
+      .limit(limit)
+      .returns<RawResolvedPendingReplyRow[]>(),
+    supabase
+      .from('conversation_messages')
+      .select('id, conversation_id, created_at, prepared_response_outcome')
+      .not('replied_to_outbound_intent_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+      .returns<RawResolvedMessageRow[]>(),
+  ]);
+
+  const resolvedReplies = resolvedRepliesResult.data ?? [];
+  const resolvedMessages = resolvedMessagesResult.data ?? [];
+
+  const conversationIds = [...new Set([...resolvedReplies.map((r) => r.conversation_id), ...resolvedMessages.map((m) => m.conversation_id)])];
+  const { data: conversations } = conversationIds.length
+    ? await supabase.from('conversations').select('id, related_booking_id').in('id', conversationIds).returns<{ id: string; related_booking_id: string | null }[]>()
+    : { data: [] as { id: string; related_booking_id: string | null }[] };
+  const conversationById = new Map((conversations ?? []).map((c) => [c.id, c]));
+
+  const fromReplies: ResolvedDecisionItem[] = resolvedReplies
+    .filter((r) => r.resolved_at)
+    .map((r) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      relatedBookingId: conversationById.get(r.conversation_id)?.related_booking_id ?? null,
+      resolvedAt: r.resolved_at as string,
+      outcomeLabel: pendingReplyOutcomeLabel(r.status, r.superseded_by_id),
+    }));
+
+  const fromMessages: ResolvedDecisionItem[] = resolvedMessages.map((m) => ({
+    id: m.id,
+    conversationId: m.conversation_id,
+    relatedBookingId: conversationById.get(m.conversation_id)?.related_booking_id ?? null,
+    resolvedAt: m.created_at,
+    outcomeLabel: preparedDraftOutcomeLabel(m.prepared_response_outcome),
+  }));
+
+  return [...fromReplies, ...fromMessages].sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt)).slice(0, limit);
+}

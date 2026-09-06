@@ -1006,3 +1006,60 @@ toca a assinatura do artista). Não recriei nada disso.
   Decisão: um formulário grande, multi-seção e já funcional não vale o
   risco de re-skin não pedido explicitamente — registrado como
   pendência aberta, não escondida.
+
+## Professional Web Dashboard — rodada de correção e consistência — 06/09/2026
+
+- **"Resolvida por você" é um rótulo estático, não uma coluna nova** —
+  confirmação explícita do usuário: NÃO adicionar
+  `resolved_by_profile_id`/qualquer migration de autoria agora. Hoje só
+  o profissional tem capability de resolver decisão (Booker não tem
+  `authorized_collaborator` de reply), então a resposta é sempre
+  trivialmente verdadeira. Quando o Booker ganhar essa capability,
+  autoria/auditoria real entra como parte DAQUELE bloco de trabalho,
+  nunca antecipada aqui sem uso real.
+- **Canais de booking não vira porta de volta pro Perfil profissional**
+  — o usuário rejeitou explicitamente mover "Editar informações
+  públicas" pra lá. Canais de booking é só superfície de
+  entrada/roteamento externo (link de orçamento, WhatsApp da Doopla,
+  código/slug) — nunca um lugar de edição de dados.
+- **"Perfil profissional" descontinuado como NAVEGAÇÃO, nunca como
+  dado/rota** — o card sai de Configurações, mas `artist_profiles`,
+  `/dashboard/perfil/editar` e todo consumidor existente (onboarding,
+  Intelligence Context, página pública de orçamento, Community)
+  continuam intocados. Por instrução explícita, NENHUMA entrada
+  genérica nova foi criada agora só pra "resolver a navegação" — a
+  superfície futura de edição é decisão separada do usuário, tratada
+  fora deste patch.
+- **"Seu código" usa `profile.slug`, nunca `referral_code` nem campo
+  novo** — aprovado explicitamente por ser o único token real que o
+  algoritmo de roteamento de WhatsApp Inbound
+  (`extractDooplaSlugToken`/`evaluateWhatsappRouting`,
+  `src/lib/channels/whatsapp/intake-routing.ts`) de fato reconhece.
+  `referral_code` (migration 0020) é um hex aleatório pra outro
+  propósito (indicação/referral), confirmado por leitura da migration
+  antes de descartá-lo como candidato.
+- **Bug de `revalidatePath` era resíduo do redesign anterior (§72), não
+  algo novo** — quando `ArtistProfileForm`/`AvatarUploader`/
+  `PublicProfileCard`/`LinkRoutingCard` migraram pra
+  `/dashboard/perfil/editar`, os `revalidatePath('/dashboard/perfil')`
+  dentro das Server Actions correspondentes (`actions.ts`) ficaram
+  apontando pra rota errada — o formulário real passou a mostrar dado
+  desatualizado até um refresh manual. Corrigido só nas 5 ações
+  artista-only cujo formulário de fato migrou; a ação booker-only
+  (`updateBookerProfileAction`) foi conferida e mantida como estava,
+  por seu formulário nunca ter saído de `/dashboard/perfil`.
+- **Logo oficial da doopla não pôde ser aplicado nesta rodada** — o
+  usuário anexou o PNG (wordmark preto + dois pontos brancos) como
+  imagem inline no chat, não como arquivo no repositório/disco;
+  nenhuma ferramenta deste agente lê uma imagem colada dessa forma como
+  arquivo. Instrução explícita do usuário proíbe desenhar o logo via
+  texto/CSS como substituto — então o placeholder "(logo pendente)"
+  permanece até o asset real chegar como arquivo (`public/` ou
+  path/URL acessível).
+- **`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente no Preview não é bug de
+  código** — o próprio usuário identificou a causa raiz: "WhatsApp da
+  Doopla" e "Falar com minha Doopla" somem juntos porque os dois lêem a
+  mesma env var opcional (`whatsappPublicNumber()`,
+  `src/lib/supabase/env.ts`), que nunca foi configurada nesse ambiente.
+  Redesenhar o componente não resolve — fica registrado como
+  configuração de ambiente pendente, fora do escopo de código.

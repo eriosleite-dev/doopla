@@ -209,6 +209,7 @@ export async function ProfessionalHomeView({
           orcamentoUrl={orcamentoUrl}
           whatsappNumber={whatsappNumber}
           whatsappIdentityStatus={homeFacts.whatsappIdentityStatus}
+          professionalSlug={profile.slug}
           referralEligible={!!referralSummary}
           referralTotal={homeFacts.referralTotalCount}
           referralQualifiedCents={referralSummary?.qualifiedTotalCents ?? 0}
@@ -327,6 +328,7 @@ function RightColumn({
   orcamentoUrl,
   whatsappNumber,
   whatsappIdentityStatus,
+  professionalSlug,
   referralEligible,
   referralTotal,
   referralQualifiedCents,
@@ -336,6 +338,7 @@ function RightColumn({
   orcamentoUrl: string | null;
   whatsappNumber: string | null;
   whatsappIdentityStatus: string | null;
+  professionalSlug: string | null;
   referralEligible: boolean;
   referralTotal: number;
   referralQualifiedCents: number;
@@ -343,6 +346,7 @@ function RightColumn({
   bookerPending: PendingBookerRequest[];
 }) {
   const talkUrl = whatsappNumber ? buildTalkToYourDooplaUrl(whatsappNumber) : null;
+  const isWhatsappVerified = whatsappIdentityStatus === 'verified';
 
   return (
     <aside className="flex flex-col gap-3.5 lg:sticky lg:top-6">
@@ -371,6 +375,19 @@ function RightColumn({
               <p className="font-doopla-mono truncate text-[12px]">{whatsappNumber}</p>
             </div>
           </div>
+        )}
+        {professionalSlug ? (
+          <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código</p>
+              <p className="font-doopla-mono truncate text-[12px]">{professionalSlug}</p>
+            </div>
+            <ProCopyButton value={professionalSlug} label="Código copiado." />
+          </div>
+        ) : (
+          <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)]">
+            Seu código ainda não está disponível.
+          </p>
         )}
         <BookerChannelRow active={bookerActive} pending={bookerPending} />
       </div>
@@ -411,9 +428,22 @@ function RightColumn({
             <p className="text-[11.5px] text-[var(--pro-tx-50)]">Pergunte algo ou peça uma ação</p>
           </div>
         </div>
-        {whatsappIdentityStatus !== 'verified' && (
+        {/* Item 5 da rodada de correção/consistência (06/09/2026) — 3
+           estados nunca confundidos: (i) canal + identidade OK -> CTA
+           ativa só; (ii) canal existe mas WhatsApp do profissional
+           ainda não verificado -> CTA continua ativa (a mensagem chega
+           de qualquer forma), mas com aviso explícito + link real pro
+           fluxo de verificação (OTP/WhatsApp Identity, já existente em
+           Configurações — nunca um atalho novo que ignore essa
+           verificação); (iii) sem talkUrl (NEXT_PUBLIC_WHATSAPP_NUMBER
+           ausente) -> estado indisponível honesto, nunca um número
+           fake nem um link quebrado. */}
+        {talkUrl && !isWhatsappVerified && (
           <p className="mb-3 text-[11px] leading-snug text-[var(--pro-tx-50)]">
-            Seu WhatsApp ainda não está verificado. A Doopla pode não te reconhecer automaticamente nessa conversa.
+            Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.{' '}
+            <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
+              Verificar meu WhatsApp →
+            </Link>
           </p>
         )}
         {talkUrl ? (
@@ -427,7 +457,7 @@ function RightColumn({
             Abrir WhatsApp
           </a>
         ) : (
-          <p className="text-[11.5px] text-[var(--pro-tx-30)]">Número da Doopla indisponível no momento.</p>
+          <p className="text-[11.5px] text-[var(--pro-tx-30)]">Canal da Doopla indisponível no momento.</p>
         )}
       </div>
     </aside>
