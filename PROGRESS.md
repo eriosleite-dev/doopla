@@ -8521,30 +8521,47 @@ Entregue:
   principal via `justify-end` no container existente, sem duplicar
   componente.
 
-Pendências reais, não escondidas:
-- **Logo real da sidebar**: bloqueado. O usuário anexou o PNG oficial
-  da doopla (wordmark preto + dois pontos brancos) inline no chat, mas
-  nenhuma ferramenta deste agente consegue ler uma imagem colada como
-  arquivo no disco — precisa ser commitada em `public/` ou apontada por
-  path/URL real. Proibido desenhar o logo via texto/CSS (instrução
-  explícita). Placeholder "(logo pendente)" em `pro-shell.tsx`
-  permanece até o asset chegar.
-- **`NEXT_PUBLIC_WHATSAPP_NUMBER` no ambiente de Preview**: achado do
-  próprio usuário — o sumiço simultâneo de "WhatsApp da Doopla" e do
-  botão "Falar com minha Doopla" no Preview vem dessa env var ausente,
-  não de um bug de código (`whatsappPublicNumber()` já é opcional por
-  design). Redesenhar o bloco não resolve isso — precisa ser
-  configurada na Vercel, fora do escopo de código deste patch.
+Dois estados externos, conferidos e explicitamente NÃO tratados como
+pendência deste bloco (nem bloqueiam seu fechamento):
+- **Logo real da sidebar**: investigado a fundo (agente de exploração,
+  06/09/2026) se o app mobile já tinha um asset real reaproveitável,
+  por hipótese do usuário. Resultado: NÃO tem. `mobile/src/components/
+  home/HomeTopbar.tsx` renderiza só `<Text>doopla</Text>` em
+  tipografia de corpo — mesmo texto puro sem estilo de marca, com
+  comentário no próprio código registrando que uma tentativa anterior
+  de imitar os "olhos" do wordmark ali foi removida por review
+  explícita por ser um wordmark inventado. `mobile/assets/*.png` são
+  ícones padrão do Expo (nunca customizados pra marca). O único
+  componente que parece o logo real é `EyeLogo.tsx` (site de
+  marketing) — um `<span>` de texto estilizado por CSS escopado
+  (`home.css`), não uma imagem portável, e não usado pelo mobile. Ou
+  seja: web e mobile têm o MESMO gap (nenhum asset real de imagem
+  existe em lugar nenhum do repo), não uma duplicata evitável. Fica
+  como um gap de asset de marca conhecido em ambas as plataformas —
+  não fabricado/redesenhado por este agente, não perseguido além desta
+  verificação, e não pendência deste patch.
+- **`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente em Production/Preview**:
+  estado ESPERADO, não uma pendência de configuração — o número
+  oficial da Doopla ainda está em análise no WhatsApp/Meta. O código já
+  trata a ausência corretamente (`whatsappPublicNumber()` retorna
+  `null` sem fallback; todo consumidor mostra "canal
+  indisponível/ainda não configurado", nunca um número real ou
+  temporário hardcoded — auditado por grep em todo o repo, 06/09/2026,
+  sem achados). Quando o número for aprovado, a env var é configurada
+  na Vercel sem exigir mudança de código nenhuma. Teste visual no
+  Preview, se necessário, deve usar só um valor de teste/fixture
+  isolado do Preview, nunca um número real nem algo promovido pra
+  Production.
 
 Validado: `tsc --noEmit`, `eslint` (arquivos alterados) e `next build`
 limpos.
 
 CURRENT: Professional Web Dashboard — Foundation + revisão completa
 (§72) + rodada de correção/consistência (§73).
-STATUS: implementado e validado (tsc/eslint/build). Logo real da
-sidebar e `NEXT_PUBLIC_WHATSAPP_NUMBER` em Preview são as duas
-pendências que dependem do usuário (asset de arquivo / configuração de
-ambiente), não de código.
+STATUS: `[DELIVERED]` — implementado e validado (tsc/eslint/build).
+Nenhuma pendência de código em aberto neste bloco; os dois pontos
+acima são estados externos (asset de marca ainda não desenhado /
+número oficial em aprovação externa), não itens deste patch.
 
 ## Como usar isso
 

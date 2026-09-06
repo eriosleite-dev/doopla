@@ -1048,30 +1048,46 @@ toca a assinatura do artista). Não recriei nada disso.
   artista-only cujo formulário de fato migrou; a ação booker-only
   (`updateBookerProfileAction`) foi conferida e mantida como estava,
   por seu formulário nunca ter saído de `/dashboard/perfil`.
-- **Logo oficial da doopla não pôde ser aplicado nesta rodada** — o
-  usuário anexou o PNG (wordmark preto + dois pontos brancos) como
-  imagem inline no chat, não como arquivo no repositório/disco;
-  nenhuma ferramenta deste agente lê uma imagem colada dessa forma como
-  arquivo. Instrução explícita do usuário proíbe desenhar o logo via
-  texto/CSS como substituto — então o placeholder "(logo pendente)"
-  permanece até o asset real chegar como arquivo (`public/` ou
-  path/URL acessível).
-- **`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente no Preview não é bug de
-  código** — o próprio usuário identificou a causa raiz: "WhatsApp da
-  Doopla" e "Falar com minha Doopla" somem juntos porque os dois lêem a
-  mesma env var opcional (`whatsappPublicNumber()`,
-  `src/lib/supabase/env.ts`), que nunca foi configurada nesse ambiente.
-  Redesenhar o componente não resolve — fica registrado como
-  configuração de ambiente pendente, fora do escopo de código.
-- **Número oficial da Doopla ainda em análise no WhatsApp/Meta —
-  confirmado sem hardcode em nenhum lugar do código**: auditoria por
-  grep em todo o repo (06/09/2026) — `whatsappPublicNumber()`
-  (`src/lib/supabase/env.ts`) retorna `null` sem a env var, sem
-  fallback nenhum; todo consumidor (`professional-home-view.tsx`,
-  `orcamento/[slug]/page.tsx`) já trata a ausência com estado honesto
-  ("Canal da Doopla indisponível no momento" / CTA some), nunca um
-  número de exemplo nem link quebrado. Enquanto o número não for
-  aprovado, `NEXT_PUBLIC_WHATSAPP_NUMBER` continua ausente em
-  Production — qualquer teste visual do fluxo ativo no Preview deve
-  usar uma env var configurada só naquele ambiente (Vercel Preview),
-  nunca commitada no repo nem promovida pra Production por engano.
+- **Logo oficial da doopla: mobile NÃO tem asset reaproveitável —
+  verificado antes de pedir qualquer arquivo novo** — o usuário
+  levantou a hipótese de que o app mobile já usava o logo correto e
+  pediu pra eu localizar e reaproveitar essa fonte antes de pedir um
+  PNG novo. Investigação (agente de exploração, 06/09/2026, grep
+  exaustivo em `mobile/` por "logo"/"wordmark"/"doopla" + inspeção de
+  `mobile/app.json` + leitura de todos os PNGs em `mobile/assets/`)
+  confirmou que a hipótese não se sustenta: `mobile/src/components/
+  home/HomeTopbar.tsx` renderiza só `<Text>doopla</Text>` em
+  tipografia de corpo — mesmo tipo de placeholder de texto puro que o
+  painel web tinha, com um comentário no próprio código do mobile
+  registrando que uma tentativa anterior de estilizar o "o" como os
+  olhos do logo real foi removida por review explícita, por ser um
+  wordmark inventado. `mobile/assets/*.png` (`icon.png`,
+  `splash-icon.png`, `android-icon-*.png`, `favicon.png`) são ícones
+  padrão de scaffold do Expo, nunca customizados pra marca. O único
+  componente que visualmente parece o logo real é `EyeLogo.tsx` (site
+  de marketing) — um `<span>` de texto com CSS escopado
+  (`home.css`/`.eye-logo`/`.dot`/`.pupil`), não uma imagem, e não usado
+  pelo mobile. Conclusão: web e mobile compartilham o MESMO gap (nenhum
+  asset de imagem real da marca existe em lugar nenhum do repo hoje) —
+  não havia nada pra reaproveitar, então nada foi duplicado. Isso não é
+  tratado como pendência bloqueante deste patch (instrução explícita do
+  usuário) — é um gap de asset de marca real, cross-platform, que
+  precisa ser resolvido com um arquivo novo quando o usuário quiser,
+  fora do escopo deste bloco.
+- **`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente: estado esperado
+  pré-ativação, não pendência de configuração** — o número oficial da
+  Doopla ainda está em análise no WhatsApp/Meta; a env var
+  propositalmente não existe em nenhum ambiente até essa aprovação
+  sair. Auditoria por grep em todo o repo (06/09/2026) confirmou zero
+  hardcode: `whatsappPublicNumber()` (`src/lib/supabase/env.ts`)
+  retorna `null` sem a env var, sem fallback nenhum; todo consumidor
+  (`professional-home-view.tsx`, `orcamento/[slug]/page.tsx`) já trata
+  a ausência com estado honesto ("Canal da Doopla indisponível no
+  momento" / CTA some), nunca um número de exemplo, temporário ou link
+  quebrado. Quando o número for aprovado, a env var é configurada
+  direto na Vercel, sem exigir nenhuma mudança de código. Teste visual
+  no Preview, se necessário, deve usar só um valor de
+  teste/fixture claramente isolado do Preview (nunca um número real,
+  nunca promovido pra Production, nunca commitado no repo). Por
+  instrução explícita do usuário, este ponto NÃO é tratado como
+  pendência deste patch.
