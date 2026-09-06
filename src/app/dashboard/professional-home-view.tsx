@@ -11,8 +11,9 @@ import { getMyBookerFacts } from '@/lib/professional-booker/data';
 import { getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
+import { formatRelativeTime, proStatusPillClass } from './pro-format';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
-import { ProAccordion, ProCopyButton, formatRelativeTime, proStatusPillClass } from './pro-ui';
+import { ProAccordion, ProCopyButton } from './pro-ui';
 import { STATUS_LABELS } from './ui';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
