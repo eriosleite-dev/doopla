@@ -157,3 +157,47 @@ export async function listActionableDecisions(supabase: AnySupabaseClient): Prom
 
   return [...fromPendingReplies, ...fromDrafts].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
+
+// Uma conversa pode gerar 2 linhas em listActionableDecisions ao mesmo
+// tempo (um pending_reply E um prepared_draft) — isso é uma divergência
+// real de contagem descoberta na revisão do Professional Web Dashboard
+// (06/09/2026): a Home mostrava 17 conversas "precisam de você" no
+// card/badge (contagem por CONVERSA, via
+// getCachedConversationStateSummary) mas 20 no accordion "Precisa de
+// você" (contagem por LINHA de decisão). Esta função agrupa por
+// conversationId ANTES de exibir, pra "Precisa de você" nunca contar
+// diferente do resto da Home/sidebar — sempre 1 card por conversa.
+// Quando uma conversa tem as duas linhas, prepared_draft vence (é o
+// estado mais avançado: já existe uma resposta pronta, só falta
+// revisar/enviar — mais acionável que um pending_reply genérico).
+export function groupDecisionsByConversation(decisions: DecisionItem[]): DecisionItem[] {
+  const byConversation = new Map<string, DecisionItem>();
+  for (const d of decisions) {
+    const existing = byConversation.get(d.conversationId);
+    if (!existing || (existing.kind === 'pending_reply' && d.kind === 'prepared_draft')) {
+      byConversation.set(d.conversationId, d);
+    }
+  }
+  return [...byConversation.values()];
+}
+
+// Ordena "Precisa de você" por prioridade e depois por mais antigo
+// aguardando ação (item 4 da revisão): prepared_draft primeiro (já tem
+// uma resposta pronta, menor esforço pro profissional agir), depois
+// pending_reply comum (a Doopla está parada esperando uma decisão),
+// depois pending_reply bloqueado por dado operacional faltando (exige
+// mais fricção — ir preencher algo antes de continuar). Dentro de cada
+// prioridade, o mais antigo vem primeiro.
+const DECISION_PRIORITY = (d: DecisionItem): number => {
+  if (d.kind === 'prepared_draft') return 0;
+  if (d.blockReason === 'professional_not_operationally_ready') return 2;
+  return 1;
+};
+
+export function sortDecisionsByPriority(decisions: DecisionItem[]): DecisionItem[] {
+  return [...decisions].sort((a, b) => {
+    const priorityDiff = DECISION_PRIORITY(a) - DECISION_PRIORITY(b);
+    if (priorityDiff !== 0) return priorityDiff;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}

@@ -1,21 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { siteOrigin } from '@/lib/site-url';
-import type { LinkRoutingMode } from '@/lib/supabase/types';
-
 import { PlanCard } from '../booker-pro/plan-card';
-import { getArtistBookers, getArtistLinkRouting, getSubscription } from '../data';
+import { getSubscription } from '../data';
+import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
-import { ArtistProfileForm } from './artist-profile-form';
 import { AvatarUploader } from './avatar-uploader';
 import { BookerProfileForm } from './booker-profile-form';
-import { LinkRoutingCard } from './link-routing-card';
-import { PublicProfileCard } from './public-profile-card';
+import { ProConfiguracoesView } from './pro-configuracoes-view';
 
 export const metadata: Metadata = {
-  title: 'Perfil | Doopla',
+  title: 'Configurações | Doopla',
 };
 
 const ROLE_LABELS: Record<'artista' | 'booker' | 'agencia', string> = {
@@ -24,21 +20,35 @@ const ROLE_LABELS: Record<'artista' | 'booker' | 'agencia', string> = {
   agencia: 'Agência',
 };
 
+// Rota compartilhada — item 12/13 da revisão Professional Web Dashboard
+// (06/09/2026): profissional/artista vê a nova tela de Configurações
+// (ProConfiguracoesView); Booker/Agência continuam vendo exatamente o
+// Perfil legado de sempre (fora de escopo desta revisão, shell legado
+// intocado — mesmo padrão de Bookings/Agenda/Financeiro).
 export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
-  const details = await getRoleDetails(profile.role, user.id, supabase);
-  const origin = await siteOrigin();
 
-  const artistDetails = profile.role === 'artista' ? (details as ArtistDetails | null) : null;
+  if (profile.role === 'artista') {
+    const [subscription, homeFacts] = await Promise.all([
+      getSubscription(user.id, supabase),
+      getCachedProfessionalHomeFacts(supabase),
+    ]);
+    return (
+      <ProConfiguracoesView
+        fullName={profile.full_name}
+        email={user.email ?? ''}
+        phone={profile.phone}
+        subscription={subscription}
+        whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
+        whatsappNumber={homeFacts?.whatsappVerifiedNumber ?? null}
+      />
+    );
+  }
+
+  const details = await getRoleDetails(profile.role, user.id, supabase);
+
   const bookerDetails = profile.role === 'booker' ? (details as BookerDetails | null) : null;
 
-  const [bookers, routing] =
-    profile.role === 'artista'
-      ? await Promise.all([
-          getArtistBookers(user.id, supabase),
-          getArtistLinkRouting(user.id, supabase),
-        ])
-      : [[], null];
   const subscription = profile.role === 'booker' ? await getSubscription(user.id, supabase) : null;
 
   return (
@@ -84,30 +94,7 @@ export default async function PerfilPage() {
         </section>
 
         <section className={cardClass}>
-          {profile.role === 'artista' ? (
-            <ArtistProfileForm
-              stageName={artistDetails?.stage_name ?? null}
-              category={artistDetails?.category ?? null}
-              subcategory={artistDetails?.subcategory ?? null}
-              bio={artistDetails?.bio ?? null}
-              genres={artistDetails?.genres ?? []}
-              mercados={artistDetails?.mercados ?? null}
-              local={artistDetails?.local ?? null}
-              websiteUrl={artistDetails?.website_url ?? null}
-              otherLinks={artistDetails?.other_links ?? null}
-              otherPreferences={artistDetails?.other_preferences ?? null}
-              travels={artistDetails?.travels ?? false}
-              servesOtherLocations={artistDetails?.serves_other_locations ?? false}
-              acceptsOutOfCityWork={artistDetails?.accepts_out_of_city_work ?? false}
-              careerStage={artistDetails?.career_stage ?? null}
-              feeRange={artistDetails?.fee_range ?? null}
-              workTypes={artistDetails?.work_types ?? []}
-              clientTypes={artistDetails?.client_types ?? []}
-              regions={artistDetails?.regions ?? []}
-              languages={artistDetails?.languages ?? []}
-              helpAreas={artistDetails?.help_areas ?? []}
-            />
-          ) : profile.role === 'booker' ? (
+          {profile.role === 'booker' ? (
             <BookerProfileForm
               professionalName={bookerDetails?.professional_name ?? null}
               bio={bookerDetails?.bio ?? null}
@@ -129,26 +116,7 @@ export default async function PerfilPage() {
             <RoleDetails role={profile.role} details={details} />
           )}
         </section>
-
-        {profile.role === 'artista' && (
-          <PublicProfileCard
-            slug={profile.slug}
-            publicEnabled={artistDetails?.public_enabled ?? false}
-            instagramUrl={artistDetails?.instagram_url ?? null}
-            portfolioUrl={artistDetails?.portfolio_url ?? null}
-            siteUrl={origin}
-          />
-        )}
       </div>
-
-      {profile.role === 'artista' && (
-        <LinkRoutingCard
-          bookers={bookers.map((b) => ({ profileId: b.profileId, fullName: b.fullName }))}
-          currentMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
-          currentBookerId={routing?.booker_id ?? null}
-          orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
-        />
-      )}
 
       {profile.role === 'booker' && (
         <section className={cardClass}>
@@ -166,49 +134,17 @@ export default async function PerfilPage() {
         </section>
       )}
 
-      {(profile.role === 'artista' || profile.role === 'booker') && (
-        <section className={cardClass}>
-          <p className={eyebrowClass}>Respostas do cadastro</p>
-          <div className="mt-4">
-            <RoleDetails role={profile.role} details={details} />
-          </div>
-        </section>
-      )}
+      <section className={cardClass}>
+        <p className={eyebrowClass}>Respostas do cadastro</p>
+        <div className="mt-4">
+          <RoleDetails role={profile.role} details={details} />
+        </div>
+      </section>
     </main>
   );
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof getSessionProfile>>['supabase'];
-
-type ArtistDetails = {
-  intencao: string | null;
-  pontual_detalhe: string | null;
-  funcao: string | null;
-  local: string | null;
-  mercados: string | null;
-  tem_booker: string | null;
-  stage_name: string | null;
-  category: string | null;
-  bio: string | null;
-  public_enabled: boolean;
-  instagram_url: string | null;
-  portfolio_url: string | null;
-  subcategory: string | null;
-  genres: string[];
-  website_url: string | null;
-  other_links: string | null;
-  other_preferences: string | null;
-  travels: boolean;
-  serves_other_locations: boolean;
-  accepts_out_of_city_work: boolean;
-  work_types: string[];
-  client_types: string[];
-  regions: string[];
-  languages: string[];
-  career_stage: string | null;
-  help_areas: string[];
-  fee_range: string | null;
-};
 
 type BookerDetails = {
   modo_trabalho: string | null;
@@ -246,16 +182,6 @@ async function getRoleDetails(
   userId: string,
   supabase: SupabaseServerClient
 ) {
-  if (role === 'artista') {
-    const { data } = await supabase
-      .from('artist_profiles')
-      .select(
-        'intencao, pontual_detalhe, funcao, local, mercados, tem_booker, stage_name, category, bio, public_enabled, instagram_url, portfolio_url, subcategory, genres, website_url, other_links, other_preferences, travels, serves_other_locations, accepts_out_of_city_work, work_types, client_types, regions, languages, career_stage, help_areas, fee_range'
-      )
-      .eq('profile_id', userId)
-      .single<ArtistDetails>();
-    return data;
-  }
   if (role === 'booker') {
     const { data } = await supabase
       .from('booker_profiles')
@@ -278,31 +204,11 @@ function RoleDetails({
   role,
   details,
 }: {
-  role: 'artista' | 'booker' | 'agencia';
-  details: ArtistDetails | BookerDetails | AgencyDetails | null;
+  role: 'booker' | 'agencia';
+  details: BookerDetails | AgencyDetails | null;
 }) {
   if (!details) {
     return <p className="text-sm text-[var(--ink)]/55">Nenhum dado adicional preenchido ainda.</p>;
-  }
-
-  if (role === 'artista') {
-    const artist = details as ArtistDetails;
-    return (
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-        <dt className="text-[var(--ink)]/55">O que busca</dt>
-        <dd>{artist.intencao || '—'}</dd>
-        {artist.pontual_detalhe && (
-          <>
-            <dt className="text-[var(--ink)]/55">Ajuda pontual pedida</dt>
-            <dd>{artist.pontual_detalhe}</dd>
-          </>
-        )}
-        <dt className="text-[var(--ink)]/55">Onde atua</dt>
-        <dd>{artist.local || '—'}</dd>
-        <dt className="text-[var(--ink)]/55">Já tem booker</dt>
-        <dd>{artist.tem_booker || '—'}</dd>
-      </dl>
-    );
   }
 
   if (role === 'booker') {

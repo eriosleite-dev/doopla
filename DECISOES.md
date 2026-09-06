@@ -947,3 +947,62 @@ toca a assinatura do artista). Não recriei nada disso.
   embutida assumindo acesso total em outro lugar) bloqueia adicionar
   isso depois. Hoje o acesso continua binário (tem vínculo = acesso
   completo), do jeito que já era antes desse pedido.
+
+## Professional Web Dashboard — revisão completa de produto/UX — 06/09/2026
+
+- **Bug real descoberto ao desbloquear a Home** (não fazia parte do
+  pedido original, mas bloqueava tudo): `formatRelativeTime`/
+  `proStatusPillClass` viviam em `pro-ui.tsx` (`'use client'`) e eram
+  chamadas diretamente por `professional-home-view.tsx` (Server
+  Component) — Next.js proíbe isso (só permite renderizar como
+  componente). Nunca disparava porque `homeFacts` era sempre `null`
+  antes das migrations serem aplicadas; a Home sempre saía cedo. Só
+  apareceu no primeiro carregamento real, com dado de verdade. Movidas
+  pra `pro-format.ts` (sem `'use client'`) — decisão: nunca misturar
+  função pura server-safe com componente client-only no mesmo arquivo,
+  daqui pra frente.
+- **Fonte única de métricas de conversa, decidida ANTES de
+  implementar** (usuário pediu confirmação explícita, não uma escolha
+  livre do agente): `getCachedConversationStateSummary`
+  (`pro-home-cache.ts`) é a ÚNICA função que agrega estado de conversa
+  — sidebar, Home e `/dashboard/decisoes` chamam ela, nunca uma
+  reimplementação de `deriveConversationState`. Causa raiz do 17≠20
+  documentada: `decisions.length` contava LINHAS (uma conversa podia
+  gerar `pending_reply` + `prepared_draft` ao mesmo tempo = 2 linhas),
+  o badge contava CONVERSAS. Resolvido agrupando por `conversationId`
+  antes de exibir (`groupDecisionsByConversation`), nunca mudando o
+  banco.
+- **`/dashboard/decisoes` nasce sem aba "Resolvidas"** — decisão
+  explícita do usuário depois de eu confirmar que não existe hoje
+  nenhuma leitura real de decisões já resolvidas (só
+  `runtime_pending_replies.status='pending'`/
+  `outbound_intents.delivery_state='policy_allowed'` são lidos por
+  `listActionableDecisions`; o resto do enum existe na tabela mas
+  nunca foi exposto por nenhuma UI). Não inventei a query. Se um dia
+  isso for pedido, é um recurso novo, não uma extensão trivial.
+- **`payout_requests`/`getPayoutBalance`/`PayoutForm`/
+  `requestPayoutAction` deletados do produto** (não só escondidos da
+  UI) — confirmado por grep, sem nenhum consumidor real antes da
+  remoção (o botão de saque já era `disabled`, sem `formAction`, nunca
+  funcionou pra ninguém). A migration que criou a tabela
+  (`0014_payout_requests.sql`) NUNCA foi tocada/reescrita — a tabela
+  continua existindo fisicamente no schema, só não é mais lida/escrita
+  por nenhum código vigente. Regra geral adotada: "zero referência"
+  significa runtime/UI/actions/data layer atual, nunca migrations
+  históricas.
+- **Escopo do redesign é só o profissional (artista)** — Booker/Agência
+  seguem vendo exatamente as telas antigas nas mesmas rotas
+  compartilhadas (`/dashboard/trabalhos`, `/dashboard/agenda`,
+  `/dashboard/dinheiro`, `/dashboard/perfil`), via branch por
+  `profile.role`, mesmo padrão já usado em `layout.tsx`/
+  `dashboard/page.tsx` desde o bloco Shell + Home. Nenhuma regressão
+  visual/funcional intencional pro Booker — única mudança que afeta os
+  dois papéis é a remoção do saque morto (que já não funcionava pra
+  nenhum dos dois).
+- **Perfil profissional não foi re-skinado** — só movido de
+  `/dashboard/perfil` pra `/dashboard/perfil/editar`, mantendo os
+  componentes reais (`ArtistProfileForm`/`AvatarUploader`/
+  `PublicProfileCard`/`LinkRoutingCard`) intocados visualmente.
+  Decisão: um formulário grande, multi-seção e já funcional não vale o
+  risco de re-skin não pedido explicitamente — registrado como
+  pendência aberta, não escondida.

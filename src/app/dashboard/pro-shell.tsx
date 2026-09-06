@@ -36,7 +36,7 @@ export function ProfessionalShell({
     { href: '/dashboard/trabalhos', label: 'Bookings', icon: proNavIcons.bookings, badge: bookingsAwaitingCount },
     { href: '/dashboard/agenda', label: 'Agenda', icon: proNavIcons.agenda },
     {
-      href: '/dashboard#precisa-de-voce',
+      href: '/dashboard/decisoes',
       label: 'Decisões',
       icon: proNavIcons.decisoes,
       badge: decisionsCount,

@@ -120,6 +120,24 @@ export async function getConversationIdForBooking(supabase: AnySupabaseClient, b
   return (data as { id: string } | null)?.id ?? null;
 }
 
+// Bookings (revisão Professional Web Dashboard, 06/09/2026) — "Ver
+// conversa" precisa do conversationId de CADA booking da lista, uma
+// consulta só (nunca N chamadas de getConversationIdForBooking). Mesma
+// conversa mais recente por booking, mesmo critério.
+export function mapConversationIdsByBookingId(facts: ConversationOperationalFacts[]): Record<string, string> {
+  const byBooking = new Map<string, ConversationOperationalFacts>();
+  for (const fact of facts) {
+    if (!fact.relatedBookingId) continue;
+    const existing = byBooking.get(fact.relatedBookingId);
+    if (!existing || fact.lastActivityAt > existing.lastActivityAt) {
+      byBooking.set(fact.relatedBookingId, fact);
+    }
+  }
+  const result: Record<string, string> = {};
+  for (const [bookingId, fact] of byBooking) result[bookingId] = fact.conversationId;
+  return result;
+}
+
 export type ConversationMessage = {
   id: string;
   direction: 'inbound' | 'outbound';

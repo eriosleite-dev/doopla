@@ -8339,11 +8339,107 @@ ou qualquer lógica de autonomia foi tocado nesta rodada — confirmado
 por `git status` (só arquivos do Shell/Home novo + `globals.css`
 mudaram).
 
-CURRENT: Professional Product UI — Shell + Home.
-STATUS: VISUAL QA — NÃO FECHADO. Bloqueador real restante: aplicar as
-migrations da Foundation no projeto Supabase real da Preview (ação de
-infra, fora do que código resolve) — depois disso, Home/mascote devem
-renderizar; recomendado nova rodada de QA autenticado depois.
+## 72. Migrations pendentes aplicadas + bug de fronteira client/server + revisão completa do Professional Web Dashboard — `[DELIVERED]`
+
+**Parte A — desbloqueio da Home (infraestrutura + bug real, 06/09/2026).**
+As 11 migrations identificadas como ausentes no banco real da Preview
+(`0014`, `0030`, `0059`-`0067`) foram todas confirmadas aplicadas
+(guiadas passo a passo pelo usuário via SQL Editor do Supabase, sem
+nenhuma alteração de schema por parte do agente). Depois disso a Home
+carregou, mas quebrou com um erro novo (React #441, "Server Components
+render error", digest visível só no cliente). Causa raiz real,
+encontrada nos Runtime Logs do Vercel: `formatRelativeTime`/
+`proStatusPillClass` viviam em `pro-ui.tsx` (`'use client'`, por causa
+de `ProAccordion`/`ProCopyButton`), e `professional-home-view.tsx`
+(Server Component) as chamava diretamente — Next.js proíbe chamar uma
+função exportada de um módulo client-only a partir do servidor (só
+pode ser renderizada como componente). Nunca dava erro antes porque
+`homeFacts` era sempre `null` (bloqueador da Parte A) e a Home saía
+cedo, sem nunca alcançar esse código. Corrigido movendo as duas
+funções puras pra `pro-format.ts` (sem `'use client'`).
+
+**Parte B — revisão de produto/UX do Professional Web Dashboard inteiro
+(mesmo dia).** Depois que a Home carregou de verdade pela primeira vez
+com dados reais, o usuário identificou que Bookings/Agenda/Financeiro/
+Minha equipe/Configurações ainda estavam no visual e nos conceitos do
+painel legado (Booker), nunca alinhados à Home nova. Escopo: só a
+superfície profissional (artista) — Booker/Agência mantidos 100%
+intocados nas mesmas rotas compartilhadas, via o mesmo padrão de branch
+por `profile.role` já usado em `layout.tsx`/`dashboard/page.tsx`.
+
+Antes de implementar, 3 confirmações explícitas do usuário (registradas
+em DECISOES.md): (1) fonte única de métricas incluindo o sidebar —
+nunca duas implementações espelhadas; (2) `/dashboard/decisoes` nasce
+só com Pendentes, sem aba "Resolvidas" fake (não existe leitura real de
+decisões resolvidas hoje); (3) remoção de `payout_requests`/
+`getPayoutBalance`/`PayoutForm`/`requestPayoutAction` só depois de
+confirmar por grep que não são consumidos por nenhuma superfície
+vigente — migrations históricas nunca alteradas, a tabela pode
+continuar fisicamente no schema.
+
+Entregue:
+- **Fonte única de métricas**: `getCachedConversationStateSummary`
+  (`pro-home-cache.ts`) chama `listConversationOperationalFacts` +
+  `summarizeConversationStates` (`src/lib/conversations/summary.ts`,
+  nova, pura) — layout.tsx (badge do sidebar), Home (cards + accordion)
+  e `/dashboard/decisoes` chamam literalmente a mesma função. Achado
+  confirmado da divergência 17≠20: `decisions.length` contava LINHAS de
+  decisão (uma conversa podia gerar 2: um `pending_reply` + um
+  `prepared_draft`), enquanto o badge contava CONVERSAS distintas.
+  Corrigido com `groupDecisionsByConversation`/`sortDecisionsByPriority`
+  (`src/lib/decisions/data.ts`, novas, puras) — "Precisa de você" agora
+  sempre mostra o mesmo número em todo lugar, por construção.
+- **Home**: 4 cards (Precisa de você / Aguardando cliente — novo,
+  mesma taxonomia de `deriveConversationState` / Bookings confirmados /
+  concluídos, removida a antiga "Aguardando sua resposta" duplicada);
+  "Precisa de você" limitado a 5 itens + "Ver todas as decisões →";
+  Booker integrado dentro de "Seus canais de booking" (3 estados:
+  nenhum/pendente/ativo, com nome real via extensão de
+  `getMyBookerFacts`). "Falar com minha Doopla" já estava correto
+  (`buildTalkToYourDooplaUrl`, contrato profissional_self — não
+  reconstruído, só verificado).
+- **`/dashboard/decisoes`** (rota nova): lista completa de "Precisa de
+  você", mesma fonte de dados, sem inventar aprovação nova.
+- **Bookings/Agenda**: re-skin completo (`pro-trabalhos-view.tsx`,
+  `pro-agenda-view.tsx`, `pro-agenda-entry-form.tsx`) sobre a MESMA
+  lógica/Server Actions de sempre — Booker vê exatamente as telas
+  antigas nessas mesmas rotas compartilhadas.
+- **Financeiro**: reescrita conceitual — nunca mais consulta
+  `payout_requests` (para nenhum papel). `getActivePaymentDetails`
+  substitui `getPayoutBalance`; `payout-form.tsx`/`requestPayoutAction`
+  deletados (confirmado sem uso em nenhuma superfície antes da
+  remoção). Vira resumo de valores de bookings + "Dados de
+  recebimento" (Pix, já existente) — nunca saldo/saque da Doopla.
+- **Minha equipe**: reescrita conceitual completa — removidos
+  favoritos/busca/descoberta/ranking (`booker-row.tsx`,
+  `discover-bookers.tsx`, `incoming-requests.tsx` deletados, sem uso
+  restante). Só relacionamento real (`representations`/
+  `representation_requests`), mesmas Server Actions de sempre.
+- **Configurações**: separada conceitualmente de Perfil pela primeira
+  vez. Perfil profissional (formulário real, intocado) move pra
+  `/dashboard/perfil/editar`. Configurações ganha Plano/WhatsApp (
+  primeira UI real do fluxo OTP da migration 0064, nunca exposta antes
+  — `pro-whatsapp-identity-card.tsx`)/Conta/Notificações (honesto,
+  "em breve")/Segurança (honesto)/Privacidade (honesto)/links pra
+  Perfil profissional e Dados de recebimento.
+
+Pendências reais, não escondidas: Notificações/Segurança/Privacidade
+não têm backend de preferências ainda (nenhum toggle falso criado);
+não existe hoje upgrade in-app de Doopla Básico -> Pro pro artista
+(CTA "Conhecer o Pro" leva pra `/precos`, nunca um fluxo fake); Perfil
+profissional (`/dashboard/perfil/editar`) manteve o visual legado —
+re-skin dele fora de escopo desta rodada.
+
+Validado: `tsc --noEmit`, `eslint` (dashboard inteiro +
+`src/lib/conversations`/`decisions`/`professional-booker`) e
+`next build` limpos após cada bloco.
+
+CURRENT: Professional Product UI — Shell + Home + Professional Web
+Dashboard completo (Bookings/Agenda/Decisões/Financeiro/Minha
+equipe/Configurações).
+STATUS: implementado e validado (tsc/eslint/build). Aguardando nova
+rodada de QA visual autenticada do usuário na Preview antes de
+considerar o bloco fechado.
 
 ## Como usar isso
 

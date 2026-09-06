@@ -15,7 +15,7 @@ import type {
   OpportunityInterestStatus,
   OpportunityInvitation,
   OpportunityInvitationStatus,
-  PayoutRequest,
+  PixKeyType,
   Profile,
   Referral,
   RepresentationRequest,
@@ -1632,32 +1632,29 @@ export async function getBookingContract(
   return { contract, booking: withName };
 }
 
-export type PayoutBalance = {
-  availableCents: number;
-  requests: PayoutRequest[];
+export type ActivePaymentDetails = {
+  pixKeyType: PixKeyType;
+  pixKey: string;
+  holderName: string | null;
 };
 
-// Disponível pra saque = total já recebido menos o que já foi solicitado
-// (não processado ainda — Bloco 2/Pagar.me faz a transferência de
-// verdade). Sem tabela de "já liquidado" separada, é uma aproximação
-// honesta: nunca deixa pedir mais do que já ganhou.
-export async function getPayoutBalance(
+// Financeiro (revisão Professional Web Dashboard, 06/09/2026) — extraída
+// da query inline que já existia em dinheiro/page.tsx. A Doopla nunca
+// recebe o dinheiro do booking (pagamento é direto cliente -> profissional
+// no beta); esta função só lê os dados que a Doopla usa pra ORIENTAR
+// esse pagamento direto, nunca um saldo/carteira. Ver DECISOES.md.
+export async function getActivePaymentDetails(
   userId: string,
-  totalReceivedCents: number,
   supabase: SupabaseServerClient
-): Promise<PayoutBalance> {
-  const { data: requests } = await supabase
-    .from('payout_requests')
-    .select('*')
+): Promise<ActivePaymentDetails | null> {
+  const { data } = await supabase
+    .from('payment_details')
+    .select('pix_key_type, pix_key, holder_name')
     .eq('profile_id', userId)
-    .order('created_at', { ascending: false })
-    .returns<PayoutRequest[]>();
-
-  const requested = (requests ?? []).reduce((sum, r) => sum + r.amount_cents, 0);
-  return {
-    availableCents: Math.max(totalReceivedCents - requested, 0),
-    requests: requests ?? [],
-  };
+    .eq('status', 'active')
+    .maybeSingle<{ pix_key_type: PixKeyType; pix_key: string; holder_name: string | null }>();
+  if (!data?.pix_key_type || !data.pix_key) return null;
+  return { pixKeyType: data.pix_key_type, pixKey: data.pix_key, holderName: data.holder_name };
 }
 
 export type ReferralWithName = Referral & { referredName: string };

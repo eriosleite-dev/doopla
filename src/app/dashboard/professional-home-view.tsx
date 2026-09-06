@@ -6,27 +6,19 @@ import { siteOrigin } from '@/lib/site-url';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
 import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
-import { getMyBookerFacts } from '@/lib/professional-booker/data';
+import { getMyBookerFacts, type ActiveBookerRelationship, type PendingBookerRequest } from '@/lib/professional-booker/data';
+import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
 import { getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
-import { getCachedActionableDecisions, getCachedProfessionalHomeFacts } from './pro-home-cache';
+import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
-import { formatRelativeTime, proStatusPillClass } from './pro-format';
+import { formatRelativeTime, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
 import { ProAccordion, ProCopyButton } from './pro-ui';
 import { STATUS_LABELS } from './ui';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabaseClient = SupabaseClient<any>;
-
-const BOOKING_PILL_TONE: Record<string, 'red' | 'amber' | 'green'> = {
-  proposta_enviada: 'red',
-  aceita: 'green',
-  aguardando_pagamento: 'amber',
-  concluida: 'green',
-  cancelada: 'amber',
-  recusada: 'amber',
-};
 
 export async function ProfessionalHomeView({
   userId,
@@ -37,11 +29,23 @@ export async function ProfessionalHomeView({
   profile: Profile;
   supabase: AnySupabaseClient;
 }) {
-  const [homeFacts, decisions, bookings] = await Promise.all([
+  const [homeFacts, decisions, conversationSummary, bookings] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
     getCachedActionableDecisions(supabase),
+    getCachedConversationStateSummary(supabase),
     getUserBookings(userId, profile.role, supabase),
   ]);
+
+  // Item 3/15 da revisão Professional Web Dashboard (06/09/2026): a
+  // contagem exibida (card, accordion, badge do sidebar) é SEMPRE
+  // conversationSummary.needsYouCount (getCachedConversationStateSummary
+  // — fonte única). A lista abaixo é filtrada a um subconjunto
+  // GARANTIDO desse mesmo conjunto (needsYouConversationIds), agrupada
+  // por conversa (nunca 2 cards pra 1 conversa) — nunca mais diverge do
+  // número mostrado.
+  const needsYouDecisions = sortDecisionsByPriority(
+    groupDecisionsByConversation(decisions).filter((d) => conversationSummary.needsYouConversationIds.includes(d.conversationId))
+  ).slice(0, 5);
 
   const [recentActivity, orcamentoInfo, bookerFacts, referralSummary] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
@@ -71,57 +75,65 @@ export async function ProfessionalHomeView({
 
   return (
     <div>
-      <ProHero fullName={profile.full_name} needsYouCount={homeFacts.conversationsNeedingYouCount} />
+      <ProHero fullName={profile.full_name} needsYouCount={conversationSummary.needsYouCount} />
 
       <StatsRow
-        awaiting={homeFacts.bookingsAwaitingResponseCount}
-        needsYou={homeFacts.conversationsNeedingYouCount}
+        needsYou={conversationSummary.needsYouCount}
+        waitingClient={conversationSummary.waitingClientCount}
         confirmed={homeFacts.bookingsConfirmedCount}
         completed={homeFacts.bookingsCompletedCount}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
         <div className="min-w-0">
-          <ProAccordion id="precisa-de-voce" title="Precisa de você" count={decisions.length} defaultOpen={false}>
-            {decisions.length === 0 ? (
+          <ProAccordion id="precisa-de-voce" title="Precisa de você" count={conversationSummary.needsYouCount} defaultOpen={false}>
+            {needsYouDecisions.length === 0 ? (
               <p className="font-pro-sub py-2 text-[14px] font-semibold text-[var(--pro-off)]">
                 Tudo certo por aqui.
               </p>
             ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {decisions.map((d) => {
-                  const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
-                  const href = d.relatedBookingId
-                    ? `/dashboard/bookings/${d.relatedBookingId}/conversa/${d.conversationId}`
-                    : '/dashboard/trabalhos';
-                  return (
-                    <div key={d.id} className="rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4">
-                      <p className="font-pro-sub text-[14.5px] font-bold">
-                        {booking?.otherPartyName ?? 'Conversa em andamento'}
-                      </p>
-                      <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
-                        {d.kind === 'prepared_draft'
-                          ? 'A Doopla preparou uma resposta. Revise antes de enviar.'
-                          : decisionBlockReasonLabel(d.blockReason)}
-                      </p>
-                      {d.kind === 'prepared_draft' && d.preparedContent && (
-                        <p className="mt-2 line-clamp-2 text-[12.5px] italic text-[var(--pro-tx-70)]">
-                          &ldquo;{d.preparedContent}&rdquo;
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {needsYouDecisions.map((d) => {
+                    const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
+                    const href = d.relatedBookingId
+                      ? `/dashboard/bookings/${d.relatedBookingId}/conversa/${d.conversationId}`
+                      : '/dashboard/trabalhos';
+                    return (
+                      <div key={d.id} className="rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4">
+                        <p className="font-pro-sub text-[14.5px] font-bold">
+                          {booking?.otherPartyName ?? 'Conversa em andamento'}
                         </p>
-                      )}
-                      <p className="font-doopla-mono mt-3 text-[10.5px] text-[var(--pro-tx-30)]">
-                        {formatRelativeTime(d.createdAt)}
-                      </p>
-                      <Link
-                        href={href}
-                        className="font-pro-sub mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12px] font-bold text-[var(--pro-off)] shadow-[0_0_20px_rgba(226,41,28,.35)]"
-                      >
-                        Ver conversa
-                      </Link>
-                    </div>
-                  );
-                })}
-              </div>
+                        <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
+                          {d.kind === 'prepared_draft'
+                            ? 'A Doopla preparou uma resposta. Revise antes de enviar.'
+                            : decisionBlockReasonLabel(d.blockReason)}
+                        </p>
+                        {d.kind === 'prepared_draft' && d.preparedContent && (
+                          <p className="mt-2 line-clamp-2 text-[12.5px] italic text-[var(--pro-tx-70)]">
+                            &ldquo;{d.preparedContent}&rdquo;
+                          </p>
+                        )}
+                        <p className="font-doopla-mono mt-3 text-[10.5px] text-[var(--pro-tx-30)]">
+                          {formatRelativeTime(d.createdAt)}
+                        </p>
+                        <Link
+                          href={href}
+                          className="font-pro-sub mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12px] font-bold text-[var(--pro-off)] shadow-[0_0_20px_rgba(226,41,28,.35)]"
+                        >
+                          Ver conversa
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Link
+                  href="/dashboard/decisoes"
+                  className="font-pro-sub mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
+                >
+                  Ver todas as decisões →
+                </Link>
+              </>
             )}
           </ProAccordion>
 
@@ -143,7 +155,7 @@ export async function ProfessionalHomeView({
                       <p className="font-pro-sub truncate text-[13.5px] font-bold">{b.otherPartyName}</p>
                       <p className="truncate text-[11px] text-[var(--pro-tx-50)]">{b.event_location || 'Local a definir'}</p>
                     </div>
-                    <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(BOOKING_PILL_TONE[b.status] ?? 'amber')}>
+                    <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(PRO_BOOKING_PILL_TONE[b.status] ?? 'amber')}>
                       {STATUS_LABELS[b.status] ?? b.status}
                     </Link>
                   </div>
@@ -200,8 +212,8 @@ export async function ProfessionalHomeView({
           referralEligible={!!referralSummary}
           referralTotal={homeFacts.referralTotalCount}
           referralQualifiedCents={referralSummary?.qualifiedTotalCents ?? 0}
-          bookerActiveCount={bookerFacts.active.length}
-          bookerPendingCount={bookerFacts.pending.length}
+          bookerActive={bookerFacts.active}
+          bookerPending={bookerFacts.pending}
         />
       </div>
     </div>
@@ -263,14 +275,14 @@ function StatCard({ tone, icon, num, label }: { tone: 'red' | 'amber' | 'green' 
   );
 }
 
-function StatsRow({ awaiting, needsYou, confirmed, completed }: { awaiting: number; needsYou: number; confirmed: number; completed: number }) {
+function StatsRow({ needsYou, waitingClient, confirmed, completed }: { needsYou: number; waitingClient: number; confirmed: number; completed: number }) {
   const ic = { viewBox: '0 0 24 24', fill: 'none', strokeWidth: 1.8, width: 17, height: 17 } as const;
   return (
     <div className="mb-4 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
       <StatCard
         tone="red"
-        num={awaiting}
-        label="Aguardando sua resposta"
+        num={needsYou}
+        label="Precisa de você"
         icon={
           <svg {...ic} stroke="currentColor">
             <path d="M4 5h16v11H8l-4 4z" />
@@ -279,8 +291,8 @@ function StatsRow({ awaiting, needsYou, confirmed, completed }: { awaiting: numb
       />
       <StatCard
         tone="amber"
-        num={needsYou}
-        label="Conversas que precisam de você"
+        num={waitingClient}
+        label="Aguardando cliente"
         icon={
           <svg {...ic} stroke="currentColor">
             <path d="M6 2h12M6 22h12M8 2c0 5 8 5 8 10s-8 5-8 10M16 2c0 5-8 5-8 10s8 5 8 10" />
@@ -318,8 +330,8 @@ function RightColumn({
   referralEligible,
   referralTotal,
   referralQualifiedCents,
-  bookerActiveCount,
-  bookerPendingCount,
+  bookerActive,
+  bookerPending,
 }: {
   orcamentoUrl: string | null;
   whatsappNumber: string | null;
@@ -327,8 +339,8 @@ function RightColumn({
   referralEligible: boolean;
   referralTotal: number;
   referralQualifiedCents: number;
-  bookerActiveCount: number;
-  bookerPendingCount: number;
+  bookerActive: ActiveBookerRelationship[];
+  bookerPending: PendingBookerRequest[];
 }) {
   const talkUrl = whatsappNumber ? buildTalkToYourDooplaUrl(whatsappNumber) : null;
 
@@ -360,16 +372,7 @@ function RightColumn({
             </div>
           </div>
         )}
-        {(bookerActiveCount > 0 || bookerPendingCount > 0) && (
-          <Link
-            href="/dashboard/bookers"
-            className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
-          >
-            {bookerActiveCount > 0
-              ? `Representado por ${bookerActiveCount} booker${bookerActiveCount > 1 ? 's' : ''}`
-              : `${bookerPendingCount} convite${bookerPendingCount > 1 ? 's' : ''} de booker pendente${bookerPendingCount > 1 ? 's' : ''}`}
-          </Link>
-        )}
+        <BookerChannelRow active={bookerActive} pending={bookerPending} />
       </div>
 
       {referralEligible && (
@@ -428,5 +431,54 @@ function RightColumn({
         )}
       </div>
     </aside>
+  );
+}
+
+// Booker dentro de "Seus canais de booking" (item 5 da revisão
+// Professional Web Dashboard, 06/09/2026) — nunca um card grande à
+// parte, essa localização já foi decidida. Múltiplos bookers ativos são
+// suportados pela arquitetura (representations não limita a 1 por
+// artista), mas a linha mostra o nome só quando há exatamente 1 — com
+// mais de 1, mostra a contagem e manda pra "Minha equipe" pra lista
+// completa.
+function BookerChannelRow({ active, pending }: { active: ActiveBookerRelationship[]; pending: PendingBookerRequest[] }) {
+  if (active.length > 0) {
+    const label = active.length === 1 ? active[0].bookerName : `${active.length} bookers`;
+    return (
+      <Link
+        href="/dashboard/bookers"
+        className="flex items-center justify-between gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
+      >
+        <span className="truncate">
+          {label} · <span className="text-[var(--pro-green)]">Ativo</span>
+        </span>
+        <span className="flex-none font-pro-sub text-[11px] font-bold text-[var(--pro-red)]">Gerenciar →</span>
+      </Link>
+    );
+  }
+
+  if (pending.length > 0) {
+    const label = pending.length === 1 ? pending[0].bookerName : `${pending.length} convites`;
+    return (
+      <Link
+        href="/dashboard/bookers"
+        className="flex items-center justify-between gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
+      >
+        <span className="truncate">
+          {label} · <span className="text-[var(--pro-amber)]">Convite pendente</span>
+        </span>
+        <span className="flex-none font-pro-sub text-[11px] font-bold text-[var(--pro-red)]">Gerenciar →</span>
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      href="/dashboard/bookers"
+      className="flex items-center justify-between gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
+    >
+      <span>Booker</span>
+      <span className="flex-none font-pro-sub text-[11px] font-bold text-[var(--pro-red)]">Convidar Booker →</span>
+    </Link>
   );
 }

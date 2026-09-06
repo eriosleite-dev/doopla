@@ -26,6 +26,7 @@ type AnySupabaseClient = SupabaseClient<any>;
 export type ActiveBookerRelationship = {
   representationId: string;
   bookerProfileId: string;
+  bookerName: string;
   createdAt: string;
 };
 
@@ -34,6 +35,7 @@ export type PendingBookerRequestDirection = 'incoming' | 'outgoing';
 export type PendingBookerRequest = {
   requestId: string;
   bookerProfileId: string;
+  bookerName: string;
   // 'incoming': o booker convidou o profissional (profissional decide
   // aceitar/recusar). 'outgoing': o profissional convidou o booker
   // (profissional pode cancelar, esperando a resposta do booker).
@@ -67,17 +69,38 @@ export async function getMyBookerFacts(supabase: AnySupabaseClient, professional
       .eq('status', PENDING_STATUS),
   ]);
 
-  const active = ((activeResult.data ?? []) as Pick<Representation, 'id' | 'booker_profile_id' | 'created_at'>[]).map((row) => ({
+  const activeRows = (activeResult.data ?? []) as Pick<Representation, 'id' | 'booker_profile_id' | 'created_at'>[];
+  const pendingRows = (pendingResult.data ?? []) as Pick<
+    RepresentationRequest,
+    'id' | 'booker_profile_id' | 'requested_by_profile_id' | 'message' | 'expires_at' | 'created_at'
+  >[];
+
+  // Nome do booker — Home/Minha equipe (revisão Professional Web
+  // Dashboard, 06/09/2026) precisam mostrar "Nome · Ativo"/"Nome ·
+  // Convite pendente", nunca só a contagem. Um único select extra
+  // (nunca N+1), mesmo padrão de attachOtherPartyNames em dashboard/data.ts.
+  const bookerIds = [...new Set([...activeRows.map((r) => r.booker_profile_id), ...pendingRows.map((r) => r.booker_profile_id)])];
+  const nameById = new Map<string, string>();
+  if (bookerIds.length > 0) {
+    const { data: bookerProfiles } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', bookerIds)
+      .returns<{ id: string; full_name: string }[]>();
+    for (const p of bookerProfiles ?? []) nameById.set(p.id, p.full_name);
+  }
+
+  const active = activeRows.map((row) => ({
     representationId: row.id,
     bookerProfileId: row.booker_profile_id,
+    bookerName: nameById.get(row.booker_profile_id) ?? 'Booker',
     createdAt: row.created_at,
   }));
 
-  const pending = (
-    (pendingResult.data ?? []) as Pick<RepresentationRequest, 'id' | 'booker_profile_id' | 'requested_by_profile_id' | 'message' | 'expires_at' | 'created_at'>[]
-  ).map((row) => ({
+  const pending = pendingRows.map((row) => ({
     requestId: row.id,
     bookerProfileId: row.booker_profile_id,
+    bookerName: nameById.get(row.booker_profile_id) ?? 'Booker',
     direction: deriveBookerRequestDirection(row, professionalId),
     message: row.message,
     expiresAt: row.expires_at,

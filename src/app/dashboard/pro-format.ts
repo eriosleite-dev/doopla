@@ -22,3 +22,30 @@ export function proStatusPillClass(tone: 'red' | 'amber' | 'green'): string {
   if (tone === 'amber') return `${base} bg-[rgba(245,166,35,.18)] text-[var(--pro-amber)]`;
   return `${base} bg-[rgba(62,207,110,.18)] text-[var(--pro-green)]`;
 }
+
+// Botões/inputs compartilhados — revisão Professional Web Dashboard
+// (06/09/2026). Vermelho só pro botão PRIMARY (ação principal de cada
+// tela); nunca botão branco/cinza neutro nas rotas novas, mesma regra
+// da Home.
+export const proPrimaryButtonClass =
+  'font-pro-sub inline-flex items-center justify-center gap-2 rounded-full bg-[var(--pro-red)] px-5 py-2.5 text-[13px] font-bold text-[var(--pro-off)] shadow-[0_0_20px_rgba(226,41,28,.35)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40';
+
+export const proGhostButtonClass =
+  'font-pro-sub inline-flex items-center justify-center gap-2 rounded-full border border-[var(--pro-line)] px-5 py-2.5 text-[13px] font-bold text-[var(--pro-tx-70)] transition-colors hover:border-[var(--pro-off)]/40 hover:text-[var(--pro-off)] disabled:cursor-not-allowed disabled:opacity-40';
+
+export const proInputClass =
+  'w-full rounded-[12px] border border-[var(--pro-line)] bg-white/[0.03] px-4 py-2.5 text-[13.5px] text-[var(--pro-off)] outline-none placeholder:text-[var(--pro-tx-30)] focus:border-[var(--pro-tx-30)]';
+
+export const proLabelClass = 'text-[11.5px] font-semibold text-[var(--pro-tx-50)]';
+
+// Tom visual por status de booking — compartilhado entre Home,
+// Bookings e Agenda (revisão Professional Web Dashboard, 06/09/2026)
+// pra nunca cada tela inventar sua própria cor pro mesmo status.
+export const PRO_BOOKING_PILL_TONE: Record<string, 'red' | 'amber' | 'green'> = {
+  proposta_enviada: 'red',
+  aceita: 'green',
+  aguardando_pagamento: 'amber',
+  concluida: 'green',
+  cancelada: 'amber',
+  recusada: 'amber',
+};
