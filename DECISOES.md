@@ -1063,3 +1063,15 @@ toca a assinatura do artista). Não recriei nada disso.
   `src/lib/supabase/env.ts`), que nunca foi configurada nesse ambiente.
   Redesenhar o componente não resolve — fica registrado como
   configuração de ambiente pendente, fora do escopo de código.
+- **Número oficial da Doopla ainda em análise no WhatsApp/Meta —
+  confirmado sem hardcode em nenhum lugar do código**: auditoria por
+  grep em todo o repo (06/09/2026) — `whatsappPublicNumber()`
+  (`src/lib/supabase/env.ts`) retorna `null` sem a env var, sem
+  fallback nenhum; todo consumidor (`professional-home-view.tsx`,
+  `orcamento/[slug]/page.tsx`) já trata a ausência com estado honesto
+  ("Canal da Doopla indisponível no momento" / CTA some), nunca um
+  número de exemplo nem link quebrado. Enquanto o número não for
+  aprovado, `NEXT_PUBLIC_WHATSAPP_NUMBER` continua ausente em
+  Production — qualquer teste visual do fluxo ativo no Preview deve
+  usar uma env var configurada só naquele ambiente (Vercel Preview),
+  nunca commitada no repo nem promovida pra Production por engano.
