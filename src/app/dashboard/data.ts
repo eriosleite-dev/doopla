@@ -1224,7 +1224,7 @@ function isPrevMonth(iso: string): boolean {
   return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
 }
 
-function commissionCents(booking: Booking): number {
+export function commissionCents(booking: Booking): number {
   if (!booking.cache_amount_cents) return 0;
   return Math.round((booking.cache_amount_cents * booking.commission_percent) / 100);
 }
@@ -1346,6 +1346,45 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
     awaitingPaymentCount,
     avgCommissionPercent,
   };
+}
+
+// Correção de UX do Financeiro (07/09/2026) — "Histórico de bookings"
+// duplicava a tela Bookings (mesma fonte, mesmos campos, só truncado).
+// Auditoria confirmou: status='concluida' só é atingido por
+// markPaidAction (booker confirma pagamento direto) ou pelo último
+// estágio do fluxo de NF (invoice_commission_paid_at preenchido) —
+// nenhum outro caminho no código ou no banco seta esse status. Ou
+// seja, 'concluida' já significa "valor recebido de verdade", nunca
+// só "operacionalmente concluído" — por isso este recorte pode confiar
+// nele sem inventar um ledger/status novo. Data usada é
+// invoice_commission_paid_at quando existe (fluxo de NF, timestamp
+// exato do recebimento), senão updated_at — que nesses dois fluxos é
+// a própria escrita que setou 'concluida' e nunca é tocado de novo
+// depois (booking em estado terminal), então não sofre o problema de
+// "evento secundário empurrando a data" que updated_at teria em
+// status não-terminais.
+export type ReceivedBookingCard = {
+  id: string;
+  otherPartyName: string;
+  receivedAtIso: string;
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+};
+
+export function getArtistReceivedBookings(bookings: BookingWithOtherParty[]): ReceivedBookingCard[] {
+  return bookings
+    .filter((b) => b.status === 'concluida')
+    .map((b) => ({
+      id: b.id,
+      otherPartyName: b.otherPartyName,
+      receivedAtIso: b.invoice_commission_paid_at ?? b.updated_at,
+      grossCents: b.cache_amount_cents ?? 0,
+      commissionCents: commissionCents(b),
+      netCents: (b.cache_amount_cents ?? 0) - commissionCents(b),
+    }))
+    .sort((a, b) => b.receivedAtIso.localeCompare(a.receivedAtIso))
+    .slice(0, 8);
 }
 
 // vermelha: ação pendente/urgente (algo bloqueado, dinheiro parado).

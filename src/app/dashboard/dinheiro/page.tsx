@@ -6,13 +6,13 @@ import {
   computeArtistStats,
   computeBookerStats,
   getActivePaymentDetails,
+  getArtistReceivedBookings,
   getReferralSummary,
   getUserBookings,
 } from '../data';
-import { PRO_BOOKING_PILL_TONE, proStatusPillClass } from '../pro-format';
 import { ProCard, ProEmptyState, ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
-import { cardClass, eyebrowClass, STATUS_LABELS } from '../ui';
+import { cardClass, eyebrowClass } from '../ui';
 import { PaymentDetailsCard } from './payment-details-card';
 import { ProPaymentDetailsCard } from './pro-payment-details-card';
 
@@ -66,9 +66,7 @@ export default async function DinheiroPage() {
     getActivePaymentDetails(user.id, supabase),
   ]);
 
-  const recentBookings = bookings
-    .filter((b) => ['aceita', 'aguardando_pagamento', 'concluida'].includes(b.status))
-    .slice(0, 8);
+  const receivedBookings = getArtistReceivedBookings(bookings);
 
   return (
     <main>
@@ -93,22 +91,24 @@ export default async function DinheiroPage() {
 
       <div className="mt-4">
         <ProCard>
-          <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Histórico de bookings</p>
-          {recentBookings.length === 0 ? (
-            <ProEmptyState message="Nenhum booking confirmado ou concluído ainda." />
+          <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Recebimentos</p>
+          {receivedBookings.length === 0 ? (
+            <ProEmptyState message="Nenhum recebimento ainda." />
           ) : (
             <ul className="flex flex-col gap-2">
-              {recentBookings.map((b) => (
+              {receivedBookings.map((b) => (
                 <li key={b.id} className="flex items-center justify-between gap-3 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium text-[var(--pro-off)]">{b.otherPartyName}</p>
-                    <p className="text-[11.5px] text-[var(--pro-tx-50)]">{formatRelativeDate(b.updated_at)}</p>
+                    <p className="text-[11.5px] text-[var(--pro-tx-50)]">{formatRelativeDate(b.receivedAtIso)}</p>
                   </div>
-                  <div className="flex flex-none items-center gap-2.5">
-                    {b.cache_amount_cents != null && (
-                      <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{formatCentsAsBRL(b.cache_amount_cents)}</span>
+                  <div className="flex flex-none flex-col items-end gap-0.5">
+                    <span className="font-doopla-mono text-[12.5px] font-bold text-[var(--pro-green)]">{formatCentsAsBRL(b.netCents)}</span>
+                    {b.commissionCents > 0 && (
+                      <span className="text-[10.5px] text-[var(--pro-tx-30)]">
+                        {formatCentsAsBRL(b.grossCents)} − comissão {formatCentsAsBRL(b.commissionCents)}
+                      </span>
                     )}
-                    <span className={proStatusPillClass(PRO_BOOKING_PILL_TONE[b.status] ?? 'amber')}>{STATUS_LABELS[b.status] ?? b.status}</span>
                   </div>
                 </li>
               ))}
