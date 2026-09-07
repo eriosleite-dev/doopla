@@ -8728,9 +8728,9 @@ antes de fechar; gaps reais foram registrados, nunca escondidos.
   Comunidade, por ser uma correção de UX pontual pedida separadamente.
 
 Pendências reais desta rodada, não escondidas:
-- Migration `0068_community_search.sql` (§74) só foi validada no
-  `doopla_rls_test` local — ainda precisa ser aplicada no Supabase de
-  produção pelo usuário.
+- Migration `0068_community_search.sql` (§74) — aplicada em produção
+  pelo usuário em 07/09/2026, depois de validada no `doopla_rls_test`
+  local. Busca da Comunidade está live nas duas plataformas.
 - App nunca teve uma tela real de "Minha equipe" — decisão de quando
   construir isso fica pendente com o usuário.
 
