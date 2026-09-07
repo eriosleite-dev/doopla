@@ -117,3 +117,20 @@
   #onboarding .headline{ font-size:24px; }
   #onboarding .app{ padding:0 18px; }
 }
+
+/* Modo "boxed" (07/09/2026) — usado só quando este componente roda
+   DENTRO do modal da Home (CreateAccountModal.tsx, etapas Preparar/
+   Plano), nunca nas rotas /cadastro/preparar e /cadastro/plano
+   standalone (que continuam 100vh, exatamente como sempre foram). Sem
+   isto, o card do modal tinha que ser do tamanho inteiro da viewport
+   pra caber o conteúdo (min-height:100vh aqui + .footer fixo na
+   viewport) — o que visualmente é indistinguível de ter navegado pra
+   fora do modal, mesmo sem nenhuma navegação real ter acontecido (bug
+   relatado depois do fix de navegação: "continua parecendo que saiu
+   do modal"). .onboarding-boxed remove a altura mínima forçada (o card
+   que envolve isto, em CreateAccountModal.tsx, decide a altura) e troca
+   o footer de fixed (relativo à viewport) pra sticky (gruda no fundo
+   da ÁREA COM SCROLL do próprio card, nunca da viewport inteira). */
+#onboarding.onboarding-boxed{ min-height:0; }
+#onboarding.onboarding-boxed .app{ min-height:0; }
+#onboarding.onboarding-boxed .footer{ position:sticky; }

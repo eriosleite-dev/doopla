@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { OnboardingShell } from '../OnboardingShell';
 import { savePrepareAction, type OnboardingFormState } from '../actions';
@@ -8,6 +8,26 @@ import '../onboarding.css';
 
 const initialState: OnboardingFormState = {};
 const SUBSTEPS = 5; // Etapas 2 a 6 (globais) = índices 0 a 4 aqui
+
+// Rola o ancestral rolável mais próximo de volta pro topo — usado ao
+// trocar de sub-etapa (carrossel horizontal por transform, que não mexe
+// no scroll vertical sozinho). Genérico de propósito: em /cadastro/
+// preparar standalone quem rola é a PÁGINA (window); dentro do modal da
+// Home (boxed=true) quem rola é o miolo interno do card
+// (CreateAccountModal.tsx) — sem acoplar este componente a nenhum dos
+// dois contextos, só sobe a árvore até achar quem realmente tem scroll.
+function scrollNearestScrollableToTop(el: HTMLElement | null) {
+  let node = el?.parentElement ?? null;
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node);
+    if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      node.scrollTo({ top: 0 });
+      return;
+    }
+    node = node.parentElement;
+  }
+  window.scrollTo({ top: 0 });
+}
 
 function formatCentsToInput(cents: number | null): string {
   if (cents === null) return '';
@@ -72,6 +92,7 @@ export function PrepareForm({
   initialChannel,
   modalMode = false,
   onStepComplete,
+  boxed = false,
 }: {
   initialStageName: string;
   initialProfession: string;
@@ -91,13 +112,20 @@ export function PrepareForm({
   // sempre — mesmo componente, mesma etapa, dois contextos de disparo.
   modalMode?: boolean;
   onStepComplete?: () => void;
+  // Repassado direto pro OnboardingShell — ver onboarding.css.
+  boxed?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(savePrepareAction, initialState);
   const [sub, setSub] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (modalMode && state.success) onStepComplete?.();
   }, [modalMode, state.success, onStepComplete]);
+
+  useEffect(() => {
+    scrollNearestScrollableToTop(formRef.current);
+  }, [sub]);
 
   const [stageName, setStageName] = useState(initialStageName);
   const [profession, setProfession] = useState(initialProfession);
@@ -139,7 +167,7 @@ export function PrepareForm({
   const footerLabel = sub === SUBSTEPS - 1 ? 'Continuar para os planos' : 'Continuar';
 
   return (
-    <form action={formAction}>
+    <form ref={formRef} action={formAction}>
       {modalMode && <input type="hidden" name="modalMode" value="1" />}
       <input type="hidden" name="stageName" value={stageName} />
       <input type="hidden" name="profession" value={profession} />
@@ -159,6 +187,7 @@ export function PrepareForm({
 
       <OnboardingShell
         step={sub + 2}
+        boxed={boxed}
         onBack={sub > 0 ? back : undefined}
         footer={
           sub === SUBSTEPS - 1 ? (

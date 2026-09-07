@@ -18,10 +18,12 @@ export function PlanForm({
   initialPlan,
   modalMode = false,
   onStepComplete,
+  boxed = false,
 }: {
   initialPlan: PlanId;
   modalMode?: boolean;
   onStepComplete?: () => void;
+  boxed?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(savePlanAction, initialState);
 
@@ -34,6 +36,7 @@ export function PlanForm({
       {modalMode && <input type="hidden" name="modalMode" value="1" />}
       <OnboardingShell
         step={7}
+        boxed={boxed}
         footer={
           <button type="submit" className="btn-primary" disabled={pending}>
             {pending ? 'Iniciando…' : `Começar meus ${TRIAL_DAYS} dias grátis`}

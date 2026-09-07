@@ -54,6 +54,17 @@ export function CreateAccountModal({
 }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>('account');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // O miolo rolável (steps 'preparar'/'plano') é o MESMO elemento nos
+  // dois casos — só o conteúdo dentro dele troca — então o scroll de
+  // onde a pessoa parou na etapa anterior (ex.: fim do Preparar)
+  // persistia ao entrar na próxima etapa, cortando a topbar/progress
+  // bar da etapa nova até rolar manualmente pra cima. Reseta pro topo a
+  // cada troca de etapa dentro do modal.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [step]);
 
   // Reseta pra etapa 1 ao fechar (por qualquer caminho — ✕, Escape,
   // backdrop), pra um próximo "Criar conta" sempre começar do zero, nunca
@@ -101,52 +112,68 @@ export function CreateAccountModal({
     );
   }
 
-  // Etapas 2+ (Preparar/Plano) reaproveitam a tela cheia própria delas
-  // (OnboardingShell) como overlay — nunca um card pequeno, porque essas
-  // telas nunca foram desenhadas pra caber num card (mesmo componente da
-  // rota real, sem adaptação nenhuma). O ✕ flutuante é a única peça nova
-  // aqui: OnboardingShell não tem "fechar" (rota real não precisa, só
-  // "voltar" entre sub-etapas), então o fechamento seguro do modal é
-  // adicionado por FORA dela, sem tocar no componente compartilhado.
+  // Etapas 2+ (Preparar/Plano) reaproveitam o conteúdo próprio delas
+  // (OnboardingShell, em modo "boxed" — ver onboarding.css) dentro de um
+  // card com a MESMA linguagem visual da etapa 1 (backdrop escurecido,
+  // card centralizado, cantos arredondados, altura que se adapta ao
+  // conteúdo até um teto, scroll interno) — não mais tela cheia. Full-
+  // bleed (versão anterior) tecnicamente nunca navegava pra fora do
+  // modal, mas era visualmente indistinguível da rota antiga cheia de
+  // página, o que lia como "saiu do modal" mesmo sem navegação real
+  // (bug relatado depois do fix de navegação). O frame externo (com
+  // overflow-hidden, pra não vazar cantos arredondados) fica parado; só
+  // o miolo interno rola — assim o ✕ nunca soma junto com o conteúdo.
   return (
     <div className="pro-shell contents">
-      <div className="fixed inset-0 z-[100] overflow-y-auto" role="presentation">
-        {/* Cor literal (não var(--offwhite)) de propósito — este botão é
-           IRMÃO do #onboarding, não descendente dele, então não herda
-           os custom properties escopados em onboarding.css. */}
-        <button
-          type="button"
-          onClick={handleClose}
-          aria-label="Fechar"
-          className="fixed top-5 right-5 z-[101] flex h-9 w-9 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm hover:bg-black/45"
+      <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6" role="presentation">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} aria-hidden="true" />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={step === 'preparar' ? 'Preparar sua Doopla' : 'Escolher plano'}
+          className="relative flex max-h-[90vh] w-full max-w-[600px] flex-col overflow-hidden rounded-[24px] border border-[rgba(226,41,28,.3)] shadow-[0_0_70px_rgba(226,41,28,.25)]"
         >
-          ✕
-        </button>
+          {/* Cor literal (não var(--offwhite)) de propósito — este botão é
+             IRMÃO do #onboarding, não descendente dele, então não herda
+             os custom properties escopados em onboarding.css. */}
+          <button
+            type="button"
+            onClick={handleClose}
+            aria-label="Fechar"
+            className="absolute top-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm hover:bg-black/45"
+          >
+            ✕
+          </button>
 
-        {step === 'preparar' && (
-          <PrepareForm
-            modalMode
-            onStepComplete={() => setStep('plano')}
-            initialStageName=""
-            initialProfession=""
-            initialLocal=""
-            initialBio=""
-            initialLink=""
-            initialFeeCents={null}
-            initialPricingNotes=""
-            initialIssuesInvoice={null}
-            initialNegotiationNotes=""
-            initialChannel={null}
-          />
-        )}
+          <div ref={scrollRef} className="overflow-y-auto">
+            {step === 'preparar' && (
+              <PrepareForm
+                modalMode
+                boxed
+                onStepComplete={() => setStep('plano')}
+                initialStageName=""
+                initialProfession=""
+                initialLocal=""
+                initialBio=""
+                initialLink=""
+                initialFeeCents={null}
+                initialPricingNotes=""
+                initialIssuesInvoice={null}
+                initialNegotiationNotes=""
+                initialChannel={null}
+              />
+            )}
 
-        {step === 'plano' && (
-          <PlanForm
-            modalMode
-            onStepComplete={handlePlanoComplete}
-            initialPlan={(artistPlan === 'pro' ? 'pro' : 'doopla') as PlanId}
-          />
-        )}
+            {step === 'plano' && (
+              <PlanForm
+                modalMode
+                boxed
+                onStepComplete={handlePlanoComplete}
+                initialPlan={(artistPlan === 'pro' ? 'pro' : 'doopla') as PlanId}
+              />
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

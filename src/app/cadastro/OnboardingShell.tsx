@@ -15,12 +15,16 @@ export function OnboardingShell({
   onBack,
   footer,
   children,
+  boxed = false,
 }: {
   step: number;
   totalSteps?: number;
   onBack?: () => void;
   footer: React.ReactNode;
   children: React.ReactNode;
+  // Ver onboarding.css (".onboarding-boxed") — só true quando renderizado
+  // dentro do card do modal da Home (CreateAccountModal.tsx).
+  boxed?: boolean;
 }) {
   useEffect(() => {
     const eyes = Array.from(document.querySelectorAll<HTMLElement>('#onboarding [data-eye]'));
@@ -68,7 +72,7 @@ export function OnboardingShell({
   }, []);
 
   return (
-    <div id="onboarding">
+    <div id="onboarding" className={boxed ? 'onboarding-boxed' : undefined}>
       <div className="app">
         <div className="topbar">
           <span className="logo">
