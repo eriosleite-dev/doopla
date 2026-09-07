@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { EyeLogo } from './EyeLogo';
+import { LoginModal } from './LoginModal';
 
 const MENU_ITEMS = [
   { href: '/#como-funciona', label: 'Como funciona' },
@@ -16,6 +17,13 @@ const MENU_ITEMS = [
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+  // "Entrar" também abre o modal aqui, não só no home.html (bug
+  // reportado: Home → Sobre → Entrar ainda navegava pra /login de
+  // verdade, porque este header é um componente totalmente separado do
+  // trigger DOM cru da Home — ver HomeLoginModal.tsx). Mesmo LoginModal
+  // compartilhado, já dentro do #site-chrome do PageShell, então não
+  // precisa de wrapper extra pro EyeLogo.
+  const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +54,15 @@ export function SiteHeader() {
             Menu
           </button>
           <Link href="/sobre">Sobre</Link>
-          <Link href="/login">Entrar</Link>
+          <Link
+            href="/login"
+            onClick={(event) => {
+              event.preventDefault();
+              setLoginOpen(true);
+            }}
+          >
+            Entrar
+          </Link>
           <Link href="/cadastro" className="btn-cta">
             Começar agora
           </Link>
@@ -76,6 +92,8 @@ export function SiteHeader() {
           </Link>
         </div>
       </div>
+
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </>
   );
 }
