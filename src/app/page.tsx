@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Metadata } from 'next';
 import Script from 'next/script';
 
+import { HomeCreateAccountModal } from './_home/HomeCreateAccountModal';
 import { HomeLoginModal } from './_home/HomeLoginModal';
 import { HomeMenuOverlay } from './_home/HomeMenuOverlay';
 import { HomeSoftNav } from './_home/HomeSoftNav';
@@ -41,6 +42,7 @@ export default function Home() {
       </Script>
       <HomeLoginModal />
       <HomeMenuOverlay />
+      <HomeCreateAccountModal />
       <HomeSoftNav />
     </>
   );
