@@ -11,8 +11,10 @@ import {
   getOutgoingRepresentationRequestsForArtist,
   getPendingInvites,
   getSentInvites,
+  getSubscription,
 } from '../data';
 import { getSessionProfile } from '../session';
+import { hasDooplaPro } from '@/lib/subscription';
 import { proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
 import { proNavIcons } from '../pro-sidebar-nav';
 import { ProCard, ProPageHeader } from '../pro-ui';
@@ -41,13 +43,15 @@ export default async function BookersPage() {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
-  const [myBookers, incomingRequests, outgoingRequests, sentInvites, receivedInvites] = await Promise.all([
+  const [myBookers, incomingRequests, outgoingRequests, sentInvites, receivedInvites, subscription] = await Promise.all([
     getArtistBookerRelationships(user.id, supabase),
     getIncomingRepresentationRequests(user.id, supabase),
     getOutgoingRepresentationRequestsForArtist(user.id, supabase),
     getSentInvites(user.id, supabase),
     getPendingInvites(user.id, supabase),
+    getSubscription(user.id, supabase),
   ]);
+  const hasProPlan = hasDooplaPro(subscription);
 
   const outgoingPending = outgoingRequests.map((r) => ({
     key: r.id,
@@ -65,7 +69,7 @@ export default async function BookersPage() {
       <ProPageHeader
         title="Minha equipe"
         subtitle="Gerencie quem pode trabalhar com seus bookings pela Doopla."
-        action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" /> : undefined}
+        action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} /> : undefined}
       />
 
       {/* Correção 06/09/2026 — antes: ProEmptyState genérico (caixa
@@ -86,7 +90,7 @@ export default async function BookersPage() {
               nada de marketplace, só quem você já trabalha de verdade.
             </p>
           </div>
-          <AddConnectionModal myRole="artista" variant="pro" />
+          <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} />
         </ProCard>
       )}
 

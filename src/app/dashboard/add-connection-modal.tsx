@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useTransition } from 'react';
 
 import {
@@ -33,7 +34,22 @@ type Variant = 'legacy' | 'pro';
 
 type LookupMode = 'contact' | 'id';
 
-export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Role; variant?: Variant }) {
+export function AddConnectionModal({
+  myRole,
+  variant = 'legacy',
+  hasProPlan,
+}: {
+  myRole: Role;
+  variant?: Variant;
+  // Gate de UI de "Minha equipe é Pro" (07/09/2026) — só relevante pra
+  // myRole="artista" (o vínculo booker->artista, direção original, nunca
+  // foi gateado). `undefined` (default) preserva o comportamento de
+  // sempre — nenhuma outra chamada existente do componente precisa
+  // passar essa prop. O nome evita colisão com o `isPro` já existente
+  // aqui embaixo, que é só a PELE visual (variant === 'pro'), sem
+  // nenhuma relação com plano/assinatura.
+  hasProPlan?: boolean;
+}) {
   const isPro = variant === 'pro';
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<LookupMode>('contact');
@@ -142,6 +158,26 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
   }
 
   if (!open) {
+    // Estado de upgrade (07/09/2026) — o backend já bloqueia
+    // inviteBookerAction/requestRepresentationAction (direção
+    // artista->booker) sem Doopla Pro, mas isso nunca pode ser a
+    // PRIMEIRA coisa que a pessoa descobre (erro só depois de tentar).
+    // Aqui a gente reconhece antes de abrir o formulário — mesmo cartão/
+    // borda usados no resto do painel pro, e o mesmo par
+    // texto+proGhostButtonClass já usado em "Plano e assinatura"
+    // (pro-configuracoes-view.tsx), nenhum componente novo.
+    if (myRole === 'artista' && hasProPlan === false) {
+      return (
+        <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-[var(--pro-line)] bg-white/[0.03] px-4 py-3">
+          <p className="text-[12.5px] text-[var(--pro-tx-50)]">
+            Minha equipe é um recurso do <strong className="text-[var(--pro-off)]">Doopla Pro</strong>.
+          </p>
+          <Link href="/dashboard/perfil" className={proGhostButtonClass}>
+            Conhecer o Pro
+          </Link>
+        </div>
+      );
+    }
     return (
       <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>
         Adicionar um {targetLabel}

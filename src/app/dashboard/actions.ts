@@ -6,7 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
 import { ensurePublicId } from '@/lib/public-id';
-import { isArtistBlockedForBooker } from '@/lib/subscription';
+import { hasDooplaPro, isArtistBlockedForBooker } from '@/lib/subscription';
 import type {
   AgendaEntryType,
   Booking,
@@ -22,6 +22,27 @@ import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/tem
 type AnySupabaseClient = SupabaseClient<any>;
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Gate central de "Minha equipe é Pro" (07/09/2026) — chamado nos dois
+// pontos reais de criação de vínculo artista->booker (inviteBookerAction
+// pra booker sem conta, requestRepresentationAction pra booker já
+// cadastrado). Um helper só, reutilizado nos dois lugares, de propósito:
+// evita dois checks divergentes que pudessem sair de sincronia depois.
+// Consulta a assinatura de verdade (nunca confia em estado do client) e
+// delega o critério pra hasDooplaPro() (lib/subscription.ts) — o mesmo
+// gate que o resto do produto (Web e Mobile) usa ou vai usar, nunca uma
+// regra própria daqui.
+async function artistHasDooplaPro(supabase: AnySupabaseClient, profileId: string): Promise<boolean> {
+  const { data: subscription } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('profile_id', profileId)
+    .maybeSingle<Subscription>();
+  return hasDooplaPro(subscription);
+}
+
+const MINHA_EQUIPE_PRO_ERROR =
+  'Minha equipe é um recurso do Doopla Pro. Faça upgrade pra conectar um Booker.';
 
 // Vínculo artista↔booker: fonte única de verdade é a tabela
 // `representations`. Todo caminho que cria/altera essa relação (aceite de
@@ -1444,6 +1465,7 @@ export async function inviteBookerAction(
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return { error: 'Só artistas convidam bookers.' };
+  if (!(await artistHasDooplaPro(supabase, user.id))) return { error: MINHA_EQUIPE_PRO_ERROR };
 
   const { data: invite, error } = await supabase
     .from('invites')
@@ -1616,7 +1638,14 @@ export async function requestRepresentationAction(
 
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase } = ctx;
+  const { supabase, user, profile } = ctx;
+
+  // Gate Pro só na direção artista -> booker (Minha equipe). Booker
+  // solicitando um artista (a direção original desta action, antes de
+  // "Minha equipe" existir) nunca é bloqueado por isso.
+  if (profile.role === 'artista' && !(await artistHasDooplaPro(supabase, user.id))) {
+    return { error: MINHA_EQUIPE_PRO_ERROR };
+  }
 
   const { error } = await supabase.rpc('request_representation_link', {
     p_target_profile_id: targetProfileId,

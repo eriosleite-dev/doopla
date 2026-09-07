@@ -1,7 +1,7 @@
 import type { Subscription } from './supabase/types';
 
 // Gate canônico de "Doopla Pro" — plano público atual do profissional
-// (Doopla R$29,90 / Doopla Pro R$59,90, migration 0036), independente
+// (Doopla R$29,90 / Doopla Pro R$69,90, migration 0036), independente
 // de papel. Hoje só o artista tem esse plano representado
 // (subscriptions.artist_plan); booker ainda não tem um equivalente —
 // nunca inferido a partir de booker_plan, que é uma regra de negócio
