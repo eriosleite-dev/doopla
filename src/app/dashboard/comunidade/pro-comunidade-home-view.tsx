@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
@@ -22,13 +23,23 @@ export function ProComunidadeHomeView({
   savedTopicIds,
   recentTopics,
   savedCount,
+  initialQuery,
 }: {
   savedPreview: (CommunityTopicCard & { saved: true })[];
   savedTopicIds: Set<string>;
   recentTopics: CommunityTopicCard[];
   savedCount: number;
+  // Preservação de contexto (07/09/2026, item 1 da correção de
+  // navegação) — a busca digitada agora mora na URL (?q=), não só em
+  // estado de componente: sobrevive a abrir um tópico e voltar (o
+  // slide-over nunca desmonta esta rota por acidente, mas também não
+  // dependemos mais disso — refresh/deep link com ?q= também já chega
+  // com a busca certa).
+  initialQuery: string;
 }) {
-  const [query, setQuery] = useState('');
+  const router = useRouter();
+  const pathname = usePathname();
+  const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<CommunityTopicCard[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
@@ -38,10 +49,18 @@ export function ProComunidadeHomeView({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const trimmed = query.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      // Limpa ?q= da URL imediatamente (sem debounce) — não é uma busca
+      // em andamento, é o usuário tendo apagado o campo.
+      router.replace(pathname, { scroll: false });
+      return;
+    }
 
     const myRequestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(async () => {
+      // URL só é atualizada quando a busca de fato dispara (mesmo
+      // debounce de 300ms) — evita empilhar/trocar a URL a cada tecla.
+      router.replace(`${pathname}?q=${encodeURIComponent(trimmed)}`, { scroll: false });
       setSearching(true);
       setSearchError(false);
       try {
@@ -56,6 +75,7 @@ export function ProComunidadeHomeView({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
   const isSearchMode = query.trim().length > 0;

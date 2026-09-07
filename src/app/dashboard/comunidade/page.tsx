@@ -22,7 +22,8 @@ export const metadata: Metadata = {
 // Comunidade — Fase 1 da rodada search-first (06/09/2026). Primeira UI
 // real do bloco (schema/RPCs já existiam desde a migration 0059, nunca
 // conectados a nenhuma tela). V1 é artista-only (mesmo gate das RPCs).
-export default async function ComunidadePage() {
+export default async function ComunidadePage(props: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await props.searchParams;
   const { supabase, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
@@ -58,6 +59,7 @@ export default async function ComunidadePage() {
         savedTopicIds={savedTopicIdSet}
         recentTopics={recentTopics.map(toCard)}
         savedCount={savedTopicIds.length}
+        initialQuery={q ?? ''}
       />
     </main>
   );

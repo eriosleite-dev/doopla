@@ -5,6 +5,7 @@ import { useActionState, useState } from 'react';
 import { proInputClass, proLabelClass, proPrimaryButtonClass } from '../../pro-format';
 import { ProCard } from '../../pro-ui';
 import { createTopicAction } from '../actions';
+import { useComunidadeDraftGuard } from '../navigation-guard';
 
 export function ProComunidadeNovoForm({
   categories,
@@ -14,7 +15,16 @@ export function ProComunidadeNovoForm({
   tags: { id: string; label: string }[];
 }) {
   const [state, formAction, pending] = useActionState(createTopicAction, {});
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+
+  // Proteção de rascunho (07/09/2026) — o layout do slide-over consulta
+  // isto antes de deixar Voltar/Fechar/Escape/clique-fora acontecerem.
+  // title/body precisaram virar controlados pra essa pergunta ser
+  // respondível a qualquer momento (antes eram uncontrolled, lidos só
+  // no submit via FormData).
+  useComunidadeDraftGuard(() => title.trim().length > 0 || body.trim().length > 0 || selectedTagIds.length > 0);
 
   function toggleTag(id: string) {
     setSelectedTagIds((prev) => {
@@ -29,12 +39,30 @@ export function ProComunidadeNovoForm({
       <form action={formAction} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
           <span className={proLabelClass}>Título</span>
-          <input name="title" type="text" required minLength={3} maxLength={200} className={proInputClass} placeholder="Ex: Como negociar cachê com cliente antigo" />
+          <input
+            name="title"
+            type="text"
+            required
+            minLength={3}
+            maxLength={200}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className={proInputClass}
+            placeholder="Ex: Como negociar cachê com cliente antigo"
+          />
         </label>
 
         <label className="flex flex-col gap-1.5">
           <span className={proLabelClass}>O que você quer perguntar ou discutir?</span>
-          <textarea name="body" required rows={5} maxLength={8000} className={`${proInputClass} resize-y`} />
+          <textarea
+            name="body"
+            required
+            rows={5}
+            maxLength={8000}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            className={`${proInputClass} resize-y`}
+          />
         </label>
 
         <label className="flex flex-col gap-1.5">
