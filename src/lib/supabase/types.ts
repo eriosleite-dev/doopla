@@ -1268,16 +1268,26 @@ export type Database = {
         Update: Partial<AgendaEntry>;
         Relationships: [];
       };
+      // 07/09/2026, migration 0075 — client não grava estado comercial
+      // direto (artist_plan/status/trial_ends_at/booker_plan/role/
+      // canceled_at/pro_period_ends_at/price_rule/locked_price_cents/
+      // founder_voucher_id): só handle_new_user (insert inicial) ou as
+      // RPCs select_artist_plan/confirm_booker_pro_upgrade/
+      // cancel_booker_pro. Só active_artist_profile_id/
+      // active_artist_pending_choice continuam graváveis direto.
       subscriptions: {
         Row: Subscription;
-        Insert: Partial<Subscription> & Pick<Subscription, 'profile_id' | 'role'>;
-        Update: Partial<Subscription>;
+        Insert: never;
+        Update: Pick<Subscription, 'active_artist_profile_id' | 'active_artist_pending_choice' | 'updated_at'>;
         Relationships: [];
       };
       founder_vouchers: {
         Row: FounderVoucher;
         Insert: Partial<FounderVoucher> & Pick<FounderVoucher, 'code'>;
-        Update: Partial<FounderVoucher>;
+        // Update: nenhum — "claim if unredeemed" (0031) removida na 0075
+        // (nunca teve uso legítimo real: a redenção inteira acontece
+        // dentro de handle_new_user, SECURITY DEFINER).
+        Update: never;
         Relationships: [];
       };
       payout_requests: {
@@ -1570,7 +1580,24 @@ export type Database = {
         Args: { p_invite_id: string };
         Returns: { new_token: string; new_expires_at: string }[];
       };
+      // 07/09/2026, migration 0075 — escopada a auth.uid(), nunca mais
+      // efeito global (antes varria todos os bookers, EXECUTE aberto a
+      // qualquer authenticated).
       expire_booker_pro_subscriptions: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      // Único caminho de escrita de subscriptions.artist_plan pelo
+      // client (migration 0075) — nunca aceita status/trial/preço.
+      select_artist_plan: {
+        Args: { p_plan: 'doopla' | 'pro' };
+        Returns: undefined;
+      };
+      confirm_booker_pro_upgrade: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      cancel_booker_pro: {
         Args: Record<string, never>;
         Returns: undefined;
       };

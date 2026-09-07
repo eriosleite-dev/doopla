@@ -2029,21 +2029,14 @@ export async function toggleFavoriteAction(
 export async function upgradeToProAction(): Promise<{ error?: string }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user, profile } = ctx;
+  const { supabase, profile } = ctx;
   if (profile.role !== 'booker') return { error: 'Só bookers podem assinar o Pro.' };
 
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({
-      booker_plan: 'pro',
-      status: 'active',
-      pro_period_ends_at: null,
-      active_artist_profile_id: null,
-      active_artist_pending_choice: false,
-      canceled_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('profile_id', user.id);
+  // Autoridade segura (07/09/2026, migration 0075) — nunca mais UPDATE
+  // cru em subscriptions: confirm_booker_pro_upgrade valida auth.uid()
+  // e role='booker' no servidor, grava valores fixos, nunca aceita
+  // status/pro_period_ends_at vindos do client.
+  const { error } = await supabase.rpc('confirm_booker_pro_upgrade');
   if (error) return { error: 'Não foi possível confirmar o upgrade. Tente novamente.' };
 
   revalidatePath('/dashboard');
@@ -2057,21 +2050,14 @@ export async function upgradeToProAction(): Promise<{ error?: string }> {
 export async function cancelProAction(): Promise<{ error?: string }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user, profile } = ctx;
+  const { supabase, profile } = ctx;
   if (profile.role !== 'booker') return { error: 'Ação inválida.' };
 
-  const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + 30);
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({
-      canceled_at: new Date().toISOString(),
-      pro_period_ends_at: periodEnd.toISOString().slice(0, 10),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('profile_id', user.id)
-    .eq('booker_plan', 'pro');
+  // Autoridade segura (07/09/2026, migration 0075) — nunca mais UPDATE
+  // cru em subscriptions: cancel_booker_pro valida auth.uid(),
+  // role='booker' e booker_plan='pro' no servidor, e calcula os 30 dias
+  // de período restante ali dentro (nunca vindo do client).
+  const { error } = await supabase.rpc('cancel_booker_pro');
   if (error) return { error: 'Não foi possível cancelar. Tente novamente.' };
 
   revalidatePath('/dashboard');

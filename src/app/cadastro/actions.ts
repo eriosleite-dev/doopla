@@ -96,17 +96,18 @@ export async function savePlanAction(
   _prevState: OnboardingFormState,
   formData: FormData
 ): Promise<OnboardingFormState> {
-  const { supabase, user } = await requireArtist();
+  const { supabase } = await requireArtist();
 
   const plan = String(formData.get('artistPlan') ?? '') as PlanId;
   if (plan !== 'doopla' && plan !== 'pro') {
     return { error: 'Escolha um plano pra continuar.' };
   }
 
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({ artist_plan: plan })
-    .eq('profile_id', user.id);
+  // Autoridade segura (07/09/2026, migration 0075) — nunca mais UPDATE
+  // cru em subscriptions: select_artist_plan valida auth.uid(),
+  // ownership, role='artista' e status='trialing' no servidor, sem
+  // aceitar nada além do enum do plano.
+  const { error } = await supabase.rpc('select_artist_plan', { p_plan: plan });
 
   if (error) {
     return { error: 'Não foi possível salvar o plano. Tente novamente.' };
