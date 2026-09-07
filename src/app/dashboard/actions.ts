@@ -1468,15 +1468,19 @@ export async function inviteBookerAction(
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return { error: 'Só artistas convidam bookers.' };
 
-  const { error } = await supabase.from('invites').insert({
-    inviter_profile_id: user.id,
-    invitee_name: name,
-    invitee_contact: contact || null,
-  });
-  if (error) return { error: 'Não foi possível enviar o convite agora.' };
+  const { data: invite, error } = await supabase
+    .from('invites')
+    .insert({
+      inviter_profile_id: user.id,
+      invitee_name: name,
+      invitee_contact: contact || null,
+    })
+    .select('token')
+    .single<{ token: string }>();
+  if (error || !invite) return { error: 'Não foi possível enviar o convite agora.' };
 
   revalidatePath('/dashboard/bookers');
-  return { success: true };
+  return { success: true, inviteToken: invite.token };
 }
 
 export async function setContractUrlAction(
