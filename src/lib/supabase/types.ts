@@ -1615,6 +1615,14 @@ export type Database = {
         Args: { p_representation_id: string };
         Returns: undefined;
       };
+      add_secondary_role: {
+        Args: { p_role: UserRole };
+        Returns: undefined;
+      };
+      switch_active_role: {
+        Args: { p_role: UserRole };
+        Returns: undefined;
+      };
       get_invite_by_token: {
         Args: { p_token: string };
         Returns: InviteByToken[];
