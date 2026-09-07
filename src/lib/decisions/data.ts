@@ -251,6 +251,67 @@ function preparedDraftOutcomeLabel(outcome: string | null): string {
   return 'Você aprovou e enviou o rascunho da Doopla.';
 }
 
+// Paginação real server-side (migration 0070) — substitui o padrão
+// "busca tudo, agrupa/ordena/corta no client" acima. list_actionable_
+// decisions_page e list_resolved_decisions_page já fazem agrupamento
+// (só a fila acionável agrupa por conversa — resolvidas nunca agrupam,
+// cada linha é um evento de resolução distinto), ordenação e LIMIT/
+// OFFSET inteiramente em SQL, com o total real (pós-agrupamento,
+// pré-corte) via count(*) over(). Web e App chamam a mesma RPC.
+export type ActionableDecisionSort = 'recentes' | 'antigas' | 'prioridade';
+export type ResolvedDecisionSort = 'recentes' | 'antigas';
+
+export type RawActionableDecisionPageRow = {
+  id: string;
+  kind: DecisionItemKind;
+  conversation_id: string;
+  related_booking_id: string | null;
+  related_opportunity_id: string | null;
+  commercial_root_id: string | null;
+  created_at: string;
+  block_reason: string | null;
+  prepared_content: string | null;
+  total_count: number;
+};
+
+export type RawResolvedDecisionPageRow = {
+  id: string;
+  conversation_id: string;
+  related_booking_id: string | null;
+  resolved_at: string;
+  status: string | null;
+  superseded_by_id: string | null;
+  prepared_response_outcome: string | null;
+  source: DecisionItemKind;
+  total_count: number;
+};
+
+export async function fetchActionableDecisionsPage(
+  supabase: AnySupabaseClient,
+  args: { sort: ActionableDecisionSort; limit: number; offset: number }
+): Promise<{ rows: RawActionableDecisionPageRow[]; totalCount: number }> {
+  const { data } = await supabase.rpc('list_actionable_decisions_page', {
+    p_sort: args.sort,
+    p_limit: args.limit,
+    p_offset: args.offset,
+  });
+  const rows = (data ?? []) as RawActionableDecisionPageRow[];
+  return { rows, totalCount: rows[0]?.total_count ?? 0 };
+}
+
+export async function fetchResolvedDecisionsPage(
+  supabase: AnySupabaseClient,
+  args: { sort: ResolvedDecisionSort; limit: number; offset: number }
+): Promise<{ rows: RawResolvedDecisionPageRow[]; totalCount: number }> {
+  const { data } = await supabase.rpc('list_resolved_decisions_page', {
+    p_sort: args.sort,
+    p_limit: args.limit,
+    p_offset: args.offset,
+  });
+  const rows = (data ?? []) as RawResolvedDecisionPageRow[];
+  return { rows, totalCount: rows[0]?.total_count ?? 0 };
+}
+
 export async function listResolvedDecisions(supabase: AnySupabaseClient, limit = 50): Promise<ResolvedDecisionItem[]> {
   const [resolvedRepliesResult, resolvedMessagesResult] = await Promise.all([
     supabase

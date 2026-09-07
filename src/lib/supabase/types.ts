@@ -1537,6 +1537,35 @@ export type Database = {
         Args: Record<string, never>;
         Returns: undefined;
       };
+      list_actionable_decisions_page: {
+        Args: { p_sort?: string; p_limit?: number; p_offset?: number };
+        Returns: {
+          id: string;
+          kind: string;
+          conversation_id: string;
+          related_booking_id: string | null;
+          related_opportunity_id: string | null;
+          commercial_root_id: string | null;
+          created_at: string;
+          block_reason: string | null;
+          prepared_content: string | null;
+          total_count: number;
+        }[];
+      };
+      list_resolved_decisions_page: {
+        Args: { p_sort?: string; p_limit?: number; p_offset?: number };
+        Returns: {
+          id: string;
+          conversation_id: string;
+          related_booking_id: string | null;
+          resolved_at: string;
+          status: string | null;
+          superseded_by_id: string | null;
+          prepared_response_outcome: string | null;
+          source: string;
+          total_count: number;
+        }[];
+      };
       resend_invite: {
         Args: { p_invite_id: string };
         Returns: { new_token: string; new_expires_at: string }[];

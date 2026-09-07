@@ -1,66 +1,79 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useState, useTransition } from 'react';
 
 import { ProCard, ProEmptyState } from '../pro-ui';
-
-type PendingCard = {
-  id: string;
-  heading: string;
-  counterpartName: string;
-  eventDateLabel: string | null;
-  preparedContent: string | null;
-  ctaLabel: string;
-  timeLabel: string;
-  createdAtIso: string;
-  href: string;
-};
-
-type ResolvedCard = {
-  id: string;
-  title: string;
-  description: string;
-  timeLabel: string;
-  resolvedAtIso: string;
-  href: string;
-};
+import { loadPendingDecisionsPageAction, loadResolvedDecisionsPageAction } from './actions';
+import type { PendingCard, ResolvedCard } from './format-cards';
 
 type PendingSort = 'prioridade' | 'recentes' | 'antigas';
 type ResolvedSort = 'recentes' | 'antigas';
 
-// Rodada de correção/consistência (06/09/2026) — item 3, revisão 2.
-// "Precisa de você" e "Resolvidas" continuam duas VISÕES PRIMÁRIAS
-// (abas), nunca um dropdown escondendo a separação — isso já estava
-// certo. O que mudou: os cards agora lideram com O QUE PRECISA SER
-// DECIDIDO (não mais "Conversa em andamento" seguido do estado
-// genérico), lista vertical compacta em vez de grade 2 colunas (melhor
-// escaneabilidade em volume), e um controle de ordenação de verdade —
-// "Prioridade" (default, já existia) / "Mais recentes" / "Mais
-// antigas" pra Precisa de você; "Mais recentes"/"Mais antigas" pra
-// Resolvidas. Nunca um filtro por "tipo de decisão" — hoje só existe 1
-// blockReason real no produto, um filtro assim não teria utilidade
-// nenhuma (instrução explícita: nunca preencher com filtro inútil).
+// Reescrita pra paginação real server-side (migration 0070/hotfix
+// pedido explicitamente: 20 inicialmente, "Carregar mais" +20, sem
+// paginação numérica, sem infinite scroll, contador = total real,
+// filtro/ordenação sempre no servidor, trocar sort RESETA a janela
+// (nunca soma sobre o sort anterior), Resolvidas segue a mesma regra.
+// Ordem default agora é "Recentes" (decisão de produto já registrada —
+// antes abria em "Prioridade" por engano). Web e App usam a mesma RPC
+// por trás (list_actionable_decisions_page/list_resolved_decisions_page).
 export function ProDecisoesView({
-  pendingCount,
-  pendingCards,
-  resolvedCards,
+  initialPendingCards,
+  initialPendingTotal,
+  initialResolvedCards,
+  initialResolvedTotal,
 }: {
-  pendingCount: number;
-  pendingCards: PendingCard[];
-  resolvedCards: ResolvedCard[];
+  initialPendingCards: PendingCard[];
+  initialPendingTotal: number;
+  initialResolvedCards: ResolvedCard[];
+  initialResolvedTotal: number;
 }) {
   const [tab, setTab] = useState<'pendentes' | 'resolvidas'>('pendentes');
-  const [pendingSort, setPendingSort] = useState<PendingSort>('prioridade');
+
+  const [pendingSort, setPendingSort] = useState<PendingSort>('recentes');
+  const [pendingCards, setPendingCards] = useState(initialPendingCards);
+  const [pendingTotal, setPendingTotal] = useState(initialPendingTotal);
+  const [pendingPending, startPendingTransition] = useTransition();
+
   const [resolvedSort, setResolvedSort] = useState<ResolvedSort>('recentes');
+  const [resolvedCards, setResolvedCards] = useState(initialResolvedCards);
+  const [resolvedTotal, setResolvedTotal] = useState(initialResolvedTotal);
+  const [resolvedPending, startResolvedTransition] = useTransition();
 
-  const orderedPending = useMemo(() => {
-    if (pendingSort === 'prioridade') return pendingCards;
-    const sorted = [...pendingCards].sort((a, b) => a.createdAtIso.localeCompare(b.createdAtIso));
-    return pendingSort === 'recentes' ? sorted.reverse() : sorted;
-  }, [pendingCards, pendingSort]);
+  function changePendingSort(sort: PendingSort) {
+    setPendingSort(sort);
+    startPendingTransition(async () => {
+      const { cards, totalCount } = await loadPendingDecisionsPageAction(sort, 0);
+      setPendingCards(cards);
+      setPendingTotal(totalCount);
+    });
+  }
 
-  const orderedResolved = resolvedSort === 'recentes' ? resolvedCards : [...resolvedCards].reverse();
+  function loadMorePending() {
+    startPendingTransition(async () => {
+      const { cards, totalCount } = await loadPendingDecisionsPageAction(pendingSort, pendingCards.length);
+      setPendingCards((prev) => [...prev, ...cards]);
+      setPendingTotal(totalCount);
+    });
+  }
+
+  function changeResolvedSort(sort: ResolvedSort) {
+    setResolvedSort(sort);
+    startResolvedTransition(async () => {
+      const { cards, totalCount } = await loadResolvedDecisionsPageAction(sort, 0);
+      setResolvedCards(cards);
+      setResolvedTotal(totalCount);
+    });
+  }
+
+  function loadMoreResolved() {
+    startResolvedTransition(async () => {
+      const { cards, totalCount } = await loadResolvedDecisionsPageAction(resolvedSort, resolvedCards.length);
+      setResolvedCards((prev) => [...prev, ...cards]);
+      setResolvedTotal(totalCount);
+    });
+  }
 
   return (
     <div>
@@ -74,7 +87,7 @@ export function ProDecisoesView({
               : 'border-transparent text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
           }`}
         >
-          Precisa de você{pendingCount > 0 ? ` (${pendingCount})` : ''}
+          Precisa de você{pendingTotal > 0 ? ` (${pendingTotal})` : ''}
         </button>
         <button
           type="button"
@@ -97,16 +110,16 @@ export function ProDecisoesView({
             <div className="mb-3 flex items-center justify-end">
               <SortSelect
                 value={pendingSort}
-                onChange={(v) => setPendingSort(v as PendingSort)}
+                onChange={(v) => changePendingSort(v as PendingSort)}
                 options={[
-                  { value: 'prioridade', label: 'Prioridade' },
                   { value: 'recentes', label: 'Mais recentes' },
                   { value: 'antigas', label: 'Mais antigas' },
+                  { value: 'prioridade', label: 'Prioridade' },
                 ]}
               />
             </div>
-            <div className="flex flex-col gap-2.5">
-              {orderedPending.map((c) => (
+            <div className={`flex flex-col gap-2.5 ${pendingPending ? 'opacity-60' : ''}`}>
+              {pendingCards.map((c) => (
                 <ProCard key={c.id} className="!p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -136,6 +149,18 @@ export function ProDecisoesView({
                 </ProCard>
               ))}
             </div>
+            {pendingCards.length < pendingTotal && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  disabled={pendingPending}
+                  onClick={loadMorePending}
+                  className="font-pro-sub rounded-full border border-[var(--pro-line)] px-5 py-2 text-[12.5px] font-bold text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
+                >
+                  {pendingPending ? 'Carregando…' : `Carregar mais (${pendingTotal - pendingCards.length})`}
+                </button>
+              </div>
+            )}
           </div>
         ))}
 
@@ -147,15 +172,15 @@ export function ProDecisoesView({
             <div className="mb-3 flex items-center justify-end">
               <SortSelect
                 value={resolvedSort}
-                onChange={(v) => setResolvedSort(v as ResolvedSort)}
+                onChange={(v) => changeResolvedSort(v as ResolvedSort)}
                 options={[
                   { value: 'recentes', label: 'Mais recentes' },
                   { value: 'antigas', label: 'Mais antigas' },
                 ]}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              {orderedResolved.map((c) => (
+            <div className={`flex flex-col gap-2 ${resolvedPending ? 'opacity-60' : ''}`}>
+              {resolvedCards.map((c) => (
                 <ProCard key={c.id} className="!p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-pro-sub text-[13px] font-bold">{c.title}</p>
@@ -173,6 +198,18 @@ export function ProDecisoesView({
                 </ProCard>
               ))}
             </div>
+            {resolvedCards.length < resolvedTotal && (
+              <div className="mt-4 flex justify-center">
+                <button
+                  type="button"
+                  disabled={resolvedPending}
+                  onClick={loadMoreResolved}
+                  className="font-pro-sub rounded-full border border-[var(--pro-line)] px-5 py-2 text-[12.5px] font-bold text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
+                >
+                  {resolvedPending ? 'Carregando…' : `Carregar mais (${resolvedTotal - resolvedCards.length})`}
+                </button>
+              </div>
+            )}
           </div>
         ))}
     </div>

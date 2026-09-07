@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,19 +10,19 @@ import { fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookin
 import { fetchConversationsList, fetchExternalParticipants } from '@/lib/data/conversations';
 import {
   decisionBlockReasonLabel,
-  fetchActionableDecisions,
-  fetchResolvedDecisions,
-  groupDecisionsByConversation,
-  sortDecisionsByPriority,
-  type DecisionItem,
-  type ResolvedDecisionItem,
+  fetchActionableDecisionsPage,
+  fetchResolvedDecisionsPage,
+  type ActionableDecisionSort,
+  type RawActionableDecisionPageRow,
+  type RawResolvedDecisionPageRow,
+  type ResolvedDecisionSort,
 } from '@/lib/data/decisions';
 import { formatDatePt } from '@/lib/format';
 
+const PAGE_SIZE = 20;
+
 type Phase = 'loading' | 'ready' | 'error';
 type Tab = 'pendentes' | 'resolvidas';
-type PendingSort = 'prioridade' | 'recentes' | 'antigas';
-type ResolvedSort = 'recentes' | 'antigas';
 
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -42,7 +42,6 @@ type PendingCard = {
   preparedContent: string | null;
   ctaLabel: string;
   timeLabel: string;
-  createdAtIso: string;
   conversationId: string;
 };
 
@@ -51,74 +50,147 @@ type ResolvedCard = {
   title: string;
   description: string;
   timeLabel: string;
-  resolvedAtIso: string;
   conversationId: string;
 };
 
-// Correção de UX de Decisões (06/09/2026) — espelha
-// src/app/dashboard/decisoes (painel web): mesma fonte canônica
-// (fetchActionableDecisions/fetchResolvedDecisions, agrupamento e
-// prioridade de src/lib/data/decisions.ts), mesmos cards liderando com
-// O QUE PRECISA SER DECIDIDO (nunca mais "Conversa em andamento"),
-// mesmo split Pendentes/Resolvidas + ordenação real. Só o padrão de
-// interação muda pro mobile (chips de ordenação em vez de <select>,
-// tela cheia em vez de lista com abas no topo de uma página web) — a
-// tela antes era um PlaceholderScreen puro, nunca existiu de verdade.
-// Deep link contextual já era correto aqui (router.push(`/conversas/${id}`)
-// nunca exigiu bookingId, ao contrário do bug que existia no painel web).
+function pendingReplyOutcomeLabel(status: string | null, supersededById: string | null): string {
+  if (status === 'completed') return 'Você respondeu e a Doopla retomou a conversa.';
+  if (supersededById) return 'Substituída por uma decisão mais recente na mesma conversa.';
+  return 'Encerrada — a negociação nesta conversa chegou ao fim.';
+}
+
+function preparedDraftOutcomeLabel(outcome: string | null): string {
+  if (outcome === 'edited') return 'Você editou o rascunho da Doopla antes de enviar.';
+  return 'Você aprovou e enviou o rascunho da Doopla.';
+}
+
+// Reescrita pra paginação real server-side (migration 0070/hotfix
+// pedido explicitamente) — espelha src/app/dashboard/decisoes (painel
+// web): 20 primeiro, "Carregar mais" +20, sem paginação numérica, sem
+// infinite scroll, contador = total real (não só o carregado),
+// filtro/ordenação sempre no servidor via list_actionable_decisions_
+// page/list_resolved_decisions_page (mesmas RPCs do Web — nunca uma
+// query paralela). Ordem default agora é "Recentes" (decisão de
+// produto já registrada — antes abria em "Prioridade" por engano,
+// mesmo bug do painel web). Deep link continua sem depender de
+// bookingId (já era correto aqui).
 export default function DecisoesScreen() {
   const router = useRouter();
   const { professionalId } = useAuth();
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [tab, setTab] = useState<Tab>('pendentes');
-  const [pendingSort, setPendingSort] = useState<PendingSort>('prioridade');
-  const [resolvedSort, setResolvedSort] = useState<ResolvedSort>('recentes');
   const [retryTick, setRetryTick] = useState(0);
 
-  const [decisions, setDecisions] = useState<DecisionItem[]>([]);
-  const [resolvedDecisions, setResolvedDecisions] = useState<ResolvedDecisionItem[]>([]);
+  const [pendingSort, setPendingSort] = useState<ActionableDecisionSort>('recentes');
+  const [pendingRows, setPendingRows] = useState<RawActionableDecisionPageRow[]>([]);
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [pendingLoadingMore, setPendingLoadingMore] = useState(false);
+
+  const [resolvedSort, setResolvedSort] = useState<ResolvedDecisionSort>('recentes');
+  const [resolvedRows, setResolvedRows] = useState<RawResolvedDecisionPageRow[]>([]);
+  const [resolvedTotal, setResolvedTotal] = useState(0);
+  const [resolvedLoadingMore, setResolvedLoadingMore] = useState(false);
+
   const [bookings, setBookings] = useState<BookingWithOtherParty[]>([]);
   const [externalParticipantIdByConversationId, setExternalParticipantIdByConversationId] = useState<Map<string, string | null>>(new Map());
   const [participantsById, setParticipantsById] = useState<Map<string, { id: string; name: string | null }>>(new Map());
+
+  const bookingById = useMemo(() => new Map(bookings.map((b) => [b.id, b])), [bookings]);
+
+  const ensureParticipants = useCallback(
+    async (rows: { related_booking_id: string | null; conversation_id: string }[], factsMap: Map<string, string | null>, known: Map<string, { id: string; name: string | null }>) => {
+      const needed = rows
+        .filter((r) => !r.related_booking_id)
+        .map((r) => factsMap.get(r.conversation_id))
+        .filter((id): id is string => Boolean(id) && !known.has(id as string));
+      if (needed.length === 0) return known;
+      const fetched = await fetchExternalParticipants(needed);
+      const merged = new Map(known);
+      fetched.forEach((v, k) => merged.set(k, v));
+      return merged;
+    },
+    []
+  );
 
   const load = useCallback(async () => {
     if (!professionalId) return;
     setPhase('loading');
     try {
-      const [decisionsData, resolvedData, bookingsData, conversationFacts] = await Promise.all([
-        fetchActionableDecisions(),
-        fetchResolvedDecisions(),
+      const [pendingPage, resolvedPage, bookingsData, conversationFacts] = await Promise.all([
+        fetchActionableDecisionsPage({ sort: 'recentes', limit: PAGE_SIZE, offset: 0 }),
+        fetchResolvedDecisionsPage({ sort: 'recentes', limit: PAGE_SIZE, offset: 0 }),
         fetchUserBookings(professionalId),
         fetchConversationsList(),
       ]);
-      setDecisions(decisionsData);
-      setResolvedDecisions(resolvedData);
+      setPendingSort('recentes');
+      setResolvedSort('recentes');
+      setPendingRows(pendingPage.rows);
+      setPendingTotal(pendingPage.totalCount);
+      setResolvedRows(resolvedPage.rows);
+      setResolvedTotal(resolvedPage.totalCount);
       setBookings(bookingsData);
 
       const factsByConversationId = new Map(conversationFacts.map((f) => [f.conversationId, f.externalParticipantId]));
       setExternalParticipantIdByConversationId(factsByConversationId);
 
-      const grouped = groupDecisionsByConversation(decisionsData);
-      const conversationsNeedingParticipant = [...grouped, ...resolvedData].filter((d) => !d.relatedBookingId).map((d) => d.conversationId);
-      const participantIdsNeeded = conversationsNeedingParticipant
-        .map((id) => factsByConversationId.get(id))
-        .filter((id): id is string => Boolean(id));
-      const participants = await fetchExternalParticipants(participantIdsNeeded);
+      const participants = await ensureParticipants([...pendingPage.rows, ...resolvedPage.rows], factsByConversationId, new Map());
       setParticipantsById(participants);
 
       setPhase('ready');
     } catch {
       setPhase('error');
     }
-  }, [professionalId]);
+  }, [professionalId, ensureParticipants]);
 
   useEffect(() => {
     const timer = setTimeout(load, 0);
     return () => clearTimeout(timer);
   }, [load, retryTick]);
 
-  const bookingById = useMemo(() => new Map(bookings.map((b) => [b.id, b])), [bookings]);
+  async function changePendingSort(sort: ActionableDecisionSort) {
+    setPendingSort(sort);
+    const page = await fetchActionableDecisionsPage({ sort, limit: PAGE_SIZE, offset: 0 });
+    setPendingRows(page.rows);
+    setPendingTotal(page.totalCount);
+    const participants = await ensureParticipants(page.rows, externalParticipantIdByConversationId, participantsById);
+    setParticipantsById(participants);
+  }
+
+  async function loadMorePending() {
+    setPendingLoadingMore(true);
+    try {
+      const page = await fetchActionableDecisionsPage({ sort: pendingSort, limit: PAGE_SIZE, offset: pendingRows.length });
+      setPendingRows((prev) => [...prev, ...page.rows]);
+      setPendingTotal(page.totalCount);
+      const participants = await ensureParticipants(page.rows, externalParticipantIdByConversationId, participantsById);
+      setParticipantsById(participants);
+    } finally {
+      setPendingLoadingMore(false);
+    }
+  }
+
+  async function changeResolvedSort(sort: ResolvedDecisionSort) {
+    setResolvedSort(sort);
+    const page = await fetchResolvedDecisionsPage({ sort, limit: PAGE_SIZE, offset: 0 });
+    setResolvedRows(page.rows);
+    setResolvedTotal(page.totalCount);
+    const participants = await ensureParticipants(page.rows, externalParticipantIdByConversationId, participantsById);
+    setParticipantsById(participants);
+  }
+
+  async function loadMoreResolved() {
+    setResolvedLoadingMore(true);
+    try {
+      const page = await fetchResolvedDecisionsPage({ sort: resolvedSort, limit: PAGE_SIZE, offset: resolvedRows.length });
+      setResolvedRows((prev) => [...prev, ...page.rows]);
+      setResolvedTotal(page.totalCount);
+      const participants = await ensureParticipants(page.rows, externalParticipantIdByConversationId, participantsById);
+      setParticipantsById(participants);
+    } finally {
+      setResolvedLoadingMore(false);
+    }
+  }
 
   const counterpartName = useCallback(
     (relatedBookingId: string | null, conversationId: string): string => {
@@ -130,57 +202,42 @@ export default function DecisoesScreen() {
     [bookingById, externalParticipantIdByConversationId, participantsById]
   );
 
-  const grouped = useMemo(() => sortDecisionsByPriority(groupDecisionsByConversation(decisions)), [decisions]);
-
   const pendingCards: PendingCard[] = useMemo(
     () =>
-      grouped.map((d) => {
-        const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
+      pendingRows.map((r) => {
+        const booking = r.related_booking_id ? bookingById.get(r.related_booking_id) : undefined;
         return {
-          id: d.id,
-          heading: d.kind === 'prepared_draft' ? 'Resposta pronta pra revisar' : decisionBlockReasonLabel(d.blockReason),
-          counterpartName: counterpartName(d.relatedBookingId, d.conversationId),
+          id: r.id,
+          heading: r.kind === 'prepared_draft' ? 'Resposta pronta pra revisar' : decisionBlockReasonLabel(r.block_reason),
+          counterpartName: counterpartName(r.related_booking_id, r.conversation_id),
           eventDateLabel: booking?.event_date ? formatDatePt(booking.event_date) : null,
-          preparedContent: d.kind === 'prepared_draft' ? d.preparedContent : null,
-          ctaLabel: d.kind === 'prepared_draft' ? 'Revisar e enviar' : 'Resolver',
-          timeLabel: formatRelativeTime(d.createdAt),
-          createdAtIso: d.createdAt,
-          conversationId: d.conversationId,
+          preparedContent: r.kind === 'prepared_draft' ? r.prepared_content : null,
+          ctaLabel: r.kind === 'prepared_draft' ? 'Revisar e enviar' : 'Resolver',
+          timeLabel: formatRelativeTime(r.created_at),
+          conversationId: r.conversation_id,
         };
       }),
-    [grouped, bookingById, counterpartName]
+    [pendingRows, bookingById, counterpartName]
   );
 
   const resolvedCards: ResolvedCard[] = useMemo(
     () =>
-      resolvedDecisions.map((r) => ({
+      resolvedRows.map((r) => ({
         id: r.id,
-        title: counterpartName(r.relatedBookingId, r.conversationId),
-        description: r.outcomeLabel,
-        timeLabel: formatRelativeTime(r.resolvedAt),
-        resolvedAtIso: r.resolvedAt,
-        conversationId: r.conversationId,
+        title: counterpartName(r.related_booking_id, r.conversation_id),
+        description: r.source === 'prepared_draft' ? preparedDraftOutcomeLabel(r.prepared_response_outcome) : pendingReplyOutcomeLabel(r.status, r.superseded_by_id),
+        timeLabel: formatRelativeTime(r.resolved_at),
+        conversationId: r.conversation_id,
       })),
-    [resolvedDecisions, counterpartName]
+    [resolvedRows, counterpartName]
   );
-
-  const orderedPending = useMemo(() => {
-    if (pendingSort === 'prioridade') return pendingCards;
-    const sorted = [...pendingCards].sort((a, b) => a.createdAtIso.localeCompare(b.createdAtIso));
-    return pendingSort === 'recentes' ? sorted.reverse() : sorted;
-  }, [pendingCards, pendingSort]);
-
-  const orderedResolved = useMemo(() => {
-    const sorted = [...resolvedCards].sort((a, b) => a.resolvedAtIso.localeCompare(b.resolvedAtIso));
-    return resolvedSort === 'recentes' ? sorted.reverse() : sorted;
-  }, [resolvedCards, resolvedSort]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.tabs}>
         <Pressable onPress={() => setTab('pendentes')} style={styles.tabBtn}>
           <Text style={[styles.tabText, tab === 'pendentes' && styles.tabTextActive]}>
-            Precisa de você{pendingCards.length > 0 ? ` (${pendingCards.length})` : ''}
+            Precisa de você{pendingTotal > 0 ? ` (${pendingTotal})` : ''}
           </Text>
           {tab === 'pendentes' && <View style={styles.tabIndicator} />}
         </Pressable>
@@ -201,14 +258,14 @@ export default function DecisoesScreen() {
             <>
               <SortChips
                 value={pendingSort}
-                onChange={(v) => setPendingSort(v as PendingSort)}
+                onChange={(v) => changePendingSort(v as ActionableDecisionSort)}
                 options={[
-                  { value: 'prioridade', label: 'Prioridade' },
                   { value: 'recentes', label: 'Recentes' },
                   { value: 'antigas', label: 'Antigas' },
+                  { value: 'prioridade', label: 'Prioridade' },
                 ]}
               />
-              {orderedPending.map((c) => (
+              {pendingCards.map((c) => (
                 <View key={c.id} style={styles.card}>
                   <Text style={styles.cardHeading}>{c.heading}</Text>
                   <Text style={styles.cardMeta}>
@@ -232,6 +289,15 @@ export default function DecisoesScreen() {
                   </Pressable>
                 </View>
               ))}
+              {pendingCards.length < pendingTotal && (
+                <Pressable style={styles.loadMore} disabled={pendingLoadingMore} onPress={loadMorePending}>
+                  {pendingLoadingMore ? (
+                    <ActivityIndicator color={colors.off} size="small" />
+                  ) : (
+                    <Text style={styles.loadMoreText}>Carregar mais ({pendingTotal - pendingCards.length})</Text>
+                  )}
+                </Pressable>
+              )}
             </>
           )}
         </ScrollView>
@@ -245,13 +311,13 @@ export default function DecisoesScreen() {
             <>
               <SortChips
                 value={resolvedSort}
-                onChange={(v) => setResolvedSort(v as ResolvedSort)}
+                onChange={(v) => changeResolvedSort(v as ResolvedDecisionSort)}
                 options={[
                   { value: 'recentes', label: 'Recentes' },
                   { value: 'antigas', label: 'Antigas' },
                 ]}
               />
-              {orderedResolved.map((c) => (
+              {resolvedCards.map((c) => (
                 <Pressable key={c.id} style={styles.resolvedCard} onPress={() => router.push(`/conversas/${c.conversationId}`)}>
                   <View style={styles.resolvedHead}>
                     <Text style={styles.resolvedTitle}>{c.title}</Text>
@@ -263,6 +329,15 @@ export default function DecisoesScreen() {
                   <Text style={[styles.resolvedTime, styles.resolvedTimeBold]}>{c.timeLabel}</Text>
                 </Pressable>
               ))}
+              {resolvedCards.length < resolvedTotal && (
+                <Pressable style={styles.loadMore} disabled={resolvedLoadingMore} onPress={loadMoreResolved}>
+                  {resolvedLoadingMore ? (
+                    <ActivityIndicator color={colors.off} size="small" />
+                  ) : (
+                    <Text style={styles.loadMoreText}>Carregar mais ({resolvedTotal - resolvedCards.length})</Text>
+                  )}
+                </Pressable>
+              )}
             </>
           )}
         </ScrollView>
@@ -390,6 +465,20 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: colors.off,
+    fontFamily: fonts.subBold,
+    fontSize: 12,
+  },
+  loadMore: {
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.pill,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    marginTop: 6,
+  },
+  loadMoreText: {
+    color: colors.tx70,
     fontFamily: fonts.subBold,
     fontSize: 12,
   },

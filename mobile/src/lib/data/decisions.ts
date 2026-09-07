@@ -245,6 +245,71 @@ export async function fetchResolvedDecisions(limit = 50): Promise<ResolvedDecisi
   return [...fromReplies, ...fromMessages].sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt)).slice(0, limit);
 }
 
+// Paginação real server-side (migration 0070) — espelha exatamente
+// src/lib/decisions/data.ts (Web): mesmas 2 RPCs
+// (list_actionable_decisions_page/list_resolved_decisions_page), que
+// já fazem agrupamento por conversa (só a fila acionável — resolvidas
+// nunca agrupam), ordenação e LIMIT/OFFSET em SQL, com total real via
+// count(*) over(). Sem infinite scroll, sem paginação numérica — o
+// caller mantém o offset local pro "Carregar mais".
+export type ActionableDecisionSort = 'recentes' | 'antigas' | 'prioridade';
+export type ResolvedDecisionSort = 'recentes' | 'antigas';
+
+export type RawActionableDecisionPageRow = {
+  id: string;
+  kind: DecisionItemKind;
+  conversation_id: string;
+  related_booking_id: string | null;
+  related_opportunity_id: string | null;
+  commercial_root_id: string | null;
+  created_at: string;
+  block_reason: string | null;
+  prepared_content: string | null;
+  total_count: number;
+};
+
+export type RawResolvedDecisionPageRow = {
+  id: string;
+  conversation_id: string;
+  related_booking_id: string | null;
+  resolved_at: string;
+  status: string | null;
+  superseded_by_id: string | null;
+  prepared_response_outcome: string | null;
+  source: DecisionItemKind;
+  total_count: number;
+};
+
+export async function fetchActionableDecisionsPage(args: {
+  sort: ActionableDecisionSort;
+  limit: number;
+  offset: number;
+}): Promise<{ rows: RawActionableDecisionPageRow[]; totalCount: number }> {
+  const { data, error } = await supabase.rpc('list_actionable_decisions_page', {
+    p_sort: args.sort,
+    p_limit: args.limit,
+    p_offset: args.offset,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as RawActionableDecisionPageRow[];
+  return { rows, totalCount: rows[0]?.total_count ?? 0 };
+}
+
+export async function fetchResolvedDecisionsPage(args: {
+  sort: ResolvedDecisionSort;
+  limit: number;
+  offset: number;
+}): Promise<{ rows: RawResolvedDecisionPageRow[]; totalCount: number }> {
+  const { data, error } = await supabase.rpc('list_resolved_decisions_page', {
+    p_sort: args.sort,
+    p_limit: args.limit,
+    p_offset: args.offset,
+  });
+  if (error) throw error;
+  const rows = (data ?? []) as RawResolvedDecisionPageRow[];
+  return { rows, totalCount: rows[0]?.total_count ?? 0 };
+}
+
 export function decisionBlockReasonLabel(reason: string | null): string {
   if (!reason) return 'A Doopla está esperando uma decisão sua pra continuar essa conversa.';
   if (reason === 'professional_not_operationally_ready') {
