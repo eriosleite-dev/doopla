@@ -24,10 +24,16 @@ import { ProMascot } from './pro-mascot';
 // automações/e-mail de representação continuam PENDING, de fora do
 // catálogo até terem gate real).
 //
-// CTA principal ("Fazer upgrade para Pro") propositalmente SEM
-// comportamento ainda — Real Billing/Stripe não existe, e o
-// comportamento temporário honesto depende de aprovação explícita
-// (ver PROGRESS.md). Não adicione onClick aqui sem essa aprovação.
+// CTA principal ("Fazer upgrade para Pro") — comportamento temporário
+// aprovado em 07/09/2026: sem Real Billing/Stripe ainda, o clique
+// nunca finge um upgrade, nunca navega, nunca grava nada (nem
+// subscription fake, nem "interesse registrado" — isso prometeria um
+// acompanhamento que não existe). Só mostra, dentro do próprio modal,
+// um estado curto e honesto dizendo que a contratação online ainda não
+// está disponível. TODO comportamento de upgrade passa por
+// handleUpgradeClick() abaixo — único ponto a trocar quando Real
+// Billing existir (ex.: redirecionar pro Stripe Checkout), sem precisar
+// redesenhar o modal.
 export type ProUpgradeContext = 'equipe' | 'geral';
 
 const CONTEXT_COPY: Record<ProUpgradeContext, { eyebrow: string; title: string; description: string }> = {
@@ -53,9 +59,21 @@ export function ProUpgradeModal({
   context?: ProUpgradeContext;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // Estado do CTA principal — 'plan' é a tela normal (preço/features);
+  // 'billing_unavailable' é o estado honesto mostrado depois do clique
+  // em "Fazer upgrade para Pro", enquanto Real Billing não existe.
+  const [view, setView] = useState<'plan' | 'billing_unavailable'>('plan');
   const copy = CONTEXT_COPY[context];
   const market = MARKETS.BR;
   const pro = getPlanCard('pro');
+
+  // Único ponto de decisão do que acontece ao clicar em "Fazer upgrade
+  // para Pro" — quando Real Billing/Stripe existir, é aqui (e só aqui)
+  // que a implementação troca pra iniciar o Stripe Checkout, sem mexer
+  // no resto do componente.
+  function handleUpgradeClick() {
+    setView('billing_unavailable');
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -72,6 +90,7 @@ export function ProUpgradeModal({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
       setExpanded(false);
+      setView('plan');
     };
   }, [open, onClose]);
 
@@ -149,18 +168,32 @@ export function ProUpgradeModal({
             ))}
           </ul>
 
-          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
-            <button type="button" className={`${proPrimaryButtonClass} flex-1 justify-center`}>
-              Fazer upgrade para Pro
-            </button>
-            <button type="button" onClick={onClose} className={`${proGhostButtonClass} flex-1 justify-center`}>
-              Continuar no Básico
-            </button>
-          </div>
-
-          <p className="mt-4 text-center text-[11px] leading-relaxed text-[var(--pro-tx-30)]">
-            Ainda não temos cobrança online. Em breve você poderá assinar o Doopla Pro diretamente aqui.
-          </p>
+          {view === 'plan' ? (
+            <>
+              <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
+                <button type="button" onClick={handleUpgradeClick} className={`${proPrimaryButtonClass} flex-1 justify-center`}>
+                  Fazer upgrade para Pro
+                </button>
+                <button type="button" onClick={onClose} className={`${proGhostButtonClass} flex-1 justify-center`}>
+                  Continuar no Básico
+                </button>
+              </div>
+              <p className="mt-4 text-center text-[11px] leading-relaxed text-[var(--pro-tx-30)]">
+                Ainda não temos cobrança online. Em breve você poderá assinar o Doopla Pro diretamente aqui.
+              </p>
+            </>
+          ) : (
+            <div className="mt-6 rounded-[16px] border border-[var(--pro-line)] bg-white/[0.03] p-5 text-center">
+              <p className="font-pro-sub text-[15px] font-bold text-[var(--pro-off)]">Upgrade para Pro em breve</p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--pro-tx-50)]">
+                A contratação online ainda não está disponível. Assim que o pagamento estiver ativo, você poderá
+                fazer o upgrade por aqui.
+              </p>
+              <button type="button" onClick={() => setView('plan')} className={`${proGhostButtonClass} mt-4`}>
+                Voltar
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
