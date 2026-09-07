@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,81 +7,166 @@ import { colors, fonts, radii } from '@/theme/tokens';
 import { FullSheetHeader } from '@/components/shared/FullSheetHeader';
 import { ForumTopicRow } from '@/components/forum/ForumTopicRow';
 import { LoadingState, ErrorState, EmptyState } from '@/components/shared/ScreenState';
-import { mockForumChips, mockForumTopics } from '@/data/forumMock';
+import { formatRelativeDate } from '@/lib/format';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  ensureCommunityProfileActivated,
+  fetchCommunityAuthors,
+  fetchCommunityCategories,
+  fetchCommunityTopics,
+  fetchSavedTopicIds,
+  saveTopic,
+  searchCommunityTopics,
+  unsaveTopic,
+  type CommunityAuthorSnapshot,
+} from '@/lib/data/community';
+import type { CommunityCategory, CommunityTopic } from '@/types/community';
 
 type Phase = 'loading' | 'ready' | 'error';
 
-// Carregamento mockado (sem backend ainda) só pra deixar os estados
-// loading/erro com retry realmente navegáveis, como pede o prompt do
-// layout pro Fórum.
-function loadTopics(): Promise<typeof mockForumTopics> {
-  return new Promise((resolve) => setTimeout(() => resolve(mockForumTopics), 450));
-}
-
+// Comunidade — Fase 1 da rodada search-first (06/09/2026). Substitui
+// completamente o Fórum mockado (forumMock.ts, deletado): busca real
+// (search_community_topics, migration 0068) é o mecanismo principal
+// de descoberta — os chips de categoria (agora vindos de
+// community_categories, nunca mais hardcoded) são um filtro
+// SECUNDÁRIO, nunca a navegação obrigatória. Mesma fonte/RPC/RLS que o
+// painel web (src/app/dashboard/comunidade) — nenhuma arquitetura
+// paralela.
 export default function ForumTopicListScreen() {
   const router = useRouter();
+  const { professionalId } = useAuth();
   const [phase, setPhase] = useState<Phase>('loading');
-  const [topics, setTopics] = useState<typeof mockForumTopics>([]);
+  const [topics, setTopics] = useState<CommunityTopic[]>([]);
+  const [authorsById, setAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [categories, setCategories] = useState<CommunityCategory[]>([]);
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [activeChip, setActiveChip] = useState(mockForumChips[0]);
+  const [retryTick, setRetryTick] = useState(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const reload = useCallback(() => {
-    setPhase('loading');
-    loadTopics()
-      .then((data) => {
-        setTopics(data);
-        setPhase('ready');
-      })
-      .catch(() => setPhase('error'));
+  // Categorias + salvos + ativação do perfil de Comunidade: uma vez só,
+  // no mount — não depende de busca/categoria ativa.
+  const loadBase = useCallback(async () => {
+    try {
+      await ensureCommunityProfileActivated();
+      const [cats, saved] = await Promise.all([fetchCommunityCategories(), fetchSavedTopicIds()]);
+      setCategories(cats);
+      setSavedIds(new Set(saved));
+    } catch {
+      // Falha aqui não impede a listagem principal (efeito abaixo) — só
+      // deixa chips/estado de salvo temporariamente vazios.
+    }
   }, []);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    const timer = setTimeout(loadBase, 0);
+    return () => clearTimeout(timer);
+  }, [loadBase]);
 
-  const filtered = useMemo(() => {
-    return topics.filter((t) => {
-      const matchesChip = activeChip === 'Todos' || t.meta.startsWith(activeChip);
-      const matchesSearch = t.title.toLowerCase().includes(search.trim().toLowerCase());
-      return matchesChip && matchesSearch;
+  // Fonte ÚNICA da listagem principal — roda no mount (search='',
+  // activeCategoryId=null) e de novo a cada busca/filtro de categoria.
+  // Busca real no servidor (search_community_topics, migration 0068),
+  // nunca filtro raso client-side sobre um array fixo como o mock antigo
+  // fazia.
+  useEffect(() => {
+    const trimmed = search.trim();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setPhase('loading');
+      try {
+        const list = trimmed
+          ? await searchCommunityTopics({ query: trimmed, categoryId: activeCategoryId, limit: 30 })
+          : await fetchCommunityTopics({ categoryId: activeCategoryId ?? undefined, limit: 20 });
+        const authors = await fetchCommunityAuthors([...new Set(list.map((t) => t.author_profile_id))]);
+        setTopics(list);
+        setAuthorsById(authors);
+        setPhase('ready');
+      } catch {
+        setPhase('error');
+      }
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search, activeCategoryId, retryTick]);
+
+  function toggleSave(topicId: string) {
+    const wasSaved = savedIds.has(topicId);
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      if (wasSaved) next.delete(topicId);
+      else next.add(topicId);
+      return next;
     });
-  }, [topics, activeChip, search]);
+    const action = wasSaved ? unsaveTopic(topicId) : saveTopic(topicId, professionalId ?? '');
+    action.catch(() => {
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        if (wasSaved) next.add(topicId);
+        else next.delete(topicId);
+        return next;
+      });
+    });
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FullSheetHeader title="Fórum" onClose={() => router.dismissAll()} />
       <View style={styles.body}>
-        <TextInput
-          style={styles.search}
-          placeholder="Buscar tópicos..."
-          placeholderTextColor={colors.tx50}
-          value={search}
-          onChangeText={setSearch}
-        />
-        <View style={styles.chips}>
-          {mockForumChips.map((chip) => {
-            const active = chip === activeChip;
-            return (
-              <Pressable key={chip} onPress={() => setActiveChip(chip)} style={[styles.chip, active && styles.chipActive]}>
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>{chip}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.search}
+            placeholder="Busque por assunto, profissão ou dúvida…"
+            placeholderTextColor={colors.tx50}
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <View style={styles.actionsRow}>
+          <Pressable style={styles.actionBtn} onPress={() => router.push('/forum/salvos')}>
+            <Text style={styles.actionText}>Salvos</Text>
+          </Pressable>
+          <Pressable style={[styles.actionBtn, styles.actionPrimary]} onPress={() => router.push('/forum/novo')}>
+            <Text style={[styles.actionText, styles.actionPrimaryText]}>Criar tópico</Text>
+          </Pressable>
         </View>
 
+        {categories.length > 0 && (
+          <View style={styles.chips}>
+            <Pressable onPress={() => setActiveCategoryId(null)} style={[styles.chip, activeCategoryId === null && styles.chipActive]}>
+              <Text style={[styles.chipText, activeCategoryId === null && styles.chipTextActive]}>Todos</Text>
+            </Pressable>
+            {categories.map((cat) => {
+              const active = cat.id === activeCategoryId;
+              return (
+                <Pressable key={cat.id} onPress={() => setActiveCategoryId(cat.id)} style={[styles.chip, active && styles.chipActive]}>
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
         {phase === 'loading' && <LoadingState label="Carregando tópicos…" />}
-        {phase === 'error' && <ErrorState message="Não deu pra carregar o Fórum agora." onRetry={reload} />}
-        {phase === 'ready' && filtered.length === 0 && (
-          <EmptyState title="Nenhum tópico encontrado" subtitle="Tente outra busca ou categoria." />
+        {phase === 'error' && <ErrorState message="Não deu pra carregar o Fórum agora." onRetry={() => setRetryTick((t) => t + 1)} />}
+        {phase === 'ready' && topics.length === 0 && (
+          <EmptyState
+            title="Nenhum tópico encontrado"
+            subtitle={search.trim() ? 'Tente outras palavras ou um jeito diferente de perguntar.' : 'Seja o primeiro a abrir um tópico.'}
+          />
         )}
         {phase === 'ready' &&
-          filtered.map((topic, i) => (
+          topics.map((topic, i) => (
             <ForumTopicRow
               key={topic.id}
               title={topic.title}
-              meta={topic.meta}
-              lastActivity={topic.lastActivity}
-              hasNew={topic.hasNew}
+              meta={`${authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · ${topic.reply_count} ${
+                topic.reply_count === 1 ? 'resposta' : 'respostas'
+              }`}
+              lastActivity={formatRelativeDate(topic.last_activity_at)}
+              saved={savedIds.has(topic.id)}
+              onToggleSave={() => toggleSave(topic.id)}
               bordered={i > 0}
               onPress={() => router.push(`/forum/${topic.id}`)}
             />
@@ -100,6 +185,9 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  searchRow: {
+    marginBottom: 10,
+  },
   search: {
     backgroundColor: 'rgba(255,255,255,.05)',
     borderWidth: 1,
@@ -110,7 +198,30 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: colors.off,
     fontFamily: fonts.body,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
     marginBottom: 14,
+  },
+  actionBtn: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  actionPrimary: {
+    backgroundColor: colors.red,
+    borderColor: colors.red,
+  },
+  actionText: {
+    color: colors.tx70,
+    fontFamily: fonts.subSemiBold,
+    fontSize: 11.5,
+  },
+  actionPrimaryText: {
+    color: colors.off,
   },
   chips: {
     flexDirection: 'row',

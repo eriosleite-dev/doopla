@@ -14,11 +14,10 @@ import type {
 } from '@/types/community';
 
 // Espelha src/lib/community/data.ts (painel web) — mesmo backend real
-// (migration 0059), mesmas RPCs, mesma RLS. Cópia deliberada. NÃO
-// substitui app/forum/* (que hoje é 100% mock, forumMock.ts) — este é
-// o boundary de dados REAL, pronto pra quando o Fórum for reconectado
-// ao backend de verdade (fora do escopo desta Foundation: nenhuma UI
-// tocada aqui).
+// (migration 0059), mesmas RPCs, mesma RLS. Cópia deliberada. Desde a
+// Fase 1 da rodada search-first (06/09/2026), app/forum/* consome
+// este arquivo direto — forumMock.ts foi deletado, não existe mais
+// nenhuma fonte de dado fabricada no Fórum.
 
 export type CommunityProfileSnapshot = {
   profileId: string;
@@ -60,6 +59,13 @@ export async function fetchMyCommunityProfile(): Promise<CommunityProfileSnapsho
 export async function activateCommunityProfile(): Promise<void> {
   const { error } = await supabase.rpc('activate_community_profile');
   if (error) throw error;
+}
+
+// Fase 1 (06/09/2026) — espelha ensureCommunityProfileActivated do
+// painel web. Chamado no topo de toda tela de Comunidade.
+export async function ensureCommunityProfileActivated(): Promise<void> {
+  const existing = await fetchMyCommunityProfile();
+  if (!existing) await activateCommunityProfile();
 }
 
 export type UpdateCommunityProfileParams = {
@@ -158,6 +164,40 @@ export async function fetchCommunityTopics(params: FetchCommunityTopicsParams = 
   }
 
   const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as CommunityTopic[];
+}
+
+// Fase 1 da busca search-first (06/09/2026) — migration 0068. Espelha
+// searchCommunityTopics (painel web) — mesma RPC, mesmo ranking
+// (título > corpo, boost de categoria/tag), sem paginação.
+export type SearchCommunityTopicsParams = {
+  query: string;
+  categoryId?: string | null;
+  tagId?: string | null;
+  limit?: number;
+};
+
+export async function searchCommunityTopics(params: SearchCommunityTopicsParams): Promise<CommunityTopic[]> {
+  const { data, error } = await supabase.rpc('search_community_topics', {
+    p_query: params.query,
+    p_category_id: params.categoryId ?? null,
+    p_tag_id: params.tagId ?? null,
+    p_limit: params.limit ?? 20,
+  });
+  if (error) throw error;
+  return (data ?? []) as CommunityTopic[];
+}
+
+// Espelha listCommunityTopicsByIds do painel web — usado por "Salvos".
+export async function fetchCommunityTopicsByIds(ids: string[], limit = 20): Promise<CommunityTopic[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('community_topics')
+    .select('*')
+    .in('id', ids)
+    .order('last_activity_at', { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return (data ?? []) as CommunityTopic[];
 }

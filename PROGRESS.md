@@ -8563,6 +8563,92 @@ Nenhuma pendência de código em aberto neste bloco; os dois pontos
 acima são estados externos (asset de marca ainda não desenhado /
 número oficial em aprovação externa), não itens deste patch.
 
+## 74. Comunidade — Fase 1 da rodada search-first (busca FTS + loop central + salvos) — `[DELIVERED — Fase 1 de 3]`
+
+Antes de codar: inspeção completa e paralela de Web (`pro-forum-panel.tsx`
+era só um placeholder "em construção", zero dado real), App (`app/forum/*`
+era 100% mock via `forumMock.ts`, com um data layer real
+(`mobile/src/lib/data/community.ts`) já pronto e nunca chamado) e
+schema (`0059_community_core.sql` — único gap real: nenhum tsvector,
+busca de texto nunca existiu). Achado principal: não havia UX pra
+corrigir, era preciso construir a Comunidade do zero nas duas
+plataformas sobre um backend já pronto.
+
+Decisões confirmadas com o usuário antes de implementar: full-text
+search nativo do Postgres (nunca embeddings/pgvector); moderação/report
+fora de escopo (já era gap explícito desde a 0059); fases sequenciais
+com paridade obrigatória em cada uma, nunca uma plataforma na frente da
+outra.
+
+Entregue nesta fase:
+- **Migration 0068**: `community_topics.search_tsv` (tsvector gerado,
+  peso A pro título / B pro corpo) + índice GIN + RPC
+  `search_community_topics(p_query, p_category_id, p_tag_id, p_limit)`
+  — `language sql stable`, SEM `security definer` (roda como invoker,
+  reaproveita a RLS "select visible" já existente, nunca duplica a
+  regra). Ranking soma `ts_rank` (peso título > corpo) + boost quando a
+  categoria/tag do tópico bate com a busca (ex.: buscar "casamento"
+  acha um tópico sem essa palavra no corpo, só porque está taggeado
+  "Casamentos") — "taxonomia por baixo, linguagem natural por cima".
+  Validada com 8 testes adversariais no `doopla_rls_test` local: título
+  vs corpo, boost de tag sem match textual, query vazia/whitespace/null
+  (nunca erro), tópico removido nunca aparece, filtro de categoria,
+  `limit` clamped, injeção/caracteres hostis não derrubam a função,
+  grants (`authenticated` sim, `anon` não).
+- **Data layer** (`src/lib/community/data.ts` + espelho
+  `mobile/src/lib/data/community.ts`): `searchCommunityTopics`,
+  `listCommunityTopicsByIds`/`fetchCommunityTopicsByIds` (base do
+  "Salvos"), `ensureCommunityProfileActivated` (entrar na comunidade
+  fica invisível — chamado em toda página, idempotente).
+- **Web** (`src/app/dashboard/comunidade/*`, rota nova): Home (busca +
+  "Salvos por você" preview + "Recentes"), detalhe do tópico (ler +
+  responder + salvar), criar tópico, `/salvos` dedicada. `ProForumPanel`
+  (painel lateral placeholder) removido — o ícone de Comunidade no
+  topbar agora é um link real pra `/dashboard/comunidade`.
+- **App** (`mobile/app/forum/*`): `forumMock.ts` deletado — as 2 telas
+  existentes (lista, conversa) passaram a consumir
+  `mobile/src/lib/data/community.ts` de verdade; 2 telas novas
+  (`novo.tsx`, `salvos.tsx`); chips de categoria trocados de array
+  hardcoded pra `community_categories` real, reposicionados como filtro
+  secundário (nunca a navegação principal); ícone de bookmark novo em
+  `Icons.tsx` (único ícone deste arquivo que não veio do protótipo
+  original — não existia "Salvar" nele).
+- **Salvar**: fonte única `community_saved_topics` (migration 0059, já
+  existia) — nenhum estado local/paralelo, mesma tabela/RLS consumida
+  direto pelas duas plataformas.
+
+Matriz de paridade (Fase 1):
+
+| Feature | Web | App | Fonte canônica | Status |
+|---|---|---|---|---|
+| Busca em linguagem natural | ✅ | ✅ | `search_community_topics` (0068) | Paridade |
+| Listar tópicos (recentes) | ✅ | ✅ | `community_topics` via `listCommunityTopics`/`fetchCommunityTopics` | Paridade |
+| Filtro por categoria (secundário) | — (busca cobre) | ✅ chips | `community_categories` | App só; web decidiu não duplicar chip quando a busca já filtra — ver nota |
+| Abrir tópico / ler respostas | ✅ | ✅ | `community_topics`/`community_posts` | Paridade |
+| Criar tópico | ✅ | ✅ | `create_community_topic` RPC | Paridade |
+| Responder (post simples, sem reply-to/mention) | ✅ | ✅ | `create_community_post` RPC | Paridade |
+| Salvar/remover dos salvos | ✅ | ✅ | `community_saved_topics` | Paridade |
+| Área "Salvos" dedicada | ✅ `/comunidade/salvos` | ✅ `/forum/salvos` | mesma fonte acima | Paridade |
+| Preview de salvos na Home | ✅ | — (tela dedicada só, sem preview) | mesma fonte acima | Gap pequeno, registrado — App vai direto pra tela dedicada em vez de preview na Home |
+| Mentions, reply-to (UI) | — | — | schema pronto (0059), sem UI | Adiado pra Fase 3, combinado |
+| Report/moderação | — | — | não existe nem no schema | Fora de escopo (decisão do usuário) |
+| "Em alta"/"Para você" | — | — | — | Fase 2 |
+| Notificações de Comunidade (UI) | — | — | `community_notifications` existe, sem UI | Fase 2/3 |
+
+Nota sobre o gap de paridade do filtro de categoria: web não tem chip
+separado porque a Home já teria busca + salvos + recentes competindo
+por espaço; decisão de implementação, não perda de capability (a RPC
+de busca aceita `categoryId` nos dois lados, só falta UI web pra
+setá-lo) — registrado como ajuste pendente pra Fase 2/3, não escondido.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos nos dois lados.
+
+CURRENT: Comunidade — Fase 1 de 3 (Foundation + descoberta principal).
+STATUS: `[DELIVERED]`. Fase 2 (Home inteligente: Para você/Em
+alta/Recentes com ranking real) e Fase 3 (polish, mentions/reply-to UI,
+matriz final) ainda não iniciadas.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

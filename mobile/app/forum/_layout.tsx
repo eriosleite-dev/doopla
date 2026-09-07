@@ -8,6 +8,8 @@ export default function ForumLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="[topicId]" />
+      <Stack.Screen name="novo" />
+      <Stack.Screen name="salvos" />
     </Stack>
   );
 }

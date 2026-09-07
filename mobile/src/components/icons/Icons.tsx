@@ -234,3 +234,23 @@ export function SendIcon({ size = DEFAULT_SIZE, color = '#fff', strokeWidth = 2 
     </Svg>
   );
 }
+
+// Único ícone deste arquivo que NÃO veio de dooplaapphome.html (o
+// protótipo não tinha "Salvar") — Comunidade Fase 1 (06/09/2026).
+// Mesmo desenho/proporção usado no botão espelho do painel web
+// (save-topic-button.tsx), pra ser reconhecível como o mesmo conceito
+// nas duas plataformas.
+export function BookmarkIcon({ size = DEFAULT_SIZE, color = '#fff', strokeWidth = 2, filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1Z"
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill={filled ? color : 'none'}
+      />
+    </Svg>
+  );
+}

@@ -78,6 +78,15 @@ export async function activateCommunityProfile(supabase: AnySupabaseClient): Pro
   if (error) throw error;
 }
 
+// Fase 1 (06/09/2026) — chamado no topo de toda página de Comunidade
+// (não só a Home), pra "entrar na comunidade" ser invisível pro
+// profissional: nenhum passo explícito de "ativar perfil" na UX,
+// idempotente por natureza da RPC.
+export async function ensureCommunityProfileActivated(supabase: AnySupabaseClient): Promise<void> {
+  const existing = await getMyCommunityProfile(supabase);
+  if (!existing) await activateCommunityProfile(supabase);
+}
+
 export type UpdateCommunityProfileParams = {
   availableForReferrals: boolean;
   showCity: boolean;
@@ -183,6 +192,46 @@ export async function listCommunityTopics(supabase: AnySupabaseClient, params: L
   }
 
   const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as CommunityTopic[];
+}
+
+// Fase 1 da busca search-first (06/09/2026) — migration 0068.
+// websearch_to_tsquery('portuguese', ...), ranking peso maior pro
+// título, boost quando categoria/tag do tópico bate com a busca. Sem
+// paginação (limit simples) — resultado de busca não é o feed
+// principal, não precisa de cursor. Query vazia/whitespace equivale a
+// "sem filtro de texto" (mesmo comportamento de listCommunityTopics,
+// só que sem cursor).
+export type SearchCommunityTopicsParams = {
+  query: string;
+  categoryId?: string | null;
+  tagId?: string | null;
+  limit?: number;
+};
+
+export async function searchCommunityTopics(supabase: AnySupabaseClient, params: SearchCommunityTopicsParams): Promise<CommunityTopic[]> {
+  const { data, error } = await supabase.rpc('search_community_topics', {
+    p_query: params.query,
+    p_category_id: params.categoryId ?? null,
+    p_tag_id: params.tagId ?? null,
+    p_limit: params.limit ?? 20,
+  });
+  if (error) throw error;
+  return (data ?? []) as CommunityTopic[];
+}
+
+// Usado pra "Salvos" (Home preview + página dedicada) — busca tópicos
+// específicos por id, mesma RLS "select visible" de sempre. Ordena por
+// atividade recente, não pela ordem dos ids.
+export async function listCommunityTopicsByIds(supabase: AnySupabaseClient, ids: string[], limit = 20): Promise<CommunityTopic[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('community_topics')
+    .select('*')
+    .in('id', ids)
+    .order('last_activity_at', { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return (data ?? []) as CommunityTopic[];
 }

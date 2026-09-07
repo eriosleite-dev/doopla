@@ -1637,6 +1637,15 @@ export type Database = {
         Args: { p_notification_id: string };
         Returns: undefined;
       };
+      search_community_topics: {
+        Args: {
+          p_query: string;
+          p_category_id?: string | null;
+          p_tag_id?: string | null;
+          p_limit?: number;
+        };
+        Returns: CommunityTopic[];
+      };
     };
   };
 };
