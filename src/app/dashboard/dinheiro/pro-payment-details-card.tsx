@@ -21,19 +21,20 @@ function maskPixKey(value: string): string {
   return value.slice(0, 3) + '•••••' + value.slice(-3);
 }
 
-// Re-skin de PaymentDetailsCard (item 10 da revisão Professional Web
-// Dashboard, 06/09/2026) — mesma Server Action (setPaymentDetailsAction
-// -> set_payment_details, migration 0046), só a apresentação e a copy
-// mudam: reforça que a Doopla usa isto pra ORIENTAR o cliente a pagar
-// diretamente o profissional, nunca que o dinheiro passa pela Doopla.
-export function ProPaymentDetailsCard({ active }: { active: ActivePaymentDetails | null }) {
+// Único formulário/lógica de Dados de recebimento (07/09/2026) —
+// reutilizado tanto em Financeiro (ProPaymentDetailsCard, dentro de um
+// ProCard) quanto em Configurações (dentro do ProAccordion, ver
+// pro-configuracoes-view.tsx). Mesma Server Action
+// (setPaymentDetailsAction -> set_payment_details, migration 0046),
+// mesmo estado, sem nenhuma cópia paralela — nunca duplicar esta
+// lógica em outro componente.
+export function PaymentDetailsFields({ active }: { active: ActivePaymentDetails | null }) {
   const [editing, setEditing] = useState(!active);
   const [state, formAction, pending] = useActionState(setPaymentDetailsAction, {});
 
   return (
-    <ProCard>
-      <p className="font-pro-sub text-[13.5px] font-bold">Dados de recebimento</p>
-      <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">
+    <>
+      <p className="text-[12.5px] text-[var(--pro-tx-50)]">
         A Doopla usa estes dados quando precisa orientar o cliente sobre o pagamento. O pagamento é feito diretamente para você.
       </p>
 
@@ -91,6 +92,21 @@ export function ProPaymentDetailsCard({ active }: { active: ActivePaymentDetails
           </div>
         </form>
       )}
+    </>
+  );
+}
+
+// Re-skin de PaymentDetailsCard (item 10 da revisão Professional Web
+// Dashboard, 06/09/2026) — usado em Financeiro. Configurações usa
+// PaymentDetailsFields direto, dentro do ProAccordion (sem ProCard
+// aninhado — o próprio accordion já dá o container visual).
+export function ProPaymentDetailsCard({ active }: { active: ActivePaymentDetails | null }) {
+  return (
+    <ProCard>
+      <p className="font-pro-sub text-[13.5px] font-bold">Dados de recebimento</p>
+      <div className="mt-1.5">
+        <PaymentDetailsFields active={active} />
+      </div>
     </ProCard>
   );
 }

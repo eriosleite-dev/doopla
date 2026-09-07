@@ -40,6 +40,11 @@ export async function setPaymentDetailsAction(
   });
   if (error) return { error: 'Não foi possível salvar seus dados de recebimento. Tente novamente.' };
 
+  // Dados de recebimento agora também são editáveis dentro de
+  // Configurações (07/09/2026) — mesmo formulário/Server Action,
+  // precisa revalidar as duas rotas que podem estar mostrando o
+  // estado atual.
   revalidatePath('/dashboard/dinheiro');
+  revalidatePath('/dashboard/perfil');
   return { success: true };
 }

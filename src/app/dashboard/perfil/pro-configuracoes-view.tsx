@@ -1,13 +1,14 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 
 import { hasDooplaPro } from '@/lib/subscription';
 import type { Subscription } from '@/lib/supabase/types';
 
-import { proGhostButtonClass } from '../pro-format';
-import { ProCard, ProPageHeader } from '../pro-ui';
+import type { ActivePaymentDetails } from '../data';
+import { PaymentDetailsFields } from '../dinheiro/pro-payment-details-card';
+import { proGhostButtonClass, proStatusPillClass } from '../pro-format';
+import { ProAccordion, ProCard, ProPageHeader } from '../pro-ui';
 import { ProUpgradeModal } from '../pro-upgrade-modal';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 
@@ -34,6 +35,7 @@ export function ProConfiguracoesView({
   subscription,
   whatsappStatus,
   whatsappNumber,
+  paymentDetails,
 }: {
   fullName: string;
   email: string;
@@ -41,6 +43,7 @@ export function ProConfiguracoesView({
   subscription: Subscription | null;
   whatsappStatus: string | null;
   whatsappNumber: string | null;
+  paymentDetails: ActivePaymentDetails | null;
 }) {
   // Entitlement/situação (07/09/2026, migration 0074) — hasPro é a
   // ÚNICA autoridade sobre "tem Doopla Pro" (mesma function do Shell/
@@ -128,14 +131,29 @@ export function ProConfiguracoesView({
           </p>
         </ProCard>
 
-        <ProCard>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="font-pro-sub text-[13.5px] font-bold">Dados de recebimento</p>
-            <Link href="/dashboard/dinheiro" className={proGhostButtonClass}>
-              Dados de recebimento →
-            </Link>
-          </div>
-        </ProCard>
+        {/* Editável direto aqui dentro (07/09/2026) — antes navegava pra
+           /dashboard/dinheiro só pra ver/editar isto, quebrando a
+           navegação contextual do resto de Configurações. Mesmo
+           formulário/Server Action/RPC de sempre (PaymentDetailsFields,
+           set_payment_details) — Financeiro continua existindo, intocado,
+           com o mesmo card. Resumo "Configurados/Ainda não configurados"
+           vem direto de paymentDetails !== null — mesmo dado que já
+           precisa ser carregado pra renderizar o formulário, sem RPC
+           extra só pra esse resumo. */}
+        <ProAccordion
+          title="Dados de recebimento"
+          rightBadge={
+            <span className={proStatusPillClass(paymentDetails ? 'green' : 'amber')}>
+              {paymentDetails ? 'Configurados ✓' : 'Ainda não configurados'}
+            </span>
+          }
+        >
+          {/* key força remount ao salvar (mesmo truque de dinheiro/page.tsx)
+             — sem isso, o estado interno `editing` (useState(!active))
+             não voltaria pra "resumo" sozinho depois do revalidatePath
+             trazer paymentDetails novo. */}
+          <PaymentDetailsFields key={paymentDetails?.pixKey ?? 'unset'} active={paymentDetails} />
+        </ProAccordion>
       </div>
     </main>
   );

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PlanCard } from '../booker-pro/plan-card';
-import { getSubscription } from '../data';
+import { getActivePaymentDetails, getSubscription } from '../data';
 import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
@@ -29,9 +29,10 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts] = await Promise.all([
+    const [subscription, homeFacts, paymentDetails] = await Promise.all([
       getSubscription(user.id, supabase),
       getCachedProfessionalHomeFacts(supabase),
+      getActivePaymentDetails(user.id, supabase),
     ]);
     return (
       <ProConfiguracoesView
@@ -41,6 +42,7 @@ export default async function PerfilPage() {
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         whatsappNumber={homeFacts?.whatsappVerifiedNumber ?? null}
+        paymentDetails={paymentDetails}
       />
     );
   }

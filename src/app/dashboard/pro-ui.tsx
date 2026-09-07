@@ -10,6 +10,7 @@ import { useId, useState, type ReactNode } from 'react';
 export function ProAccordion({
   title,
   count,
+  rightBadge,
   rightLink,
   children,
   id,
@@ -17,6 +18,11 @@ export function ProAccordion({
 }: {
   title: string;
   count?: number;
+  // Resumo textual opcional ao lado do chevron (ex.: "Configurados ✓"
+  // em Dados de recebimento, Configurações, 07/09/2026) — diferente de
+  // `count` (badge numérico vermelho). Nenhuma chamada existente
+  // precisa passar isso; undefined preserva o layout de sempre.
+  rightBadge?: ReactNode;
   rightLink?: { label: string; href: string };
   children: ReactNode;
   id?: string;
@@ -46,6 +52,7 @@ export function ProAccordion({
           )}
         </span>
         <span className="flex items-center gap-3.5">
+          {rightBadge}
           {rightLink && (
             <a
               href={rightLink.href}
