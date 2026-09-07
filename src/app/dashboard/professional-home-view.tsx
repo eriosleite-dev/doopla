@@ -6,13 +6,12 @@ import { siteOrigin } from '@/lib/site-url';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
 import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
-import { getMyBookerFacts, type ActiveBookerRelationship, type PendingBookerRequest } from '@/lib/professional-booker/data';
 import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
 import { getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
-import { formatRelativeTime, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
+import { capitalizeName, formatRelativeTime, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
 import { ProAccordion, ProCopyButton } from './pro-ui';
 import { STATUS_LABELS } from './ui';
@@ -47,10 +46,9 @@ export async function ProfessionalHomeView({
     groupDecisionsByConversation(decisions).filter((d) => conversationSummary.needsYouConversationIds.includes(d.conversationId))
   ).slice(0, 5);
 
-  const [recentActivity, orcamentoInfo, bookerFacts, referralSummary] = await Promise.all([
+  const [recentActivity, orcamentoInfo, referralSummary] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
     getOrcamentoLinkInfo(userId, supabase),
-    getMyBookerFacts(supabase, userId),
     profile.referral_code ? getReferralSummary(userId, profile.referral_code, supabase) : Promise.resolve(null),
   ]);
 
@@ -213,8 +211,6 @@ export async function ProfessionalHomeView({
           referralEligible={!!referralSummary}
           referralTotal={homeFacts.referralTotalCount}
           referralQualifiedCents={referralSummary?.qualifiedTotalCents ?? 0}
-          bookerActive={bookerFacts.active}
-          bookerPending={bookerFacts.pending}
         />
       </div>
     </div>
@@ -230,18 +226,18 @@ function decisionBlockReasonLabel(reason: string | null): string {
 }
 
 function ProHero({ fullName, needsYouCount }: { fullName: string; needsYouCount: number }) {
-  const firstName = (fullName || '').trim().split(/\s+/)[0] || 'você';
+  const firstName = capitalizeName((fullName || '').trim().split(/\s+/)[0] || 'você');
   return (
-    <div className="relative mb-4 flex items-center justify-between gap-5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-6 backdrop-blur-xl sm:p-7">
-      <div className="min-w-0">
-        <h1 className="font-pro-sub flex items-center gap-2 text-[24px] font-bold sm:text-[26px]">
+    <div className="relative mb-4 flex items-start justify-between gap-5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-7 backdrop-blur-xl sm:p-8">
+      <div className="min-w-0 pt-0.5">
+        <h1 className="font-pro-sub flex items-center gap-2 text-[26px] font-bold sm:text-[28px]">
           Oi, {firstName}
           <span className="h-[6px] w-[6px] flex-none rounded-full bg-[var(--pro-red)] shadow-[0_0_8px_var(--pro-red-glow)]" />
         </h1>
-        <p className="mt-1.5 max-w-[340px] text-[13.5px] text-[var(--pro-tx-50)]">
+        <p className="mt-3 max-w-[340px] text-[13.5px] leading-relaxed text-[var(--pro-tx-50)]">
           Sua Doopla negocia, organiza e cuida dos seus bookings.
         </p>
-        <div className="mt-3 flex items-center gap-2 text-[12px] text-[var(--pro-tx-70)]">
+        <div className="mt-5 flex items-center gap-2 text-[12px] text-[var(--pro-tx-70)]">
           <span className="relative h-2 w-2 flex-none rounded-full bg-[var(--pro-green)]">
             <span className="absolute inset-[-4px] rounded-full bg-[var(--pro-green)] opacity-50 [animation:pro-pulse_1.8s_ease-out_infinite]" />
           </span>
@@ -250,7 +246,9 @@ function ProHero({ fullName, needsYouCount }: { fullName: string; needsYouCount:
             : 'Sua Doopla está ativa, trabalhando por você'}
         </div>
       </div>
-      <ProMascot />
+      <div className="flex-none self-center">
+        <ProMascot />
+      </div>
       <style>{`
         @keyframes pro-pulse { 0% { transform: scale(.6); opacity: .6; } 100% { transform: scale(2.2); opacity: 0; } }
       `}</style>
@@ -332,8 +330,6 @@ function RightColumn({
   referralEligible,
   referralTotal,
   referralQualifiedCents,
-  bookerActive,
-  bookerPending,
 }: {
   orcamentoUrl: string | null;
   whatsappNumber: string | null;
@@ -342,8 +338,6 @@ function RightColumn({
   referralEligible: boolean;
   referralTotal: number;
   referralQualifiedCents: number;
-  bookerActive: ActiveBookerRelationship[];
-  bookerPending: PendingBookerRequest[];
 }) {
   const talkUrl = whatsappNumber ? buildTalkToYourDooplaUrl(whatsappNumber) : null;
   const isWhatsappVerified = whatsappIdentityStatus === 'verified';
@@ -368,28 +362,34 @@ function RightColumn({
             </Link>
           </p>
         )}
-        {whatsappNumber && (
-          <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10.5px] text-[var(--pro-tx-50)]">WhatsApp da Doopla</p>
+        {/* Correção 06/09/2026 — "WhatsApp da Doopla" é um CANAL, não um
+           dado condicional: a ausência de NEXT_PUBLIC_WHATSAPP_NUMBER
+           (número oficial ainda em análise no WhatsApp/Meta) é um
+           estado esperado, nunca motivo pra esconder a linha inteira.
+           "Dado/canal inexistente no momento" ≠ "esconder a feature". */}
+        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] text-[var(--pro-tx-50)]">WhatsApp da Doopla</p>
+            {whatsappNumber ? (
               <p className="font-doopla-mono truncate text-[12px]">{whatsappNumber}</p>
-            </div>
+            ) : (
+              <p className="font-doopla-mono truncate text-[12px] text-[var(--pro-tx-30)]">Em configuração</p>
+            )}
           </div>
-        )}
+        </div>
         {professionalSlug ? (
           <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
             <div className="min-w-0 flex-1">
-              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código</p>
+              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código ID</p>
               <p className="font-doopla-mono truncate text-[12px]">{professionalSlug}</p>
             </div>
             <ProCopyButton value={professionalSlug} label="Código copiado." />
           </div>
         ) : (
           <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)]">
-            Seu código ainda não está disponível.
+            Seu código ID ainda não está disponível.
           </p>
         )}
-        <BookerChannelRow active={bookerActive} pending={bookerPending} />
       </div>
 
       {referralEligible && (
@@ -464,51 +464,8 @@ function RightColumn({
   );
 }
 
-// Booker dentro de "Seus canais de booking" (item 5 da revisão
-// Professional Web Dashboard, 06/09/2026) — nunca um card grande à
-// parte, essa localização já foi decidida. Múltiplos bookers ativos são
-// suportados pela arquitetura (representations não limita a 1 por
-// artista), mas a linha mostra o nome só quando há exatamente 1 — com
-// mais de 1, mostra a contagem e manda pra "Minha equipe" pra lista
-// completa.
-function BookerChannelRow({ active, pending }: { active: ActiveBookerRelationship[]; pending: PendingBookerRequest[] }) {
-  if (active.length > 0) {
-    const label = active.length === 1 ? active[0].bookerName : `${active.length} bookers`;
-    return (
-      <Link
-        href="/dashboard/bookers"
-        className="flex items-center justify-between gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
-      >
-        <span className="truncate">
-          {label} · <span className="text-[var(--pro-green)]">Ativo</span>
-        </span>
-        <span className="flex-none font-pro-sub text-[11px] font-bold text-[var(--pro-red)]">Gerenciar →</span>
-      </Link>
-    );
-  }
-
-  if (pending.length > 0) {
-    const label = pending.length === 1 ? pending[0].bookerName : `${pending.length} convites`;
-    return (
-      <Link
-        href="/dashboard/bookers"
-        className="flex items-center justify-between gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
-      >
-        <span className="truncate">
-          {label} · <span className="text-[var(--pro-amber)]">Convite pendente</span>
-        </span>
-        <span className="flex-none font-pro-sub text-[11px] font-bold text-[var(--pro-red)]">Gerenciar →</span>
-      </Link>
-    );
-  }
-
-  return (
-    <Link
-      href="/dashboard/bookers"
-      className="flex items-center justify-between gap-2.5 border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
-    >
-      <span>Booker</span>
-      <span className="flex-none font-pro-sub text-[11px] font-bold text-[var(--pro-red)]">Convidar Booker →</span>
-    </Link>
-  );
-}
+// Booker foi removido de "Seus canais de booking" (correção
+// 06/09/2026) — Booker não é canal de booking (cliente não chega até
+// o profissional através de um Booker), é relação de equipe. Status/
+// gerenciamento de Booker vive só em "Minha equipe", nunca duplicado
+// aqui.

@@ -79,7 +79,7 @@ export default async function DecisoesPage() {
     <main>
       <ProPageHeader
         title="Decisões"
-        subtitle="Tudo que a Doopla está esperando você decidir — e o que já foi decidido — em cada conversa."
+        subtitle="O que precisa da sua decisão e o que você já resolveu."
       />
 
       <ProDecisoesView pendingCount={grouped.length} pendingCards={pendingCards} resolvedCards={resolvedCards} />

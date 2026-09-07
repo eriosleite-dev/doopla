@@ -3,6 +3,17 @@
 // cruzando pra dentro de src/), pra manter a mesma formatação
 // (moeda/percentual/data relativa) que o painel web já usa.
 
+// Correção 06/09/2026 — espelha capitalizeName do painel web
+// (src/app/dashboard/pro-format.ts). Nome sem capitalização
+// consistente ("eduarda") não deve vazar pra saudação da Home.
+export function capitalizeName(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase('pt-BR') + part.slice(1).toLocaleLowerCase('pt-BR'))
+    .join(' ');
+}
+
 export function formatCentsAsBRL(cents: number): string {
   return (cents / 100).toLocaleString('pt-BR', {
     style: 'currency',

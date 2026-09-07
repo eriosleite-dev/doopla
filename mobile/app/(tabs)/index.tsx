@@ -16,15 +16,14 @@ import { ChannelsCard } from '@/components/home/ChannelsCard';
 import { IndiqueGanheCard } from '@/components/home/IndiqueGanheCard';
 import { FalarComDooplaCard } from '@/components/home/FalarComDooplaCard';
 import { useToast } from '@/components/shared/Toast';
-import { NegotiationIcon, HourglassIcon, CheckIcon, MoneyIcon, LinkIcon, HashIcon } from '@/components/icons/Icons';
+import { NegotiationIcon, HourglassIcon, CheckIcon, MoneyIcon, LinkIcon, HashIcon, WhatsAppLogoIcon } from '@/components/icons/Icons';
 import { STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookings';
 import { fetchReferralSummary, type ReferralSummary } from '@/lib/data/referrals';
 import { fetchProfessionalHomeFacts, type ProfessionalHomeFacts } from '@/lib/data/home-facts';
 import { fetchActionableDecisions, type DecisionItem } from '@/lib/data/decisions';
-import { fetchMyBookerFacts, type ProfessionalBookerFacts } from '@/lib/data/booker';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { dooplaWhatsappNumber } from '@/lib/env';
-import { formatCentsAsBRL, monthDayParts } from '@/lib/format';
+import { capitalizeName, monthDayParts } from '@/lib/format';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -34,7 +33,6 @@ export default function HomeScreen() {
   const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [homeFacts, setHomeFacts] = useState<ProfessionalHomeFacts | null>(null);
   const [decisions, setDecisions] = useState<DecisionItem[]>([]);
-  const [bookerFacts, setBookerFacts] = useState<ProfessionalBookerFacts | null>(null);
 
   useEffect(() => {
     if (!professionalId) return;
@@ -44,7 +42,6 @@ export default function HomeScreen() {
     }
     fetchProfessionalHomeFacts().then(setHomeFacts).catch(() => setHomeFacts(null));
     fetchActionableDecisions().then(setDecisions).catch(() => setDecisions([]));
-    fetchMyBookerFacts(professionalId).then(setBookerFacts).catch(() => setBookerFacts(null));
   }, [professionalId, profile?.referral_code]);
 
   const stats = computeArtistStats(bookings);
@@ -70,7 +67,7 @@ export default function HomeScreen() {
 
         <View style={styles.main}>
           <HomeHero
-            firstName={profile?.full_name?.split(' ')[0] ?? ''}
+            firstName={capitalizeName(profile?.full_name?.split(' ')[0] ?? '')}
             needsYouCount={homeFacts?.conversationsNeedingYouCount ?? 0}
           />
 
@@ -149,25 +146,31 @@ export default function HomeScreen() {
             <Text style={styles.emptyText}>Nenhuma atividade registrada ainda.</Text>
           </AccordionSection>
 
+          {/* Correção 06/09/2026 — "Seus canais de booking" mostra só
+             canais de entrada de cliente: link de orçamento, WhatsApp
+             da Doopla (real ou "Em configuração" — número oficial
+             ainda em análise no WhatsApp/Meta, nunca escondido) e
+             código ID (profile.slug, mesma fonte canônica do web —
+             nunca referral_code, que é de outro conceito/Indique e
+             ganhe). Booker não é canal de booking — vive só em Minha
+             equipe, removido daqui. */}
           <ChannelsCard
             title="Seus canais de booking"
             rows={[
               ...(profile?.slug
                 ? [{ key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: `doopla.com/${profile.slug}`, onCopy: () => show('Link copiado.') }]
                 : []),
-              ...(profile?.referral_code
-                ? [{ key: 'code', icon: <HashIcon size={13} color={colors.off} />, label: 'Seu código', value: profile.referral_code, onCopy: () => show('Código copiado.') }]
+              {
+                key: 'whatsapp',
+                icon: <WhatsAppLogoIcon size={13} color={colors.off} />,
+                label: 'WhatsApp da Doopla',
+                value: whatsappNumber ?? 'Em configuração',
+              },
+              ...(profile?.slug
+                ? [{ key: 'code', icon: <HashIcon size={13} color={colors.off} />, label: 'Seu código ID', value: profile.slug, onCopy: () => show('Código copiado.') }]
                 : []),
             ]}
           />
-
-          {bookerFacts && (bookerFacts.active.length > 0 || bookerFacts.pending.length > 0) && (
-            <Text style={styles.bookerLine}>
-              {bookerFacts.active.length > 0
-                ? `Representado por ${bookerFacts.active.length} booker${bookerFacts.active.length > 1 ? 's' : ''}`
-                : `${bookerFacts.pending.length} convite${bookerFacts.pending.length > 1 ? 's' : ''} de booker pendente${bookerFacts.pending.length > 1 ? 's' : ''}`}
-            </Text>
-          )}
 
           <IndiqueGanheCard
             earnedCents={referralSummary?.qualifiedTotalCents ?? null}
@@ -199,13 +202,5 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 12,
     paddingVertical: 6,
-  },
-  bookerLine: {
-    color: colors.tx70,
-    fontFamily: fonts.body,
-    fontSize: 11.5,
-    marginTop: -4,
-    marginBottom: 12,
-    paddingHorizontal: 2,
   },
 });

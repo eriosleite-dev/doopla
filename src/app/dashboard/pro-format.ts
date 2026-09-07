@@ -5,6 +5,18 @@
 // exatamente essa mistura que causava "Attempted to call X() from the
 // server" quando essas duas viviam em pro-ui.tsx.
 
+// Correção 06/09/2026 — nome cadastrado sem capitalização consistente
+// (ex.: "eduarda") não deve vazar pra saudação da Home ("Oi, eduarda").
+// Normaliza pra Title Case preservando acentos, via toLocaleUpperCase/
+// toLocaleLowerCase('pt-BR') — nunca regex ingênua que quebra á/é/ã/ç.
+export function capitalizeName(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toLocaleUpperCase('pt-BR') + part.slice(1).toLocaleLowerCase('pt-BR'))
+    .join(' ');
+}
+
 export function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60000);
