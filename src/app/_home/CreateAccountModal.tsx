@@ -133,7 +133,7 @@ export function CreateAccountModal({
           aria-label={step === 'preparar' ? 'Preparar sua Doopla' : 'Escolher plano'}
           className="relative flex max-h-[90vh] w-full max-w-[600px] flex-col overflow-hidden rounded-[24px] border border-[rgba(226,41,28,.3)] shadow-[0_0_70px_rgba(226,41,28,.25)]"
         >
-          {/* Cor literal (não var(--offwhite)) de propósito — este botão é
+          {/* Cor literal (não var(--off)) de propósito — este botão é
              IRMÃO do #onboarding, não descendente dele, então não herda
              os custom properties escopados em onboarding.css. */}
           <button

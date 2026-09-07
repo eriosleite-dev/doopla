@@ -436,7 +436,7 @@ export function PrepareForm({
 
             <p
               style={{
-                color: 'var(--offwhite)',
+                color: 'var(--off)',
                 fontWeight: 700,
                 fontSize: '14.5px',
                 lineHeight: 1.4,
