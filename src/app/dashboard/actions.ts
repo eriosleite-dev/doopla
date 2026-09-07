@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
+import { ensurePublicId } from '@/lib/public-id';
 import { isArtistBlockedForBooker } from '@/lib/subscription';
 import type {
   AgendaEntryType,
@@ -16,6 +17,9 @@ import type {
   Subscription,
 } from '@/lib/supabase/types';
 import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any>;
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -1174,57 +1178,23 @@ export async function uploadAvatarAction(
   return {};
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-}
-
-// Nunca gerar um slug igual a uma rota real do site.
-const RESERVED_SLUGS = new Set([
-  'ajuda',
-  'auth',
-  'cadastro',
-  'dashboard',
-  'login',
-  'precos',
-  'privacidade',
-  'seguranca',
-  'sobre',
-  'termos',
-  'api',
-]);
-
 export async function enablePublicProfileAction() {
   const ctx = await requireUserAndProfile();
   if (!ctx) return;
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return;
 
+  // Normalmente já vem preenchido (getSessionProfile garante um ID
+  // público estável pra todo profile na primeira visita ao painel,
+  // ver dashboard/session.ts) — o fallback aqui é só pra sessões
+  // antigas que ainda não passaram por lá.
   if (!profile.slug) {
     const { data: artist } = await supabase
       .from('artist_profiles')
       .select('stage_name')
       .eq('profile_id', user.id)
-      .single<{ stage_name: string | null }>();
-
-    let base = slugify(artist?.stage_name || profile.full_name || 'artista') || 'artista';
-    if (RESERVED_SLUGS.has(base)) base = `${base}-artista`;
-    let slug = base;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const { data: existing } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle<{ id: string }>();
-      if (!existing && !RESERVED_SLUGS.has(slug)) break;
-      slug = `${base}-${Math.floor(Math.random() * 10000)}`;
-    }
-    await supabase.from('profiles').update({ slug }).eq('id', user.id);
+      .maybeSingle<{ stage_name: string | null }>();
+    await ensurePublicId(supabase, user.id, artist?.stage_name || profile.full_name);
   }
 
   await supabase
@@ -1785,6 +1755,41 @@ export type ContactLookupResult =
   | { kind: 'no_match' }
   | { kind: 'error'; error: string };
 
+// Resolve o que fazer com uma conta já encontrada (por contato ou por
+// ID público): já conectado, já tem solicitação pendente, ou é um match
+// novo — compartilhado pelos dois caminhos de lookupXAction abaixo, pra
+// nunca duplicar essa checagem de vínculo/solicitação existente.
+async function resolveMatchOutcome(
+  supabase: AnySupabaseClient,
+  callerId: string,
+  match: { profile_id: string; full_name: string; display_name: string | null }
+): Promise<ContactLookupResult> {
+  const displayName = match.display_name ?? match.full_name;
+
+  const { data: existingRep } = await supabase
+    .from('representations')
+    .select('id')
+    .or(
+      `and(artist_profile_id.eq.${callerId},booker_profile_id.eq.${match.profile_id}),` +
+        `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${callerId})`
+    )
+    .maybeSingle<{ id: string }>();
+  if (existingRep) return { kind: 'existing_connection', name: displayName };
+
+  const { data: pendingRequest } = await supabase
+    .from('representation_requests')
+    .select('id')
+    .or(
+      `and(artist_profile_id.eq.${callerId},booker_profile_id.eq.${match.profile_id}),` +
+        `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${callerId})`
+    )
+    .eq('status', 'pendente')
+    .maybeSingle<{ id: string }>();
+  if (pendingRequest) return { kind: 'pending_request', name: displayName };
+
+  return { kind: 'match', profileId: match.profile_id, name: displayName };
+}
+
 // Fluxo unificado "Adicionar um Booker/Artista": dado um contato, descobre
 // sozinho se já existe conta (pra decidir solicitação x convite) e se já
 // existe vínculo/solicitação/convite em aberto (pra nunca duplicar).
@@ -1801,32 +1806,7 @@ export async function lookupContactAction(contact: string): Promise<ContactLooku
   });
   const match = matches?.[0];
 
-  if (match) {
-    const displayName = match.display_name ?? match.full_name;
-
-    const { data: existingRep } = await supabase
-      .from('representations')
-      .select('id')
-      .or(
-        `and(artist_profile_id.eq.${user.id},booker_profile_id.eq.${match.profile_id}),` +
-          `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${user.id})`
-      )
-      .maybeSingle<{ id: string }>();
-    if (existingRep) return { kind: 'existing_connection', name: displayName };
-
-    const { data: pendingRequest } = await supabase
-      .from('representation_requests')
-      .select('id')
-      .or(
-        `and(artist_profile_id.eq.${user.id},booker_profile_id.eq.${match.profile_id}),` +
-          `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${user.id})`
-      )
-      .eq('status', 'pendente')
-      .maybeSingle<{ id: string }>();
-    if (pendingRequest) return { kind: 'pending_request', name: displayName };
-
-    return { kind: 'match', profileId: match.profile_id, name: displayName };
-  }
+  if (match) return resolveMatchOutcome(supabase, user.id, match);
 
   const { data: pendingInvite } = await supabase
     .from('invites')
@@ -1838,6 +1818,29 @@ export async function lookupContactAction(contact: string): Promise<ContactLooku
   if (pendingInvite) return { kind: 'pending_invite', name: pendingInvite.invitee_name };
 
   return { kind: 'no_match' };
+}
+
+// Segundo caminho do mesmo fluxo "Adicionar um Booker/Artista" (07/09/2026)
+// — busca pelo ID público estável (profiles.slug) em vez de e-mail/
+// telefone, pro caso de quem está do outro lado preferir compartilhar só
+// o código em vez do contato. Só faz sentido quando a conta já existe: se
+// não encontra nada, não tem contato pra oferecer um convite (ver
+// AddConnectionModal, que não mostra fallback de convite nesse modo).
+export async function lookupPublicIdAction(publicId: string): Promise<ContactLookupResult> {
+  const trimmed = publicId.trim();
+  if (!trimmed) return { kind: 'error', error: 'Informe o código ID.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { kind: 'error', error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: matches } = await supabase.rpc('find_representation_target_by_public_id', {
+    p_public_id: trimmed,
+  });
+  const match = matches?.[0];
+  if (!match) return { kind: 'no_match' };
+
+  return resolveMatchOutcome(supabase, user.id, match);
 }
 
 export async function submitReviewAction(

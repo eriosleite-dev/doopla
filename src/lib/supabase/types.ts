@@ -1607,6 +1607,10 @@ export type Database = {
         Args: { p_contact: string };
         Returns: ContactMatch[];
       };
+      find_representation_target_by_public_id: {
+        Args: { p_public_id: string };
+        Returns: ContactMatch[];
+      };
       terminate_representation: {
         Args: { p_representation_id: string };
         Returns: undefined;

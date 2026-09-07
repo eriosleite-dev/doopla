@@ -6,6 +6,7 @@ import {
   inviteArtistAction,
   inviteBookerAction,
   lookupContactAction,
+  lookupPublicIdAction,
   requestRepresentationAction,
   type ContactLookupResult,
 } from './actions';
@@ -29,11 +30,15 @@ const TARGET_LABEL: Record<Role, string> = { artista: 'Booker', booker: 'Artista
 // estava (variant default = 'legacy').
 type Variant = 'legacy' | 'pro';
 
+type LookupMode = 'contact' | 'id';
+
 export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Role; variant?: Variant }) {
   const isPro = variant === 'pro';
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<LookupMode>('contact');
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
+  const [publicId, setPublicId] = useState('');
   const [result, setResult] = useState<ContactLookupResult | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -66,12 +71,19 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
 
   function reset() {
     setOpen(false);
+    setMode('contact');
     setName('');
     setContact('');
+    setPublicId('');
     setResult(null);
     setSent(null);
     setInviteLink(null);
     setLinkCopied(false);
+  }
+
+  function switchMode(next: LookupMode) {
+    setMode(next);
+    setResult(null);
   }
 
   async function copyInviteLink() {
@@ -85,6 +97,14 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
     if (!name.trim() || !contact.trim()) return;
     startTransition(async () => {
       const outcome = await lookupContactAction(contact);
+      setResult(outcome);
+    });
+  }
+
+  function handleLookupById() {
+    if (!publicId.trim()) return;
+    startTransition(async () => {
+      const outcome = await lookupPublicIdAction(publicId);
       setResult(outcome);
     });
   }
@@ -159,45 +179,108 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
         </>
       ) : (
         <>
-          <label className={labelWrapClass}>
-            <span className={labelTextClass}>Nome do {targetLabel.toLowerCase()}</span>
-            <input
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setResult(null);
-              }}
-              className={inputClass}
-              placeholder="Nome completo"
-            />
-          </label>
-          <label className={labelWrapClass}>
-            <span className={labelTextClass}>Contato</span>
-            <input
-              value={contact}
-              onChange={(e) => {
-                setContact(e.target.value);
-                setResult(null);
-              }}
-              className={inputClass}
-              placeholder="E-mail ou telefone"
-            />
-          </label>
+          {/* Segundo caminho do fluxo (07/09/2026) — quando as duas contas já
+             existem, nem sempre a pessoa quer informar e-mail/telefone de
+             alguém; o código ID público (mesmo que "Seu código ID" nos
+             canais de booking) resolve isso sem precisar de contato. Só
+             muda a busca — resultado, e o que fazer com "match" (sempre
+             solicitação, nunca convite), continua idêntico. */}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => switchMode('contact')}
+              className={`${mutedTextClass} ${mode === 'contact' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
+            >
+              Por contato
+            </button>
+            <span className={mutedTextClass}>·</span>
+            <button
+              type="button"
+              onClick={() => switchMode('id')}
+              className={`${mutedTextClass} ${mode === 'id' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
+            >
+              Tenho o código ID
+            </button>
+          </div>
 
-          {result === null && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={!name.trim() || !contact.trim() || pending}
-                onClick={handleLookup}
-                className={primaryBtn}
-              >
-                {pending ? 'Verificando…' : 'Continuar'}
-              </button>
-              <button type="button" onClick={reset} className={secondaryBtn}>
-                Cancelar
-              </button>
-            </div>
+          {mode === 'contact' ? (
+            <>
+              <label className={labelWrapClass}>
+                <span className={labelTextClass}>Nome do {targetLabel.toLowerCase()}</span>
+                <input
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setResult(null);
+                  }}
+                  className={inputClass}
+                  placeholder="Nome completo"
+                />
+              </label>
+              <label className={labelWrapClass}>
+                <span className={labelTextClass}>Contato</span>
+                <input
+                  value={contact}
+                  onChange={(e) => {
+                    setContact(e.target.value);
+                    setResult(null);
+                  }}
+                  className={inputClass}
+                  placeholder="E-mail ou telefone"
+                />
+              </label>
+
+              {result === null && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={!name.trim() || !contact.trim() || pending}
+                    onClick={handleLookup}
+                    className={primaryBtn}
+                  >
+                    {pending ? 'Verificando…' : 'Continuar'}
+                  </button>
+                  <button type="button" onClick={reset} className={secondaryBtn}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <label className={labelWrapClass}>
+                <span className={labelTextClass}>Código ID do {targetLabel.toLowerCase()}</span>
+                <input
+                  value={publicId}
+                  onChange={(e) => {
+                    setPublicId(e.target.value);
+                    setResult(null);
+                  }}
+                  className={inputClass}
+                  placeholder="Ex: joao-silva"
+                />
+              </label>
+
+              {result === null && (
+                <div className="flex gap-2">
+                  <button type="button" disabled={!publicId.trim() || pending} onClick={handleLookupById} className={primaryBtn}>
+                    {pending ? 'Buscando…' : 'Buscar'}
+                  </button>
+                  <button type="button" onClick={reset} className={secondaryBtn}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
+
+              {result?.kind === 'no_match' && (
+                <>
+                  <p className={bodyTextClass}>Não encontramos ninguém com esse código. Confira se está certo com quem te passou.</p>
+                  <button type="button" onClick={() => setResult(null)} className={`${secondaryBtn} self-start`}>
+                    Tentar de novo
+                  </button>
+                </>
+              )}
+            </>
           )}
 
           {result?.kind === 'error' && (
@@ -228,7 +311,7 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
             </div>
           )}
 
-          {result?.kind === 'no_match' && (
+          {mode === 'contact' && result?.kind === 'no_match' && (
             <div className={highlightBoxClass}>
               <p className={bodyTextClass}>{name} ainda não está na Doopla.</p>
               <button type="button" disabled={pending} onClick={handleSendInvite} className={`${primaryBtn} mt-3`}>

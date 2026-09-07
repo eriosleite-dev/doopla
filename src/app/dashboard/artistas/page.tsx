@@ -17,6 +17,7 @@ import {
 import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { PendingStatusList } from '../pending-status-list';
+import { PublicIdChip } from '../public-id-chip';
 import { ResendInviteButton } from '../resend-invite-button';
 import { accentButtonClass, avatarClass, eyebrowClass, initialsFromName } from '../ui';
 import { ArtistRow } from './artist-row';
@@ -97,7 +98,10 @@ export default async function ArtistasPage(props: {
             Artistas que você representa
           </h1>
         </div>
-        <AddConnectionModal myRole="booker" />
+        <div className="flex flex-col items-end gap-2">
+          {profile.slug && <PublicIdChip publicId={profile.slug} />}
+          <AddConnectionModal myRole="booker" />
+        </div>
       </header>
 
       <section className="flex flex-col gap-3">
