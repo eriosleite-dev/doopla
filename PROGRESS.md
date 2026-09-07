@@ -8737,6 +8737,57 @@ Pendências reais desta rodada, não escondidas:
 Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
 `eslint` (mobile) limpos em cada commit desta rodada.
 
+## 76. Comunidade Web volta a ser painel lateral (correção de desvio técnico da Fase 1) — `[DELIVERED]`
+
+Achado antes de mexer (pedido explícito do usuário: não alterar nada
+sem primeiro explicar quando/por que isso mudou): a Comunidade virar
+página inteira no Web na Fase 1 (commit `4f2aa7d`) foi uma escolha
+técnica minha, não uma decisão de UX revisitada. A UX original aprovada
+(bloco Shell+Home, commit `8d2a9f5`) já era um painel lateral deslizante
+(`ProForumPanel`, "protótipo aprovado" citado no próprio comentário do
+componente) — deletado na Fase 1 sem nunca reconfirmar a mudança de
+arquitetura com o usuário. Registrado em DECISOES.md.
+
+Corrigido: `src/app/dashboard/@modal/(.)comunidade/` — mesmo mecanismo
+de intercepting route já usado por `(.)artistas`, `(.)bookers`,
+`(.)bookings`, `(.)conversas`:
+- `layout.tsx` (client component, novo): painel deslizante da direita
+  — backdrop, fechamento por X/Escape/clique fora via `router.back()`
+  (mesmo padrão do `ProfileModal`), scroll do body travado, entrada
+  animada. Largura decidida por `usePathname()` (compartilhado por
+  todas as rotas internas, não recebe o param dinâmico das rotas
+  irmãs): 460px pra Home/Salvos/Criar tópico, 760px ao entrar num
+  tópico — mesmo painel (nunca um segundo modal), `transition-[width]`
+  suave porque o layout nunca desmonta entre essas navegações.
+- `page.tsx`, `[topicId]/page.tsx`, `novo/page.tsx`, `salvos/page.tsx`:
+  cada um só `export { default } from '<rota real>'` — 100% dos dados/
+  Server Actions/regras de negócio da Fase 1 reaproveitados, zero
+  lógica duplicada. As rotas reais (`/dashboard/comunidade/*`)
+  continuam existindo intactas por baixo, pra acesso direto por URL/
+  deep link — só a apresentação diverge quando a navegação é
+  client-side (via o ícone de Comunidade no topbar, `pro-shell.tsx`,
+  não alterado — a interceptação é automática).
+
+App mobile: intocado, por decisão explícita — continua com a
+navegação nativa full-screen que já tinha desde a Fase 1.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` limpos — as 4 rotas
+interceptadas aparecem corretamente ao lado das reais no build. Gap
+conhecido, não escondido: as rotas reais reaproveitadas usam classes
+`sm:grid-cols-2`/larguras pensadas pra `<main>` full-bleed; como
+Tailwind `sm:` reage à largura do VIEWPORT (não do container), esse
+breakpoint pode ativar mesmo dentro do painel de 460-760px, deixando
+alguma grade um pouco mais apertada que o ideal — decisão deliberada de
+não reescrever esses componentes internos pra não extrapolar "corrigir
+container", como pedido explicitamente.
+
+Não foi possível fazer o click-through E2E completo (abrir Comunidade
+→ buscar → Salvos → criar tópico → entrar em tópico → responder →
+voltar → fechar/reabrir) porque este ambiente não tem uma sessão
+autenticada real — mesma limitação já registrada em blocos anteriores
+("não achei nenhuma conta de teste documentada no repo"). Precisa da
+validação manual do usuário no Preview.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

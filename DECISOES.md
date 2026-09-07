@@ -1091,3 +1091,33 @@ toca a assinatura do artista). Não recriei nada disso.
   nunca promovido pra Production, nunca commitado no repo). Por
   instrução explícita do usuário, este ponto NÃO é tratado como
   pendência deste patch.
+- **Comunidade Web virar página inteira na Fase 1 foi desvio técnico
+  meu, nunca uma decisão de UX revisitada — corrigido de volta pra
+  painel lateral (07/09/2026)** — a UX original aprovada, ainda no
+  bloco Shell+Home (commit `8d2a9f5`), já era um painel lateral
+  deslizante da direita (`ProForumPanel`, 420px, backdrop, "slide da
+  direita" citado no próprio comentário do componente como o
+  "protótipo aprovado"). Na Fase 1 da Comunidade (commit `4f2aa7d`), eu
+  deletei esse painel e criei rotas de página inteira
+  (`/dashboard/comunidade/*`) pra hospedar a busca/lista/tópico/criar
+  reais — uma escolha de implementação minha, nunca confirmada com o
+  usuário como mudança de arquitetura, e documentada no PROGRESS.md só
+  como fato consumado, sem justificar a troca. Revertido: um
+  `layout.tsx` compartilhado em `@modal/(.)comunidade` (mesmo mecanismo
+  de intercepting route já usado por `(.)artistas`, `(.)bookers`,
+  `(.)bookings`, `(.)conversas`) volta a apresentar a Comunidade como
+  painel lateral, com as 4 rotas reais da Fase 1
+  (`page`/`[topicId]`/`novo`/`salvos`) 100% reaproveitadas via
+  `export { default } from '...'` — zero duplicação de dados/Server
+  Actions/regras de negócio. Largura variável (opção (a) aprovada pelo
+  usuário): compacta (460px) pra busca/Recentes/Salvos/Criar tópico,
+  expande (760px) só ao entrar num tópico — mesmo painel, nunca um
+  segundo modal por cima, decidido por pathname no layout já que ele é
+  compartilhado por todas as rotas internas e não recebe o parâmetro
+  dinâmico das rotas irmãs diretamente. App mobile não foi tocado —
+  continua com a navegação nativa full-screen que já tinha, por
+  decisão explícita do usuário de nunca copiar o slide-over do Web pro
+  App. Decisão de arquitetura correta e final: **painel lateral no Web,
+  experiência nativa full-screen no App** — mesma fonte de
+  dados/regras/RLS nas duas plataformas, só a apresentação diverge,
+  como já era pra Comunidade desde a Fase 1.
