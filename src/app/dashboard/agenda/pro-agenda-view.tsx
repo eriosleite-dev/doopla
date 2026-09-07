@@ -63,11 +63,9 @@ export function ProAgendaView({
         }
       />
 
-      <div className="mb-4">
-        <ProAgendaEntryForm artistProfileId={artistProfileId} />
-      </div>
-
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ProAgendaEntryForm artistProfileId={artistProfileId} />
+
         <ProCard>
           <div className="mb-4 flex items-center justify-center gap-5">
             <Link

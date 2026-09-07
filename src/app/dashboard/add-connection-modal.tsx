@@ -9,13 +9,28 @@ import {
   requestRepresentationAction,
   type ContactLookupResult,
 } from './actions';
+import { proGhostButtonClass, proInputClass, proLabelClass, proPrimaryButtonClass } from './pro-format';
 import { accentButtonClass, cardClass, ghostButtonClass } from './ui';
 
 type Role = 'artista' | 'booker';
 
 const TARGET_LABEL: Record<Role, string> = { artista: 'Booker', booker: 'Artista' };
 
-export function AddConnectionModal({ myRole }: { myRole: Role }) {
+// Correção 06/09/2026 — este componente é compartilhado por Booker
+// (`/dashboard/artistas`, legado, `myRole="booker"`) e Artista
+// (`/dashboard/bookers` "Minha equipe", já no novo painel escuro,
+// `myRole="artista"`). Antes só existia na pele legada (accentButtonClass
+// dourado, cardClass branco, font-doopla-display serifado) — daí o
+// "botão dourado"/"composição administrativa antiga" vazando pro
+// painel novo mesmo com a página em volta já em --pro-*. `variant`
+// troca só a PELE (nunca a lógica: mesmos handlers, mesmas Server
+// Actions, mesmo fluxo lookup -> match/no_match -> request/invite).
+// Nenhum novo componente paralelo — Booker continua exatamente como
+// estava (variant default = 'legacy').
+type Variant = 'legacy' | 'pro';
+
+export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Role; variant?: Variant }) {
+  const isPro = variant === 'pro';
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -25,6 +40,29 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const targetLabel = TARGET_LABEL[myRole];
+
+  const primaryBtn = isPro ? proPrimaryButtonClass : accentButtonClass;
+  const secondaryBtn = isPro ? proGhostButtonClass : ghostButtonClass;
+  const containerClass = isPro
+    ? 'rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-5 backdrop-blur-xl sm:p-6 flex flex-col gap-3'
+    : `${cardClass} flex flex-col gap-3`;
+  const titleClass = isPro ? 'font-pro-sub text-[15px] font-bold' : 'font-doopla-display text-lg font-semibold';
+  const bodyTextClass = isPro ? 'text-[13px] text-[var(--pro-tx-70)]' : 'text-sm text-[var(--ink)]/70';
+  const mutedTextClass = isPro ? 'text-[12px] text-[var(--pro-tx-50)]' : 'text-[12px] text-[var(--ink)]/55';
+  const errorTextClass = isPro ? 'text-[13px] text-[#ff8b80]' : 'text-sm text-red-700';
+  const highlightBoxClass = isPro
+    ? 'rounded-[14px] border border-[var(--pro-line)] bg-white/[0.03] p-4'
+    : 'rounded-[14px] bg-[var(--paper-dim)] p-4';
+  const inviteLinkBoxClass = isPro
+    ? 'flex flex-col gap-2 rounded-[12px] border border-[var(--pro-line)] bg-white/[0.03] p-3'
+    : 'flex flex-col gap-2 rounded-[12px] bg-[var(--paper-dim)] p-3';
+  const labelWrapClass = isPro ? 'flex flex-col gap-1.5' : 'flex flex-col gap-1 text-sm';
+  const labelTextClass = isPro ? proLabelClass : 'font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/55';
+  const inputClass = isPro
+    ? proInputClass
+    : 'rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]';
+  const inviteLinkValueClass = isPro ? 'font-doopla-mono truncate text-[12px] text-[var(--pro-off)]' : 'font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]';
+  const resultTextClass = isPro ? 'text-[13px] text-[var(--pro-tx-70)]' : 'text-sm text-[var(--ink)]/70';
 
   function reset() {
     setOpen(false);
@@ -84,72 +122,64 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={accentButtonClass}>
+      <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>
         Adicionar um {targetLabel}
       </button>
     );
   }
 
   return (
-    <div className={`${cardClass} flex flex-col gap-3`}>
-      <p className="font-doopla-display text-lg font-semibold">Adicionar um {targetLabel}</p>
+    <div className={containerClass}>
+      <p className={titleClass}>Adicionar um {targetLabel}</p>
 
       {sent ? (
         <>
-          <p className="text-sm text-[var(--ink)]/70">
+          <p className={resultTextClass}>
             {sent === 'request'
               ? 'Solicitação enviada. Você vê o status em Solicitações e Convites.'
               : 'Convite enviado. Assim que a pessoa se cadastrar, vocês podem conectar.'}
           </p>
           {inviteLink && (
-            <div className="flex flex-col gap-2 rounded-[12px] bg-[var(--paper-dim)] p-3">
-              <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50">
+            <div className={inviteLinkBoxClass}>
+              <span className={`font-doopla-mono text-[11px] uppercase tracking-[.05em] ${isPro ? 'text-[var(--pro-tx-30)]' : 'text-[var(--ink)]/50'}`}>
                 Link do convite
               </span>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]">
-                  {inviteLink}
-                </span>
-                <button type="button" onClick={copyInviteLink} className={ghostButtonClass}>
+                <span className={inviteLinkValueClass}>{inviteLink}</span>
+                <button type="button" onClick={copyInviteLink} className={secondaryBtn}>
                   {linkCopied ? 'Copiado!' : 'Copiar link'}
                 </button>
               </div>
-              <p className="text-[12px] text-[var(--ink)]/55">
-                Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.
-              </p>
+              <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
             </div>
           )}
-          <button type="button" onClick={reset} className={`${ghostButtonClass} self-start`}>
+          <button type="button" onClick={reset} className={`${secondaryBtn} self-start`}>
             Fechar
           </button>
         </>
       ) : (
         <>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/55">
-              Nome do {targetLabel.toLowerCase()}
-            </span>
+          <label className={labelWrapClass}>
+            <span className={labelTextClass}>Nome do {targetLabel.toLowerCase()}</span>
             <input
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
                 setResult(null);
               }}
-              className="rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]"
+              className={inputClass}
               placeholder="Nome completo"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/55">
-              Contato
-            </span>
+          <label className={labelWrapClass}>
+            <span className={labelTextClass}>Contato</span>
             <input
               value={contact}
               onChange={(e) => {
                 setContact(e.target.value);
                 setResult(null);
               }}
-              className="rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]"
+              className={inputClass}
               placeholder="E-mail ou telefone"
             />
           </label>
@@ -160,11 +190,11 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
                 type="button"
                 disabled={!name.trim() || !contact.trim() || pending}
                 onClick={handleLookup}
-                className={accentButtonClass}
+                className={primaryBtn}
               >
                 {pending ? 'Verificando…' : 'Continuar'}
               </button>
-              <button type="button" onClick={reset} className={ghostButtonClass}>
+              <button type="button" onClick={reset} className={secondaryBtn}>
                 Cancelar
               </button>
             </div>
@@ -172,51 +202,36 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
 
           {result?.kind === 'error' && (
             <>
-              <p className="text-sm text-red-700">{result.error}</p>
-              <button type="button" onClick={() => setResult(null)} className={`${ghostButtonClass} self-start`}>
+              <p className={errorTextClass}>{result.error}</p>
+              <button type="button" onClick={() => setResult(null)} className={`${secondaryBtn} self-start`}>
                 Tentar de novo
               </button>
             </>
           )}
 
-          {result?.kind === 'existing_connection' && (
-            <p className="text-sm text-[var(--ink)]/70">
-              {result.name} já está conectado com você.
-            </p>
-          )}
+          {result?.kind === 'existing_connection' && <p className={bodyTextClass}>{result.name} já está conectado com você.</p>}
 
           {result?.kind === 'pending_request' && (
-            <p className="text-sm text-[var(--ink)]/70">
-              Já existe uma solicitação pendente com {result.name} · aguardando resposta.
-            </p>
+            <p className={bodyTextClass}>Já existe uma solicitação pendente com {result.name} · aguardando resposta.</p>
           )}
 
-          {result?.kind === 'pending_invite' && (
-            <p className="text-sm text-[var(--ink)]/70">
-              Convite já enviado pra {result.name} · aguardando cadastro.
-            </p>
-          )}
+          {result?.kind === 'pending_invite' && <p className={bodyTextClass}>Convite já enviado pra {result.name} · aguardando cadastro.</p>}
 
           {result?.kind === 'match' && (
-            <div className="rounded-[14px] bg-[var(--paper-dim)] p-4">
-              <p className="text-sm">
+            <div className={highlightBoxClass}>
+              <p className={bodyTextClass}>
                 Encontramos {result.name} na Doopla como {targetLabel.toLowerCase()}.
               </p>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => handleSendRequest(result.profileId)}
-                className={`${accentButtonClass} mt-3`}
-              >
+              <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
                 {pending ? 'Enviando…' : 'Enviar solicitação'}
               </button>
             </div>
           )}
 
           {result?.kind === 'no_match' && (
-            <div className="rounded-[14px] bg-[var(--paper-dim)] p-4">
-              <p className="text-sm">{name} ainda não está na Doopla.</p>
-              <button type="button" disabled={pending} onClick={handleSendInvite} className={`${accentButtonClass} mt-3`}>
+            <div className={highlightBoxClass}>
+              <p className={bodyTextClass}>{name} ainda não está na Doopla.</p>
+              <button type="button" disabled={pending} onClick={handleSendInvite} className={`${primaryBtn} mt-3`}>
                 {pending ? 'Enviando…' : 'Enviar convite'}
               </button>
             </div>

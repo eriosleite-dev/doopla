@@ -13,7 +13,8 @@ import {
 } from '../data';
 import { getSessionProfile } from '../session';
 import { proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
-import { ProCard, ProEmptyState, ProPageHeader } from '../pro-ui';
+import { proNavIcons } from '../pro-sidebar-nav';
+import { ProCard, ProPageHeader } from '../pro-ui';
 import { initialsFromName } from '../ui';
 import { TerminateRelationshipButton } from '../terminate-relationship-button';
 
@@ -61,18 +62,29 @@ export default async function BookersPage() {
       <ProPageHeader
         title="Minha equipe"
         subtitle="Gerencie quem pode trabalhar com seus bookings pela Doopla."
-        action={<AddConnectionModal myRole="artista" />}
+        action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" /> : undefined}
       />
 
+      {/* Correção 06/09/2026 — antes: ProEmptyState genérico (caixa
+         tracejada, pensada pra listas pequenas dentro de outras
+         telas) + CTA duplicado (aqui e no header). Agora: card sólido
+         no mesmo sistema visual da Home (ProCard, ícone em círculo —
+         mesmo tratamento de StatCard/canais), com uma explicação curta
+         do que é Minha equipe e UM ÚNICO CTA. */}
       {hasNothing && (
-        <ProEmptyState
-          message="Nenhum Booker conectado. Se você já trabalha com um Booker, pode convidá-lo para operar seus bookings com você na Doopla."
-          action={
-            <div className="mt-1">
-              <AddConnectionModal myRole="artista" />
-            </div>
-          }
-        />
+        <ProCard className="flex flex-col items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.06] text-[var(--pro-tx-70)]">
+            {proNavIcons.equipe}
+          </div>
+          <div>
+            <p className="font-pro-sub text-[14px] font-bold">Nenhum Booker conectado ainda</p>
+            <p className="mt-1.5 max-w-[440px] text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
+              Minha equipe é onde você conecta um Booker de confiança pra operar seus bookings com você na Doopla —
+              nada de marketplace, só quem você já trabalha de verdade.
+            </p>
+          </div>
+          <AddConnectionModal myRole="artista" variant="pro" />
+        </ProCard>
       )}
 
       {incomingRequests.length > 0 && (
