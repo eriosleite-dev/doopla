@@ -4,6 +4,8 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 
 import { HomeLoginModal } from './_home/HomeLoginModal';
+import { HomeMenuOverlay } from './_home/HomeMenuOverlay';
+import { HomeSoftNav } from './_home/HomeSoftNav';
 
 const homeDir = path.join(process.cwd(), 'src/app/_home');
 const HOME_CSS = fs.readFileSync(path.join(homeDir, 'home.css'), 'utf8');
@@ -38,6 +40,8 @@ export default function Home() {
         {HOME_JS}
       </Script>
       <HomeLoginModal />
+      <HomeMenuOverlay />
+      <HomeSoftNav />
     </>
   );
 }

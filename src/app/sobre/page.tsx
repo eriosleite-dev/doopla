@@ -54,7 +54,7 @@ export default function SobrePage() {
       <section className="page-cta">
         <h2>Tem booking pra resolver?</h2>
         <Link href="/cadastro" className="btn-cta">
-          Começar agora
+          Criar conta
         </Link>
       </section>
     </PageShell>
