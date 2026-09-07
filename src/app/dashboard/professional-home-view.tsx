@@ -11,7 +11,7 @@ import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/dec
 import { getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
-import { capitalizeName, formatRelativeTime, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
+import { capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
 import { ProAccordion, ProCopyButton } from './pro-ui';
 import { STATUS_LABELS } from './ui';
@@ -102,7 +102,7 @@ export async function ProfessionalHomeView({
 
   return (
     <div>
-      <ProHero fullName={profile.full_name} needsYouCount={conversationSummary.needsYouCount} />
+      <ProHero fullName={profile.full_name} needsYouCount={conversationSummary.needsYouCount} hasDooplaPro={homeFacts.hasDooplaPro} />
 
       <StatsRow
         needsYou={conversationSummary.needsYouCount}
@@ -239,12 +239,24 @@ function decisionBlockReasonLabel(reason: string | null): string {
   return known[reason] ?? 'A Doopla pausou aqui e precisa de você pra seguir.';
 }
 
-function ProHero({ fullName, needsYouCount }: { fullName: string; needsYouCount: number }) {
+function ProHero({
+  fullName,
+  needsYouCount,
+  hasDooplaPro,
+}: {
+  fullName: string;
+  needsYouCount: number;
+  // Só informativo aqui — status da conta, nunca CTA de upgrade. A
+  // monetização continua sendo o padrão contextual (ProUpgradeModal ao
+  // tentar usar uma feature Pro), não este badge.
+  hasDooplaPro: boolean;
+}) {
   const firstName = capitalizeName((fullName || '').trim().split(/\s+/)[0] || 'você');
   return (
     <div className="relative mb-4 flex items-start justify-between gap-5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-7 backdrop-blur-xl sm:p-8">
       <div className="min-w-0 pt-0.5">
-        <h1 className="font-pro-sub flex items-center gap-2 text-[26px] font-bold sm:text-[28px]">
+        <span className={`${proPlanBadgeClass(hasDooplaPro)} inline-block`}>{hasDooplaPro ? 'PRO' : 'BÁSICO'}</span>
+        <h1 className="font-pro-sub mt-2 flex items-center gap-2 text-[26px] font-bold sm:text-[28px]">
           Oi, {firstName}
           <span className="h-[6px] w-[6px] flex-none rounded-full bg-[var(--pro-red)] shadow-[0_0_8px_var(--pro-red-glow)]" />
         </h1>

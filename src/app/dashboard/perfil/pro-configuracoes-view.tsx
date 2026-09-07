@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
+import { hasDooplaPro } from '@/lib/subscription';
 import type { Subscription } from '@/lib/supabase/types';
 
 import { proGhostButtonClass } from '../pro-format';
@@ -41,9 +42,18 @@ export function ProConfiguracoesView({
   whatsappStatus: string | null;
   whatsappNumber: string | null;
 }) {
-  const plan = subscription?.artist_plan ?? 'doopla';
-  const isPro = plan === 'pro';
+  // Entitlement/situação (07/09/2026, migration 0074) — hasPro é a
+  // ÚNICA autoridade sobre "tem Doopla Pro" (mesma function do Shell/
+  // Home/Minha equipe/limite de bookings/selo da Comunidade): nunca
+  // reler artist_plan sozinho aqui, senão trial expirado ou canceled
+  // voltam a aparecer como Pro. O texto de situação abaixo é só
+  // informativo sobre o ciclo (teste em andamento/encerrado, ativo,
+  // cancelado) — nunca decide entitlement por conta própria.
+  const hasPro = hasDooplaPro(subscription);
   const isTrialing = subscription?.status === 'trialing';
+  const trialEndsAtLabel = subscription?.trial_ends_at
+    ? new Date(subscription.trial_ends_at).toLocaleDateString('pt-BR')
+    : null;
   const isCanceled = Boolean(subscription?.canceled_at);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
@@ -56,18 +66,20 @@ export function ProConfiguracoesView({
           <p className="font-pro-sub text-[13.5px] font-bold">Plano e assinatura</p>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-[14px] font-semibold text-[var(--pro-off)]">{isPro ? 'Doopla Pro' : 'Doopla Básico'}</p>
+              <p className="text-[14px] font-semibold text-[var(--pro-off)]">{hasPro ? 'Doopla Pro' : 'Doopla Básico'}</p>
               <p className="mt-0.5 text-[12px] text-[var(--pro-tx-50)]">
                 {isTrialing
-                  ? `Período de teste${subscription?.trial_ends_at ? ` até ${new Date(subscription.trial_ends_at).toLocaleDateString('pt-BR')}` : ''}`
-                  : isCanceled && subscription?.pro_period_ends_at
-                    ? `Cancelado — continua ativo até ${new Date(subscription.pro_period_ends_at).toLocaleDateString('pt-BR')}`
-                    : isPro
+                  ? hasPro
+                    ? `Período de teste${trialEndsAtLabel ? ` até ${trialEndsAtLabel}` : ''}`
+                    : `Período de teste encerrado${trialEndsAtLabel ? ` em ${trialEndsAtLabel}` : ''}`
+                  : isCanceled
+                    ? 'Cancelado'
+                    : hasPro
                       ? 'Ativo'
                       : 'Plano gratuito'}
               </p>
             </div>
-            {!isPro && (
+            {!hasPro && (
               <button type="button" onClick={() => setUpgradeModalOpen(true)} className={proGhostButtonClass}>
                 Conhecer o Pro
               </button>

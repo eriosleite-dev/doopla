@@ -35,6 +35,16 @@ export function proStatusPillClass(tone: 'red' | 'amber' | 'green'): string {
   return `${base} bg-[rgba(62,207,110,.18)] text-[var(--pro-green)]`;
 }
 
+// Badge PRO/BÁSICO — mesmo estilo visual já usado em Minha equipe
+// (`bookers/page.tsx`), reaproveitado aqui pra Home ter exatamente a
+// mesma aparência do mesmo conceito (07/09/2026, migration 0074).
+// Recebe `hasDooplaPro` já resolvido pela autoridade canônica — nunca
+// decide Pro/Básico sozinho.
+export function proPlanBadgeClass(hasPro: boolean): string {
+  const base = 'rounded-full border px-2.5 py-0.5 font-doopla-mono text-[10px] font-bold uppercase tracking-[.08em]';
+  return hasPro ? `${base} border-[var(--pro-red)] text-[var(--pro-red)]` : `${base} border-[var(--pro-line)] text-[var(--pro-tx-50)]`;
+}
+
 // Botões/inputs compartilhados — revisão Professional Web Dashboard
 // (06/09/2026). Vermelho só pro botão PRIMARY (ação principal de cada
 // tela); nunca botão branco/cinza neutro nas rotas novas, mesma regra

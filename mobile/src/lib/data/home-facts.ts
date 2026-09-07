@@ -23,6 +23,11 @@ export type ProfessionalHomeFacts = {
   subscriptionRole: string | null;
   subscriptionStatus: string | null;
   subscriptionPlan: string | null;
+  subscriptionTrialEndsAt: string | null;
+  // Entitlement já resolvido pela autoridade canônica
+  // artist_has_doopla_pro() (migration 0074). Nunca recalcular a
+  // partir de subscriptionPlan/subscriptionStatus crus fora daqui.
+  hasDooplaPro: boolean;
 };
 
 type RawHomeFactsRow = {
@@ -43,6 +48,8 @@ type RawHomeFactsRow = {
   subscription_role: string | null;
   subscription_status: string | null;
   subscription_plan: string | null;
+  subscription_trial_ends_at: string | null;
+  has_doopla_pro: boolean;
 };
 
 function mapHomeFactsRow(row: RawHomeFactsRow): ProfessionalHomeFacts {
@@ -64,6 +71,8 @@ function mapHomeFactsRow(row: RawHomeFactsRow): ProfessionalHomeFacts {
     subscriptionRole: row.subscription_role,
     subscriptionStatus: row.subscription_status,
     subscriptionPlan: row.subscription_plan,
+    subscriptionTrialEndsAt: row.subscription_trial_ends_at,
+    hasDooplaPro: row.has_doopla_pro,
   };
 }
 

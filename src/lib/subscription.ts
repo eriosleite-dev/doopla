@@ -11,9 +11,28 @@ import type { Subscription } from './supabase/types';
 // "Doopla Pro do profissional" (ex.: e-mail de booking) consulta esta
 // function — nunca hasProAccess (essa é só do booker) nem booker_plan
 // direto.
+//
+// Definição canônica (07/09/2026, migration 0074) — trial válido conta
+// como Pro: `status='active'` OU (`status='trialing'` E
+// `trial_ends_at` ainda não vencido). Sem isso, ninguém em trial
+// jamais teria Doopla Pro de verdade (todo artista nasce 'trialing' e
+// nada no schema jamais transiciona esse status pra 'active' — não
+// existe sweep/cron equivalente ao do booker). Trial vencido/canceled/
+// artist_plan='doopla' são Básico. Comparação de data em UTC
+// (toISOString().slice(0,10)), espelhando exatamente
+// artist_has_doopla_pro() no Postgres (migration 0074) — nunca
+// reimplementar essa regra inline em outro lugar (Home/Shell/
+// Configurações/Minha equipe/limite de bookings/selo Pro da Comunidade
+// todos consomem esta function ou a equivalente SQL).
 export function hasDooplaPro(subscription: Subscription | null | undefined): boolean {
   if (!subscription) return false;
-  return subscription.role === 'artista' && subscription.artist_plan === 'pro' && subscription.status === 'active';
+  if (subscription.role !== 'artista' || subscription.artist_plan !== 'pro') return false;
+  if (subscription.status === 'active') return true;
+  if (subscription.status === 'trialing' && subscription.trial_ends_at) {
+    const todayUTC = new Date().toISOString().slice(0, 10);
+    return subscription.trial_ends_at >= todayUTC;
+  }
+  return false;
 }
 
 // Gate de permissão central pro plano do Booker. Qualquer recurso

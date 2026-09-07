@@ -105,6 +105,7 @@ export default function HomeScreen() {
           <HomeHero
             firstName={capitalizeName(profile?.full_name?.split(' ')[0] ?? '')}
             needsYouCount={homeFacts?.conversationsNeedingYouCount ?? 0}
+            hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
           />
 
           <StatsCarousel>

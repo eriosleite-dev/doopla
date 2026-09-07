@@ -148,7 +148,7 @@ async function ProfessionalShellGate({
       fullName={fullName}
       email={email}
       avatarUrl={avatarUrl}
-      subscriptionPlan={homeFacts?.subscriptionPlan ?? null}
+      hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
       bookingsAwaitingCount={homeFacts?.bookingsAwaitingResponseCount ?? 0}
       decisionsCount={conversationSummary.needsYouCount}
       referralEligible={referralEligible}

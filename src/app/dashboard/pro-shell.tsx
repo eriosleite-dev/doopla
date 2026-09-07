@@ -12,7 +12,7 @@ export function ProfessionalShell({
   fullName,
   email,
   avatarUrl,
-  subscriptionPlan,
+  hasDooplaPro,
   bookingsAwaitingCount,
   decisionsCount,
   referralEligible,
@@ -21,7 +21,11 @@ export function ProfessionalShell({
   fullName: string;
   email: string;
   avatarUrl: string | null;
-  subscriptionPlan: string | null;
+  // Entitlement já resolvido pela autoridade canônica (migration 0074,
+  // hasDooplaPro() em src/lib/subscription.ts) — nunca um plan string
+  // cru de novo aqui (era o bug: subscriptionPlan==='pro' ignorava
+  // status/trial).
+  hasDooplaPro: boolean;
   bookingsAwaitingCount: number;
   decisionsCount: number;
   referralEligible: boolean;
@@ -112,7 +116,7 @@ export function ProfessionalShell({
           <div className="min-w-0">
             <p className="font-pro-sub truncate text-[12.5px] font-bold leading-tight">{fullName || email}</p>
           </div>
-          {subscriptionPlan === 'pro' && (
+          {hasDooplaPro && (
             <span className="font-doopla-mono ml-auto flex-none rounded-[4px] border border-[rgba(226,41,28,.4)] px-1.5 py-[1px] text-[9px] font-bold text-[var(--pro-red)]">
               PRO
             </span>
