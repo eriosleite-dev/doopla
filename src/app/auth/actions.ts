@@ -8,6 +8,10 @@ import type { UserRole } from '@/lib/supabase/types';
 
 export interface AuthFormState {
   error?: string;
+  // Presente só quando a chamada veio com modalMode=1 (ver
+  // createAccountAction) — sinaliza pro componente cliente avançar de
+  // etapa, já que nesse modo a Server Action nunca faz redirect().
+  success?: boolean;
 }
 
 // A "agência" deixou de ser um tipo de conta selecionável no cadastro —
@@ -142,10 +146,23 @@ export async function createAccountAction(
     return { error: 'Não foi possível criar a conta. Tente novamente.' };
   }
 
+  // modalMode (07/09/2026, correção do bug do "Criar conta em modal" da
+  // Home): quando a Home abre o funil dentro do modal (CreateAccountModal),
+  // ela precisa CONTINUAR renderizando a etapa 2 (Preparar) dentro do
+  // mesmo overlay — um redirect() aqui derrubaria a Home inteira pra
+  // navegar pra /cadastro/preparar. Só suprime o redirect quando já
+  // existe sessão ativa (o caso comum — ver comentário abaixo); se o
+  // projeto exige confirmação de e-mail, não tem como continuar sem
+  // sessão de qualquer forma, então cai pro redirect normal mesmo em
+  // modo modal (honesto: o modal não pode fingir que a etapa 2 é
+  // acessível sem sessão).
+  const modalMode = String(formData.get('modalMode') ?? '') === '1';
+
   // Se o projeto Supabase não exige confirmação de e-mail, o signUp já
   // volta com sessão ativa — segue direto pro resto do onboarding sem
   // fazer o usuário esperar um e-mail que não vai bloquear nada.
   if (data.session) {
+    if (modalMode) return { success: true };
     redirect('/cadastro/preparar');
   }
   redirect('/cadastro/confirme-seu-email');

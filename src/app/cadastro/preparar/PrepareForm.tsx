@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 
 import { OnboardingShell } from '../OnboardingShell';
 import { savePrepareAction, type OnboardingFormState } from '../actions';
@@ -70,6 +70,8 @@ export function PrepareForm({
   initialIssuesInvoice,
   initialNegotiationNotes,
   initialChannel,
+  modalMode = false,
+  onStepComplete,
 }: {
   initialStageName: string;
   initialProfession: string;
@@ -81,9 +83,21 @@ export function PrepareForm({
   initialIssuesInvoice: boolean | null;
   initialNegotiationNotes: string;
   initialChannel: 'whatsapp' | 'painel' | 'ambos' | null;
+  // Funil iniciado no modal da Home (ver CreateAccountModal.tsx) — quando
+  // true, savePrepareAction não faz redirect() (ver cadastro/actions.ts);
+  // este componente detecta o sucesso via state.success e chama
+  // onStepComplete() em vez de deixar o framework navegar. Sem isso
+  // (uso normal em /cadastro/preparar), o comportamento é 100% o de
+  // sempre — mesmo componente, mesma etapa, dois contextos de disparo.
+  modalMode?: boolean;
+  onStepComplete?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(savePrepareAction, initialState);
   const [sub, setSub] = useState(0);
+
+  useEffect(() => {
+    if (modalMode && state.success) onStepComplete?.();
+  }, [modalMode, state.success, onStepComplete]);
 
   const [stageName, setStageName] = useState(initialStageName);
   const [profession, setProfession] = useState(initialProfession);
@@ -126,6 +140,7 @@ export function PrepareForm({
 
   return (
     <form action={formAction}>
+      {modalMode && <input type="hidden" name="modalMode" value="1" />}
       <input type="hidden" name="stageName" value={stageName} />
       <input type="hidden" name="profession" value={profession} />
       <input type="hidden" name="local" value={local} />

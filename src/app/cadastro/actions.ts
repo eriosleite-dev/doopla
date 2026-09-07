@@ -7,6 +7,10 @@ import type { PlanId } from '@/lib/market';
 
 export interface OnboardingFormState {
   error?: string;
+  // Presente só quando a chamada veio com modalMode=1 (funil iniciado
+  // pelo modal da Home, ver CreateAccountModal.tsx) — sinaliza pro
+  // componente cliente avançar de etapa sem redirect().
+  success?: boolean;
 }
 
 // Continuação do onboarding DEPOIS que a conta já existe — cada etapa
@@ -102,6 +106,7 @@ export async function savePrepareAction(
     return { error: 'Não foi possível salvar. Tente novamente.' };
   }
 
+  if (String(formData.get('modalMode') ?? '') === '1') return { success: true };
   redirect('/cadastro/plano');
 }
 
@@ -125,5 +130,9 @@ export async function savePlanAction(
     return { error: 'Não foi possível salvar o plano. Tente novamente.' };
   }
 
+  // A conclusão de verdade (etapa 7) sempre sai da Home pro painel, modo
+  // modal ou não — só as etapas INTERMEDIÁRIAS (1→2, 2→3) evitam
+  // redirect() quando o funil começou no modal. Ver CreateAccountModal.tsx.
+  if (String(formData.get('modalMode') ?? '') === '1') return { success: true };
   redirect('/dashboard');
 }

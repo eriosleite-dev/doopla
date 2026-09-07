@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useEffect } from 'react';
 
 import { TRIAL_DAYS, type PlanId } from '@/lib/market';
 import { OnboardingShell } from '../OnboardingShell';
@@ -10,11 +10,28 @@ import '../onboarding.css';
 
 const initialState: OnboardingFormState = {};
 
-export function PlanForm({ initialPlan }: { initialPlan: PlanId }) {
+// modalMode/onStepComplete — mesmo mecanismo de PrepareForm.tsx: funil
+// iniciado no modal da Home nunca deixa savePlanAction fazer redirect(),
+// então este componente avisa o wrapper (CreateAccountModal.tsx) do
+// sucesso via callback em vez de navegação automática do framework.
+export function PlanForm({
+  initialPlan,
+  modalMode = false,
+  onStepComplete,
+}: {
+  initialPlan: PlanId;
+  modalMode?: boolean;
+  onStepComplete?: () => void;
+}) {
   const [state, formAction, pending] = useActionState(savePlanAction, initialState);
+
+  useEffect(() => {
+    if (modalMode && state.success) onStepComplete?.();
+  }, [modalMode, state.success, onStepComplete]);
 
   return (
     <form action={formAction}>
+      {modalMode && <input type="hidden" name="modalMode" value="1" />}
       <OnboardingShell
         step={7}
         footer={
