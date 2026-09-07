@@ -307,6 +307,10 @@ export async function getSentInvites(
   bookerId: string,
   supabase: SupabaseServerClient
 ): Promise<Invite[]> {
+  // Sweep sob demanda (mesmo padrão de expire_stale_representation_requests)
+  // — garante que um convite já vencido aparece como 'expirada' pra quem
+  // enviou, não como 'pendente' desatualizado.
+  await supabase.rpc('expire_stale_invites');
   const { data } = await supabase
     .from('invites')
     .select('*')
@@ -1602,6 +1606,9 @@ export async function getPendingInvites(
   userId: string,
   supabase: SupabaseServerClient
 ): Promise<PendingInvite[]> {
+  // Mesmo sweep de getSentInvites — nunca oferecer "Aceitar conexão" pra
+  // um convite que já venceu, mesmo que o sweep ainda não tenha rodado.
+  await supabase.rpc('expire_stale_invites');
   const { data: invites } = await supabase
     .from('invites')
     .select('*')

@@ -217,7 +217,7 @@ export type BookingEvent = {
   created_at: string;
 };
 
-export type InviteStatus = 'pendente' | 'confirmado';
+export type InviteStatus = 'pendente' | 'confirmado' | 'expirada';
 
 export type Invite = {
   id: string;
@@ -225,18 +225,26 @@ export type Invite = {
   invitee_name: string;
   invitee_contact: string | null;
   invitee_profile_id: string | null;
+  invitee_role: UserRole;
   status: InviteStatus;
   token: string;
   created_at: string;
   confirmed_at: string | null;
+  expires_at: string;
+  resend_count: number;
+  last_resent_at: string | null;
 };
 
 // Retorno de get_invite_by_token — lookup público e mínimo pra
-// /convite/[token], nunca o convite inteiro.
+// /convite/[token], nunca o convite inteiro. invitee_role e is_expired
+// (migration 0069) tiram a página da dependência de "oposto do
+// inviter_role" e permitem distinguir "não existe" de "já venceu".
 export type InviteByToken = {
   inviter_name: string;
   inviter_role: UserRole;
   invitee_name: string;
+  invitee_role: UserRole;
+  is_expired: boolean;
 };
 
 export type Favorite = {
@@ -1524,6 +1532,14 @@ export type Database = {
       expire_stale_representation_requests: {
         Args: Record<string, never>;
         Returns: undefined;
+      };
+      expire_stale_invites: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      resend_invite: {
+        Args: { p_invite_id: string };
+        Returns: { new_token: string; new_expires_at: string }[];
       };
       expire_booker_pro_subscriptions: {
         Args: Record<string, never>;

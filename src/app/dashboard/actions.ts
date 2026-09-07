@@ -55,8 +55,14 @@ export async function confirmInviteAction(formData: FormData) {
   if (
     !invite ||
     invite.invitee_profile_id !== user.id ||
-    invite.status !== 'pendente'
+    invite.status !== 'pendente' ||
+    new Date(invite.expires_at) <= new Date()
   ) {
+    // Checagem de expires_at direto aqui (não só via expire_stale_invites)
+    // porque o sweep é sob demanda — sem isso, um convite vencido no
+    // exato intervalo entre vencer e o próximo sweep rodar ainda
+    // aceitaria normalmente. status='pendente' sozinho não é confiável
+    // pra essa garantia.
     return;
   }
 
@@ -1446,6 +1452,7 @@ export async function inviteArtistAction(
       inviter_profile_id: user.id,
       invitee_name: name,
       invitee_contact: contact || null,
+      invitee_role: 'artista',
     })
     .select('token')
     .single<{ token: string }>();
@@ -1474,6 +1481,7 @@ export async function inviteBookerAction(
       inviter_profile_id: user.id,
       invitee_name: name,
       invitee_contact: contact || null,
+      invitee_role: 'booker',
     })
     .select('token')
     .single<{ token: string }>();
@@ -1481,6 +1489,39 @@ export async function inviteBookerAction(
 
   revalidatePath('/dashboard/bookers');
   return { success: true, inviteToken: invite.token };
+}
+
+// Reenvio de convite (migration 0069) — regenera token/validade na
+// mesma linha via resend_invite (RPC decide autorização por
+// auth.uid() = inviter_profile_id, nunca confia em input do form pra
+// isso). Usado tanto pra convite expirado (recuperação) quanto ainda
+// pendente (link se perdeu). Nunca reenvia convite já confirmado — o
+// RPC recusa e devolve invite_already_confirmed.
+export async function resendInviteAction(
+  _prevState: { error?: string; success?: boolean; inviteToken?: string },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean; inviteToken?: string }> {
+  const inviteId = String(formData.get('inviteId') ?? '');
+  if (!inviteId) return { error: 'Convite não encontrado.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase } = ctx;
+
+  const { data, error } = await supabase
+    .rpc('resend_invite', { p_invite_id: inviteId })
+    .single<{ new_token: string; new_expires_at: string }>();
+
+  if (error || !data) {
+    if (error?.message.includes('invite_already_confirmed')) {
+      return { error: 'Esse convite já foi aceito — não há o que reenviar.' };
+    }
+    return { error: 'Não foi possível reenviar o convite agora.' };
+  }
+
+  revalidatePath('/dashboard/artistas');
+  revalidatePath('/dashboard/bookers');
+  return { success: true, inviteToken: data.new_token };
 }
 
 export async function setContractUrlAction(

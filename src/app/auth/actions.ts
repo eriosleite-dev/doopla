@@ -72,6 +72,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'jaRepresenta',
     'roster',
     'pendingInvites',
+    'pendingInviteToken',
     'artistCategories',
     'clientTypes',
     'regions',

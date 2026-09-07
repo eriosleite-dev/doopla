@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { AddConnectionModal } from '../add-connection-modal';
 import { confirmInviteAction, respondRepresentationRequestAction } from '../actions';
+import { ResendInviteButton } from '../resend-invite-button';
 import {
   getArtistBookerRelationships,
   getIncomingRepresentationRequests,
@@ -53,7 +54,9 @@ export default async function BookersPage() {
     name: r.bookerName,
     href: `/dashboard/bookers/${r.booker.profileId}`,
   }));
-  const invitesPending = sentInvites.filter((i) => i.status === 'pendente').map((i) => ({ key: i.id, name: i.invitee_name, href: null }));
+  const invitesPending = sentInvites
+    .filter((i) => i.status === 'pendente' || i.status === 'expirada')
+    .map((i) => ({ key: i.id, name: i.invitee_name, href: null, expired: i.status === 'expirada' }));
 
   const hasNothing = myBookers.length === 0 && incomingRequests.length === 0 && outgoingPending.length === 0 && invitesPending.length === 0 && receivedInvites.length === 0;
 
@@ -148,19 +151,25 @@ export default async function BookersPage() {
 
       {(outgoingPending.length > 0 || invitesPending.length > 0) && (
         <div className="mb-4 flex flex-col gap-2">
-          {[...outgoingPending, ...invitesPending].map((row) => (
+          {outgoingPending.map((row) => (
             <ProCard key={row.key} className="!p-4">
-              {row.href ? (
-                <Link href={row.href} className="flex items-center justify-between gap-3 text-[13px] text-[var(--pro-off)] hover:text-[var(--pro-tx-70)]">
-                  <span>{row.name}</span>
-                  <span className="text-[12px] text-[var(--pro-tx-50)]">Convite pendente · Aguardando aceite</span>
-                </Link>
-              ) : (
-                <div className="flex items-center justify-between gap-3 text-[13px] text-[var(--pro-off)]">
-                  <span>{row.name}</span>
-                  <span className="text-[12px] text-[var(--pro-tx-50)]">Convite pendente · Aguardando cadastro</span>
+              <Link href={row.href} className="flex items-center justify-between gap-3 text-[13px] text-[var(--pro-off)] hover:text-[var(--pro-tx-70)]">
+                <span>{row.name}</span>
+                <span className="text-[12px] text-[var(--pro-tx-50)]">Convite pendente · Aguardando aceite</span>
+              </Link>
+            </ProCard>
+          ))}
+          {invitesPending.map((row) => (
+            <ProCard key={row.key} className="!p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-[var(--pro-off)]">
+                <span>{row.name}</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[12px] ${row.expired ? 'text-[var(--pro-amber)]' : 'text-[var(--pro-tx-50)]'}`}>
+                    {row.expired ? 'Convite expirado' : 'Convite pendente · Aguardando cadastro'}
+                  </span>
+                  <ResendInviteButton inviteId={row.key} variant="pro" />
                 </div>
-              )}
+              </div>
             </ProCard>
           ))}
         </div>
