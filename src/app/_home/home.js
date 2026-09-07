@@ -24,13 +24,38 @@
   }, 150);
 })();
 
-(function boot() {
+// Exposto em window (em vez de IIFE auto-executada) porque <Script
+// id="home-marketing-anim" strategy="afterInteractive"> só roda esse
+// conteúdo UMA VEZ por sessão de app — é assim que o next/script evita
+// reinjetar a mesma tag repetida. Isso é o comportamento certo pra
+// scripts externos (idempotentes), mas quebra este boot(): ele
+// registra ScrollTrigger/listeners contra os elementos do DOM atual, e
+// quando a Home desmonta (navegação client-side pra /sobre, por
+// exemplo) e remonta depois (menu -> "Como funciona" volta pra "/"),
+// existe um <div id="home-marketing"> NOVO — mas o script nunca roda de
+// novo pra religar nada nele. Sintoma relatado: nav preso pra sempre no
+// estado inicial escondido (transform/pointer-events do 1º boot) depois
+// de sair e voltar pra Home por dentro do site. Quem chama isto a cada
+// remontagem é HomeMarketingBoot.tsx (useEffect real, roda em toda
+// montagem, sem o cache do next/script).
+window.__bootHomeMarketing = function boot() {
 // next/script (afterInteractive) não garante, na prática, que os dois
 // <script src> do GSAP terminem de carregar antes deste script inline
 // rodar, então espera window.gsap/ScrollTrigger existirem antes de seguir.
 if (typeof window.gsap === 'undefined' || typeof window.ScrollTrigger === 'undefined') {
   requestAnimationFrame(boot);
   return;
+}
+
+// Kill de tudo que uma chamada ANTERIOR de boot() deixou rodando —
+// necessário só a partir da 2ª chamada (remontagem), mas inofensivo na
+// 1ª (não existe nada pra matar ainda). GSAP/ScrollTrigger não sabem
+// sozinhos que os elementos do mount anterior já saíram do DOM.
+ScrollTrigger.getAll().forEach(function (st) { st.kill(); });
+gsap.globalTimeline.clear();
+if (window.__homeMarketingMouseHandler) {
+  window.removeEventListener('mousemove', window.__homeMarketingMouseHandler);
+  window.__homeMarketingMouseHandler = null;
 }
 
 gsap.registerPlugin(ScrollTrigger);
@@ -130,7 +155,8 @@ function resetIdle(){
   clearTimeout(idleTimer);
   idleTimer = setTimeout(startIdleWander, 2800);
 }
-window.addEventListener('mousemove', (e)=>{ resetIdle(); trackTo(e.clientX, e.clientY); });
+window.__homeMarketingMouseHandler = (e)=>{ resetIdle(); trackTo(e.clientX, e.clientY); };
+window.addEventListener('mousemove', window.__homeMarketingMouseHandler);
 resetIdle();
 
 function startBlinking(eyes){
@@ -311,4 +337,4 @@ heroEyes.entrance();
   });
   ScrollTrigger.create({ trigger:"#home-marketing .manda", start:"top 70%", once:true, onEnter: mandaEyes.entrance });
 })();
-})();
+};

@@ -5,6 +5,7 @@ import Script from 'next/script';
 
 import { HomeCreateAccountModal } from './_home/HomeCreateAccountModal';
 import { HomeLoginModal } from './_home/HomeLoginModal';
+import { HomeMarketingBoot } from './_home/HomeMarketingBoot';
 import { HomeMenuOverlay } from './_home/HomeMenuOverlay';
 import { HomeSoftNav } from './_home/HomeSoftNav';
 
@@ -44,6 +45,7 @@ export default function Home() {
       <HomeMenuOverlay />
       <HomeCreateAccountModal />
       <HomeSoftNav />
+      <HomeMarketingBoot />
     </>
   );
 }
