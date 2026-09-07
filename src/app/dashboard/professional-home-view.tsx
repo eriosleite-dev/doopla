@@ -71,6 +71,35 @@ export async function ProfessionalHomeView({
     );
   }
 
+  const upcomingBookingsAccordion = (
+    <ProAccordion title="Próximos bookings" rightLink={{ label: 'Ver agenda', href: '/dashboard/agenda' }}>
+      {upcomingBookings.length === 0 ? (
+        <p className="py-2 text-[13px] text-[var(--pro-tx-50)]">Nenhum booking confirmado por vir ainda.</p>
+      ) : (
+        <div>
+          {upcomingBookings.map((b) => (
+            <div key={b.id} className="flex items-center gap-3 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
+              <div className="font-doopla-mono w-9 flex-none text-center text-[10.5px] text-[var(--pro-tx-50)]">
+                <b className="font-pro-display block text-[16px] font-normal text-[var(--pro-off)]">
+                  {b.event_date ? new Date(`${b.event_date}T00:00:00`).getDate() : '-'}
+                </b>
+                {b.event_date &&
+                  new Date(`${b.event_date}T00:00:00`).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-pro-sub truncate text-[13.5px] font-bold">{b.otherPartyName}</p>
+                <p className="truncate text-[11px] text-[var(--pro-tx-50)]">{b.event_location || 'Local a definir'}</p>
+              </div>
+              <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(PRO_BOOKING_PILL_TONE[b.status] ?? 'amber')}>
+                {STATUS_LABELS[b.status] ?? b.status}
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </ProAccordion>
+  );
+
   return (
     <div>
       <ProHero fullName={profile.full_name} needsYouCount={conversationSummary.needsYouCount} />
@@ -82,8 +111,16 @@ export async function ProfessionalHomeView({
         completed={homeFacts.bookingsCompletedCount}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-        <div className="min-w-0">
+      {/* Recomposição do grid (07/09/2026) — cada "linha" abaixo é sua
+         própria mini-grid de 2 colunas, então a altura de cada linha é
+         determinada só pelo conteúdo daquela linha (o card da direita
+         nunca fica esticado nem deixa um vão vazio embaixo do
+         accordion fechado da esquerda). Sem altura fixa, sem margin
+         hack, sem cálculo JS — só grid row auto-sizing normal,
+         reaproveitado em várias linhas pareadas em vez de uma coluna
+         contínua só. */}
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
           <ProAccordion id="precisa-de-voce" title="Precisa de você" count={conversationSummary.needsYouCount} defaultOpen={false}>
             {needsYouDecisions.length === 0 ? (
               <p className="font-pro-sub py-2 text-[14px] font-semibold text-[var(--pro-off)]">
@@ -135,33 +172,19 @@ export async function ProfessionalHomeView({
             )}
           </ProAccordion>
 
-          <ProAccordion title="Próximos bookings" rightLink={{ label: 'Ver agenda', href: '/dashboard/agenda' }}>
-            {upcomingBookings.length === 0 ? (
-              <p className="py-2 text-[13px] text-[var(--pro-tx-50)]">Nenhum booking confirmado por vir ainda.</p>
-            ) : (
-              <div>
-                {upcomingBookings.map((b) => (
-                  <div key={b.id} className="flex items-center gap-3 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
-                    <div className="font-doopla-mono w-9 flex-none text-center text-[10.5px] text-[var(--pro-tx-50)]">
-                      <b className="font-pro-display block text-[16px] font-normal text-[var(--pro-off)]">
-                        {b.event_date ? new Date(`${b.event_date}T00:00:00`).getDate() : '-'}
-                      </b>
-                      {b.event_date &&
-                        new Date(`${b.event_date}T00:00:00`).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-pro-sub truncate text-[13.5px] font-bold">{b.otherPartyName}</p>
-                      <p className="truncate text-[11px] text-[var(--pro-tx-50)]">{b.event_location || 'Local a definir'}</p>
-                    </div>
-                    <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(PRO_BOOKING_PILL_TONE[b.status] ?? 'amber')}>
-                      {STATUS_LABELS[b.status] ?? b.status}
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ProAccordion>
+          <BookingChannelsCard orcamentoUrl={orcamentoUrl} whatsappNumber={whatsappNumber} professionalSlug={profile.slug} />
+        </div>
 
+        {referralSummary ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+            {upcomingBookingsAccordion}
+            <ReferralCard referralTotal={homeFacts.referralTotalCount} referralQualifiedCents={referralSummary.qualifiedTotalCents} />
+          </div>
+        ) : (
+          upcomingBookingsAccordion
+        )}
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
           <ProAccordion title="Atividade da Doopla" rightLink={{ label: 'Ver todas', href: '/dashboard/trabalhos' }}>
             {recentActivity.length === 0 ? (
               <p className="py-2 text-[13px] text-[var(--pro-tx-50)]">Nenhuma atividade registrada ainda.</p>
@@ -181,37 +204,29 @@ export async function ProfessionalHomeView({
             )}
           </ProAccordion>
 
-          <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-4 sm:p-5">
-            <p className="font-pro-sub text-[16px] font-bold">Sua Doopla em ação</p>
-            {homeFacts.bookingsConfirmedCount === 0 && homeFacts.bookingsCompletedCount === 0 && homeFacts.referralQualifiedCount === 0 ? (
-              <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">
-                Ainda não há histórico suficiente pra mostrar aqui. Assim que os primeiros bookings avançarem, este
-                resumo aparece.
-              </p>
-            ) : (
-              <div className="mt-3 flex flex-wrap gap-6">
-                <div>
-                  <p className="font-pro-display text-[20px]">{homeFacts.bookingsConfirmedCount + homeFacts.bookingsCompletedCount}</p>
-                  <p className="text-[10.5px] text-[var(--pro-tx-50)]">Bookings conduzidos</p>
-                </div>
-                <div>
-                  <p className="font-pro-display text-[20px]">{homeFacts.referralQualifiedCount}</p>
-                  <p className="text-[10.5px] text-[var(--pro-tx-50)]">Indicações qualificadas</p>
-                </div>
-              </div>
-            )}
-          </div>
+          <TalkToDooplaCard whatsappNumber={whatsappNumber} whatsappIdentityStatus={homeFacts.whatsappIdentityStatus} />
         </div>
 
-        <RightColumn
-          orcamentoUrl={orcamentoUrl}
-          whatsappNumber={whatsappNumber}
-          whatsappIdentityStatus={homeFacts.whatsappIdentityStatus}
-          professionalSlug={profile.slug}
-          referralEligible={!!referralSummary}
-          referralTotal={homeFacts.referralTotalCount}
-          referralQualifiedCents={referralSummary?.qualifiedTotalCents ?? 0}
-        />
+        <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-4 sm:p-5">
+          <p className="font-pro-sub text-[16px] font-bold">Sua Doopla em ação</p>
+          {homeFacts.bookingsConfirmedCount === 0 && homeFacts.bookingsCompletedCount === 0 && homeFacts.referralQualifiedCount === 0 ? (
+            <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">
+              Ainda não há histórico suficiente pra mostrar aqui. Assim que os primeiros bookings avançarem, este
+              resumo aparece.
+            </p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-6">
+              <div>
+                <p className="font-pro-display text-[20px]">{homeFacts.bookingsConfirmedCount + homeFacts.bookingsCompletedCount}</p>
+                <p className="text-[10.5px] text-[var(--pro-tx-50)]">Bookings conduzidos</p>
+              </div>
+              <div>
+                <p className="font-pro-display text-[20px]">{homeFacts.referralQualifiedCount}</p>
+                <p className="text-[10.5px] text-[var(--pro-tx-50)]">Indicações qualificadas</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -322,146 +337,142 @@ function StatsRow({ needsYou, waitingClient, confirmed, completed }: { needsYou:
   );
 }
 
-function RightColumn({
+function BookingChannelsCard({
   orcamentoUrl,
   whatsappNumber,
-  whatsappIdentityStatus,
   professionalSlug,
-  referralEligible,
-  referralTotal,
-  referralQualifiedCents,
 }: {
   orcamentoUrl: string | null;
   whatsappNumber: string | null;
-  whatsappIdentityStatus: string | null;
   professionalSlug: string | null;
-  referralEligible: boolean;
-  referralTotal: number;
-  referralQualifiedCents: number;
 }) {
+  return (
+    <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] backdrop-blur-xl">
+      <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Seus canais de booking</p>
+      {orcamentoUrl ? (
+        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu link de orçamento</p>
+            <p className="font-doopla-mono truncate text-[12px]">{orcamentoUrl.replace(/^https?:\/\//, '')}</p>
+          </div>
+          <ProCopyButton value={orcamentoUrl} label="Link copiado." />
+        </div>
+      ) : (
+        <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)] first:border-t-0">
+          Seu link de orçamento ainda não está ativo.{' '}
+          <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
+            Ativar
+          </Link>
+        </p>
+      )}
+      {/* Correção 06/09/2026 — "WhatsApp da Doopla" é um CANAL, não um
+         dado condicional: a ausência de NEXT_PUBLIC_WHATSAPP_NUMBER
+         (número oficial ainda em análise no WhatsApp/Meta) é um
+         estado esperado, nunca motivo pra esconder a linha inteira.
+         "Dado/canal inexistente no momento" ≠ "esconder a feature". */}
+      <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10.5px] text-[var(--pro-tx-50)]">WhatsApp da Doopla</p>
+          {whatsappNumber ? (
+            <p className="font-doopla-mono truncate text-[12px]">{whatsappNumber}</p>
+          ) : (
+            <p className="font-doopla-mono truncate text-[12px] text-[var(--pro-tx-30)]">Em configuração</p>
+          )}
+        </div>
+      </div>
+      {professionalSlug ? (
+        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código ID</p>
+            <p className="font-doopla-mono truncate text-[12px]">{professionalSlug}</p>
+          </div>
+          <ProCopyButton value={professionalSlug} label="Código copiado." />
+        </div>
+      ) : (
+        <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)]">
+          Seu código ID ainda não está disponível.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReferralCard({ referralTotal, referralQualifiedCents }: { referralTotal: number; referralQualifiedCents: number }) {
+  return (
+    <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] text-center backdrop-blur-xl">
+      <p className="font-pro-sub mb-2 text-left text-[13.5px] font-bold">Indique e ganhe</p>
+      <div
+        className="mx-auto mb-2.5 flex h-16 w-16 items-center justify-center rounded-full font-pro-display text-[20px] text-[var(--pro-black)]"
+        style={{ background: 'radial-gradient(circle at 40% 35%, #4ee27a, var(--pro-green) 65%)', boxShadow: '0 0 30px rgba(62,207,110,.5)' }}
+      >
+        $
+      </div>
+      <p className="font-pro-display text-[22px] text-[var(--pro-green)]">{formatCentsAsBRL(referralQualifiedCents)}</p>
+      <p className="mb-3 text-[11px] text-[var(--pro-tx-50)]">
+        {referralTotal > 0
+          ? `${referralTotal} indicação${referralTotal > 1 ? 'ões' : ''} registrada${referralTotal > 1 ? 's' : ''}`
+          : 'Nenhuma indicação ainda'}
+      </p>
+      <ProReferralGainsButton />
+    </div>
+  );
+}
+
+function TalkToDooplaCard({ whatsappNumber, whatsappIdentityStatus }: { whatsappNumber: string | null; whatsappIdentityStatus: string | null }) {
   const talkUrl = whatsappNumber ? buildTalkToYourDooplaUrl(whatsappNumber) : null;
   const isWhatsappVerified = whatsappIdentityStatus === 'verified';
 
   return (
-    <aside className="flex flex-col gap-3.5 lg:sticky lg:top-6">
-      <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] backdrop-blur-xl">
-        <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Seus canais de booking</p>
-        {orcamentoUrl ? (
-          <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu link de orçamento</p>
-              <p className="font-doopla-mono truncate text-[12px]">{orcamentoUrl.replace(/^https?:\/\//, '')}</p>
-            </div>
-            <ProCopyButton value={orcamentoUrl} label="Link copiado." />
-          </div>
-        ) : (
-          <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)] first:border-t-0">
-            Seu link de orçamento ainda não está ativo.{' '}
-            <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
-              Ativar
-            </Link>
-          </p>
-        )}
-        {/* Correção 06/09/2026 — "WhatsApp da Doopla" é um CANAL, não um
-           dado condicional: a ausência de NEXT_PUBLIC_WHATSAPP_NUMBER
-           (número oficial ainda em análise no WhatsApp/Meta) é um
-           estado esperado, nunca motivo pra esconder a linha inteira.
-           "Dado/canal inexistente no momento" ≠ "esconder a feature". */}
-        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10.5px] text-[var(--pro-tx-50)]">WhatsApp da Doopla</p>
-            {whatsappNumber ? (
-              <p className="font-doopla-mono truncate text-[12px]">{whatsappNumber}</p>
-            ) : (
-              <p className="font-doopla-mono truncate text-[12px] text-[var(--pro-tx-30)]">Em configuração</p>
-            )}
-          </div>
+    <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] backdrop-blur-xl">
+      <div className="mb-4 flex items-center gap-3">
+        <div
+          className="flex h-11 w-11 flex-none items-center justify-center gap-1.5 rounded-full"
+          style={{ background: 'radial-gradient(circle at 38% 32%, #ff4a38, var(--pro-red) 60%)', boxShadow: '0 0 24px var(--pro-red-glow)' }}
+        >
+          {[0, 1].map((i) => (
+            <span key={i} className="relative flex h-[9px] w-[9px] items-center justify-center rounded-full bg-[var(--pro-black)]">
+              <span className="h-[4px] w-[4px] rounded-full bg-[var(--pro-off)]" />
+            </span>
+          ))}
         </div>
-        {professionalSlug ? (
-          <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código ID</p>
-              <p className="font-doopla-mono truncate text-[12px]">{professionalSlug}</p>
-            </div>
-            <ProCopyButton value={professionalSlug} label="Código copiado." />
-          </div>
-        ) : (
-          <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)]">
-            Seu código ID ainda não está disponível.
-          </p>
-        )}
+        <div className="min-w-0">
+          <p className="font-pro-sub text-[13.5px] font-bold">Falar com minha Doopla</p>
+          <p className="text-[11.5px] text-[var(--pro-tx-50)]">Pergunte algo ou peça uma ação</p>
+        </div>
       </div>
-
-      {referralEligible && (
-        <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] text-center backdrop-blur-xl">
-          <p className="font-pro-sub mb-2 text-left text-[13.5px] font-bold">Indique e ganhe</p>
-          <div
-            className="mx-auto mb-2.5 flex h-16 w-16 items-center justify-center rounded-full font-pro-display text-[20px] text-[var(--pro-black)]"
-            style={{ background: 'radial-gradient(circle at 40% 35%, #4ee27a, var(--pro-green) 65%)', boxShadow: '0 0 30px rgba(62,207,110,.5)' }}
-          >
-            $
-          </div>
-          <p className="font-pro-display text-[22px] text-[var(--pro-green)]">{formatCentsAsBRL(referralQualifiedCents)}</p>
-          <p className="mb-3 text-[11px] text-[var(--pro-tx-50)]">
-            {referralTotal > 0
-              ? `${referralTotal} indicação${referralTotal > 1 ? 'ões' : ''} registrada${referralTotal > 1 ? 's' : ''}`
-              : 'Nenhuma indicação ainda'}
-          </p>
-          <ProReferralGainsButton />
-        </div>
+      {/* Item 5 da rodada de correção/consistência (06/09/2026) — 3
+         estados nunca confundidos: (i) canal + identidade OK -> CTA
+         ativa só; (ii) canal existe mas WhatsApp do profissional
+         ainda não verificado -> CTA continua ativa (a mensagem chega
+         de qualquer forma), mas com aviso explícito + link real pro
+         fluxo de verificação (OTP/WhatsApp Identity, já existente em
+         Configurações — nunca um atalho novo que ignore essa
+         verificação); (iii) sem talkUrl (NEXT_PUBLIC_WHATSAPP_NUMBER
+         ausente) -> estado indisponível honesto, nunca um número
+         fake nem um link quebrado. */}
+      {talkUrl && !isWhatsappVerified && (
+        <p className="mb-3 text-[11px] leading-snug text-[var(--pro-tx-50)]">
+          Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.{' '}
+          <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
+            Verificar meu WhatsApp →
+          </Link>
+        </p>
       )}
-
-      <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] backdrop-blur-xl">
-        <div className="mb-4 flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 flex-none items-center justify-center gap-1.5 rounded-full"
-            style={{ background: 'radial-gradient(circle at 38% 32%, #ff4a38, var(--pro-red) 60%)', boxShadow: '0 0 24px var(--pro-red-glow)' }}
-          >
-            {[0, 1].map((i) => (
-              <span key={i} className="relative flex h-[9px] w-[9px] items-center justify-center rounded-full bg-[var(--pro-black)]">
-                <span className="h-[4px] w-[4px] rounded-full bg-[var(--pro-off)]" />
-              </span>
-            ))}
-          </div>
-          <div className="min-w-0">
-            <p className="font-pro-sub text-[13.5px] font-bold">Falar com minha Doopla</p>
-            <p className="text-[11.5px] text-[var(--pro-tx-50)]">Pergunte algo ou peça uma ação</p>
-          </div>
-        </div>
-        {/* Item 5 da rodada de correção/consistência (06/09/2026) — 3
-           estados nunca confundidos: (i) canal + identidade OK -> CTA
-           ativa só; (ii) canal existe mas WhatsApp do profissional
-           ainda não verificado -> CTA continua ativa (a mensagem chega
-           de qualquer forma), mas com aviso explícito + link real pro
-           fluxo de verificação (OTP/WhatsApp Identity, já existente em
-           Configurações — nunca um atalho novo que ignore essa
-           verificação); (iii) sem talkUrl (NEXT_PUBLIC_WHATSAPP_NUMBER
-           ausente) -> estado indisponível honesto, nunca um número
-           fake nem um link quebrado. */}
-        {talkUrl && !isWhatsappVerified && (
-          <p className="mb-3 text-[11px] leading-snug text-[var(--pro-tx-50)]">
-            Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.{' '}
-            <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
-              Verificar meu WhatsApp →
-            </Link>
-          </p>
-        )}
-        {talkUrl ? (
-          <a
-            href={talkUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex w-full items-center justify-center gap-2.5 rounded-full py-3.5 text-[13.5px] font-bold text-white shadow-[0_0_22px_rgba(37,211,102,.4)]"
-            style={{ background: 'var(--pro-whatsapp)' }}
-          >
-            <WhatsAppLogoIcon />
-            Falar no WhatsApp
-          </a>
-        ) : (
-          <p className="text-[11.5px] text-[var(--pro-tx-30)]">Canal da Doopla indisponível no momento.</p>
-        )}
-      </div>
-    </aside>
+      {talkUrl ? (
+        <a
+          href={talkUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex w-full items-center justify-center gap-2.5 rounded-full py-3.5 text-[13.5px] font-bold text-white shadow-[0_0_22px_rgba(37,211,102,.4)]"
+          style={{ background: 'var(--pro-whatsapp)' }}
+        >
+          <WhatsAppLogoIcon />
+          Falar no WhatsApp
+        </a>
+      ) : (
+        <p className="text-[11.5px] text-[var(--pro-tx-30)]">Canal da Doopla indisponível no momento.</p>
+      )}
+    </div>
   );
 }
 
