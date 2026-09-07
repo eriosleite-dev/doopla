@@ -162,6 +162,16 @@ export async function fetchExternalParticipant(externalParticipantId: string): P
   return (data as ExternalParticipant | null) ?? null;
 }
 
+// Correção de UX de Decisões (06/09/2026) — espelha
+// getExternalParticipants (painel web), versão em lote pra resolver
+// nome real de cliente em conversas sem booking associado.
+export async function fetchExternalParticipants(ids: string[]): Promise<Map<string, ExternalParticipant>> {
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase.from('external_participants').select('id, name, phone, email').in('id', [...new Set(ids)]);
+  if (error) throw error;
+  return new Map(((data ?? []) as ExternalParticipant[]).map((p) => [p.id, p]));
+}
+
 // Resultado simplificado pra UI mobile — não persegue byte a byte o
 // RuntimeCycleOutcome completo do Runtime (src/lib/runtime/types.ts,
 // campos internos como policyGateOutcome/resumptions não interessam à

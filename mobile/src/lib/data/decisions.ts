@@ -125,3 +125,130 @@ export async function fetchActionableDecisions(): Promise<DecisionItem[]> {
 
   return [...fromPendingReplies, ...fromDrafts].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
+
+// Espelha groupDecisionsByConversation/sortDecisionsByPriority (painel
+// web, src/lib/decisions/data.ts) — mesma regra: 1 card por conversa
+// (prepared_draft vence quando a mesma conversa tem as duas linhas),
+// prioridade prepared_draft > pending_reply comum > pending_reply
+// bloqueado por dado operacional faltando; dentro de cada prioridade,
+// mais antigo primeiro.
+export function groupDecisionsByConversation(decisions: DecisionItem[]): DecisionItem[] {
+  const byConversation = new Map<string, DecisionItem>();
+  for (const d of decisions) {
+    const existing = byConversation.get(d.conversationId);
+    if (!existing || (existing.kind === 'pending_reply' && d.kind === 'prepared_draft')) {
+      byConversation.set(d.conversationId, d);
+    }
+  }
+  return [...byConversation.values()];
+}
+
+const DECISION_PRIORITY = (d: DecisionItem): number => {
+  if (d.kind === 'prepared_draft') return 0;
+  if (d.blockReason === 'professional_not_operationally_ready') return 2;
+  return 1;
+};
+
+export function sortDecisionsByPriority(decisions: DecisionItem[]): DecisionItem[] {
+  return [...decisions].sort((a, b) => {
+    const priorityDiff = DECISION_PRIORITY(a) - DECISION_PRIORITY(b);
+    if (priorityDiff !== 0) return priorityDiff;
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
+// Espelha listResolvedDecisions (painel web) — mesmas duas fontes reais
+// de "isto já foi decidido", mesma regra de rótulo, nenhuma terceira
+// fonte inventada.
+export type ResolvedDecisionItem = {
+  id: string;
+  conversationId: string;
+  relatedBookingId: string | null;
+  resolvedAt: string;
+  outcomeLabel: string;
+};
+
+type RawResolvedPendingReplyRow = {
+  id: string;
+  conversation_id: string;
+  status: string;
+  resolved_at: string | null;
+  superseded_by_id: string | null;
+};
+
+type RawResolvedMessageRow = {
+  id: string;
+  conversation_id: string;
+  created_at: string;
+  prepared_response_outcome: string | null;
+};
+
+function pendingReplyOutcomeLabel(status: string, supersededById: string | null): string {
+  if (status === 'completed') return 'Você respondeu e a Doopla retomou a conversa.';
+  if (supersededById) return 'Substituída por uma decisão mais recente na mesma conversa.';
+  return 'Encerrada — a negociação nesta conversa chegou ao fim.';
+}
+
+function preparedDraftOutcomeLabel(outcome: string | null): string {
+  if (outcome === 'edited') return 'Você editou o rascunho da Doopla antes de enviar.';
+  return 'Você aprovou e enviou o rascunho da Doopla.';
+}
+
+export async function fetchResolvedDecisions(limit = 50): Promise<ResolvedDecisionItem[]> {
+  const [resolvedRepliesResult, resolvedMessagesResult] = await Promise.all([
+    supabase
+      .from('runtime_pending_replies')
+      .select('id, conversation_id, status, resolved_at, superseded_by_id')
+      .in('status', ['completed', 'superseded'])
+      .order('resolved_at', { ascending: false })
+      .limit(limit)
+      .returns<RawResolvedPendingReplyRow[]>(),
+    supabase
+      .from('conversation_messages')
+      .select('id, conversation_id, created_at, prepared_response_outcome')
+      .not('replied_to_outbound_intent_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+      .returns<RawResolvedMessageRow[]>(),
+  ]);
+  if (resolvedRepliesResult.error) throw resolvedRepliesResult.error;
+  if (resolvedMessagesResult.error) throw resolvedMessagesResult.error;
+
+  const resolvedReplies = resolvedRepliesResult.data ?? [];
+  const resolvedMessages = resolvedMessagesResult.data ?? [];
+
+  const conversationIds = [...new Set([...resolvedReplies.map((r) => r.conversation_id), ...resolvedMessages.map((m) => m.conversation_id)])];
+  const { data: conversations, error: conversationsError } = conversationIds.length
+    ? await supabase.from('conversations').select('id, related_booking_id').in('id', conversationIds).returns<{ id: string; related_booking_id: string | null }[]>()
+    : { data: [] as { id: string; related_booking_id: string | null }[], error: null };
+  if (conversationsError) throw conversationsError;
+  const conversationById = new Map((conversations ?? []).map((c) => [c.id, c]));
+
+  const fromReplies: ResolvedDecisionItem[] = resolvedReplies
+    .filter((r) => r.resolved_at)
+    .map((r) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      relatedBookingId: conversationById.get(r.conversation_id)?.related_booking_id ?? null,
+      resolvedAt: r.resolved_at as string,
+      outcomeLabel: pendingReplyOutcomeLabel(r.status, r.superseded_by_id),
+    }));
+
+  const fromMessages: ResolvedDecisionItem[] = resolvedMessages.map((m) => ({
+    id: m.id,
+    conversationId: m.conversation_id,
+    relatedBookingId: conversationById.get(m.conversation_id)?.related_booking_id ?? null,
+    resolvedAt: m.created_at,
+    outcomeLabel: preparedDraftOutcomeLabel(m.prepared_response_outcome),
+  }));
+
+  return [...fromReplies, ...fromMessages].sort((a, b) => b.resolvedAt.localeCompare(a.resolvedAt)).slice(0, limit);
+}
+
+export function decisionBlockReasonLabel(reason: string | null): string {
+  if (!reason) return 'A Doopla está esperando uma decisão sua pra continuar essa conversa.';
+  if (reason === 'professional_not_operationally_ready') {
+    return 'Precisa confirmar alguns dados antes da Doopla continuar por você.';
+  }
+  return 'A Doopla pausou aqui e precisa de você pra seguir.';
+}
