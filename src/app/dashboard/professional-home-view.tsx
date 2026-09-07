@@ -111,16 +111,20 @@ export async function ProfessionalHomeView({
         completed={homeFacts.bookingsCompletedCount}
       />
 
-      {/* Recomposição do grid (07/09/2026) — cada "linha" abaixo é sua
-         própria mini-grid de 2 colunas, então a altura de cada linha é
-         determinada só pelo conteúdo daquela linha (o card da direita
-         nunca fica esticado nem deixa um vão vazio embaixo do
-         accordion fechado da esquerda). Sem altura fixa, sem margin
-         hack, sem cálculo JS — só grid row auto-sizing normal,
-         reaproveitado em várias linhas pareadas em vez de uma coluna
-         contínua só. */}
-      <div className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+      {/* Recomposição do grid (07/09/2026, corrigida) — UM grid só de 2
+         colunas (lg:items-start), cada coluna é uma pilha vertical
+         independente (nunca linhas pareadas card-a-card — isso foi
+         tentado antes e criava vãos enormes sempre que o card da
+         direita numa "linha" era bem mais alto que o accordion fechado
+         correspondente à esquerda). A direita começa alinhada ao topo
+         da esquerda; depois cada lado segue sua própria altura natural.
+         Espaçamento: ProAccordion já tem mb-3.5 embutido (mesmo
+         componente usado em outras páginas — não alterado aqui), por
+         isso a coluna esquerda não usa gap (dobraria o espaçamento);
+         a direita usa gap-3.5 pra igualar visualmente, já que os cards
+         de lá não têm margin próprio. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+        <div className="min-w-0">
           <ProAccordion id="precisa-de-voce" title="Precisa de você" count={conversationSummary.needsYouCount} defaultOpen={false}>
             {needsYouDecisions.length === 0 ? (
               <p className="font-pro-sub py-2 text-[14px] font-semibold text-[var(--pro-off)]">
@@ -172,19 +176,8 @@ export async function ProfessionalHomeView({
             )}
           </ProAccordion>
 
-          <BookingChannelsCard orcamentoUrl={orcamentoUrl} whatsappNumber={whatsappNumber} professionalSlug={profile.slug} />
-        </div>
+          {upcomingBookingsAccordion}
 
-        {referralSummary ? (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
-            {upcomingBookingsAccordion}
-            <ReferralCard referralTotal={homeFacts.referralTotalCount} referralQualifiedCents={referralSummary.qualifiedTotalCents} />
-          </div>
-        ) : (
-          upcomingBookingsAccordion
-        )}
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
           <ProAccordion title="Atividade da Doopla" rightLink={{ label: 'Ver todas', href: '/dashboard/trabalhos' }}>
             {recentActivity.length === 0 ? (
               <p className="py-2 text-[13px] text-[var(--pro-tx-50)]">Nenhuma atividade registrada ainda.</p>
@@ -204,28 +197,34 @@ export async function ProfessionalHomeView({
             )}
           </ProAccordion>
 
-          <TalkToDooplaCard whatsappNumber={whatsappNumber} whatsappIdentityStatus={homeFacts.whatsappIdentityStatus} />
+          <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-4 sm:p-5">
+            <p className="font-pro-sub text-[16px] font-bold">Sua Doopla em ação</p>
+            {homeFacts.bookingsConfirmedCount === 0 && homeFacts.bookingsCompletedCount === 0 && homeFacts.referralQualifiedCount === 0 ? (
+              <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">
+                Ainda não há histórico suficiente pra mostrar aqui. Assim que os primeiros bookings avançarem, este
+                resumo aparece.
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-6">
+                <div>
+                  <p className="font-pro-display text-[20px]">{homeFacts.bookingsConfirmedCount + homeFacts.bookingsCompletedCount}</p>
+                  <p className="text-[10.5px] text-[var(--pro-tx-50)]">Bookings conduzidos</p>
+                </div>
+                <div>
+                  <p className="font-pro-display text-[20px]">{homeFacts.referralQualifiedCount}</p>
+                  <p className="text-[10.5px] text-[var(--pro-tx-50)]">Indicações qualificadas</p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-4 sm:p-5">
-          <p className="font-pro-sub text-[16px] font-bold">Sua Doopla em ação</p>
-          {homeFacts.bookingsConfirmedCount === 0 && homeFacts.bookingsCompletedCount === 0 && homeFacts.referralQualifiedCount === 0 ? (
-            <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">
-              Ainda não há histórico suficiente pra mostrar aqui. Assim que os primeiros bookings avançarem, este
-              resumo aparece.
-            </p>
-          ) : (
-            <div className="mt-3 flex flex-wrap gap-6">
-              <div>
-                <p className="font-pro-display text-[20px]">{homeFacts.bookingsConfirmedCount + homeFacts.bookingsCompletedCount}</p>
-                <p className="text-[10.5px] text-[var(--pro-tx-50)]">Bookings conduzidos</p>
-              </div>
-              <div>
-                <p className="font-pro-display text-[20px]">{homeFacts.referralQualifiedCount}</p>
-                <p className="text-[10.5px] text-[var(--pro-tx-50)]">Indicações qualificadas</p>
-              </div>
-            </div>
+        <div className="flex flex-col gap-3.5">
+          <BookingChannelsCard orcamentoUrl={orcamentoUrl} whatsappNumber={whatsappNumber} professionalSlug={profile.slug} />
+          {referralSummary && (
+            <ReferralCard referralTotal={homeFacts.referralTotalCount} referralQualifiedCents={referralSummary.qualifiedTotalCents} />
           )}
+          <TalkToDooplaCard whatsappNumber={whatsappNumber} whatsappIdentityStatus={homeFacts.whatsappIdentityStatus} />
         </div>
       </div>
     </div>
