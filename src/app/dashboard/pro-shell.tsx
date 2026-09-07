@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
 
+import { NotificationBell } from './notification-bell';
 import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
 import { ProSidebarReferralLink } from './pro-sidebar-referral-link';
 import { initialsFromName } from './ui';
@@ -12,8 +13,6 @@ export function ProfessionalShell({
   email,
   avatarUrl,
   subscriptionPlan,
-  attentionCount,
-  bellUrgent,
   bookingsAwaitingCount,
   decisionsCount,
   referralEligible,
@@ -23,8 +22,6 @@ export function ProfessionalShell({
   email: string;
   avatarUrl: string | null;
   subscriptionPlan: string | null;
-  attentionCount: number;
-  bellUrgent: boolean;
   bookingsAwaitingCount: number;
   decisionsCount: number;
   referralEligible: boolean;
@@ -135,27 +132,7 @@ export function ProfessionalShell({
       <div className="flex flex-1 flex-col md:flex-row">
         <main className="min-w-0 flex-1 px-5 py-6 sm:px-8 sm:py-7">
           <div className="mb-4 flex items-center justify-end gap-2.5">
-            <Link
-              href="/dashboard#precisa-de-voce"
-              aria-label={
-                attentionCount > 0 ? `${attentionCount} itens precisam da sua atenção` : 'Nenhuma pendência no momento'
-              }
-              className="relative flex h-9 w-9 items-center justify-center rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" />
-                <path d="M10 21a2 2 0 0 0 4 0" />
-              </svg>
-              {attentionCount > 0 && (
-                <span
-                  className={`font-doopla-mono absolute -top-[3px] -right-[3px] flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold text-white ${
-                    bellUrgent ? 'bg-[var(--pro-red)]' : 'bg-[var(--pro-amber)]'
-                  }`}
-                >
-                  {attentionCount > 9 ? '9+' : attentionCount}
-                </span>
-              )}
-            </Link>
+            <NotificationBell />
             <Link
               href="/dashboard/comunidade"
               aria-label="Comunidade"

@@ -90,8 +90,6 @@ export default async function DashboardLayout({
             fullName={profile.full_name}
             email={user.email ?? ''}
             avatarUrl={profile.avatar_url}
-            attentionCount={attentionCount}
-            bellUrgent={bellUrgent}
             referralEligible={!!referralUrl && !!referralSummary}
           >
             {children}
@@ -131,8 +129,6 @@ async function ProfessionalShellGate({
   fullName,
   email,
   avatarUrl,
-  attentionCount,
-  bellUrgent,
   referralEligible,
   children,
 }: {
@@ -140,8 +136,6 @@ async function ProfessionalShellGate({
   fullName: string;
   email: string;
   avatarUrl: string | null;
-  attentionCount: number;
-  bellUrgent: boolean;
   referralEligible: boolean;
   children: React.ReactNode;
 }) {
@@ -155,8 +149,6 @@ async function ProfessionalShellGate({
       email={email}
       avatarUrl={avatarUrl}
       subscriptionPlan={homeFacts?.subscriptionPlan ?? null}
-      attentionCount={attentionCount}
-      bellUrgent={bellUrgent}
       bookingsAwaitingCount={homeFacts?.bookingsAwaitingResponseCount ?? 0}
       decisionsCount={conversationSummary.needsYouCount}
       referralEligible={referralEligible}
