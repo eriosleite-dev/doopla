@@ -9,7 +9,7 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-18.
+Última atualização: 2026-09-07.
 
 ---
 
@@ -8648,6 +8648,94 @@ CURRENT: Comunidade — Fase 1 de 3 (Foundation + descoberta principal).
 STATUS: `[DELIVERED]`. Fase 2 (Home inteligente: Para você/Em
 alta/Recentes com ranking real) e Fase 3 (polish, mentions/reply-to UI,
 matriz final) ainda não iniciadas.
+
+## 75. Rodada de correções pontuais (Canais de booking, WhatsApp CTA, copy de Decisões, Minha equipe, UX de Decisões, Agenda, Home hero, Sino/Notificações) — `[DELIVERED]`
+
+Lote de correções explicitamente marcadas como válidas "web - app" pelo
+usuário, entregues nesta ordem. Todas comparadas nas duas plataformas
+antes de fechar; gaps reais foram registrados, nunca escondidos.
+
+- **Canais de booking**: Booker removido do cartão (pertence só a
+  "Minha equipe", nunca duplicado aqui); "WhatsApp da Doopla" volta a
+  aparecer sempre — número ausente mostra "Em configuração" honesto, em
+  vez de sumir a linha; "Seu código" renomeado pra "Seu código ID".
+  Corrigido também um bug real de paridade achado na auditoria: o App
+  usava `profile.referral_code` (errado — é de outro programa) em vez
+  de `profile.slug`, e nunca tinha a linha de WhatsApp da Doopla.
+  "Falar com minha Doopla" não foi tocado (função diferente).
+- **Botão do WhatsApp**: conferido — já era verde (identidade da marca)
+  quando o canal existe, e mostra só o estado indisponível quando não
+  existe. Nenhuma mudança necessária.
+- **Copy de Decisões**: subtítulo trocado pra "O que precisa da sua
+  decisão e o que você já resolveu." Lógica da página intocada.
+- **Minha equipe**: causa raiz real era o modal `AddConnectionModal`
+  compartilhado com o Booker legado, nunca skinado pro novo visual —
+  isso vazava botão dourado/card branco/título serifado toda vez que
+  abria, e era renderizado 2x (header + empty state), daí o CTA
+  duplicado. Corrigido com um `variant?: 'legacy' | 'pro'` no mesmo
+  componente (zero lógica duplicada) e um empty state novo (card
+  compacto, 1 CTA só, mesmo idioma visual do ícone-em-círculo da Home).
+  Gap registrado, não resolvido nesta rodada: o App nunca teve "Minha
+  equipe" de verdade — é um `PlaceholderScreen` puro hoje. Decisão de
+  quando construir fica com o usuário.
+- **UX de Decisões** (Web + App): dois problemas reais confirmados
+  antes de codar. (1) "Resolver"/"Ver conversa" caía num fallback
+  genérico (`/dashboard/trabalhos`) sempre que a conversa não tinha
+  booking — a única rota de conversa exigia (mas nunca lia) um
+  bookingId. Corrigido no Web com uma rota nova
+  (`/dashboard/conversas/[conversationId]` + modal intercepting
+  equivalente, mesmo `ConversaView`, zero lógica paralela); o App já
+  não tinha esse bug (a rota `/conversas/[conversationId]` nunca
+  exigiu bookingId). (2) Cards lideravam com estado genérico de
+  conversa em vez do que precisa ser decidido — reestruturados nas duas
+  plataformas pra liderar com o motivo real da decisão, nome do
+  cliente resolvido de verdade (via `external_participants` quando não
+  há booking, nunca fabricado), grade de 2 colunas trocada por lista
+  vertical compacta, e um controle de ordenação real adicionado
+  (Prioridade/Recentes/Antigas em Precisa de você; Recentes/Antigas em
+  Resolvidas). App: tela "Decisões" (`mais/decisoes.tsx`), que era um
+  `PlaceholderScreen` puro, virou real nesta rodada — mesma fonte
+  canônica e agrupamento/prioridade do Web
+  (`groupDecisionsByConversation`/`sortDecisionsByPriority`,
+  espelhados em `mobile/src/lib/data/decisions.ts`).
+- **Agenda** (Web): formulário (Tipo/De/Até + Nota/"+Marcar") e os
+  cards abaixo (Calendário, Eventos) passaram a usar o MESMO CSS Grid
+  (`display: contents` no `<form>` pra virar 2 grupos-filhos diretos do
+  grid) — garante boundary de coluna idêntico por construção, nunca
+  aproximado por cálculo de largura separado. Mobile não usa esse grid
+  (empilha por instrução explícita), sem mudança.
+- **Home hero**: nome normalizado com `capitalizeName()` (mesma função
+  nas duas plataformas) — corrige "Oi, eduarda" → "Oi, Eduarda"
+  preservando acentos. Web: hero reestruturado (`items-start`, mais
+  padding/spacing) pra tirar o bloco de texto do "sufocamento" sem
+  aumentar o card. App: ajuste de espaçamento equivalente (o problema
+  original era menor lá, por ser stack vertical).
+- **Sino/Notificações** (Web + App): inspeção obrigatória feita antes
+  de codar (achados completos e decisão do usuário registrados acima,
+  nesta mesma sessão) — não existia sistema geral de notificações (o
+  "sino" era só um atalho pra `/dashboard#precisa-de-voce`);
+  `community_notifications` (0059) já existe, já é populada de
+  verdade, mas nunca tinha consumidor. Aprovado: sino V1 = só
+  Comunidade; Decisões continua só nas suas superfícies já corretas
+  (nunca duplicado dentro do sino, nenhuma notificação sintética
+  criada). Web: popover ancorado no ícone (nunca navega a página
+  embaixo), fecha em clique fora/Esc/novo clique, loading/empty/error
+  próprios, rolável, badge de não lidas, marca como lida ao abrir o
+  tópico. App: o sino da Home (puramente decorativo até aqui — badge
+  sempre zerado, sem `onPress`) virou um bottom sheet real com a mesma
+  lógica. Atualiza a linha "Notificações de Comunidade (UI)" da matriz
+  do §74 (Fase 2/3) — entregue adiantada, fora do escopo de fases da
+  Comunidade, por ser uma correção de UX pontual pedida separadamente.
+
+Pendências reais desta rodada, não escondidas:
+- Migration `0068_community_search.sql` (§74) só foi validada no
+  `doopla_rls_test` local — ainda precisa ser aplicada no Supabase de
+  produção pelo usuário.
+- App nunca teve uma tela real de "Minha equipe" — decisão de quando
+  construir isso fica pendente com o usuário.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos em cada commit desta rodada.
 
 ## Como usar isso
 
