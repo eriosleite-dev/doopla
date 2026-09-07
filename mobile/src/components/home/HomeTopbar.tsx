@@ -21,16 +21,21 @@ export function HomeTopbar({
   notificationsCount,
   forumHasNew,
   onOpenForum,
+  onOpenNotifications,
 }: {
   notificationsCount: number;
   forumHasNew: boolean;
   onOpenForum: () => void;
+  onOpenNotifications: () => void;
 }) {
   return (
     <View style={styles.bar}>
       <LogoPlaceholder />
       <View style={styles.icons}>
-        <IconButton badge={notificationsCount > 0 ? { kind: 'count', value: notificationsCount } : undefined}>
+        <IconButton
+          badge={notificationsCount > 0 ? { kind: 'count', value: notificationsCount } : undefined}
+          onPress={onOpenNotifications}
+        >
           <BellIcon size={15} color={colors.tx70} />
         </IconButton>
         <IconButton badge={forumHasNew ? { kind: 'dot' } : undefined} onPress={onOpenForum}>

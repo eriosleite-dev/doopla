@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
 import { HomeTopbar } from '@/components/home/HomeTopbar';
+import { NotificationsSheet } from '@/components/home/NotificationsSheet';
 import { HomeHero } from '@/components/home/HomeHero';
 import { StatsCarousel } from '@/components/home/StatsCarousel';
 import { StatCard } from '@/components/home/StatCard';
@@ -21,6 +22,7 @@ import { STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithO
 import { fetchReferralSummary, type ReferralSummary } from '@/lib/data/referrals';
 import { fetchProfessionalHomeFacts, type ProfessionalHomeFacts } from '@/lib/data/home-facts';
 import { fetchActionableDecisions, type DecisionItem } from '@/lib/data/decisions';
+import { fetchNotificationCards, markCommunityNotificationRead, type NotificationCard } from '@/lib/data/notifications';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { dooplaWhatsappNumber } from '@/lib/env';
 import { capitalizeName, monthDayParts } from '@/lib/format';
@@ -33,6 +35,19 @@ export default function HomeScreen() {
   const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [homeFacts, setHomeFacts] = useState<ProfessionalHomeFacts | null>(null);
   const [decisions, setDecisions] = useState<DecisionItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationCard[]>([]);
+  const [notificationsPhase, setNotificationsPhase] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const loadNotifications = useCallback(() => {
+    setNotificationsPhase('loading');
+    fetchNotificationCards()
+      .then((data) => {
+        setNotifications(data);
+        setNotificationsPhase('ready');
+      })
+      .catch(() => setNotificationsPhase('error'));
+  }, []);
 
   useEffect(() => {
     if (!professionalId) return;
@@ -43,6 +58,22 @@ export default function HomeScreen() {
     fetchProfessionalHomeFacts().then(setHomeFacts).catch(() => setHomeFacts(null));
     fetchActionableDecisions().then(setDecisions).catch(() => setDecisions([]));
   }, [professionalId, profile?.referral_code]);
+
+  // Badge de não lidas precisa existir mesmo com o sheet fechado —
+  // mesma lógica do popover web (busca uma vez ao montar).
+  useEffect(() => {
+    const timer = setTimeout(loadNotifications, 0);
+    return () => clearTimeout(timer);
+  }, [loadNotifications]);
+
+  const unreadNotificationsCount = notifications.filter((n) => n.unread).length;
+
+  function handleNotificationPress(item: NotificationCard) {
+    setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n)));
+    markCommunityNotificationRead(item.id).catch(() => {});
+    setNotificationsOpen(false);
+    router.push(`/forum/${item.topicId}`);
+  }
 
   const stats = computeArtistStats(bookings);
   const bookingById = new Map(bookings.map((b) => [b.id, b]));
@@ -63,7 +94,12 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <HomeTopbar notificationsCount={0} forumHasNew={false} onOpenForum={() => router.push('/forum')} />
+        <HomeTopbar
+          notificationsCount={unreadNotificationsCount}
+          forumHasNew={false}
+          onOpenForum={() => router.push('/forum')}
+          onOpenNotifications={() => setNotificationsOpen(true)}
+        />
 
         <View style={styles.main}>
           <HomeHero
@@ -181,6 +217,15 @@ export default function HomeScreen() {
           <FalarComDooplaCard whatsappUrl={whatsappUrl} identityVerified={identityVerified} />
         </View>
       </ScrollView>
+
+      <NotificationsSheet
+        visible={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        phase={notificationsPhase}
+        items={notifications}
+        onRetry={loadNotifications}
+        onItemPress={handleNotificationPress}
+      />
     </SafeAreaView>
   );
 }
