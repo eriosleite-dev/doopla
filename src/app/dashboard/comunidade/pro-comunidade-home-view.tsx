@@ -62,13 +62,13 @@ export function ProComunidadeHomeView({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 @lg:flex-row @lg:items-center">
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Busque por assunto, profissão, dúvida ou interesse — ex: “como negociar cachê”"
-          className={`${proInputClass} sm:flex-1`}
+          className={`${proInputClass} @lg:flex-1`}
         />
         <Link href="/dashboard/comunidade/novo" className={`${proPrimaryButtonClass} whitespace-nowrap`}>
           Criar tópico
@@ -147,7 +147,7 @@ function TopicResultsSection({
 
 function TopicCardGrid({ topics, savedTopicIds }: { topics: CommunityTopicCard[]; savedTopicIds: Set<string> }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-2.5 @lg:grid-cols-2">
       {topics.map((topic) => (
         <ProCard key={topic.id} className="!p-4">
           <div className="flex items-start justify-between gap-3">

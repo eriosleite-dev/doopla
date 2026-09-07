@@ -26,13 +26,13 @@ export default async function ComunidadeSalvosPage() {
   const authorsById = await getCommunityAuthors(supabase, [...new Set(topics.map((t) => t.author_profile_id))]);
 
   return (
-    <main>
+    <main className="@container">
       <ProPageHeader title="Salvos" subtitle="Tópicos que você guardou pra voltar depois." />
 
       {topics.length === 0 ? (
         <ProEmptyState message="Você ainda não salvou nenhum tópico. Toque no marcador em qualquer tópico da Comunidade pra guardá-lo aqui." />
       ) : (
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 @lg:grid-cols-2">
           {topics.map((topic) => (
             <ProCard key={topic.id} className="!p-4">
               <div className="flex items-start justify-between gap-3">

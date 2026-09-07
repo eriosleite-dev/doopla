@@ -48,7 +48,7 @@ export default async function ComunidadePage() {
   }
 
   return (
-    <main>
+    <main className="@container">
       <ProPageHeader
         title="Comunidade"
         subtitle="Busque assunto, profissão, dúvida ou interesse. A Doopla te ajuda a achar a conversa certa."
