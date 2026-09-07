@@ -1121,3 +1121,40 @@ toca a assinatura do artista). Não recriei nada disso.
   experiência nativa full-screen no App** — mesma fonte de
   dados/regras/RLS nas duas plataformas, só a apresentação diverge,
   como já era pra Comunidade desde a Fase 1.
+- **Limite de bookings do Básico vive numa trigger no banco, nunca em
+  check duplicado nos Server Actions** — decisão explícita do usuário:
+  "não proteja apenas um entry point e deixe outro contornar" +
+  "centralize a decisão numa função reutilizável". Só existem 2 pontos
+  reais de INSERT em `bookings` hoje, mas em vez de replicar o mesmo
+  `if` nos dois (arriscando um deles sair de sincronia depois, ou um
+  terceiro caminho futuro esquecer o check), a autoridade fica numa
+  trigger `BEFORE INSERT ON bookings` (migration 0073) — cobre
+  qualquer insert, presente ou futuro, sem lógica duplicada em TS.
+  `recusada`/`cancelada` continuam consumindo o limite de propósito:
+  contar só sucesso abriria um bypass óbvio (recusar/cancelar pra
+  resetar o contador).
+- **`PLAN_CARDS` (Pro) prometia "Inteligência sobre cachês..." e
+  "Materiais profissionais..." como disponíveis hoje — divergência
+  real, corrigida em 07/09/2026, não um ajuste cosmético.** A versão
+  publicada em `2b63a20` listava essas duas como `features` do Pro,
+  mas nenhuma tem gate real nem implementação — a mesma classificação
+  PENDING (e-mail de representação/analytics/materiais/automações) já
+  tinha sido aprovada numa rodada anterior, só não tinha sido
+  retroaplicada ao conteúdo já commitado. Corrigido em `src/lib/
+  plans.ts` (extraído de `PlanPicker.tsx` pra virar fonte única,
+  reaproveitada também pelo `ProUpgradeModal`) e no card espelhado em
+  `home.html`. "Booker / Minha equipe" entrou no lugar por ser real
+  nesta mesma rodada (gate + UI implementados).
+- **Upgrade contextual (`ProUpgradeModal`) substitui os dois destinos
+  antigos de "Conhecer o Pro"** — nem `/dashboard/perfil` (real, mas
+  não é uma experiência de escolha/upgrade) nem `/precos` (stub,
+  beco sem saída) viram destino definitivo. `/precos` fica registrado
+  como GAP/PENDING — no futuro é a superfície pública de comparação
+  Básico×Pro, mas não deve ser construída "só pra preencher" antes do
+  catálogo canônico de features estar fechado. Enquanto Real Billing
+  não existe, o CTA "Fazer upgrade para Pro" mostra um estado honesto
+  dentro do próprio modal (nunca finge upgrade, nunca grava
+  "interesse" — o usuário rejeitou explicitamente essa versão por
+  prometer acompanhamento que não existe) — centralizado num único
+  handler, pra trocar de implementação sem redesenhar o modal quando o
+  Stripe entrar.

@@ -8788,6 +8788,94 @@ autenticada real — mesma limitação já registrada em blocos anteriores
 ("não achei nenhuma conta de teste documentada no repo"). Precisa da
 validação manual do usuário no Preview.
 
+## 77. Entitlements Doopla Pro — limite de bookings, gate de Minha equipe e ProUpgradeModal canônico — `[DELIVERED]`
+
+Fecha o plano de entitlement/gaps aprovado nesta rodada (07/09/2026):
+limite real de bookings no Básico, gate backend de Minha equipe como
+Pro, e o novo padrão canônico de upgrade contextual (`ProUpgradeModal`)
+substituindo os dois destinos antigos ("Conhecer o Pro" → `/precos` ou
+`/dashboard/perfil`, ambos descontinuados como destino de upgrade).
+Commits: `31b2071`, `7773433`, `d0df3cb`.
+
+**Limite de 5 novos bookings/mês no Básico (migration `0073`).**
+Definição aprovada: consumo acontece na criação (`created_at`), conta
+no mês-calendário correspondente, sem carry-over, `recusada`/
+`cancelada` continuam consumindo (senão recusar/cancelar de propósito
+viraria forma de resetar o contador), Pro sem limite. Auditados antes
+de implementar: só existem 2 pontos reais de INSERT em `bookings` em
+todo o código (`proposeBookingAction`, `selectBookerForOpportunityAction`,
+ambos em `dashboard/actions.ts`) — nenhum insert de seed/dev/teste em
+nenhuma migration. Em vez de duplicar o check nos dois Server Actions,
+a decisão fica centralizada numa function SQL (`assert_artist_booking_
+monthly_limit`) chamada por uma trigger `BEFORE INSERT ON bookings` —
+autoridade incondicional sobre qualquer entry point, presente ou
+futuro, mesmo padrão já usado em `enforce_booker_artist_limit`
+(migration 0032) e `enforce_representation_request_limit` (migration
+0018). `pg_advisory_xact_lock` fecha a corrida de concorrência (dois
+inserts simultâneos pro mesmo artista disputando a última vaga).
+Testado no `doopla_rls_test`: 9 cenários adversariais (0-4/5º/6º
+bookings, recusada, cancelada, virada de mês, Pro ilimitado, os dois
+entry points, sem bypass via RPC) + teste de concorrência real (2
+transações simultâneas, exatamente 1 vence) — todos passaram.
+
+**Gate de Minha equipe como Pro.** Helper centralizado
+`artistHasDooplaPro()` (consulta `subscriptions` real, delega pra
+`hasDooplaPro()`) usado nos dois pontos de criação de vínculo
+artista→booker — `inviteBookerAction` e o branch artista de
+`requestRepresentationAction`. Direção booker→artista (a original)
+continua sem gate. UI reconhece a falta de entitlement ANTES de abrir
+qualquer formulário (nunca erro só depois de tentar): artista Básico
+vê badge PRO ao lado do título "Minha equipe" e, ao clicar em
+"Adicionar um Booker", abre o `ProUpgradeModal` em vez do formulário
+de convite.
+
+**`ProUpgradeModal`** (`src/app/dashboard/pro-upgrade-modal.tsx`) —
+componente único reutilizável pro produto inteiro: `context` só adapta
+título/descrição (`'equipe' | 'geral'`), nunca preço/features/
+entitlement/comportamento de CTA, que vêm sempre de `@/lib/plans`
+(`PLAN_CARDS`, extraído de `PlanPicker.tsx` do onboarding pra virar
+fonte única — antes cada um tinha sua própria cópia) e `@/lib/market`.
+Integrado em Minha equipe e em Configurações → Plano e assinatura →
+"Conhecer o Pro" (mesmo componente, contexto diferente, nenhuma
+navegação pra `/precos`). Backdrop/ESC/scroll-lock/`role="dialog"`
+seguem o mesmo mecanismo já usado em `referral-modal.tsx`. Achado ao
+mexer: `PLAN_CARDS` (Pro) já listava "Inteligência sobre cachês..." e
+"Materiais profissionais..." como disponíveis hoje — divergia da
+própria classificação PENDING já aprovada (nenhuma das duas tem gate
+real). Corrigido em `plans.ts` e no mesmo card em `home.html`; "Booker
+/ Minha equipe" entra no lugar por ser real nesta rodada.
+
+**CTA "Fazer upgrade para Pro" — comportamento temporário honesto.**
+Sem Real Billing/Stripe ainda: o clique nunca finge upgrade, nunca
+navega, nunca grava nada (nem subscription fake, nem "interesse
+registrado" — o usuário rejeitou explicitamente essa versão por
+prometer um acompanhamento que não existe). Mostra, dentro do próprio
+modal, um estado curto ("Upgrade para Pro em breve" + Voltar) que
+reseta ao fechar. Centralizado em `handleUpgradeClick()` — único ponto
+a trocar quando Real Billing existir (Stripe Checkout), sem redesenhar
+o modal.
+
+Gap conhecido, registrado explicitamente pelo usuário como não
+fechado (não invalida o código entregue): não foi possível fazer
+QA visual das integrações reais em "Minha equipe" e "Configurações"
+(modal abrindo a partir das duas páginas de verdade, logadas) — este
+ambiente não tem sessão autenticada real nem Preview. As screenshots
+enviadas foram do componente `ProUpgradeModal` isolado, numa rota
+`/dev` temporária criada só pra validação visual e removida antes de
+cada commit (nunca ficou no diff). Precisa de validação manual do
+usuário no Preview quando disponível.
+
+Fora do escopo desta rodada, por decisão explícita do usuário — não
+esquecido, não implementado de propósito: Stripe/checkout/cobrança
+real, `/precos` real (registrado como GAP/PENDING, continua
+`StubPage`), e-mail de representação, analytics avançados, materiais,
+automações avançadas, Minha equipe no App (placeholder), padrão de
+upgrade pro produto Booker Web/App.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` limpos em cada
+commit desta rodada. SQL adversarial + teste de concorrência real
+descritos acima, rodados no Postgres local (`doopla_rls_test`).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
