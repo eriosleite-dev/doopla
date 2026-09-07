@@ -29,27 +29,22 @@ async function requireArtist() {
   return { supabase, user };
 }
 
-// "Cachê de referência" aceita texto livre (ex: "R$ 2.500", "2500",
-// "R$ 2.500,00") — não é cobrança de verdade, só referência pra Doopla
-// entender a realidade de preço do artista. Sem casas decimais válidas
-// ou vazio: sem cachê de referência (equivalente a "ainda não").
-function parseFeeToCents(raw: string): number | null {
-  const stripped = raw.replace(/[^\d,.-]/g, '');
-  if (!stripped) return null;
-  const normalized = stripped.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
-  const value = Number.parseFloat(normalized);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return Math.round(value * 100);
-}
-
-// Etapas 2 a 6 ("Prepare sua Doopla" até "Conclusão") são um carrossel
+// Etapas 2 a 5 ("Prepare sua Doopla" até "Conclusão") são um carrossel
 // só, dentro de uma página só — grava tudo de uma vez, no fim. Sem
 // taxonomia de profissão nenhuma (produto não é nichado em DJ/artista):
 // "o que você faz" é texto livre (coluna category), e o contexto que a
 // Doopla precisa vem inteiro da resposta aberta "Conte um pouco sobre o
-// seu trabalho" (bio). pricing_notes (etapa Valores, só quando o valor
-// "depende do trabalho") e negotiation_notes (etapa Como você trabalha)
-// são semanticamente diferentes entre si e de bio — nunca concatenados.
+// seu trabalho" (bio). negotiation_notes (etapa Como você trabalha) é
+// semanticamente diferente de bio — nunca concatenados.
+//
+// Sem pergunta de valor/cachê aqui de propósito (07/09/2026, removida a
+// pedido do produto): base_fee_cents/pricing_notes (artist_profiles)
+// CONTINUAM existindo no schema, nullable, sem CHECK — a Doopla pode
+// aprender esse contexto depois (perfil, conversas, bookings), só não
+// faz mais sentido perguntar isso de cara no cadastro. Por isso este
+// UPDATE nunca toca nessas duas colunas: ficam com o que já existia
+// (nunca sobrescritas pra null por um onboarding que não coleta mais
+// esse dado).
 export async function savePrepareAction(
   _prevState: OnboardingFormState,
   formData: FormData
@@ -62,9 +57,6 @@ export async function savePrepareAction(
   const bio = String(formData.get('bio') ?? '').trim();
   const link = String(formData.get('link') ?? '').trim();
 
-  const priceChoice = String(formData.get('priceChoice') ?? '');
-  const feeValueRaw = String(formData.get('feeValue') ?? '').trim();
-  const pricingNotes = String(formData.get('pricingNotes') ?? '').trim();
   const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
   const negotiationNotes = String(formData.get('negotiationNotes') ?? '').trim();
   const channel = String(formData.get('channel') ?? '');
@@ -78,14 +70,6 @@ export async function savePrepareAction(
     return { error: 'Escolha como sua Doopla deve falar com você.' };
   }
 
-  let feeCents: number | null = null;
-  if (priceChoice === 'valor') {
-    feeCents = parseFeeToCents(feeValueRaw);
-    if (feeCents === null) {
-      return { error: 'Informe um valor válido, ou marque "Depende do trabalho".' };
-    }
-  }
-
   const { error } = await supabase
     .from('artist_profiles')
     .update({
@@ -94,8 +78,6 @@ export async function savePrepareAction(
       local,
       bio,
       other_links: link || null,
-      base_fee_cents: feeCents,
-      pricing_notes: priceChoice === 'depende' ? pricingNotes || null : null,
       issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
       negotiation_notes: negotiationNotes || null,
       attention_channel: channel as 'whatsapp' | 'painel' | 'ambos',

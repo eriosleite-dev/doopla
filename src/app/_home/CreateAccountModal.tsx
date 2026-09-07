@@ -156,8 +156,6 @@ export function CreateAccountModal({
                 initialLocal=""
                 initialBio=""
                 initialLink=""
-                initialFeeCents={null}
-                initialPricingNotes=""
                 initialIssuesInvoice={null}
                 initialNegotiationNotes=""
                 initialChannel={null}

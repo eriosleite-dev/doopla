@@ -1,4 +1,4 @@
-/* Visual do onboarding (Criar conta -> Prepare sua Doopla -> Cachê ->
+/* Visual do onboarding (Criar conta -> Prepare sua Doopla ->
    Como você trabalha -> Canal de atenção -> Conclusão -> Planos),
    REDESENHADO (07/09/2026) pra continuidade visual com a etapa 1 do
    cadastro em modal (CreateAccountModal.tsx/AccountStepCard) — mesmo
@@ -58,7 +58,6 @@
 
 #onboarding .eyebrow{ display:inline-block; background:var(--pro-panel, rgba(255,255,255,.04)); border:1px solid var(--line); color:var(--red); font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; padding:4px 10px; border-radius:999px; margin-bottom:14px; align-self:flex-start; }
 #onboarding .headline{ font-size:29px; line-height:1.08; margin-bottom:9px; color:var(--off); flex-shrink:0; }
-#onboarding .headline em{ font-style:normal; background:var(--red); color:#fff; padding:1px 9px; border-radius:5px; display:inline-block; box-shadow:0 0 22px var(--red-glow); }
 #onboarding .sub{ color:var(--tx-50); font-size:14.5px; line-height:1.48; margin-bottom:20px; max-width:44ch; font-weight:500; flex-shrink:0; }
 
 #onboarding .field{ margin-bottom:14px; }
@@ -116,6 +115,18 @@
 #onboarding .plan-feats{ list-style:none; padding:10px 0 0; margin:10px 0 0; border-top:1px dashed var(--line); }
 #onboarding .plan-feats li{ font-size:12.5px; color:var(--tx-50); padding:4px 0 4px 20px; position:relative; line-height:1.35; font-weight:500; font-family:'Inter'; }
 #onboarding .plan-feats li::before{ content:''; position:absolute; left:0; top:9px; width:8px; height:5px; border-left:1.5px solid var(--tx-45); border-bottom:1.5px solid var(--tx-45); transform:rotate(-45deg); }
+
+/* "Ver todos os recursos" (07/09/2026) — animação por max-height (não
+   hidden/display:none) pra transição suave; grande o bastante pra nunca
+   cortar o conteúdo real de nenhum plano. Botão tem type="button"
+   dentro do .plan-card inteiro clicável — sem isso, Enter/Space nele
+   escolheria o plano por engano (form nativo trataria como submit);
+   como já é role de botão focável, teclado funciona de graça (Tab +
+   Enter/Espaço), sem JS extra. */
+#onboarding .plan-more-toggle{ background:none; border:none; padding:8px 0 0; margin-top:2px; color:var(--tx-50); font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; cursor:pointer; text-align:left; transition:color .15s; }
+#onboarding .plan-more-toggle:hover, #onboarding .plan-more-toggle:focus-visible{ color:var(--off); }
+#onboarding .plan-more{ max-height:0; opacity:0; overflow:hidden; margin:0; padding-top:0; border-top:none; transition:max-height .3s ease, opacity .25s ease, padding-top .3s ease, margin-top .3s ease; }
+#onboarding .plan-more.open{ max-height:400px; opacity:1; padding-top:10px; margin-top:10px; border-top:1px dashed var(--line); }
 
 #onboarding .footer{ position:fixed; bottom:0; left:0; right:0; background:linear-gradient(0deg,var(--bg) 60%,rgba(22,20,20,0)); padding:20px 24px 22px; }
 #onboarding .footer-inner{ max-width:512px; margin:0 auto; }

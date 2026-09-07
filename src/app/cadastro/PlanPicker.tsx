@@ -1,11 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 
 import { fieldInputClass } from '@/app/auth/ui';
 import { MARKETS, TRIAL_DAYS, type PlanId } from '@/lib/market';
 
-export const PLAN_CARDS: { id: PlanId; name: string; description: string; features: string[] }[] = [
+// `moreFeatures` (07/09/2026) alimenta "Ver todos os recursos" — só com
+// itens já 100% confirmados pelo produto (nada de "especialista
+// humano"/"rede de bookers"/"benefícios de parceiros", conceitos
+// antigos removidos das promessas), nunca o catálogo comercial final
+// (ainda em auditoria/fechamento — ver PROGRESS.md). Pro reafirma "tudo
+// do Básico" em vez de inventar exclusividade Pro nova, porque a
+// camada Pro específica (e-mail de representação, analytics, materiais,
+// automações, Booker/multi-role) ainda não tem matriz aprovada nem gate
+// real implementado (hasDooplaPro() existe, zero call sites hoje).
+export const PLAN_CARDS: {
+  id: PlanId;
+  name: string;
+  description: string;
+  features: string[];
+  moreFeatures: string[];
+}[] = [
   {
     id: 'doopla',
     name: 'Doopla',
@@ -16,6 +31,12 @@ export const PLAN_CARDS: { id: PlanId; name: string; description: string; featur
       'Contratos e acompanhamento de pagamentos',
       'Comunidade Doopla',
     ],
+    moreFeatures: [
+      'Negociação respeitando suas regras e aprovações',
+      'Follow-up de cada negociação',
+      'WhatsApp como canal principal com sua Doopla',
+      'Perfil, link e canais de booking',
+    ],
   },
   {
     id: 'pro',
@@ -23,9 +44,15 @@ export const PLAN_CARDS: { id: PlanId; name: string; description: string; featur
     description: 'Mais estrutura para fazer sua carreira crescer.',
     features: [
       'Bookings ilimitados',
-      'Especialista humano se precisar',
       'Inteligência sobre cachês, clientes e negociações',
       'Materiais profissionais para sua carreira',
+    ],
+    moreFeatures: [
+      'Tudo o que vem no plano Básico',
+      'Negociação respeitando suas regras e aprovações',
+      'Follow-up de cada negociação',
+      'WhatsApp como canal principal com sua Doopla',
+      'Perfil, link e canais de booking',
     ],
   },
 ];
@@ -61,11 +88,27 @@ export function PlanPicker({
 }) {
   const [selected, setSelected] = useState<PlanId>(initialPlan);
   const [showVoucher, setShowVoucher] = useState(false);
+  // Quais cards têm "Ver todos os recursos" aberto — por id, não
+  // exclusivo (dá pra expandir os dois planos ao mesmo tempo pra
+  // comparar). Só usado pelo variant="onboarding".
+  const [expanded, setExpanded] = useState<Set<PlanId>>(new Set());
   const market = MARKETS.BR;
 
   function choose(plan: PlanId) {
     setSelected(plan);
     onChange?.(plan);
+  }
+
+  function toggleExpanded(plan: PlanId, event: MouseEvent) {
+    // stopPropagation: o botão fica DENTRO do card clicável (onClick
+    // seleciona o plano) — expandir/recolher nunca deve mudar a seleção.
+    event.stopPropagation();
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(plan)) next.delete(plan);
+      else next.add(plan);
+      return next;
+    });
   }
 
   if (variant === 'onboarding') {
@@ -74,6 +117,8 @@ export function PlanPicker({
         <input type="hidden" name={fieldName} value={selected} />
         {PLAN_CARDS.map((card) => {
           const isSelected = selected === card.id;
+          const isExpanded = expanded.has(card.id);
+          const detailsId = `plan-more-${card.id}`;
           return (
             <div
               key={card.id}
@@ -93,6 +138,25 @@ export function PlanPicker({
                 <span className="plan-trial">{TRIAL_DAYS} dias grátis</span>
                 <ul className="plan-feats">
                   {card.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+
+                <button
+                  type="button"
+                  className="plan-more-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
+                  onClick={(e) => toggleExpanded(card.id, e)}
+                >
+                  {isExpanded ? 'Mostrar menos ↑' : 'Ver todos os recursos ↓'}
+                </button>
+                <ul
+                  id={detailsId}
+                  className={`plan-feats plan-more${isExpanded ? ' open' : ''}`}
+                  aria-hidden={!isExpanded}
+                >
+                  {card.moreFeatures.map((f) => (
                     <li key={f}>{f}</li>
                   ))}
                 </ul>

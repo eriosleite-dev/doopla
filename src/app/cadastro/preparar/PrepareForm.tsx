@@ -7,7 +7,7 @@ import { savePrepareAction, type OnboardingFormState } from '../actions';
 import '../onboarding.css';
 
 const initialState: OnboardingFormState = {};
-const SUBSTEPS = 5; // Etapas 2 a 6 (globais) = índices 0 a 4 aqui
+const SUBSTEPS = 4; // Etapas 2 a 5 (globais) = índices 0 a 3 aqui
 
 // Rola o ancestral rolável mais próximo de volta pro topo — usado ao
 // trocar de sub-etapa (carrossel horizontal por transform, que não mexe
@@ -27,11 +27,6 @@ function scrollNearestScrollableToTop(el: HTMLElement | null) {
     node = node.parentElement;
   }
   window.scrollTo({ top: 0 });
-}
-
-function formatCentsToInput(cents: number | null): string {
-  if (cents === null) return '';
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 // Input conversacional único (textarea + microfone embutido), nunca dois
@@ -85,8 +80,6 @@ export function PrepareForm({
   initialLocal,
   initialBio,
   initialLink,
-  initialFeeCents,
-  initialPricingNotes,
   initialIssuesInvoice,
   initialNegotiationNotes,
   initialChannel,
@@ -99,8 +92,6 @@ export function PrepareForm({
   initialLocal: string;
   initialBio: string;
   initialLink: string;
-  initialFeeCents: number | null;
-  initialPricingNotes: string;
   initialIssuesInvoice: boolean | null;
   initialNegotiationNotes: string;
   initialChannel: 'whatsapp' | 'painel' | 'ambos' | null;
@@ -133,12 +124,6 @@ export function PrepareForm({
   const [bio, setBio] = useState(initialBio);
   const [link, setLink] = useState(initialLink);
 
-  const [priceChoice, setPriceChoice] = useState<'valor' | 'depende' | null>(
-    initialFeeCents !== null ? 'valor' : initialPricingNotes ? 'depende' : null
-  );
-  const [feeValue, setFeeValue] = useState(formatCentsToInput(initialFeeCents));
-  const [pricingNotes, setPricingNotes] = useState(initialPricingNotes);
-
   const [issuesInvoice, setIssuesInvoice] = useState<boolean | null>(initialIssuesInvoice);
   const [negotiationNotes, setNegotiationNotes] = useState(initialNegotiationNotes);
 
@@ -148,10 +133,7 @@ export function PrepareForm({
     if (s === 0) {
       return Boolean(stageName.trim() && profession.trim() && local.trim() && bio.trim());
     }
-    if (s === 1) {
-      return priceChoice === 'depende' || (priceChoice === 'valor' && feeValue.trim().length > 0);
-    }
-    if (s === 3) {
+    if (s === 2) {
       return Boolean(channel);
     }
     return true;
@@ -174,9 +156,6 @@ export function PrepareForm({
       <input type="hidden" name="local" value={local} />
       <input type="hidden" name="bio" value={bio} />
       <input type="hidden" name="link" value={link} />
-      <input type="hidden" name="priceChoice" value={priceChoice ?? ''} />
-      <input type="hidden" name="feeValue" value={feeValue} />
-      <input type="hidden" name="pricingNotes" value={pricingNotes} />
       <input
         type="hidden"
         name="issuesInvoice"
@@ -218,10 +197,8 @@ export function PrepareForm({
         >
           {/* Etapa 2 — Prepare sua Doopla */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 2 de 7</div>
-            <h1 className="headline">
-              Vamos preparar <em>sua Doopla.</em>
-            </h1>
+            <div className="eyebrow">Etapa 2 de 6</div>
+            <h1 className="headline">Vamos preparar sua Doopla.</h1>
             <p className="sub">
               Vamos começar pelo essencial. Sua Doopla vai conhecer melhor seu jeito de trabalhar
               aos poucos.
@@ -280,70 +257,10 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 3 — Valores */}
+          {/* Etapa 3 — Como você trabalha */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 3 de 7</div>
-            <h1 className="headline">
-              Seus <em>valores.</em>
-            </h1>
-            <p className="sub">
-              O valor informado é uma referência para sua Doopla entender como você trabalha
-              comercialmente — não é autorização pra fechar automaticamente nesse valor.
-            </p>
-
-            <div className="field">
-              <label>Você tem um valor de referência para seu trabalho?</label>
-              <div
-                className={`option-card${priceChoice === 'valor' ? ' selected' : ''}`}
-                onClick={() => setPriceChoice('valor')}
-              >
-                <div className="option-radio" />
-                <div>
-                  <div className="option-title">R$ [valor]</div>
-                </div>
-              </div>
-              <div
-                className={`option-card${priceChoice === 'depende' ? ' selected' : ''}`}
-                onClick={() => setPriceChoice('depende')}
-              >
-                <div className="option-radio" />
-                <div>
-                  <div className="option-title">Depende do trabalho</div>
-                </div>
-              </div>
-            </div>
-
-            {priceChoice === 'valor' && (
-              <div className="field">
-                <label htmlFor="f-valor">Qual valor, aproximadamente?</label>
-                <input
-                  type="text"
-                  id="f-valor"
-                  value={feeValue}
-                  onChange={(e) => setFeeValue(e.target.value)}
-                  placeholder="Ex: R$ 2.500"
-                />
-              </div>
-            )}
-
-            {priceChoice === 'depende' && (
-              <div className="field">
-                <label>Como você costuma definir seus valores? (opcional)</label>
-                <ConversationalField
-                  value={pricingNotes}
-                  onChange={setPricingNotes}
-                  placeholder="Ex.: depende do cliente, duração, complexidade ou tipo de trabalho..."
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Etapa 4 — Como você trabalha */}
-          <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 4 de 7</div>
-            <h1 className="headline">
-              Como <em>você trabalha.</em>
-            </h1>
+            <div className="eyebrow">Etapa 3 de 6</div>
+            <h1 className="headline">Como você trabalha.</h1>
             <p className="sub">
               Contexto comercial e regras básicas que podem afetar como sua Doopla representa
               você.
@@ -380,12 +297,10 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 5 — Como falar com você */}
+          {/* Etapa 4 — Como falar com você */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 5 de 7</div>
-            <h1 className="headline">
-              Como sua Doopla <em>fala com você.</em>
-            </h1>
+            <div className="eyebrow">Etapa 4 de 6</div>
+            <h1 className="headline">Como sua Doopla fala com você.</h1>
             <p className="sub">Quando sua Doopla precisar de você, como prefere ser avisado?</p>
 
             <div
@@ -417,14 +332,14 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 6 — Conclusão */}
+          {/* Etapa 5 — Conclusão */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 6 de 7</div>
+            <div className="eyebrow">Etapa 5 de 6</div>
             <div className="done-mark" />
             <h1 className="headline">
               Sua Doopla já tem o
               <br />
-              necessário para <em>começar.</em>
+              necessário para começar.
             </h1>
             <p className="sub">
               Isso é só o começo. No painel, você pode contar mais sobre seus valores,

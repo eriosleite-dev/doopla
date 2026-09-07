@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   title: 'Preparar sua Doopla | Doopla',
 };
 
-// Etapas 2 a 6 do funil novo (já autenticado — a conta foi criada na
+// Etapas 2 a 5 do funil novo (já autenticado — a conta foi criada na
 // etapa 1). Lê o artist_profile atual pra pré-preencher: se o usuário
 // atualizar a página, fechar e voltar depois, o que já foi salvo
 // continua lá — o estado mora no banco, não só na memória do
@@ -49,8 +49,6 @@ export default async function PrepararPage() {
       initialLocal={artistProfile.local ?? ''}
       initialBio={artistProfile.bio ?? ''}
       initialLink={artistProfile.other_links ?? ''}
-      initialFeeCents={artistProfile.base_fee_cents}
-      initialPricingNotes={artistProfile.pricing_notes ?? ''}
       initialIssuesInvoice={artistProfile.issues_invoice}
       initialNegotiationNotes={artistProfile.negotiation_notes ?? ''}
       initialChannel={artistProfile.attention_channel}

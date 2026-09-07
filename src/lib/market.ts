@@ -6,8 +6,6 @@
 //
 // IMPORTANTE — o que este arquivo NÃO faz (ainda, de propósito):
 // - não detecta idioma/região do usuário (navegador, IP, cookie);
-// - não é lido pela Home hoje (os cards de planos em home.html
-//   continuam com os preços em BRL fixos no HTML);
 // - não tem seletor de idioma/região em nenhuma tela;
 // - não persiste escolha de idioma/região na conta;
 // - não integra com a Stripe API de verdade (os Price IDs abaixo são
@@ -56,7 +54,7 @@ export const MARKETS: Record<Region, MarketConfig> = {
     region: 'BR',
     currency: 'BRL',
     currencySymbol: 'R$',
-    pricing: { doopla: 29.9, pro: 59.9 },
+    pricing: { doopla: 29.9, pro: 69.9 },
     stripePriceIds: { doopla: null, pro: null },
   },
   US: {
