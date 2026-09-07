@@ -53,30 +53,32 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   }, [router]);
 
   return (
-    <div className="pro-shell fixed inset-0 z-[110]" role="presentation">
-      <div
-        className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${entered ? 'opacity-100' : 'opacity-0'}`}
-        onClick={() => router.back()}
-        aria-hidden="true"
-      />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label="Comunidade"
-        className={`fixed top-0 right-0 h-screen max-w-[92vw] overflow-y-auto border-l border-[var(--pro-line)] bg-[var(--pro-panel-solid)] text-[var(--pro-off)] shadow-[-24px_0_60px_rgba(0,0,0,.4)] transition-[width,transform] duration-300 ease-out ${
-          entered ? 'translate-x-0' : 'translate-x-full'
-        } ${isTopicDetail ? 'w-[760px]' : 'w-[460px]'}`}
-      >
-        <button
-          type="button"
+    <div className="pro-shell contents">
+      <div className="fixed inset-0 z-[110]" role="presentation">
+        <div
+          className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${entered ? 'opacity-100' : 'opacity-0'}`}
           onClick={() => router.back()}
-          aria-label="Fechar"
-          className="absolute top-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
+          aria-hidden="true"
+        />
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-label="Comunidade"
+          className={`fixed top-0 right-0 h-screen max-w-[92vw] overflow-y-auto border-l border-[var(--pro-line)] bg-[var(--pro-panel-solid)] text-[var(--pro-off)] shadow-[-24px_0_60px_rgba(0,0,0,.4)] transition-[width,transform] duration-300 ease-out ${
+            entered ? 'translate-x-0' : 'translate-x-full'
+          } ${isTopicDetail ? 'w-[760px]' : 'w-[460px]'}`}
         >
-          ✕
-        </button>
-        <div className="p-6">{children}</div>
-      </aside>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Fechar"
+            className="absolute top-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
+          >
+            ✕
+          </button>
+          <div className="p-6">{children}</div>
+        </aside>
+      </div>
     </div>
   );
 }

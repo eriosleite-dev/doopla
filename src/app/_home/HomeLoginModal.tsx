@@ -85,47 +85,49 @@ export function HomeLoginModal() {
   if (!open) return null;
 
   return (
-    <div className="pro-shell fixed inset-0 z-[100] flex items-center justify-center px-4 py-6 sm:items-center" role="presentation">
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={() => setOpen(false)}
-        aria-hidden="true"
-      />
-
-      <div
-        ref={cardRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Entrar na sua conta Doopla"
-        className="relative max-h-[92vh] w-full max-w-[440px] overflow-y-auto rounded-[24px] border border-[rgba(226,41,28,.3)] bg-[var(--pro-panel-solid)] p-7 shadow-[0_0_70px_rgba(226,41,28,.25)] sm:p-10"
-      >
-        <button
-          type="button"
+    <div className="pro-shell contents">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6 sm:items-center" role="presentation">
+        <div
+          className="absolute inset-0 bg-black/70 backdrop-blur-sm"
           onClick={() => setOpen(false)}
-          aria-label="Fechar"
-          className="absolute top-5 right-5 flex h-8 w-8 items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+          aria-hidden="true"
+        />
+
+        <div
+          ref={cardRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Entrar na sua conta Doopla"
+          className="relative max-h-[92vh] w-full max-w-[440px] overflow-y-auto rounded-[24px] border border-[rgba(226,41,28,.3)] bg-[var(--pro-panel-solid)] p-7 shadow-[0_0_70px_rgba(226,41,28,.25)] sm:p-10"
         >
-          ✕
-        </button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Fechar"
+            className="absolute top-5 right-5 flex h-8 w-8 items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+          >
+            ✕
+          </button>
 
-        <div id="site-chrome">
-          <EyeLogo onDark className="text-[22px] text-[var(--pro-off)]" />
-        </div>
+          <div id="site-chrome">
+            <EyeLogo onDark className="text-[22px] text-[var(--pro-off)]" />
+          </div>
 
-        <div className="mt-7 flex flex-col gap-2">
-          <span className="font-doopla-mono text-[11px] font-semibold uppercase tracking-[.16em] text-[var(--pro-red)]">
-            Bem-vinda de volta
-          </span>
-          <h2 className="font-pro-display text-[28px] uppercase leading-[1.05] text-[var(--pro-off)] sm:text-[32px]">
-            Entre na sua conta Doopla.
-          </h2>
-          <p className="text-[13.5px] leading-relaxed text-[var(--pro-tx-50)]">
-            Continue de onde parou e deixe a Doopla cuidar do resto.
-          </p>
-        </div>
+          <div className="mt-7 flex flex-col gap-2">
+            <span className="font-doopla-mono text-[11px] font-semibold uppercase tracking-[.16em] text-[var(--pro-red)]">
+              Bem-vinda de volta
+            </span>
+            <h2 className="font-pro-display text-[28px] uppercase leading-[1.05] text-[var(--pro-off)] sm:text-[32px]">
+              Entre na sua conta Doopla.
+            </h2>
+            <p className="text-[13.5px] leading-relaxed text-[var(--pro-tx-50)]">
+              Continue de onde parou e deixe a Doopla cuidar do resto.
+            </p>
+          </div>
 
-        <div className="mt-6">
-          <LoginForm next="/dashboard" />
+          <div className="mt-6">
+            <LoginForm next="/dashboard" />
+          </div>
         </div>
       </div>
     </div>
