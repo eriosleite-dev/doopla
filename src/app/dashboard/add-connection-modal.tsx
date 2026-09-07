@@ -11,6 +11,7 @@ import {
   type ContactLookupResult,
 } from './actions';
 import { proGhostButtonClass, proInputClass, proLabelClass, proPrimaryButtonClass } from './pro-format';
+import { ProMascot } from './pro-mascot';
 import { accentButtonClass, cardClass, ghostButtonClass } from './ui';
 
 type Role = 'artista' | 'booker';
@@ -148,9 +149,22 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
     );
   }
 
-  return (
-    <div className={containerClass}>
-      <p className={titleClass}>Adicionar um {targetLabel}</p>
+  // Título da coluna da direita (pro) — muda com o estado, mais
+  // específico que o "Adicionar um X" genérico que a pele legacy usa
+  // (esse título continua só na legacy; na pro ele vira o painel de
+  // contexto à esquerda, ver LeftPanel abaixo).
+  const rightHeading = sent
+    ? sent === 'request'
+      ? 'Solicitação enviada'
+      : 'Convite enviado'
+    : mode === 'contact'
+      ? `Informe os dados do ${targetLabel.toLowerCase()}`
+      : `Buscar ${targetLabel.toLowerCase()} por código ID`;
+
+  const formContent = (
+    <>
+      {!isPro && <p className={titleClass}>Adicionar um {targetLabel}</p>}
+      {isPro && <p className={titleClass}>{rightHeading}</p>}
 
       {sent ? (
         <>
@@ -202,6 +216,18 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
               Tenho o código ID
             </button>
           </div>
+
+          {/* Texto informativo (só pele pro, só antes de buscar) —
+             honesto aos dois caminhos possíveis: não presume convite
+             (só existe quando a conta ainda não existe) nem promete
+             nada que o produto não faz. */}
+          {isPro && result === null && (
+            <p className={`${mutedTextClass} rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] p-3 leading-relaxed`}>
+              {mode === 'contact'
+                ? `Se ${targetLabel.toLowerCase() === 'booker' ? 'o' : 'a'} ${targetLabel.toLowerCase()} já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.`
+                : `Peça o código ID pro ${targetLabel.toLowerCase()} — ele encontra o dele em "Seu código ID", no painel dele.`}
+            </p>
+          )}
 
           {mode === 'contact' ? (
             <>
@@ -321,6 +347,89 @@ export function AddConnectionModal({ myRole, variant = 'legacy' }: { myRole: Rol
           )}
         </>
       )}
+    </>
+  );
+
+  if (!isPro) {
+    return <div className={containerClass}>{formContent}</div>;
+  }
+
+  // Composição em duas áreas (07/09/2026, redesign de "Minha equipe" —
+  // referência visual aprovada pelo founder) — mascote/contexto à
+  // esquerda, formulário/resultado à direita, dentro do card já usado
+  // no resto do painel (mesmo border/radius/backdrop de ProCard). Só
+  // muda a COMPOSIÇÃO da pele pro: zero mudança de lógica/estado —
+  // formContent acima é o mesmo conteúdo de sempre, só realocado.
+  return (
+    <div className="overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] backdrop-blur-xl lg:grid lg:grid-cols-[280px_1fr]">
+      <LeftPanel targetLabel={targetLabel} />
+      <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] p-5 sm:p-6 lg:border-t-0 lg:border-l">
+        {formContent}
+      </div>
+    </div>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="17" height="17">
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UnlinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="17" height="17">
+      <path d="M9 12h6" strokeLinecap="round" />
+      <path d="M8 8H6a4 4 0 0 0 0 8h2M16 8h2a4 4 0 0 1 0 8h-2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Painel de contexto (só pele pro) — mascote como elemento de
+// identidade (mesmo ProMascot usado na Home, não um desenho novo) +
+// só o que é 100% real hoje: booker opera bookings do artista que
+// representa (negociar/organizar/acompanhar — já é o que "Minha
+// equipe"/oportunidades fazem) e o vínculo pode ser desfeito a
+// qualquer momento (TerminateRelationshipButton, já existente). Nunca
+// promete "nível de acesso"/permissão granular — isso não existe.
+function LeftPanel({ targetLabel }: { targetLabel: string }) {
+  return (
+    <div className="flex flex-col items-start gap-4 p-5 sm:p-6">
+      <ProMascot size={64} />
+      <div>
+        <p className="font-pro-sub text-[16px] font-bold text-[var(--pro-off)]">Adicionar um {targetLabel}</p>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--pro-tx-50)]">
+          Conecte um {targetLabel.toLowerCase()} de confiança pra ajudar a operar seus bookings na Doopla.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] pt-4">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex-none text-[var(--pro-red)]">
+            <CalendarIcon />
+          </span>
+          <div>
+            <p className="text-[12.5px] font-bold text-[var(--pro-off)]">Alguém da sua equipe</p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-[var(--pro-tx-50)]">
+              Pode negociar, organizar e acompanhar seus bookings na Doopla.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex-none text-[var(--pro-red)]">
+            <UnlinkIcon />
+          </span>
+          <div>
+            <p className="text-[12.5px] font-bold text-[var(--pro-off)]">Você continua no controle</p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-[var(--pro-tx-50)]">
+              Pode desconectar o {targetLabel.toLowerCase()} quando quiser, a qualquer momento.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
