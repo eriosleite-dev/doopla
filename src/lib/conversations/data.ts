@@ -248,3 +248,14 @@ export async function getExternalParticipant(supabase: AnySupabaseClient, extern
   const { data } = await supabase.from('external_participants').select('id, name, phone, email').eq('id', externalParticipantId).maybeSingle();
   return (data as ExternalParticipant | null) ?? null;
 }
+
+// Correção de UX de Decisões (06/09/2026) — versão em lote de
+// getExternalParticipant, pra resolver nome real de cliente em
+// conversas SEM booking associado (onde não dá pra pegar o nome via
+// getUserBookings/otherPartyName). Mesma tabela/RLS, só evita 1 round
+// trip por decisão.
+export async function getExternalParticipants(supabase: AnySupabaseClient, ids: string[]): Promise<Map<string, ExternalParticipant>> {
+  if (ids.length === 0) return new Map();
+  const { data } = await supabase.from('external_participants').select('id, name, phone, email').in('id', [...new Set(ids)]);
+  return new Map(((data ?? []) as ExternalParticipant[]).map((p) => [p.id, p]));
+}
