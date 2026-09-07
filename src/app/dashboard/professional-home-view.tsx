@@ -112,7 +112,7 @@ export async function ProfessionalHomeView({
                             &ldquo;{d.preparedContent}&rdquo;
                           </p>
                         )}
-                        <p className="font-doopla-mono mt-3 text-[10.5px] text-[var(--pro-tx-30)]">
+                        <p className="font-doopla-mono mt-3 text-[10.5px] font-bold text-[var(--pro-tx-30)]">
                           {formatRelativeTime(d.createdAt)}
                         </p>
                         <Link

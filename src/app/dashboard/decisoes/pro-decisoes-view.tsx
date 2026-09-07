@@ -116,11 +116,11 @@ export function ProDecisoesView({
                         {c.eventDateLabel && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span>evento em {c.eventDateLabel}</span>
+                            <span className="font-bold">evento em {c.eventDateLabel}</span>
                           </>
                         )}
                         <span aria-hidden="true">·</span>
-                        <span>{c.timeLabel}</span>
+                        <span className="font-bold">{c.timeLabel}</span>
                       </p>
                       {c.preparedContent && (
                         <p className="mt-2 line-clamp-2 text-[12px] italic text-[var(--pro-tx-70)]">&ldquo;{c.preparedContent}&rdquo;</p>
@@ -165,7 +165,7 @@ export function ProDecisoesView({
                   </div>
                   <p className="mt-1.5 text-[12px] text-[var(--pro-tx-50)]">{c.description}</p>
                   <div className="mt-2.5 flex items-center justify-between gap-3">
-                    <p className="font-doopla-mono text-[10px] text-[var(--pro-tx-30)]">{c.timeLabel}</p>
+                    <p className="font-doopla-mono text-[10px] font-bold text-[var(--pro-tx-30)]">{c.timeLabel}</p>
                     <Link href={c.href} className="text-[11.5px] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]">
                       Ver conversa →
                     </Link>

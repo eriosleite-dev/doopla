@@ -213,7 +213,14 @@ export default function DecisoesScreen() {
                   <Text style={styles.cardHeading}>{c.heading}</Text>
                   <Text style={styles.cardMeta}>
                     {c.counterpartName}
-                    {c.eventDateLabel ? ` · evento em ${c.eventDateLabel}` : ''} · {c.timeLabel}
+                    {c.eventDateLabel ? (
+                      <>
+                        {' · '}
+                        <Text style={styles.cardMetaBold}>evento em {c.eventDateLabel}</Text>
+                      </>
+                    ) : null}
+                    {' · '}
+                    <Text style={styles.cardMetaBold}>{c.timeLabel}</Text>
                   </Text>
                   {c.preparedContent && (
                     <Text style={styles.cardExcerpt} numberOfLines={2}>
@@ -253,7 +260,7 @@ export default function DecisoesScreen() {
                     </View>
                   </View>
                   <Text style={styles.cardMeta}>{c.description}</Text>
-                  <Text style={styles.resolvedTime}>{c.timeLabel}</Text>
+                  <Text style={[styles.resolvedTime, styles.resolvedTimeBold]}>{c.timeLabel}</Text>
                 </Pressable>
               ))}
             </>
@@ -363,6 +370,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     lineHeight: 16,
   },
+  cardMetaBold: {
+    fontFamily: fonts.bodySemiBold,
+  },
   cardExcerpt: {
     color: colors.tx70,
     fontFamily: fonts.body,
@@ -422,5 +432,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: 10,
     marginTop: 8,
+  },
+  resolvedTimeBold: {
+    fontFamily: fonts.monoBold,
   },
 });
