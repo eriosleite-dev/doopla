@@ -30,7 +30,7 @@ export function FalarComDooplaCard({ whatsappUrl, identityVerified }: { whatsapp
       {whatsappUrl ? (
         <Pressable style={styles.waBtn} onPress={() => Linking.openURL(whatsappUrl)}>
           <WhatsAppLogoIcon size={17} color="#fff" />
-          <Text style={styles.waText}>Abrir WhatsApp</Text>
+          <Text style={styles.waText}>Falar no WhatsApp</Text>
         </Pressable>
       ) : (
         <Text style={styles.warn}>Número da Doopla indisponível no momento.</Text>
