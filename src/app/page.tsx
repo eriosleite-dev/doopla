@@ -3,6 +3,8 @@ import path from 'node:path';
 import type { Metadata } from 'next';
 import Script from 'next/script';
 
+import { HomeLoginModal } from './_home/HomeLoginModal';
+
 const homeDir = path.join(process.cwd(), 'src/app/_home');
 const HOME_CSS = fs.readFileSync(path.join(homeDir, 'home.css'), 'utf8');
 const HOME_HTML = fs.readFileSync(path.join(homeDir, 'home.html'), 'utf8');
@@ -35,6 +37,7 @@ export default function Home() {
       <Script id="home-marketing-anim" strategy="afterInteractive">
         {HOME_JS}
       </Script>
+      <HomeLoginModal />
     </>
   );
 }
