@@ -44,6 +44,23 @@ async function artistHasDooplaPro(supabase: AnySupabaseClient, profileId: string
 const MINHA_EQUIPE_PRO_ERROR =
   'Minha equipe é um recurso do Doopla Pro. Faça upgrade pra conectar um Booker.';
 
+// Limite de 5 novos bookings/mês no Doopla Básico (07/09/2026) — a
+// decisão de entitlement/contagem é 100% da trigger
+// artist_booking_monthly_limit_check (migration 0073), a autoridade de
+// verdade sobre os dois pontos reais de INSERT em bookings
+// (proposeBookingAction e selectBookerForOpportunityAction abaixo).
+// Nenhum dos dois recalcula a contagem em TS — isso duplicaria a
+// decisão e poderia sair de sincronia com o banco. Aqui só traduzimos o
+// erro `artist_booking_monthly_limit_reached` (raised pela trigger, ver
+// migration 0073) numa mensagem legível, o mesmo padrão já usado pra
+// `opportunity_already_filled` (select_booker_for_opportunity).
+const ARTIST_BOOKING_LIMIT_ERROR =
+  'Limite de 5 novos bookings esse mês no plano Básico. Faça upgrade pro Doopla Pro pra bookings ilimitados.';
+
+function isArtistBookingLimitError(message: string | undefined): boolean {
+  return Boolean(message?.includes('artist_booking_monthly_limit_reached'));
+}
+
 // Vínculo artista↔booker: fonte única de verdade é a tabela
 // `representations`. Todo caminho que cria/altera essa relação (aceite de
 // solicitação, confirmação de convite) precisa invalidar TODAS as rotas
@@ -296,7 +313,10 @@ export async function proposeBookingAction(
     .select('id')
     .single<{ id: string }>();
 
-  if (error || !booking) return { error: 'Não foi possível criar a proposta.' };
+  if (error || !booking) {
+    if (isArtistBookingLimitError(error?.message)) return { error: ARTIST_BOOKING_LIMIT_ERROR };
+    return { error: 'Não foi possível criar a proposta.' };
+  }
 
   await supabase.from('booking_events').insert({
     booking_id: booking.id,
@@ -1051,7 +1071,10 @@ export async function selectBookerForOpportunityAction(
     })
     .select('id')
     .single<{ id: string }>();
-  if (bookingError || !booking) return { error: 'Booker escolhido, mas não foi possível criar o booking.' };
+  if (bookingError || !booking) {
+    if (isArtistBookingLimitError(bookingError?.message)) return { error: ARTIST_BOOKING_LIMIT_ERROR };
+    return { error: 'Booker escolhido, mas não foi possível criar o booking.' };
+  }
 
   await supabase.from('booking_events').insert({
     booking_id: booking.id,

@@ -86,15 +86,23 @@ export function ProPageHeader({
   title,
   subtitle,
   action,
+  badge,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  // Badge opcional ao lado do título (ex.: "PRO" em Minha equipe pra
+  // quem ainda não tem o plano) — nenhuma outra chamada existente
+  // precisa passar isso, undefined preserva o layout de sempre.
+  badge?: ReactNode;
 }) {
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">{title}</h1>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">{title}</h1>
+          {badge}
+        </div>
         {subtitle && <p className="mt-1.5 max-w-[440px] text-[13.5px] text-[var(--pro-tx-50)]">{subtitle}</p>}
       </div>
       {action}

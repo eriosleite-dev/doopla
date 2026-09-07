@@ -69,6 +69,13 @@ export default async function BookersPage() {
       <ProPageHeader
         title="Minha equipe"
         subtitle="Gerencie quem pode trabalhar com seus bookings pela Doopla."
+        badge={
+          !hasProPlan ? (
+            <span className="rounded-full border border-[var(--pro-red)] px-2.5 py-0.5 font-doopla-mono text-[10px] font-bold uppercase tracking-[.08em] text-[var(--pro-red)]">
+              PRO
+            </span>
+          ) : undefined
+        }
         action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} /> : undefined}
       />
 

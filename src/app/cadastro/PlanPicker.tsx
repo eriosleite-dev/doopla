@@ -4,58 +4,7 @@ import { useState, type MouseEvent } from 'react';
 
 import { fieldInputClass } from '@/app/auth/ui';
 import { MARKETS, TRIAL_DAYS, type PlanId } from '@/lib/market';
-
-// `moreFeatures` (07/09/2026) alimenta "Ver todos os recursos" — só com
-// itens já 100% confirmados pelo produto (nada de "especialista
-// humano"/"rede de bookers"/"benefícios de parceiros", conceitos
-// antigos removidos das promessas), nunca o catálogo comercial final
-// (ainda em auditoria/fechamento — ver PROGRESS.md). Pro reafirma "tudo
-// do Básico" em vez de inventar exclusividade Pro nova, porque a
-// camada Pro específica (e-mail de representação, analytics, materiais,
-// automações, Booker/multi-role) ainda não tem matriz aprovada nem gate
-// real implementado (hasDooplaPro() existe, zero call sites hoje).
-export const PLAN_CARDS: {
-  id: PlanId;
-  name: string;
-  description: string;
-  features: string[];
-  moreFeatures: string[];
-}[] = [
-  {
-    id: 'doopla',
-    name: 'Doopla',
-    description: 'Sua Doopla trabalha com você.',
-    features: [
-      'Até 5 novos bookings por mês',
-      'Sua Doopla atende, negocia e acompanha cada booking até o fechamento',
-      'Contratos e acompanhamento de pagamentos',
-      'Comunidade Doopla',
-    ],
-    moreFeatures: [
-      'Negociação respeitando suas regras e aprovações',
-      'Follow-up de cada negociação',
-      'WhatsApp como canal principal com sua Doopla',
-      'Perfil, link e canais de booking',
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Doopla Pro',
-    description: 'Mais estrutura para fazer sua carreira crescer.',
-    features: [
-      'Bookings ilimitados',
-      'Inteligência sobre cachês, clientes e negociações',
-      'Materiais profissionais para sua carreira',
-    ],
-    moreFeatures: [
-      'Tudo o que vem no plano Básico',
-      'Negociação respeitando suas regras e aprovações',
-      'Follow-up de cada negociação',
-      'WhatsApp como canal principal com sua Doopla',
-      'Perfil, link e canais de booking',
-    ],
-  },
-];
+import { PLAN_CARDS } from '@/lib/plans';
 
 // Sem cobrança de verdade ainda (nenhum processador de pagamento
 // integrado) — "confirmar assinatura" grava estado real no banco

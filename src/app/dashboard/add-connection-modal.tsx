@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState, useTransition } from 'react';
 
 import {
@@ -13,6 +12,7 @@ import {
 } from './actions';
 import { proGhostButtonClass, proInputClass, proLabelClass, proPrimaryButtonClass } from './pro-format';
 import { ProMascot } from './pro-mascot';
+import { ProUpgradeModal } from './pro-upgrade-modal';
 import { accentButtonClass, cardClass, ghostButtonClass } from './ui';
 
 type Role = 'artista' | 'booker';
@@ -52,6 +52,7 @@ export function AddConnectionModal({
 }) {
   const isPro = variant === 'pro';
   const [open, setOpen] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [mode, setMode] = useState<LookupMode>('contact');
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -158,24 +159,22 @@ export function AddConnectionModal({
   }
 
   if (!open) {
-    // Estado de upgrade (07/09/2026) — o backend já bloqueia
-    // inviteBookerAction/requestRepresentationAction (direção
+    // Padrão canônico de upgrade contextual (07/09/2026) — o backend já
+    // bloqueia inviteBookerAction/requestRepresentationAction (direção
     // artista->booker) sem Doopla Pro, mas isso nunca pode ser a
-    // PRIMEIRA coisa que a pessoa descobre (erro só depois de tentar).
-    // Aqui a gente reconhece antes de abrir o formulário — mesmo cartão/
-    // borda usados no resto do painel pro, e o mesmo par
-    // texto+proGhostButtonClass já usado em "Plano e assinatura"
-    // (pro-configuracoes-view.tsx), nenhum componente novo.
+    // PRIMEIRA coisa que a pessoa descobre. Um artista Básico que clica
+    // aqui NUNCA abre o formulário de convite nem navega pra outra
+    // página — abre o ProUpgradeModal (mesmo componente usado em
+    // Configurações → Plano e assinatura), sem perder o contexto de
+    // Minha equipe.
     if (myRole === 'artista' && hasProPlan === false) {
       return (
-        <div className="flex flex-wrap items-center gap-3 rounded-[14px] border border-[var(--pro-line)] bg-white/[0.03] px-4 py-3">
-          <p className="text-[12.5px] text-[var(--pro-tx-50)]">
-            Minha equipe é um recurso do <strong className="text-[var(--pro-off)]">Doopla Pro</strong>.
-          </p>
-          <Link href="/dashboard/perfil" className={proGhostButtonClass}>
-            Conhecer o Pro
-          </Link>
-        </div>
+        <>
+          <button type="button" onClick={() => setUpgradeModalOpen(true)} className={primaryBtn}>
+            Adicionar um {targetLabel}
+          </button>
+          <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="equipe" />
+        </>
       );
     }
     return (

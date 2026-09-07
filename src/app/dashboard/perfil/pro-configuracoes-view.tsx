@@ -1,9 +1,13 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
 
 import type { Subscription } from '@/lib/supabase/types';
 
 import { proGhostButtonClass } from '../pro-format';
 import { ProCard, ProPageHeader } from '../pro-ui';
+import { ProUpgradeModal } from '../pro-upgrade-modal';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 
 // Item 12/13 da revisão Professional Web Dashboard (06/09/2026) —
@@ -41,6 +45,7 @@ export function ProConfiguracoesView({
   const isPro = plan === 'pro';
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
   return (
     <main>
@@ -63,12 +68,14 @@ export function ProConfiguracoesView({
               </p>
             </div>
             {!isPro && (
-              <Link href="/precos" className={proGhostButtonClass}>
+              <button type="button" onClick={() => setUpgradeModalOpen(true)} className={proGhostButtonClass}>
                 Conhecer o Pro
-              </Link>
+              </button>
             )}
           </div>
         </ProCard>
+
+        <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="geral" />
 
         <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappNumber} />
 
