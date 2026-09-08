@@ -44,6 +44,7 @@ export function ArtistProfileForm({
   regions,
   languages,
   helpAreas,
+  issuesInvoice,
 }: {
   stageName: string | null;
   category: string | null;
@@ -65,6 +66,7 @@ export function ArtistProfileForm({
   regions: string[];
   languages: string[];
   helpAreas: string[];
+  issuesInvoice: boolean | null;
 }) {
   const [state, formAction, pending] = useActionState(updateArtistProfileAction, {});
   const [editingPreferences, setEditingPreferences] = useState(false);
@@ -287,6 +289,18 @@ export function ArtistProfileForm({
                     {opt}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label className={labelClass}>
+              <span className={eyebrowClass}>Você emite nota fiscal?</span>
+              <select
+                name="issuesInvoice"
+                defaultValue={issuesInvoice === null ? '' : String(issuesInvoice)}
+                className="rounded-full border border-[var(--ink)]/20 bg-white px-4 py-2.5 text-sm"
+              >
+                <option value="">Prefiro não dizer</option>
+                <option value="true">Sim</option>
+                <option value="false">Não</option>
               </select>
             </label>
           </div>

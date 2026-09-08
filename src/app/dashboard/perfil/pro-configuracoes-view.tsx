@@ -1,160 +1,87 @@
-'use client';
-
-import { useState } from 'react';
-
-import { hasDooplaPro } from '@/lib/subscription';
+import { logoutAction } from '@/app/auth/actions';
 import type { Subscription } from '@/lib/supabase/types';
 
-import type { ActivePaymentDetails } from '../data';
-import { PaymentDetailsFields } from '../dinheiro/pro-payment-details-card';
-import { proGhostButtonClass, proStatusPillClass } from '../pro-format';
-import { ProAccordion, ProCard, ProPageHeader } from '../pro-ui';
-import { ProUpgradeModal } from '../pro-upgrade-modal';
-import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
+import { ProPageHeader } from '../pro-ui';
+import { ProSettingsGroup, ProSettingsRow } from './settings-ui';
 
-// Item 12/13 da revisão Professional Web Dashboard (06/09/2026) —
-// Configurações deixa de ser o antigo Perfil (nome gigante serifado,
-// cards brancos, formulário inteiro na raiz). Notificações/Segurança/
-// Privacidade: só o que já é real hoje. Nenhum toggle funcional falso
-// — backend genérico dessas 3 seções ainda não existe, registrado como
-// pendência (não escondido).
-//
-// Rodada de correção/consistência (06/09/2026) — decisão explícita do
-// usuário: "Perfil profissional" descontinuada como SUPERFÍCIE DE
-// NAVEGAÇÃO do profissional (nenhum card/link daqui em diante). Os
-// dados (`artist_profiles`) e o formulário real (ArtistProfileForm/
-// AvatarUploader/PublicProfileCard/LinkRoutingCard,
-// `/dashboard/perfil/editar`) continuam existindo intocados — só não
-// são mais alcançáveis por nenhum link do painel profissional. Nunca
-// deletar o formulário/rota "pra resolver UI"; a superfície futura de
-// edição é um bloco separado, decisão do usuário, não deste patch.
+// Settings V2 (08/09/2026) — a raiz de Configurações responde rápido a
+// "o que posso gerenciar?" e "qual é o estado atual?", nunca um
+// formulário inteiro na própria raiz. Cada linha é uma rota própria
+// (Configurações → detalhe → ação); o resumo ao lado de cada linha só
+// aparece quando há dado real útil pra mostrar — nunca um placeholder
+// decorativo. Server Component puro: nenhuma interação vive aqui, só
+// navegação — as ações reais (upgrade, trocar senha, excluir conta)
+// vivem nas subpáginas correspondentes.
 export function ProConfiguracoesView({
-  fullName,
-  email,
-  phone,
+  hasPro,
   subscription,
   whatsappStatus,
-  whatsappNumber,
-  paymentDetails,
+  paymentConfigured,
 }: {
-  fullName: string;
-  email: string;
-  phone: string | null;
+  hasPro: boolean;
   subscription: Subscription | null;
   whatsappStatus: string | null;
-  whatsappNumber: string | null;
-  paymentDetails: ActivePaymentDetails | null;
+  paymentConfigured: boolean;
 }) {
-  // Entitlement/situação (07/09/2026, migration 0074) — hasPro é a
-  // ÚNICA autoridade sobre "tem Doopla Pro" (mesma function do Shell/
-  // Home/Minha equipe/limite de bookings/selo da Comunidade): nunca
-  // reler artist_plan sozinho aqui, senão trial expirado ou canceled
-  // voltam a aparecer como Pro. O texto de situação abaixo é só
-  // informativo sobre o ciclo (teste em andamento/encerrado, ativo,
-  // cancelado) — nunca decide entitlement por conta própria.
-  const hasPro = hasDooplaPro(subscription);
   const isTrialing = subscription?.status === 'trialing';
-  const trialEndsAtLabel = subscription?.trial_ends_at
-    ? new Date(subscription.trial_ends_at).toLocaleDateString('pt-BR')
-    : null;
   const isCanceled = Boolean(subscription?.canceled_at);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const planSummary = isTrialing
+    ? hasPro
+      ? 'Pro · teste'
+      : 'Teste encerrado'
+    : isCanceled
+      ? 'Cancelado'
+      : hasPro
+        ? 'Pro'
+        : 'Básico';
+
+  const whatsappSummary = whatsappStatus === 'verified' ? 'Verificado' : 'Não verificado';
 
   return (
     <main>
-      <ProPageHeader title="Configurações" subtitle="Plano, conta, WhatsApp, segurança e preferências." />
+      <ProPageHeader title="Configurações" subtitle="Gerencie sua conta, assinatura e preferências da Doopla." />
 
-      <div className="flex flex-col gap-3.5">
-        <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Plano e assinatura</p>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[14px] font-semibold text-[var(--pro-off)]">{hasPro ? 'Doopla Pro' : 'Doopla Básico'}</p>
-              <p className="mt-0.5 text-[12px] text-[var(--pro-tx-50)]">
-                {isTrialing
-                  ? hasPro
-                    ? `Período de teste${trialEndsAtLabel ? ` até ${trialEndsAtLabel}` : ''}`
-                    : `Período de teste encerrado${trialEndsAtLabel ? ` em ${trialEndsAtLabel}` : ''}`
-                  : isCanceled
-                    ? 'Cancelado'
-                    : hasPro
-                      ? 'Ativo'
-                      : 'Plano gratuito'}
-              </p>
-            </div>
-            {!hasPro && (
-              <button type="button" onClick={() => setUpgradeModalOpen(true)} className={proGhostButtonClass}>
-                Conhecer o Pro
-              </button>
-            )}
-          </div>
-        </ProCard>
+      <div className="flex flex-col gap-6">
+        <ProSettingsGroup title="Assinatura e cobrança">
+          <ProSettingsRow href="/dashboard/perfil/assinatura" label="Plano e assinatura" summary={planSummary} />
+          <ProSettingsRow
+            href="/dashboard/perfil/recebimento"
+            label="Dados de recebimento"
+            summary={paymentConfigured ? 'Configurados ✓' : 'Ainda não configurados'}
+          />
+        </ProSettingsGroup>
 
-        <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="geral" />
+        <ProSettingsGroup title="Sua conta">
+          <ProSettingsRow href="/dashboard/perfil/conta" label="Informações da conta" />
+          <ProSettingsRow href="/dashboard/perfil/seguranca" label="Segurança e acesso" />
+        </ProSettingsGroup>
 
-        <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappNumber} />
+        <ProSettingsGroup title="Doopla">
+          <ProSettingsRow href="/dashboard/perfil/preferencias" label="Preferências da Doopla" />
+          <ProSettingsRow href="/dashboard/perfil/notificacoes" label="Notificações" />
+          <ProSettingsRow href="/dashboard/perfil/canais" label="Canais e conexões" summary={whatsappSummary} />
+        </ProSettingsGroup>
 
-        <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Conta</p>
-          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
-            <dt className="text-[var(--pro-tx-50)]">Nome</dt>
-            <dd className="text-[var(--pro-off)]">{fullName}</dd>
-            <dt className="text-[var(--pro-tx-50)]">E-mail</dt>
-            <dd className="text-[var(--pro-off)]">{email}</dd>
-            {phone && (
-              <>
-                <dt className="text-[var(--pro-tx-50)]">Telefone de contato</dt>
-                <dd className="text-[var(--pro-off)]">{phone}</dd>
-              </>
-            )}
-          </dl>
-        </ProCard>
+        <ProSettingsGroup title="Privacidade e suporte">
+          <ProSettingsRow href="/dashboard/perfil/privacidade" label="Privacidade e dados" />
+          <ProSettingsRow href="/dashboard/perfil/suporte" label="Ajuda e suporte" />
+        </ProSettingsGroup>
 
-        <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Notificações</p>
-          <p className="mt-2 text-[12.5px] text-[var(--pro-tx-50)]">
-            Preferências de notificação ainda não são configuráveis — em breve.
-          </p>
-        </ProCard>
-
-        <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Segurança</p>
-          <p className="mt-2 text-[12.5px] text-[var(--pro-tx-50)]">
-            Seu WhatsApp verificado (acima) é o sinal de identidade usado hoje pela Doopla. Mais controles de segurança chegam em breve.
-          </p>
-        </ProCard>
-
-        <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Privacidade e dados</p>
-          <p className="mt-2 text-[12.5px] text-[var(--pro-tx-50)]">
-            Controles de privacidade e dados ainda não são configuráveis por aqui — em breve. (Diferente da privacidade do seu perfil na Comunidade, que tem tela própria.)
-          </p>
-        </ProCard>
-
-        {/* Editável direto aqui dentro (07/09/2026) — antes navegava pra
-           /dashboard/dinheiro só pra ver/editar isto, quebrando a
-           navegação contextual do resto de Configurações. Mesmo
-           formulário/Server Action/RPC de sempre (PaymentDetailsFields,
-           set_payment_details) — Financeiro continua existindo, intocado,
-           com o mesmo card. Resumo "Configurados/Ainda não configurados"
-           vem direto de paymentDetails !== null — mesmo dado que já
-           precisa ser carregado pra renderizar o formulário, sem RPC
-           extra só pra esse resumo. */}
-        <ProAccordion
-          title="Dados de recebimento"
-          rightBadge={
-            <span className={proStatusPillClass(paymentDetails ? 'green' : 'amber')}>
-              {paymentDetails ? 'Configurados ✓' : 'Ainda não configurados'}
-            </span>
-          }
-        >
-          {/* key força remount ao salvar (mesmo truque de dinheiro/page.tsx)
-             — sem isso, o estado interno `editing` (useState(!active))
-             não voltaria pra "resumo" sozinho depois do revalidatePath
-             trazer paymentDetails novo. */}
-          <PaymentDetailsFields key={paymentDetails?.pixKey ?? 'unset'} active={paymentDetails} />
-        </ProAccordion>
+        <form action={logoutAction} className="px-1">
+          <LogoutRow />
+        </form>
       </div>
     </main>
+  );
+}
+
+function LogoutRow() {
+  return (
+    <button
+      type="submit"
+      className="w-full rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] px-5 py-3.5 text-left text-[13.5px] font-medium text-[var(--pro-red)] backdrop-blur-xl transition-colors hover:bg-white/[0.03]"
+    >
+      Sair da conta
+    </button>
   );
 }

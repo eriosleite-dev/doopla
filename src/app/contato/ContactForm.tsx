@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 
-const CONTACT_EMAIL = 'contato@doopla.pro';
+import { SUPPORT_EMAIL as CONTACT_EMAIL } from '@/lib/support';
 
 export function ContactForm() {
   const [name, setName] = useState('');

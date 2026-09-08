@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { SUPPORT_EMAIL } from '@/lib/support';
 import { PageShell } from '../_home/PageShell';
 import { ContactForm } from './ContactForm';
 
@@ -21,8 +22,8 @@ export default function ContatoPage() {
         <div className="inner contact-grid">
           <div className="contact-info">
             <h2 style={{ textAlign: 'left', margin: '0 0 10px' }}>E-mail</h2>
-            <a className="email" href="mailto:contato@doopla.pro">
-              contato@doopla.pro
+            <a className="email" href={`mailto:${SUPPORT_EMAIL}`}>
+              {SUPPORT_EMAIL}
             </a>
           </div>
           <ContactForm />

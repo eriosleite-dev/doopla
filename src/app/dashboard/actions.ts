@@ -1321,6 +1321,14 @@ export async function updateArtistProfileAction(
   const regions = formData.getAll('regions').map(String).filter(Boolean);
   const languages = formData.getAll('languages').map(String).filter(Boolean);
   const helpAreas = formData.getAll('helpAreas').map(String).filter(Boolean);
+  // "Emite nota fiscal?" (Settings V2, 08/09/2026) — deixa de ser
+  // write-once do onboarding (achado da auditoria do Bloco 4): mesma
+  // coluna (artist_profiles.issues_invoice, migration 0037), agora
+  // editável aqui — a superfície de contexto profissional/comercial,
+  // nunca em Conta. Checkbox ausente no FormData (nunca marcado) não
+  // distingue "não emite" de "não respondido" — por isso um <select>
+  // com 3 estados no form, não um checkbox.
+  const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
 
   const genres = genresRaw
     ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
@@ -1348,6 +1356,7 @@ export async function updateArtistProfileAction(
       regions,
       languages,
       help_areas: helpAreas,
+      issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
     })
     .eq('profile_id', user.id);
 
@@ -2062,6 +2071,70 @@ export async function cancelProAction(): Promise<{ error?: string }> {
 
   revalidatePath('/dashboard');
   return {};
+}
+
+// Settings V2 (08/09/2026) — Plano e assinatura, artista. Mesma RPC de
+// sempre (select_artist_plan, migration 0075/cadastro/plano), agora
+// chamável de dentro de Configurações — nunca uma segunda autoridade.
+// select_artist_plan só aceita a troca enquanto status='trialing' (a
+// própria RPC rejeita fora disso); esta action só traduz o erro,
+// nunca reimplementa a regra.
+export async function updateArtistPlanAction(plan: 'doopla' | 'pro'): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Ação inválida.' };
+
+  const { error } = await supabase.rpc('select_artist_plan', { p_plan: plan });
+  if (error) return { error: 'Não foi possível trocar de plano agora.' };
+
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/perfil/assinatura');
+  return {};
+}
+
+// Settings V2 (08/09/2026) — Preferências da Doopla, "como sua Doopla
+// fala com você". Mesma coluna de sempre (artist_profiles.
+// attention_channel, coletada na Etapa 4/6 do onboarding) — write-once
+// até agora, sem superfície de edição. Nunca uma preferência de
+// notificação genérica: é operacional (como o profissional é avisado
+// quando a Doopla precisa dele), por isso vive em "Doopla", não em
+// "Notificações".
+export async function updateAttentionChannelAction(channel: 'whatsapp' | 'painel' | 'ambos'): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Ação inválida.' };
+
+  const { error } = await supabase.from('artist_profiles').update({ attention_channel: channel }).eq('profile_id', user.id);
+  if (error) return { error: 'Não foi possível salvar agora.' };
+
+  revalidatePath('/dashboard/perfil/preferencias');
+  return {};
+}
+
+// Settings V2 (08/09/2026) — "Informações da conta", nunca contexto
+// profissional/comercial (esse fica em Preferências da Doopla/Perfil
+// profissional). Só identidade/contato básicos — mesmas colunas de
+// profiles que handle_new_user já grava no cadastro.
+export async function updateAccountInfoAction(
+  _prevState: { error?: string; success?: boolean },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const fullName = String(formData.get('fullName') ?? '').trim();
+  const phone = String(formData.get('phone') ?? '').trim();
+  if (!fullName) return { error: 'Nome não pode ficar em branco.' };
+
+  const { error } = await supabase.from('profiles').update({ full_name: fullName, phone: phone || null }).eq('id', user.id);
+  if (error) return { error: 'Não foi possível salvar agora.' };
+
+  revalidatePath('/dashboard/perfil/conta');
+  revalidatePath('/dashboard');
+  return { success: true };
 }
 
 // Depois de um downgrade automático, o booker pode trocar o artista

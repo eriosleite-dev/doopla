@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { siteOrigin } from '@/lib/site-url';
@@ -40,6 +41,7 @@ type ArtistDetails = {
   public_enabled: boolean;
   instagram_url: string | null;
   portfolio_url: string | null;
+  issues_invoice: boolean | null;
 };
 
 // Item 13 da revisão Professional Web Dashboard (06/09/2026) — "Perfil"
@@ -56,7 +58,7 @@ export default async function EditarPerfilPage() {
   const { data: artistDetails } = await supabase
     .from('artist_profiles')
     .select(
-      'stage_name, category, subcategory, bio, genres, mercados, local, website_url, other_links, other_preferences, travels, serves_other_locations, accepts_out_of_city_work, career_stage, fee_range, work_types, client_types, regions, languages, help_areas, public_enabled, instagram_url, portfolio_url'
+      'stage_name, category, subcategory, bio, genres, mercados, local, website_url, other_links, other_preferences, travels, serves_other_locations, accepts_out_of_city_work, career_stage, fee_range, work_types, client_types, regions, languages, help_areas, public_enabled, instagram_url, portfolio_url, issues_invoice'
     )
     .eq('profile_id', user.id)
     .single<ArtistDetails>();
@@ -69,6 +71,12 @@ export default async function EditarPerfilPage() {
 
   return (
     <main className="flex max-w-xl flex-col gap-8">
+      <Link
+        href="/dashboard/perfil/preferencias"
+        className="text-[12.5px] font-medium text-[var(--ink)]/50 underline underline-offset-2 hover:text-[var(--ink)]"
+      >
+        ← Preferências da Doopla
+      </Link>
       <header>
         <p className={eyebrowClass}>Perfil profissional</p>
         <h1 className="font-doopla-display mt-1 text-3xl font-semibold">{profile.full_name || user.email}</h1>
@@ -104,6 +112,7 @@ export default async function EditarPerfilPage() {
           regions={artistDetails?.regions ?? []}
           languages={artistDetails?.languages ?? []}
           helpAreas={artistDetails?.help_areas ?? []}
+          issuesInvoice={artistDetails?.issues_invoice ?? null}
         />
       </section>
 

@@ -27,6 +27,17 @@ export const getSessionProfile = cache(async () => {
     redirect('/login?next=/dashboard');
   }
 
+  // Encerramento de conta (Settings V2, migration 0078) — defesa em
+  // profundidade além do ban/signOut global já feito no boundary do
+  // server (ver account-closure-actions.ts): mesmo que uma sessão
+  // ainda tenha um access token válido por alguns minutos, o painel
+  // nunca renderiza pra um profile já fechado. Sem loop: signOut aqui
+  // e /conta-encerrada é a única rota fora deste gate.
+  if (profile.status === 'closed') {
+    await supabase.auth.signOut();
+    redirect('/conta-encerrada');
+  }
+
   // Todo profile ganha um ID público estável (profiles.slug) na
   // primeira visita ao painel, não só artista — ver ensurePublicId.
   // Nome-base por papel: artista usa stage_name (perfil de palco),

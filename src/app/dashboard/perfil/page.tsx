@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { hasDooplaPro } from '@/lib/subscription';
 import { PlanCard } from '../booker-pro/plan-card';
 import { getActivePaymentDetails, getSubscription } from '../data';
 import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
@@ -36,13 +37,10 @@ export default async function PerfilPage() {
     ]);
     return (
       <ProConfiguracoesView
-        fullName={profile.full_name}
-        email={user.email ?? ''}
-        phone={profile.phone}
+        hasPro={hasDooplaPro(subscription)}
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
-        whatsappNumber={homeFacts?.whatsappVerifiedNumber ?? null}
-        paymentDetails={paymentDetails}
+        paymentConfigured={paymentDetails !== null}
       />
     );
   }
