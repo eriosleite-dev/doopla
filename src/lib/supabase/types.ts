@@ -4,6 +4,10 @@
 
 export type UserRole = 'artista' | 'booker' | 'agencia';
 
+// Encerramento de conta (Settings V2, migration 0078) — "closed" nunca
+// é revertido por nenhuma superfície do produto hoje.
+export type ProfileStatus = 'active' | 'closed';
+
 export type Profile = {
   id: string;
   role: UserRole;
@@ -16,6 +20,8 @@ export type Profile = {
   slug: string | null;
   is_admin: boolean;
   referral_code: string;
+  status: ProfileStatus;
+  status_changed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1750,6 +1756,10 @@ export type Database = {
           p_limit?: number;
         };
         Returns: CommunityTopic[];
+      };
+      close_own_account: {
+        Args: Record<string, never>;
+        Returns: undefined;
       };
     };
   };
