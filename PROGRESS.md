@@ -9532,7 +9532,26 @@ Migrations: nenhuma. Zero RPC nova, zero tabela nova — reuso total de
 `is_operationally_ready()`/`payment_details`/`artist_profiles`/
 `getActivePaymentDetails`/`getArtistMatchingCompletion`.
 
-## 84. Bloco 6 — Nova Home pública, redesign a partir do mockup aprovado — `[DELIVERED/CLOSED]`
+## 84. Bloco 6 — Nova Home pública, redesign a partir do mockup aprovado — `[IMPLEMENTED / VISUAL QA PENDING]`
+
+**Status corrigido em 08/09/2026**: o baseline técnico/funcional
+descrito abaixo está aprovado e não será revertido (fluxos reais de
+cadastro/login/referral, preços/planos dinâmicos, remoção do GSAP,
+`IntersectionObserver`, breakpoint da nav, comportamento das pupilas,
+acessibilidade, responsividade, checks tsc/eslint/build). Porém a
+fidelidade VISUAL da implementação atual em relação ao mockup aprovado
+não foi validada com rigor suficiente — a regra do bloco é mockup
+aprovado = fonte de verdade visual, código atual = fonte de verdade
+funcional, e por ora só o segundo lado está confirmado. Bloco NÃO está
+DELIVERED/CLOSED. Próximo passo, quando o mockup for reenviado:
+comparação explícita mockup×implementação (grid, largura máxima,
+proporções, posicionamento, alinhamentos, espaçamentos, hero, escala/
+quebra da headline, tipografia, phone-mockup, mascote, elementos
+editoriais, header, CTA, faixa de profissões, divisores, ritmo
+vertical, densidade, transição entre seções, desktop/tablet/mobile),
+correção do que divergir sem reinterpretar/melhorar por preferência
+própria, e só então nova rodada de QA visual/responsivo/funcional/
+checks antes de fechar como DELIVERED/CLOSED.
 
 Implementação do bloco que estava bloqueado por "aguardando mockup da
 Eduarda". Mockup recebido e usado como source of truth VISUAL; o
