@@ -8986,16 +8986,23 @@ Validado a cada item (checkpoint separado por item, nunca um commit
 único): `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
 `eslint` (mobile) limpos. Migration 0077 entregue ao usuário via
 `SendUserFile` com instrução de aplicação + query de validação, mesma
-regra da 0074-0076.
+regra da 0074-0076 — **aplicada no Supabase real e validada pelo
+usuário em 08/09/2026** (`community_topic_reads` existe, 3 policies,
+RLS ativo). Os 4 itens desta rodada (Notificações, filtro por
+categoria na Web, preview de Salvos no App, posição de leitura) estão
+`DELIVERED` em nível de implementação e migration aplicada — usuário
+sinalizou que o QA visual/funcional fica pra uma rodada de lapidação
+geral da Comunidade, feita separadamente.
 
 Gaps conhecidos, não escondidos: "Em alta"/"Para você" (ranking da Home
 da Comunidade) segue fora de qualquer rodada até virar uma decisão de
 produto própria — usuário pediu explicitamente pra não inventar
-critério baseado só em respostas/recência. Nenhum click-through E2E
-autenticado foi possível neste ambiente (mesma limitação já registrada
-em blocos anteriores); posição de leitura em particular precisa de
-validação manual: abrir um tópico com respostas, sair, reentrar, e
-confirmar que pousa onde parou (não no topo) nas duas plataformas.
+critério baseado só em respostas/recência, e para não começar esse item
+ainda. Nenhum click-through E2E autenticado foi possível neste ambiente
+(mesma limitação já registrada em blocos anteriores); QA visual/
+funcional dos 4 itens (incluindo confirmar que a posição de leitura
+pousa onde parou, não no topo, nas duas plataformas) fica pendente pro
+usuário, junto da lapidação geral já combinada.
 
 ## Como usar isso
 
