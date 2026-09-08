@@ -8,7 +8,7 @@ import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
-import { getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
+import { getActivePaymentDetails, getArtistMatchingCompletion, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
 import { capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
@@ -46,10 +46,19 @@ export async function ProfessionalHomeView({
     groupDecisionsByConversation(decisions).filter((d) => conversationSummary.needsYouConversationIds.includes(d.conversationId))
   ).slice(0, 5);
 
-  const [recentActivity, orcamentoInfo, referralSummary] = await Promise.all([
+  const [recentActivity, orcamentoInfo, referralSummary, activePaymentDetails, matchingCompletion] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
     getOrcamentoLinkInfo(userId, supabase),
     profile.referral_code ? getReferralSummary(userId, profile.referral_code, supabase) : Promise.resolve(null),
+    // Bloco 4 (progressive profiling, 08/09/2026) — mesmas fontes
+    // canônicas já usadas em /dashboard/perfil/recebimento e no card
+    // "Complete suas preferências" (antes só alcançável via Booker
+    // gerenciando artista, órfão desde o split Shell+Home — ver
+    // booker-home-view.tsx). Nunca uma segunda implementação: mesma
+    // getActivePaymentDetails/getArtistMatchingCompletion, mesmo
+    // critério, sem alterar nenhuma das duas funções.
+    getActivePaymentDetails(userId, supabase),
+    getArtistMatchingCompletion(userId, supabase),
   ]);
 
   const bookingById = new Map(bookings.map((b) => [b.id, b]));
@@ -220,6 +229,7 @@ export async function ProfessionalHomeView({
         </div>
 
         <div className="flex flex-col gap-3.5">
+          <ReadinessCard paymentReady={activePaymentDetails !== null} matchingCompletion={matchingCompletion} />
           <BookingChannelsCard orcamentoUrl={orcamentoUrl} whatsappNumber={whatsappNumber} professionalSlug={profile.slug} />
           {referralSummary && (
             <ReferralCard referralTotal={homeFacts.referralTotalCount} referralQualifiedCents={referralSummary.qualifiedTotalCents} />
@@ -344,6 +354,63 @@ function StatsRow({ needsYou, waitingClient, confirmed, completed }: { needsYou:
           </svg>
         }
       />
+    </div>
+  );
+}
+
+// Bloco 4 — nudge progressivo de prontidão (08/09/2026). Ressalva de
+// UX do usuário: nunca um banner genérico/persistente — mesma
+// linguagem visual já usada em BookingChannelsCard (linha com
+// label/valor + CTA quando falta algo, borda entre linhas, nunca uma
+// caixa de alerta nova). Progressivo e nunca bloqueante: cada pendência
+// é sua própria linha, desaparece sozinha quando resolvida (nunca pede
+// de novo o que já foi dado); card inteiro não renderiza nada (nem
+// título) quando as duas já estão resolvidas — zero ruído visual no
+// estado "tudo completo". Dados de recebimento aponta pra
+// /dashboard/perfil/recebimento (superfície real de Settings V2);
+// contexto comercial aponta pro mesmo modal "Preferências de matching"
+// já linkado em Preferências da Doopla (#preferencias-matching) —
+// nenhuma superfície nova, nenhum campo novo.
+function ReadinessCard({
+  paymentReady,
+  matchingCompletion,
+}: {
+  paymentReady: boolean;
+  matchingCompletion: { filled: number; total: number };
+}) {
+  const matchingComplete = matchingCompletion.total === 0 || matchingCompletion.filled >= matchingCompletion.total;
+  if (paymentReady && matchingComplete) return null;
+
+  return (
+    <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] backdrop-blur-xl">
+      <p className="font-pro-sub mb-1 text-[13.5px] font-bold">Deixe sua Doopla pronta</p>
+      {!paymentReady && (
+        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] text-[var(--pro-tx-50)]">Dados de recebimento</p>
+            <p className="text-[12px] text-[var(--pro-tx-70)]">Sem isso, a Doopla não consegue fechar pagamento com o cliente.</p>
+          </div>
+          <Link href="/dashboard/perfil/recebimento" className="flex-none text-[11.5px] font-bold text-[var(--pro-red)] hover:underline">
+            Completar →
+          </Link>
+        </div>
+      )}
+      {!matchingComplete && (
+        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10.5px] text-[var(--pro-tx-50)]">
+              Contexto profissional · {matchingCompletion.filled}/{matchingCompletion.total}
+            </p>
+            <p className="text-[12px] text-[var(--pro-tx-70)]">Ajuda a Doopla te representar melhor nas conversas.</p>
+          </div>
+          <Link
+            href="/dashboard/perfil/editar#preferencias-matching"
+            className="flex-none text-[11.5px] font-bold text-[var(--pro-red)] hover:underline"
+          >
+            Completar →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
