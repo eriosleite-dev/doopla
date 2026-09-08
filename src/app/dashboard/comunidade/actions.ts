@@ -167,11 +167,16 @@ export async function createReplyAction(topicId: string, _prevState: ReplyAction
       }
     : null;
 
+  const author = authorsById.get(user.id);
   const post: ChatTimelineMessage = {
     id: newPost.id,
     postId: newPost.id,
     authorProfileId: user.id,
-    authorName: authorsById.get(user.id)?.displayName ?? 'Profissional Doopla',
+    authorName: author?.displayName ?? 'Profissional Doopla',
+    authorProfessionLabel: author?.professionLabel ?? null,
+    authorCity: author?.city ?? null,
+    authorState: author?.state ?? null,
+    authorPublicId: author?.publicId ?? null,
     timeLabel: formatRelativeTime(newPost.created_at),
     createdAt: newPost.created_at,
     body: newPost.body,

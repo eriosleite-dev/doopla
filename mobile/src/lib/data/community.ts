@@ -103,6 +103,7 @@ export type CommunityAuthorSnapshot = {
   city: string | null;
   state: string | null;
   avatarUrl: string | null;
+  publicId: string | null;
 };
 
 function mapAuthorSnapshot(row: CommunityProfilePublic): CommunityAuthorSnapshot {
@@ -115,6 +116,7 @@ function mapAuthorSnapshot(row: CommunityProfilePublic): CommunityAuthorSnapshot
     city: row.city,
     state: row.state,
     avatarUrl: row.avatar_url,
+    publicId: row.public_id,
   };
 }
 
@@ -373,4 +375,44 @@ export type CommunityContentVisibility = 'visible' | 'removed';
 
 export function communityContentVisibility(status: CommunityContentStatus): CommunityContentVisibility {
   return status === 'published' ? 'visible' : 'removed';
+}
+
+// Item @menções (08/09/2026) — espelha buildMentionCandidateDisplay do
+// painel web (src/lib/community/data.ts) — mesma lógica pura,
+// duplicada aqui por convenção do repo (ver communityContentVisibility
+// acima). Identidade técnica da menção continua sendo profileId; isto
+// é só desambiguação visual (profissão+cidade, terceiro nível com o
+// identificador público estável só quando dois OU MAIS candidatos, no
+// mesmo conjunto mostrado, ficariam visualmente idênticos).
+export type MentionCandidateInfo = {
+  profileId: string;
+  displayName: string;
+  professionLabel: string | null;
+  city: string | null;
+  state: string | null;
+  publicId: string | null;
+};
+
+export type MentionCandidateDisplay = MentionCandidateInfo & {
+  subtitle: string | null;
+  tieBreaker: string | null;
+};
+
+function mentionCandidateSubtitle(candidate: MentionCandidateInfo): string | null {
+  const location = candidate.city && candidate.state ? `${candidate.city}, ${candidate.state}` : null;
+  if (candidate.professionLabel && location) return `${candidate.professionLabel} · ${location}`;
+  if (candidate.professionLabel) return candidate.professionLabel;
+  if (location) return location;
+  return null;
+}
+
+export function buildMentionCandidateDisplay(candidates: MentionCandidateInfo[]): MentionCandidateDisplay[] {
+  const withSubtitle = candidates.map((c) => ({ ...c, subtitle: mentionCandidateSubtitle(c) }));
+  const groupKey = (c: { displayName: string; subtitle: string | null }) => `${c.displayName}|${c.subtitle ?? ''}`;
+  const groupCounts = new Map<string, number>();
+  for (const c of withSubtitle) groupCounts.set(groupKey(c), (groupCounts.get(groupKey(c)) ?? 0) + 1);
+  return withSubtitle.map((c) => ({
+    ...c,
+    tieBreaker: (groupCounts.get(groupKey(c)) ?? 0) > 1 && c.publicId ? `@${c.publicId}` : null,
+  }));
 }

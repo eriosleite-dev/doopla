@@ -123,6 +123,7 @@ export type CommunityAuthorSnapshot = {
   city: string | null;
   state: string | null;
   avatarUrl: string | null;
+  publicId: string | null;
 };
 
 function mapAuthorSnapshot(row: CommunityProfilePublic): CommunityAuthorSnapshot {
@@ -135,6 +136,7 @@ function mapAuthorSnapshot(row: CommunityProfilePublic): CommunityAuthorSnapshot
     city: row.city,
     state: row.state,
     avatarUrl: row.avatar_url,
+    publicId: row.public_id,
   };
 }
 
@@ -432,4 +434,51 @@ export type CommunityContentVisibility = 'visible' | 'removed';
 
 export function communityContentVisibility(status: CommunityContentStatus): CommunityContentVisibility {
   return status === 'published' ? 'visible' : 'removed';
+}
+
+// --- Desambiguação de @menções (função pura, seguro duplicar em Mobile) --
+//
+// Item @menções (08/09/2026) — auditoria confirmou que a identidade
+// técnica da menção já é (e continua sendo) profile_id; o problema era
+// só a apresentação visual quando dois candidatos têm o mesmo
+// displayName. Nível principal: profissão + cidade, com fallback pros
+// dados faltantes (nunca inventa dado, nunca expõe UUID). Terceiro
+// nível (identificador público estável — profiles.slug, via
+// community_profiles_public.public_id, migration 0076) só aparece
+// quando dois OU MAIS candidatos, no mesmo conjunto sendo mostrado,
+// ficariam visualmente idênticos (mesmo nome + mesmo subtítulo,
+// incluindo o caso de nenhum dos dois ter profissão/cidade — subtítulo
+// nulo colide com subtítulo nulo igual a qualquer outro valor). Nunca
+// aparece pra quem não precisa.
+export type MentionCandidateInfo = {
+  profileId: string;
+  displayName: string;
+  professionLabel: string | null;
+  city: string | null;
+  state: string | null;
+  publicId: string | null;
+};
+
+export type MentionCandidateDisplay = MentionCandidateInfo & {
+  subtitle: string | null;
+  tieBreaker: string | null;
+};
+
+function mentionCandidateSubtitle(candidate: MentionCandidateInfo): string | null {
+  const location = candidate.city && candidate.state ? `${candidate.city}, ${candidate.state}` : null;
+  if (candidate.professionLabel && location) return `${candidate.professionLabel} · ${location}`;
+  if (candidate.professionLabel) return candidate.professionLabel;
+  if (location) return location;
+  return null;
+}
+
+export function buildMentionCandidateDisplay(candidates: MentionCandidateInfo[]): MentionCandidateDisplay[] {
+  const withSubtitle = candidates.map((c) => ({ ...c, subtitle: mentionCandidateSubtitle(c) }));
+  const groupKey = (c: { displayName: string; subtitle: string | null }) => `${c.displayName}|${c.subtitle ?? ''}`;
+  const groupCounts = new Map<string, number>();
+  for (const c of withSubtitle) groupCounts.set(groupKey(c), (groupCounts.get(groupKey(c)) ?? 0) + 1);
+  return withSubtitle.map((c) => ({
+    ...c,
+    tieBreaker: (groupCounts.get(groupKey(c)) ?? 0) > 1 && c.publicId ? `@${c.publicId}` : null,
+  }));
 }

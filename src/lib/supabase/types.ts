@@ -997,6 +997,11 @@ export type CommunityProfilePublic = {
   work_types: string[] | null;
   instagram_url: string | null;
   portfolio_url: string | null;
+  // Desambiguação de homônimos no autocomplete de @menções (08/09/2026,
+  // migration 0076) — profiles.slug, o identificador público estável já
+  // existente (gerado por ensurePublicId() na primeira visita ao painel,
+  // já usado como "Seu código ID" alhures). Nunca profile_id/UUID.
+  public_id: string | null;
 };
 
 export type CommunityTopicAudience = 'niche' | 'all';

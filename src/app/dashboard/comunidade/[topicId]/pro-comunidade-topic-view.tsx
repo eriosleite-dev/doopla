@@ -2,6 +2,8 @@
 
 import { Fragment, useActionState, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
 
+import { buildMentionCandidateDisplay, type MentionCandidateDisplay } from '@/lib/community/data';
+
 import { proInputClass, proPrimaryButtonClass } from '../../pro-format';
 import { createReplyAction, loadEarlierCommunityPostsAction, removePostAction } from '../actions';
 import { useComunidadeScrollAnchor } from '../navigation-guard';
@@ -10,7 +12,20 @@ import { snippetOf, type ChatTimelineMessage } from './timeline';
 
 export type { ChatTimelineMessage };
 
-export type MentionCandidate = { profileId: string; displayName: string };
+// Item @menções (08/09/2026) — universo de menção continua vindo só
+// das mensagens já carregadas (nunca uma busca nova de perfil, ver
+// useMemo abaixo). MentionCandidate agora carrega o suficiente pra
+// desambiguação visual progressiva (buildMentionCandidateDisplay, em
+// @/lib/community/data) — nunca muda a identidade técnica da menção,
+// que continua sendo só profileId (ver selectMention).
+export type MentionCandidate = {
+  profileId: string;
+  displayName: string;
+  professionLabel: string | null;
+  city: string | null;
+  state: string | null;
+  publicId: string | null;
+};
 
 type ReplyTarget = { postId: string; authorName: string; snippet: string };
 
@@ -123,12 +138,21 @@ export function ProComunidadeTopicChat({
   // são carregadas, sem query adicional: só deriva do que já está em
   // `messages`.
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
-    const seen = new Map<string, string>();
+    const seen = new Map<string, MentionCandidate>();
     for (const m of messages) {
       if (m.authorProfileId === currentProfileId) continue;
-      if (!seen.has(m.authorProfileId)) seen.set(m.authorProfileId, m.authorName);
+      if (!seen.has(m.authorProfileId)) {
+        seen.set(m.authorProfileId, {
+          profileId: m.authorProfileId,
+          displayName: m.authorName,
+          professionLabel: m.authorProfessionLabel,
+          city: m.authorCity,
+          state: m.authorState,
+          publicId: m.authorPublicId,
+        });
+      }
     }
-    return [...seen.entries()].map(([profileId, displayName]) => ({ profileId, displayName }));
+    return [...seen.values()];
   }, [messages, currentProfileId]);
 
   const loadedIds = useMemo(() => new Set(messages.map((m) => m.id)), [messages]);
@@ -412,8 +436,16 @@ function ProComunidadeReplyForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, state]);
 
-  const suggestions = mentionQuery
-    ? mentionCandidates.filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR'))).slice(0, 6)
+  // buildMentionCandidateDisplay roda sobre o conjunto já FILTRADO pela
+  // busca (nunca o universo inteiro) — colisão visual só importa entre
+  // candidatos que aparecem juntos na mesma lista; dois homônimos que
+  // nunca aparecem lado a lado num mesmo filtro não precisam do
+  // terceiro nível. slice(0, 6) depois, nunca antes — cortar antes
+  // poderia esconder o candidato que causaria a colisão.
+  const suggestions: MentionCandidateDisplay[] = mentionQuery
+    ? buildMentionCandidateDisplay(
+        mentionCandidates.filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR')))
+      ).slice(0, 6)
     : [];
 
   function selectMention(candidate: MentionCandidate) {
@@ -562,11 +594,13 @@ function ProComunidadeReplyForm({
                     selectMention(candidate);
                   }}
                   onMouseEnter={() => setActiveIndex(i)}
-                  className={`block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[12.5px] ${
+                  className={`block w-full rounded-[8px] px-2.5 py-1.5 text-left ${
                     i === activeIndex ? 'bg-white/[0.06] text-[var(--pro-off)]' : 'text-[var(--pro-tx-70)]'
                   }`}
                 >
-                  @{candidate.displayName}
+                  <span className="block text-[12.5px] font-semibold">@{candidate.displayName}</span>
+                  {candidate.subtitle && <span className="block text-[11px] text-[var(--pro-tx-45)]">{candidate.subtitle}</span>}
+                  {candidate.tieBreaker && <span className="block text-[10.5px] text-[var(--pro-tx-30)]">{candidate.tieBreaker}</span>}
                 </button>
               ))
             )}

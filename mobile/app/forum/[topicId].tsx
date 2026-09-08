@@ -22,6 +22,7 @@ import { BookmarkIcon, SendIcon } from '@/components/icons/Icons';
 import { ErrorState, LoadingState } from '@/components/shared/ScreenState';
 import { formatRelativeDate } from '@/lib/format';
 import {
+  buildMentionCandidateDisplay,
   communityContentVisibility,
   createCommunityPost,
   ensureCommunityProfileActivated,
@@ -36,6 +37,7 @@ import {
   saveTopic,
   unsaveTopic,
   type CommunityAuthorSnapshot,
+  type MentionCandidateDisplay,
 } from '@/lib/data/community';
 import { useAuth } from '@/hooks/useAuth';
 import type { CommunityPost, CommunityTopic } from '@/types/community';
@@ -43,7 +45,19 @@ import type { CommunityPost, CommunityTopic } from '@/types/community';
 type Phase = 'loading' | 'ready' | 'error';
 type SendPhase = 'idle' | 'sending' | 'error';
 type ReplyTarget = { postId: string; authorName: string; snippet: string };
-type MentionCandidate = { profileId: string; displayName: string };
+// Item @menções (08/09/2026) — mesmo universo (autores das mensagens já
+// carregadas, ver mentionCandidates abaixo), agora com o suficiente
+// pra desambiguação visual progressiva (buildMentionCandidateDisplay,
+// espelhado em @/lib/data/community). Identidade técnica continua
+// sendo só profileId.
+type MentionCandidate = {
+  profileId: string;
+  displayName: string;
+  professionLabel: string | null;
+  city: string | null;
+  state: string | null;
+  publicId: string | null;
+};
 type ReplyToQuote = ReplyTarget & { removed: boolean };
 type TrackedMention = { profileId: string; displayName: string; insertedText: string };
 type MentionQuery = { start: number; query: string };
@@ -212,7 +226,14 @@ export default function ForumConversationScreen() {
     return ids
       .map((id) => authorsById.get(id))
       .filter((author): author is CommunityAuthorSnapshot => Boolean(author))
-      .map((author) => ({ profileId: author.profileId, displayName: author.displayName }));
+      .map((author) => ({
+        profileId: author.profileId,
+        displayName: author.displayName,
+        professionLabel: author.professionLabel,
+        city: author.city,
+        state: author.state,
+        publicId: author.publicId,
+      }));
   }, [topic, posts, authorsById, professionalId]);
 
   useEffect(() => {
@@ -368,10 +389,14 @@ export default function ForumConversationScreen() {
     flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
   }
 
-  const mentionSuggestions = mentionQuery
-    ? mentionCandidates
-        .filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR')))
-        .slice(0, 6)
+  // buildMentionCandidateDisplay roda sobre o conjunto já filtrado pela
+  // busca (mesma ordem do Web) — colisão visual só importa entre
+  // candidatos que aparecem juntos na mesma lista; slice(0, 6) sempre
+  // depois, nunca antes.
+  const mentionSuggestions: MentionCandidateDisplay[] = mentionQuery
+    ? buildMentionCandidateDisplay(
+        mentionCandidates.filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR')))
+      ).slice(0, 6)
     : [];
 
   function handleDraftChange(text: string) {
@@ -659,6 +684,8 @@ export default function ForumConversationScreen() {
                         accessibilityRole="button"
                       >
                         <Text style={styles.mentionOptionText}>@{candidate.displayName}</Text>
+                        {candidate.subtitle && <Text style={styles.mentionOptionSubtitle}>{candidate.subtitle}</Text>}
+                        {candidate.tieBreaker && <Text style={styles.mentionOptionTieBreaker}>{candidate.tieBreaker}</Text>}
                       </Pressable>
                     ))
                   )}
@@ -870,6 +897,19 @@ const styles = StyleSheet.create({
     color: colors.tx70,
     fontFamily: fonts.body,
     fontSize: 12.5,
+    fontWeight: '600',
+  },
+  mentionOptionSubtitle: {
+    color: colors.tx50,
+    fontFamily: fonts.body,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  mentionOptionTieBreaker: {
+    color: colors.tx30,
+    fontFamily: fonts.body,
+    fontSize: 10.5,
+    marginTop: 1,
   },
   footer: {
     flexDirection: 'row',

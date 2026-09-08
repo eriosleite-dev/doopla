@@ -36,6 +36,16 @@ export type ChatTimelineMessage = {
   postId: string | null;
   authorProfileId: string;
   authorName: string;
+  // Item @menções (08/09/2026) — desambiguação de homônimos no
+  // autocomplete: cada mensagem já carrega o snapshot público do
+  // autor (community_profiles_public), então o universo de menção
+  // (derivado das mensagens já carregadas, ver pro-comunidade-topic-view.tsx)
+  // não precisa de uma busca extra pra ter profissão/cidade/identificador
+  // público — só apresentação, nunca a identidade técnica da menção.
+  authorProfessionLabel: string | null;
+  authorCity: string | null;
+  authorState: string | null;
+  authorPublicId: string | null;
   timeLabel: string;
   // ISO cru (não só o rótulo formatado) — é o que vira cursor de
   // paginação (createdAt do último post carregado) e nunca precisa
@@ -54,11 +64,16 @@ export function snippetOf(body: string, max = 80): string {
 }
 
 export function topicToTimelineMessage(topic: CommunityTopic, authorsById: Map<string, CommunityAuthorSnapshot>): ChatTimelineMessage {
+  const author = authorsById.get(topic.author_profile_id);
   return {
     id: topic.id,
     postId: null,
     authorProfileId: topic.author_profile_id,
-    authorName: authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla',
+    authorName: author?.displayName ?? 'Profissional Doopla',
+    authorProfessionLabel: author?.professionLabel ?? null,
+    authorCity: author?.city ?? null,
+    authorState: author?.state ?? null,
+    authorPublicId: author?.publicId ?? null,
     timeLabel: formatRelativeTime(topic.created_at),
     createdAt: topic.created_at,
     body: topic.body,
@@ -88,11 +103,16 @@ function toTimelineMessage(
       };
     }
   }
+  const author = authorsById.get(post.author_profile_id);
   return {
     id: post.id,
     postId: post.id,
     authorProfileId: post.author_profile_id,
-    authorName: authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla',
+    authorName: author?.displayName ?? 'Profissional Doopla',
+    authorProfessionLabel: author?.professionLabel ?? null,
+    authorCity: author?.city ?? null,
+    authorState: author?.state ?? null,
+    authorPublicId: author?.publicId ?? null,
     timeLabel: formatRelativeTime(post.created_at),
     createdAt: post.created_at,
     body: post.body,
