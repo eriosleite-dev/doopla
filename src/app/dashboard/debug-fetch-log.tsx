@@ -69,7 +69,12 @@ if (typeof window !== 'undefined' && !window.__dooplaFetchPatched) {
       const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
       entry = { id: nextId++, t: startedAt, method: method || 'GET', url, headers: headerBag };
       window.__dooplaFetchLog!.push(entry);
-      if (window.__dooplaFetchLog!.length > 40) window.__dooplaFetchLog!.shift();
+      // Capacidade alta (não só as últimas 8) — o painel navegando dentro
+      // da Comunidade já aberta gera muito prefetch de hover (tópicos,
+      // novo, salvos); sem isso, a MESMA navegação real que dispara a
+      // tela preta (a que importa) seria expulsa do buffer antes de dar
+      // tempo de tirar print.
+      if (window.__dooplaFetchLog!.length > 120) window.__dooplaFetchLog!.shift();
     }
 
     try {
@@ -107,36 +112,52 @@ if (typeof window !== 'undefined' && !window.__dooplaFetchPatched) {
   }) as typeof window.fetch;
 }
 
-function formatLog(): { count: number; lines: string } {
+function formatEntry(e: FetchLogEntry, loadT: number, now: number): string {
+  const relSec = ((e.t - loadT) / 1000).toFixed(2);
+  const ageSec = ((now - e.t) / 1000).toFixed(1);
+  const status = e.error ? `ERRO:${e.error}` : e.status !== undefined ? `${e.status}` : '(pendente)';
+  const dur = e.durationMs !== undefined ? `${e.durationMs}ms` : '…';
+  const body =
+    e.headers.rsc === '1'
+      ? `    corpo(${e.bodyLength ?? '…'}b)=${e.bodySnippet !== undefined ? e.bodySnippet : '(lendo…)'}`
+      : null;
+  return (
+    `[+${relSec}s, há ${ageSec}s] ${e.method} ${e.url}\n` +
+    `    rsc=${e.headers.rsc || '-'} nextUrl=${e.headers.nextUrl || '-'} prefetch=${e.headers.routerPrefetch || '-'} status=${status} dur=${dur}\n` +
+    `    tree=${e.headers.routerStateTree || '-'}` +
+    (body ? `\n${body}` : '')
+  );
+}
+
+function formatLog(): { count: number; realCount: number; prefetchCount: number; realLines: string } {
   const log = window.__dooplaFetchLog ?? [];
   const loadT = window.__dooplaPageLoadT ?? 0;
   const now = performance.now();
 
-  const lines = log
-    .slice(-8)
-    .map((e) => {
-      const relSec = ((e.t - loadT) / 1000).toFixed(2);
-      const ageSec = ((now - e.t) / 1000).toFixed(1);
-      const status = e.error ? `ERRO:${e.error}` : e.status !== undefined ? `${e.status}` : '(pendente)';
-      const dur = e.durationMs !== undefined ? `${e.durationMs}ms` : '…';
-      const body =
-        e.headers.rsc === '1'
-          ? `    corpo(${e.bodyLength ?? '…'}b)=${e.bodySnippet !== undefined ? e.bodySnippet : '(lendo…)'}`
-          : null;
-      return (
-        `[+${relSec}s, há ${ageSec}s] ${e.method} ${e.url}\n` +
-        `    rsc=${e.headers.rsc || '-'} nextUrl=${e.headers.nextUrl || '-'} prefetch=${e.headers.routerPrefetch || '-'} status=${status} dur=${dur}\n` +
-        `    tree=${e.headers.routerStateTree || '-'}` +
-        (body ? `\n${body}` : '')
-      );
-    })
+  // Navegar dentro da Comunidade já aberta (hover em tópicos/novo/salvos)
+  // gera muito prefetch (`prefetch=1`) — ruído pro que estamos
+  // investigando. As requisições REAIS de navegação (`prefetch` != '1')
+  // são as que importam pra explicar a tela preta: sempre priorizadas
+  // aqui, nunca escondidas atrás de ruído de prefetch por causa de
+  // capacidade limitada de tela.
+  const real = log.filter((e) => e.headers.rsc === '1' && e.headers.routerPrefetch !== '1');
+  const prefetchCount = log.filter((e) => e.headers.routerPrefetch === '1').length;
+
+  const realLines = real
+    .slice(-6)
+    .map((e) => formatEntry(e, loadT, now))
     .join('\n');
 
-  return { count: log.length, lines };
+  return { count: log.length, realCount: real.length, prefetchCount, realLines };
 }
 
 export function DebugFetchLog() {
-  const [{ count, lines }, setState] = useState<{ count: number; lines: string }>({ count: 0, lines: '' });
+  const [{ count, realCount, prefetchCount, realLines }, setState] = useState<{
+    count: number;
+    realCount: number;
+    prefetchCount: number;
+    realLines: string;
+  }>({ count: 0, realCount: 0, prefetchCount: 0, realLines: '' });
 
   useEffect(() => {
     function tick() {
@@ -169,8 +190,10 @@ export function DebugFetchLog() {
       }}
     >
       {'DEBUG FETCH (temporário) — '}
-      {count} requisições /dashboard* capturadas desde o carregamento{'\n'}
-      {lines || '(nenhuma ainda)'}
+      {count} requisições /dashboard* no total ({realCount} navegações reais, {prefetchCount} prefetches omitidos)
+      {'\n'}
+      {'ÚLTIMAS NAVEGAÇÕES REAIS (prefetch≠1):\n'}
+      {realLines || '(nenhuma ainda)'}
     </div>
   );
 }
