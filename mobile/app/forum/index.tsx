@@ -13,6 +13,7 @@ import {
   ensureCommunityProfileActivated,
   fetchCommunityAuthors,
   fetchCommunityCategories,
+  fetchCommunityNotifications,
   fetchCommunityTopics,
   fetchSavedTopicIds,
   removeCommunityTopic,
@@ -42,6 +43,7 @@ export default function ForumTopicListScreen() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [categories, setCategories] = useState<CommunityCategory[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [search, setSearch] = useState('');
   const [retryTick, setRetryTick] = useState(0);
   const [deletingTopicIds, setDeletingTopicIds] = useState<Set<string>>(new Set());
@@ -52,12 +54,18 @@ export default function ForumTopicListScreen() {
   const loadBase = useCallback(async () => {
     try {
       await ensureCommunityProfileActivated();
-      const [cats, saved] = await Promise.all([fetchCommunityCategories(), fetchSavedTopicIds()]);
+      const [cats, saved, notifications] = await Promise.all([
+        fetchCommunityCategories(),
+        fetchSavedTopicIds(),
+        fetchCommunityNotifications(),
+      ]);
       setCategories(cats);
       setSavedIds(new Set(saved));
+      setUnreadNotifications(notifications.filter((n) => !n.readAt).length);
     } catch {
       // Falha aqui não impede a listagem principal (efeito abaixo) — só
-      // deixa chips/estado de salvo temporariamente vazios.
+      // deixa chips/estado de salvo/badge de notificação temporariamente
+      // vazios.
     }
   }, []);
 
@@ -162,6 +170,14 @@ export default function ForumTopicListScreen() {
           <Pressable style={styles.actionBtn} onPress={() => router.push('/forum/salvos')}>
             <Text style={styles.actionText}>Salvos</Text>
           </Pressable>
+          <Pressable style={styles.actionBtn} onPress={() => router.push('/forum/notificacoes')}>
+            <Text style={styles.actionText}>Notificações</Text>
+            {unreadNotifications > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text>
+              </View>
+            )}
+          </Pressable>
           <Pressable style={[styles.actionBtn, styles.actionPrimary]} onPress={() => router.push('/forum/novo')}>
             <Text style={[styles.actionText, styles.actionPrimaryText]}>Criar tópico</Text>
           </Pressable>
@@ -247,6 +263,24 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notificationBadgeText: {
+    color: colors.off,
+    fontFamily: fonts.monoBold,
+    fontSize: 9,
   },
   actionPrimary: {
     backgroundColor: colors.red,

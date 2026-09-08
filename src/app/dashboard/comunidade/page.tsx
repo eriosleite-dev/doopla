@@ -4,16 +4,34 @@ import { redirect } from 'next/navigation';
 import {
   ensureCommunityProfileActivated,
   getCommunityAuthors,
+  listCommunityCategories,
+  listCommunityNotifications,
   listCommunityTopics,
   listCommunityTopicsByIds,
   listSavedTopicIds,
 } from '@/lib/community/data';
+import type { CommunityNotificationType } from '@/lib/supabase/types';
 
 import { formatRelativeTime } from '../pro-format';
 import { ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
-import type { CommunityTopicCard } from './actions';
+import type { CommunityNotificationCard, CommunityTopicCard } from './actions';
 import { ProComunidadeHomeView } from './pro-comunidade-home-view';
+
+// Notificações da Comunidade (08/09/2026) — cópia por tipo, sempre a
+// mesma nos dois lados (Web/App) pra nunca divergir. actor_profile_id
+// nunca aparece pro usuário — só o nome já resolvido via
+// community_profiles_public (mesma leitura segura de sempre).
+function notificationCopy(type: CommunityNotificationType, actorName: string): string {
+  switch (type) {
+    case 'reply_to_topic':
+      return `${actorName} respondeu no seu tópico`;
+    case 'reply_to_post':
+      return `${actorName} respondeu sua mensagem`;
+    case 'mention':
+      return `${actorName} mencionou você`;
+  }
+}
 
 export const metadata: Metadata = {
   title: 'Comunidade | Doopla',
@@ -29,7 +47,12 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   await ensureCommunityProfileActivated(supabase);
 
-  const [recentTopics, savedTopicIds] = await Promise.all([listCommunityTopics(supabase, { limit: 20 }), listSavedTopicIds(supabase)]);
+  const [recentTopics, savedTopicIds, notifications, categories] = await Promise.all([
+    listCommunityTopics(supabase, { limit: 20 }),
+    listSavedTopicIds(supabase),
+    listCommunityNotifications(supabase),
+    listCommunityCategories(supabase),
+  ]);
   const savedTopicIdSet = new Set(savedTopicIds);
   // Correção do item 2A (08/09/2026) — a versão anterior cortava em 20 e
   // linkava "Ver todos" pra /dashboard/comunidade/salvos, violando a
@@ -46,8 +69,16 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   const savedTopics = await listCommunityTopicsByIds(supabase, savedTopicIds, savedTopicIds.length);
 
   const authorsById = await getCommunityAuthors(supabase, [
-    ...new Set([...recentTopics, ...savedTopics].map((t) => t.author_profile_id)),
+    ...new Set([...recentTopics, ...savedTopics].map((t) => t.author_profile_id).concat(notifications.map((n) => n.actorProfileId))),
   ]);
+
+  const notificationCards: CommunityNotificationCard[] = notifications.map((n) => ({
+    id: n.id,
+    text: notificationCopy(n.type, authorsById.get(n.actorProfileId)?.displayName ?? 'Profissional Doopla'),
+    readAt: n.readAt,
+    timeLabel: formatRelativeTime(n.createdAt),
+    href: `/dashboard/comunidade/${n.topicId}${n.postId ? `#msg-${n.postId}` : ''}`,
+  }));
 
   function toCard(topic: (typeof recentTopics)[number]): CommunityTopicCard {
     return {
@@ -73,6 +104,8 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
         recentTopics={recentTopics.map(toCard)}
         initialQuery={q ?? ''}
         currentProfileId={profile.id}
+        notifications={notificationCards}
+        categories={categories}
       />
     </main>
   );

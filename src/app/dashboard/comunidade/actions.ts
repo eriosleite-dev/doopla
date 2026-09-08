@@ -10,6 +10,7 @@ import {
   ensureCommunityProfileActivated,
   getCommunityAuthors,
   listCommunityPostsByIds,
+  markCommunityNotificationRead,
   removeCommunityPost,
   removeCommunityTopic,
   saveTopic,
@@ -59,11 +60,44 @@ function toCard(topic: CommunityTopic, authorsById: Map<string, CommunityAuthorS
   };
 }
 
-export async function searchCommunityTopicsAction(query: string): Promise<CommunityTopicCard[]> {
+// categoryId (08/09/2026, filtro por categoria na Web) — query vazia +
+// categoryId setado é um caso já suportado pelo RPC search_community_topics
+// (migration 0068): tsquery vazia bypassa o match de texto (q.tsq::text
+// = ''), sobrando só o filtro de categoria + ordenação por
+// last_activity_at — mesmo comportamento de "recentes filtrados por
+// categoria", nunca uma segunda query/RPC nova. Decisão de produto
+// (comentário de pro-comunidade-home-view.tsx) continua valendo: busca
+// é o mecanismo principal, categoria nunca vira grade de chips
+// dominando a tela — aqui é só um parâmetro a mais do mesmo fluxo de
+// busca já existente.
+export async function searchCommunityTopicsAction(query: string, categoryId?: string | null): Promise<CommunityTopicCard[]> {
   const { supabase } = await requireArtista();
-  const topics = await searchCommunityTopics(supabase, { query, limit: 20 });
+  const topics = await searchCommunityTopics(supabase, { query, categoryId, limit: 20 });
   const authorsById = await getCommunityAuthors(supabase, [...new Set(topics.map((t) => t.author_profile_id))]);
   return topics.map((t) => toCard(t, authorsById));
+}
+
+// Notificações da Comunidade — UI (08/09/2026). Schema/RPC já existiam
+// desde a migration 0059 (community_notifications, mark_community_notification_read),
+// nunca conectados a nenhuma tela. Nenhuma migration/RPC nova aqui.
+// `text` já vem pronto do servidor (page.tsx) — nunca recomputado no
+// client a partir de type/actorName, uma única fonte da cópia por tipo.
+export type CommunityNotificationCard = {
+  id: string;
+  text: string;
+  readAt: string | null;
+  timeLabel: string;
+  href: string;
+};
+
+export async function markCommunityNotificationReadAction(notificationId: string): Promise<{ ok: true } | { error: string }> {
+  const { supabase } = await requireArtista();
+  try {
+    await markCommunityNotificationRead(supabase, notificationId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Não foi possível marcar como lida.' };
+  }
+  return { ok: true };
 }
 
 export async function toggleSaveTopicAction(topicId: string, save: boolean): Promise<{ ok: boolean }> {

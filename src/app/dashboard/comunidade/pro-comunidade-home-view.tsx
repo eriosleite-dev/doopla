@@ -4,9 +4,12 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
+import type { CommunityCategory } from '@/lib/supabase/types';
+
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
 import { ProAccordion, ProCard, ProEmptyState } from '../pro-ui';
-import { removeTopicAction, searchCommunityTopicsAction, type CommunityTopicCard } from './actions';
+import { removeTopicAction, searchCommunityTopicsAction, type CommunityNotificationCard, type CommunityTopicCard } from './actions';
+import { CommunityNotificationsBell } from './community-notifications-bell';
 import { DeleteMenu } from './[topicId]/delete-menu';
 import { SaveTopicButton } from './save-topic-button';
 
@@ -29,6 +32,8 @@ export function ProComunidadeHomeView({
   recentTopics,
   initialQuery,
   currentProfileId,
+  notifications,
+  categories,
 }: {
   savedTopics: (CommunityTopicCard & { saved: true })[];
   savedTopicIds: Set<string>;
@@ -45,6 +50,8 @@ export function ProComunidadeHomeView({
   // nome). Segurança continua 100% do lado da RPC (remove_community_topic
   // já rejeita quem não é o autor) — isso aqui é só visibilidade de UI.
   currentProfileId: string;
+  notifications: CommunityNotificationCard[];
+  categories: CommunityCategory[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -52,6 +59,16 @@ export function ProComunidadeHomeView({
   const [results, setResults] = useState<CommunityTopicCard[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  // Filtro por categoria (08/09/2026) — fecha o gap de paridade
+  // registrado no §74 do PROGRESS.md: App já tinha chips, Web não tinha
+  // nada. Decisão de produto já registrada em pro-comunidade-home-view.tsx
+  // continua valendo (busca é o mecanismo principal, categoria nunca
+  // vira grade de chips dominando a tela) — por isso aqui é um <select>
+  // discreto ao lado da busca, não uma segunda seção. categoryId setado
+  // (com ou sem texto de busca) entra em modo resultado, reaproveitando
+  // o MESMO searchCommunityTopicsAction (RPC já suporta p_category_id
+  // com query vazia — nenhuma RPC/rota nova).
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
@@ -74,22 +91,27 @@ export function ProComunidadeHomeView({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const trimmed = query.trim();
-    if (!trimmed) {
+    if (!trimmed && !categoryId) {
       // Limpa ?q= da URL imediatamente (sem debounce) — não é uma busca
-      // em andamento, é o usuário tendo apagado o campo.
+      // em andamento, é o usuário tendo apagado o campo (e nenhuma
+      // categoria filtrando por baixo).
       router.replace(pathname, { scroll: false });
       return;
     }
 
     const myRequestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(async () => {
-      // URL só é atualizada quando a busca de fato dispara (mesmo
-      // debounce de 300ms) — evita empilhar/trocar a URL a cada tecla.
-      router.replace(`${pathname}?q=${encodeURIComponent(trimmed)}`, { scroll: false });
+      // URL só reflete o texto digitado (?q=) — categoria fica só em
+      // estado de componente, nunca persistida na URL (escopo mínimo:
+      // não sobrevive a um refresh, diferente da busca por texto; ver
+      // relatório). URL só é atualizada quando a busca de fato dispara
+      // (mesmo debounce de 300ms) — evita empilhar/trocar a URL a cada
+      // tecla.
+      if (trimmed) router.replace(`${pathname}?q=${encodeURIComponent(trimmed)}`, { scroll: false });
       setSearching(true);
       setSearchError(false);
       try {
-        const cards = await searchCommunityTopicsAction(trimmed);
+        const cards = await searchCommunityTopicsAction(trimmed, categoryId);
         if (requestIdRef.current === myRequestId) setResults(cards);
       } catch {
         if (requestIdRef.current === myRequestId) setSearchError(true);
@@ -101,9 +123,14 @@ export function ProComunidadeHomeView({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, categoryId]);
 
-  const isSearchMode = query.trim().length > 0;
+  const isSearchMode = query.trim().length > 0 || categoryId !== null;
+
+  const activeCategoryLabel = categoryId ? categories.find((c) => c.id === categoryId)?.label : undefined;
+  const emptyResultMessage = query.trim()
+    ? `Nenhum resultado para "${query.trim()}"${activeCategoryLabel ? ` em ${activeCategoryLabel}` : ''}. Tente outras palavras ou um jeito diferente de perguntar.`
+    : `Nenhum tópico em ${activeCategoryLabel ?? 'categoria'} ainda.`;
 
   return (
     <div className="flex flex-col gap-5">
@@ -115,9 +142,30 @@ export function ProComunidadeHomeView({
           placeholder="Busque por assunto, profissão, dúvida ou interesse — ex: “como negociar cachê”"
           className={`${proInputClass} @lg:flex-1`}
         />
-        <Link href="/dashboard/comunidade/novo" className={`${proPrimaryButtonClass} whitespace-nowrap`}>
-          Criar tópico
-        </Link>
+        {/* Filtro por categoria (08/09/2026) — <select> discreto, nunca
+           chips competindo por espaço com busca/Salvos/Recentes (decisão
+           já registrada acima). "Todas as categorias" = sem filtro. */}
+        {categories.length > 0 && (
+          <select
+            value={categoryId ?? ''}
+            onChange={(e) => setCategoryId(e.target.value || null)}
+            aria-label="Filtrar por categoria"
+            className={`${proInputClass} @lg:w-[180px] @lg:flex-none`}
+          >
+            <option value="">Todas as categorias</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        )}
+        <div className="flex items-center gap-2">
+          <CommunityNotificationsBell initialNotifications={notifications} />
+          <Link href="/dashboard/comunidade/novo" className={`${proPrimaryButtonClass} flex-1 whitespace-nowrap @lg:flex-none`}>
+            Criar tópico
+          </Link>
+        </div>
       </div>
 
       {isSearchMode ? (
@@ -129,7 +177,7 @@ export function ProComunidadeHomeView({
           savedTopicIds={savedTopicIds}
           currentProfileId={currentProfileId}
           onDeleted={handleTopicDeleted}
-          emptyMessage={`Nenhum resultado para "${query.trim()}". Tente outras palavras ou um jeito diferente de perguntar.`}
+          emptyMessage={emptyResultMessage}
         />
       ) : (
         <>
