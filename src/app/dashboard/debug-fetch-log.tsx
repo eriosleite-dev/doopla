@@ -2,30 +2,24 @@
 
 import { useEffect, useState } from 'react';
 
-// INSTRUMENTAÇÃO TEMPORÁRIA (08/09/2026) — 2ª tentativa de correção
-// (suprimir prefetch de todo link não-ativo da sidebar até hover/toque,
-// commit f08cee2) foi testada pelo usuário em produção e confirmada
-// como NÃO tendo resolvido o fundo preto ("continua ficando preto nos
-// mesmos cenários"). Isso é evidência direta contra a teoria de que a
-// rajada de prefetch automático do <Link> é a causa raiz — se fosse,
-// eliminar quase toda a rajada deveria ao menos mudar o sintoma
-// observado. Antes de formular qualquer outra teoria (ex.: corrida de
-// refresh-token do Supabase), é preciso PROVAR, com evidência da
-// aplicação real, se ainda existe uma rajada de requisições concorrentes
-// depois da correção de prefetch — e não assumir.
-//
-// Este componente intercepta window.fetch a partir do carregamento do
-// módulo (antes de qualquer clique do usuário) e registra cada
-// requisição feita para rotas /dashboard*, com os headers reais de
-// roteamento do Next (rsc, next-url, next-router-state-tree,
-// next-router-prefetch) e o resultado (status/duração/erro). Isso
-// responde, direto da aplicação real, sem depender de Vercel Runtime
-// Logs nem de teoria: (1) quantas requisições concorrentes ainda
-// ocorrem no clique em Comunidade depois da correção de prefetch, (2)
-// se alguma delas falha ou carrega um router-state-tree inesperado, (3)
-// se a causa está mesmo em rede (nesse caso o log mostraria pouca ou
-// nenhuma atividade concorrente, refutando de vez a teoria de rede e
-// apontando pra outro lugar). Remover assim que a causa for confirmada.
+// INSTRUMENTAÇÃO TEMPORÁRIA (08/09/2026) — evidência já coletada nesta
+// investigação (2 prints reais em produção): (1) suprimir a rajada de
+// prefetch da sidebar (commit f08cee2) não mudou o sintoma — refuta a
+// teoria de rede como causa raiz; (2) o log de fetch abaixo capturou,
+// no clique real em Comunidade, DUAS requisições SIMULTÂNEAS com o
+// MESMO token `_rsc` — uma pra /dashboard/comunidade (destino) e outra
+// pra /dashboard (origem, ou seja, o segmento `children` sendo
+// re-buscado da rede porque o Client Router Cache não tinha ele
+// disponível — TTL "off por padrão" pra rota dinâmica, doc do Next) —
+// e AMBAS retornaram status=200. Isso prova que o servidor não falhou
+// em nenhuma das duas: a pergunta que falta responder é se o payload
+// da resposta de /dashboard (a que deveria repor `children`) contém
+// conteúdo real que está sendo descartado no cliente, ou se já chega
+// vazio do servidor. Por isso este componente agora também lê (via
+// res.clone(), nunca consumindo o stream que o próprio router do Next
+// precisa) um trecho do corpo de cada resposta RSC (`rsc=1`) — prova
+// direta do payload, sem depender de teoria sobre o que "deveria"
+// acontecer. Remover assim que a causa for confirmada.
 
 type FetchLogEntry = {
   id: number;
@@ -36,6 +30,8 @@ type FetchLogEntry = {
   status?: number;
   durationMs?: number;
   error?: string;
+  bodyLength?: number;
+  bodySnippet?: string;
 };
 
 declare global {
@@ -81,6 +77,24 @@ if (typeof window !== 'undefined' && !window.__dooplaFetchPatched) {
       if (entry) {
         entry.status = res.status;
         entry.durationMs = Math.round(performance.now() - startedAt);
+        // Só lê corpo de respostas RSC reais (payload é o que decide se
+        // `children` chega vazio do servidor ou é descartado no
+        // cliente) — clone() é obrigatório: o router do Next ainda vai
+        // consumir `res` normalmente, nunca podemos roubar o stream
+        // original dele.
+        if (entry.headers.rsc === '1') {
+          const capturedEntry = entry;
+          res
+            .clone()
+            .text()
+            .then((text) => {
+              capturedEntry.bodyLength = text.length;
+              capturedEntry.bodySnippet = text.slice(0, 260);
+            })
+            .catch((bodyErr) => {
+              capturedEntry.bodySnippet = `(erro lendo corpo: ${bodyErr instanceof Error ? bodyErr.message : String(bodyErr)})`;
+            });
+        }
       }
       return res;
     } catch (err) {
@@ -99,16 +113,21 @@ function formatLog(): { count: number; lines: string } {
   const now = performance.now();
 
   const lines = log
-    .slice(-15)
+    .slice(-8)
     .map((e) => {
       const relSec = ((e.t - loadT) / 1000).toFixed(2);
       const ageSec = ((now - e.t) / 1000).toFixed(1);
       const status = e.error ? `ERRO:${e.error}` : e.status !== undefined ? `${e.status}` : '(pendente)';
       const dur = e.durationMs !== undefined ? `${e.durationMs}ms` : '…';
+      const body =
+        e.headers.rsc === '1'
+          ? `    corpo(${e.bodyLength ?? '…'}b)=${e.bodySnippet !== undefined ? e.bodySnippet : '(lendo…)'}`
+          : null;
       return (
         `[+${relSec}s, há ${ageSec}s] ${e.method} ${e.url}\n` +
         `    rsc=${e.headers.rsc || '-'} nextUrl=${e.headers.nextUrl || '-'} prefetch=${e.headers.routerPrefetch || '-'} status=${status} dur=${dur}\n` +
-        `    tree=${e.headers.routerStateTree || '-'}`
+        `    tree=${e.headers.routerStateTree || '-'}` +
+        (body ? `\n${body}` : '')
       );
     })
     .join('\n');
