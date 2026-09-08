@@ -1,25 +1,12 @@
 'use client';
 
-import { Fragment, useActionState, useEffect, useId, useRef, useState } from 'react';
+import { Fragment, useActionState, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 
 import { proInputClass, proPrimaryButtonClass } from '../../pro-format';
-import { createReplyAction } from '../actions';
+import { createReplyAction, loadMoreCommunityPostsAction } from '../actions';
+import { snippetOf, type ChatTimelineMessage } from './timeline';
 
-export type ChatTimelineMessage = {
-  id: string;
-  // null = mensagem de abertura do tópico (nunca "respondível" — não
-  // existe coluna equivalente a reply_to_post_id que aponte pro
-  // tópico em si, só entre community_posts). Um valor aqui é sempre
-  // um post.id real.
-  postId: string | null;
-  authorName: string;
-  timeLabel: string;
-  body: string;
-  removed: boolean;
-  removedLabel: string;
-  replyTo: { postId: string; authorName: string; snippet: string; removed: boolean } | null;
-  mentionedNames: string[];
-};
+export type { ChatTimelineMessage };
 
 export type MentionCandidate = { profileId: string; displayName: string };
 
@@ -50,49 +37,88 @@ function renderBodyWithMentions(body: string, mentionedNames: string[]) {
   );
 }
 
-function snippetOf(body: string, max = 80): string {
-  const trimmed = body.trim().replace(/\s+/g, ' ');
-  return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed;
-}
-
-// Item 4 (08/09/2026) — reply-to + mentions sobre o vínculo REAL já
-// existente desde a migration 0059 (community_posts.reply_to_post_id,
-// community_mentions, create_community_post já aceitava os dois
-// parâmetros — só a UI nunca os usava). Lista de mensagens e composer
-// moram no mesmo client component porque precisam compartilhar o
-// estado "a quem estou respondendo agora" — nenhuma mensagem nova de
-// dado, tudo já resolvido em page.tsx (Server Component) e só passado
-// pronto pra cá.
+// Item 5 (08/09/2026) — paginação: a lista de mensagens agora é ESTADO
+// DO CLIENT, semeado uma única vez a partir de initialMessages (a
+// primeira página, resolvida em page.tsx) — nunca ressincronizado a
+// partir de props depois disso. É por isso que createReplyAction (ver
+// actions.ts) parou de dar revalidatePath nesta rota: um revalidate
+// re-executaria o Server Component e mudaria a prop `initialMessages`,
+// mas como só o valor INICIAL de um useState importa, isso nunca mais
+// re-alimentaria esta lista — precisa ser client que decide adicionar
+// (resposta nova, sempre no fim) ou inserir (próxima página, também
+// sempre no fim, nunca no início: ver timeline.ts pra escolha de
+// paginação sempre-pra-frente a partir do começo do tópico).
 //
-// Ir até a mensagem original (clique na citação) usa uma âncora nativa
-// (<a href="#msg-ID">) — todas as mensagens do tópico já estão
-// montadas no DOM (Item 5/paginação ainda não existe), então isso
-// funciona sem nenhuma infraestrutura nova. Quando a paginação/scroll
-// do Item 5 existir, uma mensagem citada pode não estar montada ainda
-// — limite consciente, não resolvido aqui.
+// Por causa dessa direção (sempre do início pra frente, nunca "mais
+// recentes primeiro"), o alvo de um reply-to É SEMPRE uma mensagem já
+// carregada — uma resposta só pode citar algo que já existia quando
+// foi criada, e como a paginação é sempre um prefixo contínuo desde o
+// início, esse "algo mais antigo" também já faz parte do prefixo
+// carregado. O estado de QA "reply-to pra mensagem em página anterior
+// ainda não carregada" é estruturalmente impossível neste desenho — a
+// âncora <a href="#msg-ID"> do Item 4 continua funcionando sem
+// nenhuma condição extra.
 export function ProComunidadeTopicChat({
   topicId,
-  timeline,
-  mentionCandidates,
+  initialMessages,
+  initialHasMore,
+  currentProfileId,
   topicRemoved,
 }: {
   topicId: string;
-  timeline: ChatTimelineMessage[];
-  mentionCandidates: MentionCandidate[];
+  initialMessages: ChatTimelineMessage[];
+  initialHasMore: boolean;
+  currentProfileId: string;
   topicRemoved: boolean;
 }) {
+  const [messages, setMessages] = useState(() => initialMessages);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadMoreError, setLoadMoreError] = useState(false);
+  const [isLoadingMore, startLoadingMore] = useTransition();
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Universo de menção = participantes das mensagens já carregadas
+  // (nunca uma busca nova de perfil) — cresce conforme mais páginas
+  // são carregadas, sem query adicional: só deriva do que já está em
+  // `messages`.
+  const mentionCandidates = useMemo<MentionCandidate[]>(() => {
+    const seen = new Map<string, string>();
+    for (const m of messages) {
+      if (m.authorProfileId === currentProfileId) continue;
+      if (!seen.has(m.authorProfileId)) seen.set(m.authorProfileId, m.authorName);
+    }
+    return [...seen.entries()].map(([profileId, displayName]) => ({ profileId, displayName }));
+  }, [messages, currentProfileId]);
 
   function handleReply(target: ReplyTarget) {
     setReplyTarget(target);
     requestAnimationFrame(() => textareaRef.current?.focus());
   }
 
+  function handleLoadMore() {
+    const lastPost = [...messages].reverse().find((m) => m.postId !== null);
+    if (!lastPost) return;
+    setLoadMoreError(false);
+    startLoadingMore(async () => {
+      const result = await loadMoreCommunityPostsAction(topicId, { createdAt: lastPost.createdAt, id: lastPost.postId as string });
+      if ('error' in result) {
+        setLoadMoreError(true);
+        return;
+      }
+      setMessages((prev) => [...prev, ...result.messages]);
+      setHasMore(result.hasMore);
+    });
+  }
+
+  function handleSent(message: ChatTimelineMessage) {
+    setMessages((prev) => [...prev, message]);
+  }
+
   return (
     <>
       <div className="divide-y divide-[var(--pro-line)]">
-        {timeline.map((message) => (
+        {messages.map((message) => (
           <div key={message.id} id={`msg-${message.id}`} className="py-3 first:pt-0">
             {message.replyTo && (
               <a
@@ -137,8 +163,30 @@ export function ProComunidadeTopicChat({
         ))}
       </div>
 
-      {!topicRemoved && timeline.length <= 1 && (
+      {!topicRemoved && messages.length <= 1 && !hasMore && (
         <p className="text-[12px] text-[var(--pro-tx-30)]">Nenhuma resposta ainda. Seja o primeiro a responder.</p>
+      )}
+
+      {hasMore && (
+        <div className="flex flex-col items-center gap-2 border-t border-[var(--pro-line)] pt-3">
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            aria-busy={isLoadingMore}
+            className="font-pro-sub text-[12px] font-bold text-[var(--pro-red)] hover:underline disabled:opacity-60"
+          >
+            {isLoadingMore ? 'Carregando…' : 'Carregar mais respostas'}
+          </button>
+          {loadMoreError && (
+            <p role="alert" className="text-[11.5px] text-[#ff8b80]">
+              Não deu pra carregar mais respostas.{' '}
+              <button type="button" onClick={handleLoadMore} className="font-bold underline">
+                Tentar de novo
+              </button>
+            </p>
+          )}
+        </div>
       )}
 
       {!topicRemoved && (
@@ -148,6 +196,8 @@ export function ProComunidadeTopicChat({
           onCancelReply={() => setReplyTarget(null)}
           mentionCandidates={mentionCandidates}
           textareaRef={textareaRef}
+          caughtUp={!hasMore}
+          onSent={handleSent}
         />
       )}
     </>
@@ -186,42 +236,34 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-// Correção de UX das menções (08/09/2026) — a versão anterior mostrava
-// toggles @Nome permanentemente abaixo do composer. Trocado por
-// autocomplete real (digitar "@" → sugestões → selecionar), sem
-// nenhuma lista visível quando não há "@" ativo. Universo de
-// candidatos inalterado (mentionCandidates, participantes já
-// carregados pela página).
+// Correção de UX das menções (08/09/2026) — autocomplete real
+// (digitar "@" → sugestões → selecionar), sem lista permanente.
+// Associação texto <-> profile_id via TrackedMention { profileId,
+// displayName, insertedText } — nunca inferida lendo "@palavra" do
+// texto depois (ver computeSurvivors dentro de handleFormSubmit).
 //
-// Associação texto <-> profile_id (o ponto sensível desta correção):
-// cada seleção do autocomplete vira um TrackedMention { profileId,
-// displayName, insertedText } — nunca inferimos identidade lendo
-// "@palavra" do texto. No submit, computeSurvivingMentionIds conta
-// quantas vezes o literal insertedText ("@Nome ", exatamente o que foi
-// inserido) ainda existe no texto atual e só mantém, na ordem em que
-// foram selecionadas, tantas menções daquele nome quantas ocorrências
-// sobraram — apagar o "@Nome " do texto derruba a menção estruturada
-// correspondente; editar em volta sem tocar no literal não afeta nada.
-// Isso é uma correspondência por texto literal, não uma associação
-// posicional real (um editor rico com tokens seria o jeito
-// definitivo, mas é exatamente a complexidade que este composer evita
-// de propósito) — o único caso ambíguo remanescente é duas pessoas
-// DIFERENTES com o mesmo nome de exibição, ambas mencionadas, com só
-// uma das ocorrências apagada: sobra uma menção (nunca as duas, nunca
-// nenhuma), mas não há garantia de qual delas — mesma ambiguidade que
-// um leitor humano teria olhando só pro texto.
+// Item 5 (08/09/2026) — dois campos novos: `caughtUp` (hidden input,
+// diz ao server se o autor está "em dia" com a paginação — só então a
+// resposta nova pode ser anexada direto ao fim da lista sem criar um
+// buraco cronológico) e `onSent` (recebe a mensagem pronta devolvida
+// pela action e a repassa pro estado do chat). Nada do fluxo de
+// reply-to/mentions em si mudou.
 function ProComunidadeReplyForm({
   topicId,
   replyTarget,
   onCancelReply,
   mentionCandidates,
   textareaRef,
+  caughtUp,
+  onSent,
 }: {
   topicId: string;
   replyTarget: ReplyTarget | null;
   onCancelReply: () => void;
   mentionCandidates: MentionCandidate[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  caughtUp: boolean;
+  onSent: (message: ChatTimelineMessage) => void;
 }) {
   const [state, formAction, pending] = useActionState(createReplyAction.bind(null, topicId), {});
   const fieldId = useId();
@@ -236,7 +278,8 @@ function ProComunidadeReplyForm({
   // nativo de formulário já limparia sozinho, mas como reply-to/
   // mentions são estado React à parte, este efeito sincroniza os três
   // juntos assim que a submissão termina com sucesso (transição
-  // pending: true -> false sem erro).
+  // pending: true -> false sem erro), e repassa a mensagem devolvida
+  // (se houver — só existe quando caughtUp era true) pra cima.
   useEffect(() => {
     if (wasPendingRef.current && !pending && !state?.error) {
       if (textareaRef.current) textareaRef.current.value = '';
@@ -244,6 +287,7 @@ function ProComunidadeReplyForm({
       if (hiddenMentionsRef.current) hiddenMentionsRef.current.replaceChildren();
       setMentionQuery(null);
       onCancelReply();
+      if (state?.post) onSent(state.post);
     }
     wasPendingRef.current = pending;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -353,6 +397,7 @@ function ProComunidadeReplyForm({
         </div>
       )}
       <input type="hidden" name="replyToPostId" value={replyTarget?.postId ?? ''} />
+      <input type="hidden" name="caughtUp" value={caughtUp ? 'true' : 'false'} />
       {/* Nunca recebe children via JSX — só handleFormSubmit escreve
          aqui, direto no DOM, na hora do envio. */}
       <div ref={hiddenMentionsRef} hidden />

@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type ListRenderItemInfo,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,7 +24,8 @@ import {
   ensureCommunityProfileActivated,
   fetchCommunityAuthors,
   fetchCommunityMentions,
-  fetchCommunityPosts,
+  fetchCommunityPostsByIds,
+  fetchCommunityPostsPage,
   fetchCommunityTopic,
   fetchSavedTopicIds,
   saveTopic,
@@ -71,30 +82,38 @@ function countOccurrences(haystack: string, needle: string): number {
 // conversa mockada (forumMock.ts, deletado) — mesma RPC/tabela/RLS do
 // painel web (create_community_post, migration 0059).
 //
-// Item 4 (08/09/2026) — reply-to e mentions passam a ser usados de
-// verdade: create_community_post já aceitava p_reply_to_post_id/
-// p_mentioned_profile_ids desde sempre (só a UI nunca chamava com
-// eles). Candidatos a menção = participantes já carregados no tópico
-// (authorsById), nunca uma busca nova de perfis — mesma decisão do
-// Web, mesmo motivo (zero query adicional, mesma privacidade já
-// aplicada por fetchCommunityAuthors/community_profiles_public).
-// "Responder" só existe em community_posts (reply_to_post_id nunca
-// aponta pro tópico em si — não há coluna pra isso), então a mensagem
-// de abertura do tópico nunca ganha esse botão. Diferente do Web
-// (onde citar-e-pular usa uma âncora <a href="#msg-id"> praticamente
-// grátis), aqui a citação é só uma referência visual sem toque-pra-
-// rolar: rolar programaticamente até um item específico de uma
-// ScrollView exigiria medir/referenciar cada mensagem — infra que
-// pertence à mesma frente do Item 5 (paginação/scroll), não inventada
-// agora.
+// Item 5 (08/09/2026) — migra de ScrollView pra FlatList: precisamos
+// de scrollToIndex pra tap-na-citação (jump-to-message), e uma
+// ScrollView gigante nunca ofereceria isso de forma correta (só
+// onLayout+scrollTo por item, frágil e não é a primitive certa aqui).
+// Paginação sempre do início do tópico pra frente (mesmo desenho do
+// Web, ver timeline.ts lá) — cada "carregar mais respostas" busca a
+// PRÓXIMA leva, nunca a anterior. Como é sempre um prefixo contínuo
+// desde o começo, o alvo de um reply-to já carregado SEMPRE existe em
+// `posts` — jump-to-message nunca precisa lidar com "página não
+// carregada".
+//
+// Enviar uma resposta nova NUNCA recarrega o tópico inteiro (evitaria
+// perder páginas adicionais já carregadas) — quando o autor está "em
+// dia" (hasMore === false), a resposta publicada é buscada pontualmente
+// (fetchCommunityPostsByIds) e anexada ao fim de `posts`; quando não
+// está em dia, ela é gravada normalmente mas só aparece quando o
+// usuário continuar clicando "carregar mais" até alcançá-la (evita
+// fingir uma posição cronológica que criaria um buraco na lista).
+const PAGE_SIZE = 20;
+
 export default function ForumConversationScreen() {
   const { topicId } = useLocalSearchParams<{ topicId: string }>();
   const router = useRouter();
   const { professionalId } = useAuth();
+  const flatListRef = useRef<FlatList<CommunityPost>>(null);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [topic, setTopic] = useState<CommunityTopic | null>(null);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [authorsById, setAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
   const [mentionsByPost, setMentionsByPost] = useState<Map<string, string[]>>(new Map());
   const [saved, setSaved] = useState(false);
@@ -110,13 +129,17 @@ export default function ForumConversationScreen() {
     setPhase('loading');
     try {
       await ensureCommunityProfileActivated();
-      const [t, p, savedIds] = await Promise.all([fetchCommunityTopic(topicId), fetchCommunityPosts(topicId), fetchSavedTopicIds()]);
+      const [t, page, savedIds] = await Promise.all([
+        fetchCommunityTopic(topicId),
+        fetchCommunityPostsPage(topicId, { limit: PAGE_SIZE }),
+        fetchSavedTopicIds(),
+      ]);
       if (!t) {
         setPhase('error');
         return;
       }
-      const authors = await fetchCommunityAuthors([...new Set([t.author_profile_id, ...p.map((post) => post.author_profile_id)])]);
-      const mentions = await fetchCommunityMentions(p.map((post) => post.id));
+      const authors = await fetchCommunityAuthors([...new Set([t.author_profile_id, ...page.posts.map((post) => post.author_profile_id)])]);
+      const mentions = await fetchCommunityMentions(page.posts.map((post) => post.id));
       const mentionsMap = new Map<string, string[]>();
       for (const mention of mentions) {
         const name = authors.get(mention.mentioned_profile_id)?.displayName;
@@ -124,7 +147,8 @@ export default function ForumConversationScreen() {
         mentionsMap.set(mention.post_id, [...(mentionsMap.get(mention.post_id) ?? []), name]);
       }
       setTopic(t);
-      setPosts(p);
+      setPosts(page.posts);
+      setHasMore(page.hasMore);
       setAuthorsById(authors);
       setMentionsByPost(mentionsMap);
       setSaved(savedIds.includes(topicId));
@@ -160,15 +184,49 @@ export default function ForumConversationScreen() {
     action.catch(() => setSaved(wasSaved));
   }
 
-  // Correção de UX das menções (08/09/2026) — troca os toggles
-  // permanentes por autocomplete real (digitar "@" → sugestões →
-  // selecionar), espelhando o mesmo modelo do Web. Cada seleção vira
-  // um TrackedMention { profileId, displayName, insertedText } — nunca
-  // inferimos identidade lendo "@palavra" do texto depois. Diferente
-  // do Web (onde o valor do textarea precisa ser recalculado direto no
-  // DOM por causa do timing do form action), aqui handleSend já roda
-  // como função JS plana com o `draft` mais recente — computar os
-  // sobreviventes ali mesmo, sincronamente, é suficiente e correto.
+  async function handleLoadMore() {
+    if (!topicId || loadingMore || !hasMore) return;
+    const lastPost = posts[posts.length - 1];
+    if (!lastPost) return;
+    setLoadingMore(true);
+    setLoadMoreError(false);
+    try {
+      const page = await fetchCommunityPostsPage(topicId, {
+        limit: PAGE_SIZE,
+        after: { createdAt: lastPost.created_at, id: lastPost.id },
+      });
+      const mentions = await fetchCommunityMentions(page.posts.map((post) => post.id));
+      const neededAuthorIds = new Set<string>();
+      for (const post of page.posts) neededAuthorIds.add(post.author_profile_id);
+      for (const mention of mentions) neededAuthorIds.add(mention.mentioned_profile_id);
+      const missingAuthorIds = [...neededAuthorIds].filter((id) => !authorsById.has(id));
+      const mergedAuthors =
+        missingAuthorIds.length > 0 ? new Map([...authorsById, ...(await fetchCommunityAuthors(missingAuthorIds))]) : authorsById;
+
+      const mergedMentions = new Map(mentionsByPost);
+      for (const mention of mentions) {
+        const name = mergedAuthors.get(mention.mentioned_profile_id)?.displayName;
+        if (!name) continue;
+        mergedMentions.set(mention.post_id, [...(mergedMentions.get(mention.post_id) ?? []), name]);
+      }
+
+      setAuthorsById(mergedAuthors);
+      setMentionsByPost(mergedMentions);
+      setPosts((prev) => [...prev, ...page.posts]);
+      setHasMore(page.hasMore);
+    } catch {
+      setLoadMoreError(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  function jumpToMessage(postId: string) {
+    const index = posts.findIndex((post) => post.id === postId);
+    if (index === -1) return;
+    flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+  }
+
   const mentionSuggestions = mentionQuery
     ? mentionCandidates
         .filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR')))
@@ -210,26 +268,51 @@ export default function ForumConversationScreen() {
     return survivors;
   }
 
-  function handleSend() {
+  async function handleSend() {
     const text = draft.trim();
     if (!text || sendPhase === 'sending' || !topicId) return;
+    const survivingMentionIds = computeSurvivingMentionIds(draft);
+    const caughtUp = !hasMore;
 
     setSendPhase('sending');
-    createCommunityPost({
-      topicId,
-      body: text,
-      replyToPostId: replyTarget?.postId ?? null,
-      mentionedProfileIds: computeSurvivingMentionIds(draft),
-    })
-      .then(() => load())
-      .then(() => {
-        setDraft('');
-        setReplyTarget(null);
-        setMentioned([]);
-        setMentionQuery(null);
-        setSendPhase('idle');
-      })
-      .catch(() => setSendPhase('error'));
+    try {
+      const newPostId = await createCommunityPost({
+        topicId,
+        body: text,
+        replyToPostId: replyTarget?.postId ?? null,
+        mentionedProfileIds: survivingMentionIds,
+      });
+
+      if (caughtUp) {
+        const idsToFetch = [newPostId, ...(replyTarget ? [replyTarget.postId] : [])];
+        const rows = await fetchCommunityPostsByIds(idsToFetch);
+        const newPost = rows.find((row) => row.id === newPostId);
+        if (newPost) {
+          const replyTargetRow = replyTarget ? rows.find((row) => row.id === replyTarget.postId) : undefined;
+          const neededAuthorIds = new Set<string>(survivingMentionIds);
+          if (professionalId) neededAuthorIds.add(professionalId);
+          if (replyTargetRow) neededAuthorIds.add(replyTargetRow.author_profile_id);
+          const missingAuthorIds = [...neededAuthorIds].filter((id) => !authorsById.has(id));
+          const mergedAuthors =
+            missingAuthorIds.length > 0 ? new Map([...authorsById, ...(await fetchCommunityAuthors(missingAuthorIds))]) : authorsById;
+
+          if (survivingMentionIds.length > 0) {
+            const names = survivingMentionIds.map((id) => mergedAuthors.get(id)?.displayName).filter((n): n is string => Boolean(n));
+            if (names.length > 0) setMentionsByPost((prev) => new Map(prev).set(newPost.id, names));
+          }
+          setAuthorsById(mergedAuthors);
+          setPosts((prev) => [...prev, newPost]);
+        }
+      }
+
+      setDraft('');
+      setReplyTarget(null);
+      setMentioned([]);
+      setMentionQuery(null);
+      setSendPhase('idle');
+    } catch {
+      setSendPhase('error');
+    }
   }
 
   function resolveReplyTo(post: CommunityPost): ReplyToQuote | null {
@@ -266,6 +349,45 @@ export default function ForumConversationScreen() {
 
   const isTopicRemoved = topic ? communityContentVisibility(topic.status) === 'removed' : false;
 
+  function renderPost({ item: post }: ListRenderItemInfo<CommunityPost>) {
+    const removed = communityContentVisibility(post.status) === 'removed';
+    const replyTo = resolveReplyTo(post);
+    return (
+      <View style={styles.message}>
+        {replyTo && (
+          <Pressable onPress={() => jumpToMessage(replyTo.postId)} style={styles.replyQuote} accessibilityRole="button">
+            <Text style={styles.replyQuoteAuthor}>{replyTo.authorName}</Text>
+            <Text style={styles.replyQuoteText}>{replyTo.removed ? 'Mensagem removida.' : `“${replyTo.snippet}”`}</Text>
+          </Pressable>
+        )}
+        <View style={styles.messageHead}>
+          <Text style={styles.author}>{authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla'}</Text>
+          <Text style={styles.time}>{formatRelativeDate(post.created_at)}</Text>
+        </View>
+        {removed ? (
+          <Text style={styles.removed}>Mensagem removida.</Text>
+        ) : (
+          renderBodyWithMentions(post.body, mentionsByPost.get(post.id) ?? [])
+        )}
+        {!removed && (
+          <Pressable
+            onPress={() =>
+              setReplyTarget({
+                postId: post.id,
+                authorName: authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla',
+                snippet: snippetOf(post.body),
+              })
+            }
+            hitSlop={6}
+            accessibilityRole="button"
+          >
+            <Text style={styles.replyButtonText}>Responder</Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FullSheetHeader title={topic?.title ?? 'Conversa'} onBack={() => router.back()} onClose={() => router.dismissAll()} />
@@ -273,61 +395,57 @@ export default function ForumConversationScreen() {
       {phase === 'error' && <ErrorState message="Não deu pra carregar essa conversa." onRetry={load} />}
       {phase === 'ready' && topic && (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 16 }}>
-            <View style={styles.topicHead}>
-              <Text style={styles.topicMeta}>
-                {authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · {formatRelativeDate(topic.created_at)}
-              </Text>
-              <Pressable onPress={toggleSave} hitSlop={8}>
-                <BookmarkIcon size={17} color={saved ? colors.red : colors.tx30} filled={saved} strokeWidth={1.8} />
-              </Pressable>
-            </View>
-            {isTopicRemoved ? (
-              <Text style={styles.removed}>Este tópico foi removido.</Text>
-            ) : (
-              <Text style={styles.topicBody}>{topic.body}</Text>
-            )}
-
-            {posts.map((post) => {
-              const removed = communityContentVisibility(post.status) === 'removed';
-              const replyTo = resolveReplyTo(post);
-              return (
-                <View key={post.id} style={styles.message}>
-                  {replyTo && (
-                    <View style={styles.replyQuote}>
-                      <Text style={styles.replyQuoteAuthor}>{replyTo.authorName}</Text>
-                      <Text style={styles.replyQuoteText}>{replyTo.removed ? 'Mensagem removida.' : `“${replyTo.snippet}”`}</Text>
-                    </View>
-                  )}
-                  <View style={styles.messageHead}>
-                    <Text style={styles.author}>{authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla'}</Text>
-                    <Text style={styles.time}>{formatRelativeDate(post.created_at)}</Text>
-                  </View>
-                  {removed ? (
-                    <Text style={styles.removed}>Mensagem removida.</Text>
-                  ) : (
-                    renderBodyWithMentions(post.body, mentionsByPost.get(post.id) ?? [])
-                  )}
-                  {!removed && (
-                    <Pressable
-                      onPress={() =>
-                        setReplyTarget({
-                          postId: post.id,
-                          authorName: authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla',
-                          snippet: snippetOf(post.body),
-                        })
-                      }
-                      hitSlop={6}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.replyButtonText}>Responder</Text>
-                    </Pressable>
-                  )}
+          <FlatList
+            ref={flatListRef}
+            style={styles.body}
+            contentContainerStyle={{ padding: 16, paddingBottom: 16 }}
+            data={posts}
+            keyExtractor={(post) => post.id}
+            renderItem={renderPost}
+            onScrollToIndexFailed={(info) => {
+              flatListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true });
+            }}
+            ListHeaderComponent={
+              <View>
+                <View style={styles.topicHead}>
+                  <Text style={styles.topicMeta}>
+                    {authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · {formatRelativeDate(topic.created_at)}
+                  </Text>
+                  <Pressable onPress={toggleSave} hitSlop={8}>
+                    <BookmarkIcon size={17} color={saved ? colors.red : colors.tx30} filled={saved} strokeWidth={1.8} />
+                  </Pressable>
                 </View>
-              );
-            })}
-            {sendPhase === 'error' && <ErrorState message="A mensagem não foi enviada." onRetry={handleSend} />}
-          </ScrollView>
+                {isTopicRemoved ? (
+                  <Text style={styles.removed}>Este tópico foi removido.</Text>
+                ) : (
+                  <Text style={styles.topicBody}>{topic.body}</Text>
+                )}
+              </View>
+            }
+            ListFooterComponent={
+              <>
+                {hasMore && (
+                  <View style={styles.loadMoreWrap}>
+                    <Pressable onPress={handleLoadMore} disabled={loadingMore} accessibilityRole="button" accessibilityState={{ busy: loadingMore }}>
+                      <Text style={styles.loadMoreText}>{loadingMore ? 'Carregando…' : 'Carregar mais respostas'}</Text>
+                    </Pressable>
+                    {loadMoreError && (
+                      <View style={{ alignItems: 'center', gap: 4, marginTop: 6 }}>
+                        <Text style={styles.loadMoreErrorText}>Não deu pra carregar mais respostas.</Text>
+                        <Pressable onPress={handleLoadMore} accessibilityRole="button">
+                          <Text style={styles.retryText}>Tentar de novo</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                )}
+                {!isTopicRemoved && posts.length === 0 && !hasMore && (
+                  <Text style={styles.noRepliesText}>Nenhuma resposta ainda. Seja o primeiro a responder.</Text>
+                )}
+                {sendPhase === 'error' && <ErrorState message="A mensagem não foi enviada." onRetry={handleSend} />}
+              </>
+            }
+          />
           {!isTopicRemoved && (
             <View>
               {replyTarget && (
@@ -388,7 +506,6 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
-    padding: 16,
   },
   topicHead: {
     flexDirection: 'row',
@@ -467,6 +584,32 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 12,
     lineHeight: 18.5,
+  },
+  loadMoreWrap: {
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 12,
+  },
+  loadMoreText: {
+    color: colors.red,
+    fontFamily: fonts.subBold,
+    fontSize: 12,
+  },
+  loadMoreErrorText: {
+    color: '#ff8b80',
+    fontFamily: fonts.body,
+    fontSize: 11.5,
+  },
+  retryText: {
+    color: colors.off,
+    fontFamily: fonts.subBold,
+    fontSize: 11.5,
+    textDecorationLine: 'underline',
+  },
+  noRepliesText: {
+    color: colors.tx30,
+    fontFamily: fonts.body,
+    fontSize: 11.5,
   },
   replyTargetBar: {
     flexDirection: 'row',

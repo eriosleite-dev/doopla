@@ -209,8 +209,43 @@ export async function fetchCommunityTopic(topicId: string): Promise<CommunityTop
   return (data as CommunityTopic | null) ?? null;
 }
 
-export async function fetchCommunityPosts(topicId: string): Promise<CommunityPost[]> {
-  const { data, error } = await supabase.from('community_posts').select('*').eq('topic_id', topicId).order('created_at', { ascending: true });
+export type CommunityPostsCursor = { createdAt: string; id: string };
+export type CommunityPostsPage = { posts: CommunityPost[]; hasMore: boolean };
+
+// Item 5 (08/09/2026) — espelha listCommunityPostsPage do painel web:
+// paginação por cursor (created_at, id) do começo do tópico pra
+// frente, mesmo desempate por id (uuid aleatório, só usado em caso de
+// created_at empatado). Sem RPC/tabela nova.
+export async function fetchCommunityPostsPage(
+  topicId: string,
+  params: { limit?: number; after?: CommunityPostsCursor } = {}
+): Promise<CommunityPostsPage> {
+  const limit = params.limit ?? 20;
+  let query = supabase
+    .from('community_posts')
+    .select('*')
+    .eq('topic_id', topicId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(limit + 1);
+
+  if (params.after) {
+    query = query.or(`created_at.gt.${params.after.createdAt},and(created_at.eq.${params.after.createdAt},id.gt.${params.after.id})`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = (data ?? []) as CommunityPost[];
+  return { posts: rows.slice(0, limit), hasMore: rows.length > limit };
+}
+
+// Espelha listCommunityPostsByIds do painel web — a paginação carrega
+// sempre um prefixo contínuo desde o início, então o alvo de um
+// reply-to só falta aqui se apontar pra uma página já carregada antes
+// que não veio na query atual. Usada só pra esses poucos ids pontuais.
+export async function fetchCommunityPostsByIds(ids: string[]): Promise<CommunityPost[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from('community_posts').select('*').in('id', ids);
   if (error) throw error;
   return (data ?? []) as CommunityPost[];
 }

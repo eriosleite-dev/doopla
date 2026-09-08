@@ -242,8 +242,53 @@ export async function getCommunityTopic(supabase: AnySupabaseClient, topicId: st
   return (data as CommunityTopic | null) ?? null;
 }
 
-export async function listCommunityPosts(supabase: AnySupabaseClient, topicId: string): Promise<CommunityPost[]> {
-  const { data, error } = await supabase.from('community_posts').select('*').eq('topic_id', topicId).order('created_at', { ascending: true });
+export type CommunityPostsCursor = { createdAt: string; id: string };
+export type CommunityPostsPage = { posts: CommunityPost[]; hasMore: boolean };
+
+// Item 5 (08/09/2026) — paginação por cursor, do começo do tópico pra
+// frente (mais antigas primeiro, cada "carregar mais" avança no
+// tempo). `id` é uuid aleatório (não ordenável por si só), então o
+// cursor é sempre (created_at, id) — id só entra como desempate
+// determinístico em caso de created_at igual, nunca como critério
+// principal. Sem RPC nova: o desempate é expresso direto no filtro
+// `.or()` do PostgREST (`created_at > cursor` OU `created_at = cursor
+// E id > cursor`), a mesma RLS de sempre ("select visible") continua
+// se aplicando por baixo. Busca limit+1 pra saber se há mais sem uma
+// segunda query de contagem.
+export async function listCommunityPostsPage(
+  supabase: AnySupabaseClient,
+  topicId: string,
+  params: { limit?: number; after?: CommunityPostsCursor } = {}
+): Promise<CommunityPostsPage> {
+  const limit = params.limit ?? 20;
+  let query = supabase
+    .from('community_posts')
+    .select('*')
+    .eq('topic_id', topicId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(limit + 1);
+
+  if (params.after) {
+    query = query.or(`created_at.gt.${params.after.createdAt},and(created_at.eq.${params.after.createdAt},id.gt.${params.after.id})`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = (data ?? []) as CommunityPost[];
+  return { posts: rows.slice(0, limit), hasMore: rows.length > limit };
+}
+
+// A paginação carrega sempre um prefixo contíguo do começo do tópico
+// pra frente, então o alvo de um reply-to já carregado em QUALQUER
+// página anterior sempre existe — a única lacuna possível é dentro da
+// MESMA chamada: um post da página que está sendo resolvida agora
+// referenciando um post de uma página JÁ carregada antes, que não veio
+// nesta query. Usada só para esses poucos ids pontuais (nunca a
+// listagem inteira).
+export async function listCommunityPostsByIds(supabase: AnySupabaseClient, ids: string[]): Promise<CommunityPost[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from('community_posts').select('*').in('id', ids);
   if (error) throw error;
   return (data ?? []) as CommunityPost[];
 }
