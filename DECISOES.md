@@ -1158,3 +1158,96 @@ toca a assinatura do artista). Não recriei nada disso.
   prometer acompanhamento que não existe) — centralizado num único
   handler, pra trocar de implementação sem redesenhar o modal quando o
   Stripe entrar.
+
+## Reconciliação dos dois fluxos de onboarding de artista — progressive profiling, não wizard único — 08/09/2026
+
+Em resposta à auditoria read-only do Bloco 4 (PROGRESS.md §79), que
+achou que o fluxo padrão de cadastro (Fluxo 1, "Começar grátis") nunca
+coleta `regions`/`careerStage`/`helpAreas`/`workTypes`/`clientTypes`
+— campos que a tool de Runtime `get_professional_business_context` já
+foi construída pra ler, populados hoje só pelo wizard antigo
+(`signup-form.tsx`), praticamente inalcançável por artista fora de um
+caminho residual.
+
+- **Rejeitado explicitamente**: transportar todas as perguntas do
+  wizard antigo pro onboarding novo. Isso reintroduziria a fricção que
+  o Fluxo 1 foi desenhado pra eliminar.
+- **Direção canônica escolhida**: progressive profiling — `conta →
+  contexto mínimo → produto → enriquecimento progressivo → prontidão
+  operacional`. O Fluxo 1 continua curto (identidade, contexto mínimo,
+  canal de atenção, plano); `regions`/`careerStage`/`helpAreas`/
+  `workTypes`/`clientTypes`/contexto comercial adicional NUNCA viram
+  etapa nova obrigatória do cadastro — pertencem ao enriquecimento
+  progressivo do conhecimento da Doopla sobre o profissional, coletado
+  depois, no produto.
+- **Fonte de dados permanece única**: essas informações continuam
+  vivendo em `artist_profiles` (mesmas colunas já lidas pelas 2 tools
+  de Runtime, `get_professional_profile`/`get_professional_business_
+  context`) — a decisão é só sobre ONDE/QUANDO a UI pede esses dados,
+  nunca sobre criar uma tabela ou fonte paralela. Runtime continua
+  consumindo exatamente as mesmas fontes canônicas de sempre;
+  conhecimento declarado continua sendo contexto, nunca autorização —
+  Mandate/Approval Gate/Policy Gate continuam prevalecendo sem nenhuma
+  mudança de autoridade.
+- **Superfície de UI pro enriquecimento ainda não decidida** — o
+  precedente mais próximo é `ArtistProfileForm.tsx`
+  (`/dashboard/perfil/editar`, já edita `regions`), hoje sem link de
+  navegação no painel desde a rodada de consistência (§73: "Perfil
+  profissional descontinuado como SUPERFÍCIE DE NAVEGAÇÃO... superfície
+  futura de edição é um bloco separado"). "Minha Doopla/Treinar" segue
+  registrada como `[FUTURE]` no roadmap (§68) — nunca construída.
+  Decidir ONDE essa superfície mora é trabalho do próximo bloco de
+  implementação, não desta reconciliação.
+- **Wizard antigo não é removido nem reescrito agora** — convite de
+  booker/agência continua existindo como está. Não se mantém como
+  arquitetura CONCORRENTE de onboarding pra sempre: dados finais e
+  modelo de enriquecimento devem convergir pras mesmas fontes canônicas
+  quando o bloco de implementação futuro for desenhado, mas mapear
+  dependências de convite/booker vem antes de qualquer remoção.
+
+## "Emite nota fiscal?" deixa de ser write-once — vira contexto editável, nunca dado de Conta — 08/09/2026
+
+Achado da mesma auditoria: `artist_profiles.issues_invoice` (migration
+0037) é coletado só na Etapa 3 do Fluxo 1, lido de verdade pela tool de
+Runtime `get_professional_business_context`, mas sem nenhuma superfície
+de edição depois — grep em todo `src/app/dashboard` não achou nenhuma
+ocorrência.
+
+Decisão: continua sendo coletado no onboarding (não removido de lá),
+mas precisa ganhar uma superfície de edição posterior — na mesma área
+de conhecimento/contexto comercial do item acima (enriquecimento
+progressivo), nunca tratado como dado de Conta (Configurações →
+Conta é identidade/contato, não preferência de negócio). Reaproveita
+`artist_profiles.issues_invoice` como fonte existente, salvo se a
+auditoria técnica do bloco de implementação encontrar motivo concreto
+pra uma fonte diferente — não decidido a priori.
+
+## Dados de recebimento continuam fora do onboarding — nudge de ativação, não etapa obrigatória — 08/09/2026
+
+Confirmado pela auditoria: `payment_details` (migration 0046) nunca fez
+parte de nenhuma etapa do cadastro (decisão já correta, preexistente),
+mas é a única informação que efetivamente bloqueia operação real hoje
+— `is_operationally_ready()`, consultada pelo Post-model Policy Gate,
+só retorna `true` com uma linha `active` em `payment_details`.
+
+Decisão: Configurações continua sendo a superfície de edição — não
+migra pro onboarding. Mas a experiência de ativação (bloco de
+implementação futuro, ainda não desenhado) deve orientar o profissional
+a completar os dados de recebimento antes do primeiro momento
+operacional real em que forem necessários — um nudge contextual, nunca
+uma etapa pesada obrigatória de criação de conta.
+
+## Achados técnicos da auditoria do Bloco 4 — dívida registrada, sem ação — 08/09/2026
+
+Campos sem consumidor de regra/Runtime/exibição encontrado
+(`temBooker`, `intencao`/`pontualDetalhe` do artista, `jaRepresenta`/
+`roster`/`clientTypes`/`specialtyAreas`/`feeRange` do booker) e
+nomenclaturas/colunas duplicadas (`booker_profiles.specialties` já
+substituída por `specialty_areas`, comentário do próprio schema
+confirma que não é mais lida/escrita; `local` do artista vs. `cidades`
+do booker pro mesmo conceito de cidade-base) NÃO viram decisão de
+produto nem tarefa agora — instrução explícita do usuário: achado
+técnico normal não é decisão de produto, e não deve criar trabalho
+desnecessário. Registrado aqui só como evidência preservada; qualquer
+ação fica pra quando (e se) fizer sentido dentro de um bloco de
+implementação real.

@@ -9004,6 +9004,158 @@ funcional dos 4 itens (incluindo confirmar que a posição de leitura
 pousa onde parou, não no topo, nas duas plataformas) fica pendente pro
 usuário, junto da lapidação geral já combinada.
 
+## 79. Reconciliação dos 8 blocos salvos + Auditoria do onboarding/cadastro (Bloco 4) — `[AUDIT DELIVERED]`, zero implementação
+
+Sessão dedicada a reconciliar 8 especificações/blocos salvos pelo
+usuário (escritas em momentos diferentes, algumas já entregues, outras
+superadas por decisões posteriores) antes de continuar a execução —
+pedido explícito: nada de código nesta rodada, só auditoria.
+
+**Reconciliação dos 8 blocos** (estado real levantado contra codebase +
+PROGRESS.md + DECISOES.md + `git log`, sem inventar pendência nem
+reabrir bloco fechado sem evidência concreta):
+
+| # | Bloco | Status final |
+|---|---|---|
+| 1 | Doopla Professional Settings V2 | PARTIAL — canônica é progressive disclosure (Settings → detalhe → ação) sobre a baseline já consolidada em `pro-configuracoes-view.tsx`. Dados de recebimento já faz parte dela. |
+| 2 | Doopla Professional Dashboard | PARTIAL (quase DELIVERED p/ artista) — implementação existente (§68-77) é baseline; spec salva vira régua de UX pra achar/refinar só gaps reais (Perfil profissional re-skin, `/precos`, asset de logo), nunca redesign do zero. |
+| 3 | Comunidade — redesign visual da Home | PENDING — bloco funcional CLOSED (§74-78); só resta lapidação visual, preservando 100% da funcionalidade. |
+| 4 | Auditoria onboarding/cadastro | **AUDIT DELIVERED nesta sessão** — ver abaixo. |
+| 5 | Configurações — Dados de recebimento | DELIVERED + ABSORBED pelo Bloco 1 — não existe mais como bloco independente (já integrado em `pro-configuracoes-view.tsx` desde §73). |
+| 6 | Nova Home Pública | PENDING / AUDIT-ONLY antes da implementação — bloco real e separado do Dashboard (confirmado pelo usuário: refere-se à Home pública/marketing, não à Home do painel). Baseline funcional a preservar = correções já entregues no Bloco 7. Implementação só começa com mockup aprovado que o usuário vai fornecer quando chegar a vez deste bloco. |
+| 7 | Home pública — UX/navegação | DELIVERED — commits `8fba1f9` (menu unificado, fim do hard-reload, logo global), `51e5e3c`/`fca76f6` (login em modal, Home e institucionais), `4097041`/`2a654a2`/`2d93c60` (criar conta em modal, funil inteiro preservado, `/cadastro` intacto pra acesso direto), `d0ec4a3` (bug de overlay opaco achado no caminho). Não volta como tarefa independente de implementação — vira baseline funcional que o Bloco 6 deve preservar. Estava implementado mas nunca documentado no PROGRESS.md até agora — lacuna de rastreabilidade fechada por este registro. |
+| 8 | Sistema de Notificações | PARTIAL, por decisão explícita de escopo (não esquecimento) — V1 = só Comunidade (sino/popover Web, bottom-sheet App, §75+§78), decisão já registrada em DECISOES.md ("Decisões continua só nas suas superfícies já corretas, nunca duplicado dentro do sino"). Extensão pra outros domínios preservada como está — não é pendência ativa. |
+
+Fora dos 8: **6A+6B WhatsApp Outreach** segue com tarefas reais em
+aberto no tracker interno (testes determinísticos/regressão/tsc/eslint/
+build + commits finais), sem relação com nenhum dos 8. **"Em alta/Para
+você"** (Home da Comunidade) continua fora de execução até o usuário
+definir critério de ranking — não inventado.
+
+---
+
+### Bloco 4 — Auditoria do onboarding/cadastro atual da Doopla — `[AUDIT DELIVERED]`
+
+Auditoria estritamente read-only (nenhuma alteração de código/schema),
+mapeando o onboarding real a partir do código — não de documentação
+antiga. Evidência completa (mapa de fluxo, tabela campo a campo,
+consumidores, duplicações) foi produzida e aprovada pelo usuário na
+íntegra; este registro preserva as conclusões que orientam o próximo
+trabalho.
+
+**Mapa do fluxo real**: dois fluxos coexistem, roteados por
+`src/app/cadastro/page.tsx` (`useNewFlow = !isBooker && !params.invite`).
+**Fluxo 1** ("funil novo", caminho padrão pra artista sem convite): 6
+etapas, conta criada já na Etapa 1 (`createAccountAction` →
+`handle_new_user`), etapas seguintes fazem UPDATE incremental
+(`savePrepareAction`, `savePlanAction`) — sobrevive a refresh/fechar o
+navegador. **Fluxo 2** ("wizard antigo", `signup-form.tsx`, 1114
+linhas): usado por booker (sempre) e artista convidado por agência
+(versão curta, `ARTISTA_INVITED_STEPS` — só nome+plano); conta só é
+criada na última etapa. App mobile confirmado sem nenhuma superfície
+de cadastro/onboarding — só `signInWithPassword`, nunca `signUp`; 100%
+das contas nascem no Web.
+
+**Achado de maior impacto**: o Fluxo 1 (caminho padrão hoje) nunca
+coleta `regions`/`careerStage`/`helpAreas`/`workTypes`/`clientTypes`/
+`temBooker` — campos que a tool de Runtime `get_professional_business_
+context` (`src/lib/intelligence/tools/`) já foi construída pra ler.
+Esses campos só existem no Fluxo 2, hoje praticamente inalcançável por
+artista (só via um caminho residual: chegar por link `?tipo=booker` e
+trocar pra "Artista" no seletor de papel dentro do wizard). Na
+prática, pra maioria dos artistas cadastrados hoje essa parte do
+contexto de negócio da IA fica vazia — não por bug, por divergência
+não reconciliada entre os dois fluxos.
+
+**"Emite nota fiscal?" (`artist_profiles.issues_invoice`, migration
+0037)**: coletado só na Etapa 3 do Fluxo 1 (`savePrepareAction`),
+opcional, sem CHECK. Consumidor real confirmado: a tool
+`get_professional_business_context` expõe `issuesInvoice` como
+contexto declarado pro Runtime — nunca autorização, nenhuma regra de
+negócio ramifica por causa dele. **Sem nenhuma superfície de edição
+depois do onboarding** (grep em todo `src/app/dashboard` não achou
+nenhuma ocorrência) — write-once, achado que motivou a decisão #2
+abaixo.
+
+**Dados de recebimento**: confirmado que `payment_details` (migration
+0046) nunca fez parte de nenhuma etapa do cadastro — decisão já
+correta e preexistente —, mas participa de uma regra real:
+`is_operationally_ready()` (consultada pelo Post-model Policy Gate)
+retorna `true` só quando existe uma linha `active` em `payment_details`.
+É a única informação do onboarding/pós-onboarding que efetivamente
+bloqueia operação real hoje.
+
+**Duplicações/dívida técnica registradas, sem ação**: `booker_profiles.
+specialties` substituída por `specialty_areas` (a antiga já documentada
+no próprio schema como não lida/escrita); nomenclatura duplicada sem
+necessidade técnica (`local` no artista vs. `cidades` no booker, mesmo
+propósito); `artist_profiles.category` só é escrito de verdade pelo
+UPDATE da Etapa 2 (via `profession`) — o caminho da trigger lendo
+`meta->>'categoria'` é código morto alcançável só por metadata manual;
+`temBooker`/`intencao`/`pontualDetalhe`/`jaRepresenta`/`roster`
+(booker)/`clientTypes`/`specialtyAreas`/`feeRange` (booker) coletados
+sem consumidor de regra/Runtime/exibição encontrado. Nenhum vira tarefa
+agora — só registro, por instrução explícita do usuário (achado
+técnico normal, nunca decisão de produto).
+
+#### Decisões de produto tomadas em resposta à auditoria (detalhe completo em DECISOES.md)
+
+1. **Reconciliação dos dois fluxos de artista via progressive
+   profiling** — o Fluxo 1 continua curto (conta → contexto mínimo →
+   canal → plano); `regions`/`careerStage`/`helpAreas`/`workTypes`/
+   `clientTypes`/contexto comercial adicional NÃO viram etapas novas
+   obrigatórias do cadastro. Pertencem ao enriquecimento progressivo do
+   conhecimento da Doopla sobre o profissional, reaproveitando as
+   fontes canônicas já existentes (`artist_profiles`, já lido pelas 2
+   tools de Runtime) — nunca uma segunda fonte de verdade. A superfície
+   de UI pra esse enriquecimento ainda não existe (ver nota abaixo);
+   posicioná-la é trabalho do próximo bloco de implementação, não desta
+   auditoria.
+2. **"Emite nota fiscal?" deixa de ser write-once** — continua sendo
+   coletado no onboarding, mas precisa ganhar uma superfície de edição
+   depois, na mesma área de conhecimento/contexto comercial do item 1
+   (nunca tratado como dado de Conta). Reaproveita `artist_profiles.
+   issues_invoice` como fonte — a menos que uma auditoria técnica do
+   bloco de implementação encontre motivo concreto pra uma fonte
+   diferente.
+3. **Dados de recebimento continuam fora do onboarding** — Configurações
+   segue sendo a superfície de edição. Como `payment_details` participa
+   de `is_operationally_ready()`, a experiência de ativação (bloco de
+   implementação futuro) deve orientar o profissional a completar esses
+   dados antes do primeiro momento operacional real, sem virar etapa
+   pesada obrigatória de criação de conta.
+4. **Princípio canônico**: conta → contexto mínimo → produto →
+   enriquecimento progressivo → prontidão operacional. A Doopla não
+   tenta aprender tudo antes de deixar o profissional entrar; reduz
+   fricção de entrada sem deixar o Runtime permanentemente sem o
+   contexto que já está preparado pra consumir.
+5. **Wizard antigo não é removido nem reescrito agora** — convite de
+   booker/agência continua existindo; dados finais e modelo de
+   enriquecimento devem convergir pras mesmas fontes canônicas quando o
+   próximo bloco de implementação for desenhado, mas mapear dependências
+   de convite/booker vem antes de qualquer remoção.
+
+**Nota de arquitetura relevante pro próximo bloco de implementação**:
+"Minha Doopla/Treinar" aparece no roadmap já registrado (§68 e
+adjacências) como superfície `[FUTURE]`, nunca construída — não existe
+hoje nenhuma tela de "Treinar sua Doopla". O precedente mais próximo é
+`ArtistProfileForm.tsx` (`/dashboard/perfil/editar`), que já edita
+`regions` (um dos campos de enriquecimento), mas está sem link de
+navegação no painel desde §73 ("Perfil profissional descontinuado como
+SUPERFÍCIE DE NAVEGAÇÃO... a superfície futura de edição é um bloco
+separado"). Ou seja: o gap já registrado em §73 e a necessidade de
+posicionar o enriquecimento progressivo desta auditoria apontam pro
+mesmo lugar — decisão de ONDE/COMO construir essa superfície fica pro
+bloco de implementação, nunca decidida ou antecipada por esta auditoria
+read-only.
+
+**Validado**: nenhum código/schema alterado nesta auditoria — só leitura
+(grep, `Read`, migrations) e este registro. Nenhum `tsc`/`eslint`/`build`
+necessário.
+
+STATUS do Bloco 4: `[AUDIT DELIVERED]`. Implementação (se/quando
+decidida) é trabalho de um bloco futuro separado, não desta auditoria.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
