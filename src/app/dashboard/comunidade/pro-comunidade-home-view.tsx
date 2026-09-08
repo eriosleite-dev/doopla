@@ -23,16 +23,14 @@ import { SaveTopicButton } from './save-topic-button';
 // acesso/visualização por profissional. Nunca fingir essa semântica
 // antes de existir de verdade.
 export function ProComunidadeHomeView({
-  savedPreview,
+  savedTopics,
   savedTopicIds,
   recentTopics,
-  savedCount,
   initialQuery,
 }: {
-  savedPreview: (CommunityTopicCard & { saved: true })[];
+  savedTopics: (CommunityTopicCard & { saved: true })[];
   savedTopicIds: Set<string>;
   recentTopics: CommunityTopicCard[];
-  savedCount: number;
   // Preservação de contexto (07/09/2026, item 1 da correção de
   // navegação) — a busca digitada agora mora na URL (?q=), não só em
   // estado de componente: sobrevive a abrir um tópico e voltar (o
@@ -112,28 +110,25 @@ export function ProComunidadeHomeView({
         <>
           {/* Item 2A (08/09/2026) — accordion inline, fechado por
              padrão (nenhum estado atual justifica abrir sozinho).
-             Mesma fonte real de sempre (savedPreview/savedTopicIds,
+             Mesma fonte real de sempre (savedTopics/savedTopicIds,
              lidos de community_saved_topics via listCommunityTopicsByIds/
              listSavedTopicIds em page.tsx) — nenhuma query nova, só o
              container visual muda de <section> pra ProAccordion. Clicar
              num tópico salvo usa o mesmo <Link href={topic.href}>
              de sempre (dentro de TopicCardGrid), interceptado pela
-             mesma navegação do item 1 — nenhuma rota/lógica paralela. */}
-          <ProAccordion title="Salvos por você" count={savedCount}>
-            {savedPreview.length === 0 ? (
+             mesma navegação do item 1 — nenhuma rota/lógica paralela.
+             Correção 08/09/2026 — removido o link "Ver todos" pra
+             /dashboard/comunidade/salvos: a decisão aprovada exige que
+             "Salvos por você" seja 100% inline na Home, sem precisar
+             sair pra outra superfície. page.tsx agora busca TODOS os
+             salvos (sem corte de 20) — auditoria confirmou que nem
+             listSavedTopicIds nem listCommunityTopicsByIds impõem
+             restrição real de backend, o corte era só do app. */}
+          <ProAccordion title="Salvos por você" count={savedTopics.length}>
+            {savedTopics.length === 0 ? (
               <ProEmptyState message="Você ainda não salvou nenhum tópico. Toque no marcador em qualquer tópico da Comunidade pra guardá-lo aqui." />
             ) : (
-              <>
-                <TopicCardGrid topics={savedPreview} savedTopicIds={savedTopicIds} />
-                {savedCount > savedPreview.length && (
-                  <Link
-                    href="/dashboard/comunidade/salvos"
-                    className="mt-3 inline-block text-[12px] font-bold text-[var(--pro-red)] hover:underline"
-                  >
-                    Ver todos ({savedCount}) →
-                  </Link>
-                )}
-              </>
+              <TopicCardGrid topics={savedTopics} savedTopicIds={savedTopicIds} />
             )}
           </ProAccordion>
 

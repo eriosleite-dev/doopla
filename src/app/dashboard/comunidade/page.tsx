@@ -31,16 +31,22 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   const [recentTopics, savedTopicIds] = await Promise.all([listCommunityTopics(supabase, { limit: 20 }), listSavedTopicIds(supabase)]);
   const savedTopicIdSet = new Set(savedTopicIds);
-  // Item 2A (08/09/2026) — "Salvos por você" virou accordion inline
-  // (ver ProComunidadeHomeView); o preview cresce de 4 pra 20 pra fazer
-  // sentido como "quantidade inicial razoável" já dentro do accordion
-  // expandido (mesmo limite já usado em Recentes nesta página) — a
-  // rota dedicada /dashboard/comunidade/salvos continua existindo,
-  // intocada, pro overflow além disso.
-  const savedPreviewTopics = await listCommunityTopicsByIds(supabase, savedTopicIds.slice(0, 20));
+  // Correção do item 2A (08/09/2026) — a versão anterior cortava em 20 e
+  // linkava "Ver todos" pra /dashboard/comunidade/salvos, violando a
+  // decisão de "Salvos por você" ser uma superfície 100% inline na Home.
+  // Auditoria: nem listSavedTopicIds (sem .limit(), já traz todos os IDs
+  // do usuário) nem listCommunityTopicsByIds (limit é só um parâmetro
+  // opcional do caller) impõem restrição real de backend — o corte de 20
+  // era só uma escolha de app, não do schema/RPC. Sem indício de volume
+  // que justifique paginação pra uma lista pessoal de salvos, a solução
+  // mínima correta é buscar TODOS e renderizar todos dentro do próprio
+  // accordion — sem link de saída, sem "mostrar mais". A rota dedicada
+  // /dashboard/comunidade/salvos continua existindo (compatibilidade),
+  // só deixa de ser referenciada pela Home.
+  const savedTopics = await listCommunityTopicsByIds(supabase, savedTopicIds, savedTopicIds.length);
 
   const authorsById = await getCommunityAuthors(supabase, [
-    ...new Set([...recentTopics, ...savedPreviewTopics].map((t) => t.author_profile_id)),
+    ...new Set([...recentTopics, ...savedTopics].map((t) => t.author_profile_id)),
   ]);
 
   function toCard(topic: (typeof recentTopics)[number]): CommunityTopicCard {
@@ -61,10 +67,9 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
         subtitle="Busque assunto, profissão, dúvida ou interesse. A Doopla te ajuda a achar a conversa certa."
       />
       <ProComunidadeHomeView
-        savedPreview={savedPreviewTopics.map((t) => ({ ...toCard(t), saved: true as const }))}
+        savedTopics={savedTopics.map((t) => ({ ...toCard(t), saved: true as const }))}
         savedTopicIds={savedTopicIdSet}
         recentTopics={recentTopics.map(toCard)}
-        savedCount={savedTopicIds.length}
         initialQuery={q ?? ''}
       />
     </main>
