@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 
 // comingSoon: destino aprovado na arquitetura de informação (spec
 // section 1 da review de 04/09/2026), mas cuja tela real ainda não foi
@@ -75,6 +76,7 @@ export const proNavIcons = {
 
 function ProNavItem({ link }: { link: ProNavLink }) {
   const pathname = usePathname();
+  const [hoverArmed, setHoverArmed] = useState(false);
   const [path, hash] = link.href.split('#');
   // Bug real (review 04/09/2026): Decisões (href '/dashboard#precisa-de-voce')
   // ficava com o mesmo `path` de Início ('/dashboard') depois do split, então
@@ -103,23 +105,31 @@ function ProNavItem({ link }: { link: ProNavLink }) {
   return (
     <Link
       href={link.href}
-      // Correção do fundo preto da Comunidade (08/09/2026) — achado via
-      // Runtime Logs da Vercel: no exato instante do clique em
-      // Comunidade, o item ATIVO da sidebar (ex.: "Início", enquanto
-      // /dashboard já está montado) disparava seu próprio prefetch de
-      // novo — 3 GETs simultâneos pra /dashboard nos logs. Como
-      // /dashboard/loading.tsx existe, o prefetch de uma rota dinâmica
-      // só resolve "layout até o primeiro loading boundary" (doc do
-      // Next: "With loading.js: Layout to first loading boundary",
-      // Client Cache TTL off por padrão) — nunca o conteúdo real da
-      // página. Esse prefetch truncado, disparado bem no momento em que
-      // a Comunidade interceptada precisa preservar o slot `children`
-      // já montado, é o que produz `children` chegando vazio (confirmado
-      // via DebugMainProbe: 0 nós, não coberto — genuinely ausente).
-      // Nunca faz sentido prefetch da página em que você JÁ está —
-      // suprimir isso especificamente pro item ativo elimina a corrida
-      // sem desligar prefetch pros outros itens.
-      prefetch={active ? false : undefined}
+      // Correção do fundo preto da Comunidade (08/09/2026) — histórico:
+      // 1ª tentativa (commit 9b93f90) suprimiu prefetch só do item ATIVO
+      // (auto-prefetch da rota em que você já está). Usuário testou e
+      // confirmou que NÃO resolveu ("testei em todos e continua ficando
+      // em preto") — os Runtime Logs da Vercel mostravam não 1, mas ~15+
+      // GETs simultâneos pra /dashboard/* (3 só pra /dashboard) no
+      // instante do clique. A causa não é UM prefetch duplicado, é a
+      // sidebar inteira (7 links, cada um uma rota dinâmica com Supabase
+      // por trás) disparando prefetch automático de TODOS os itens
+      // visíveis ao mesmo tempo (comportamento padrão do <Link>) bem no
+      // momento em que a navegação interceptada da Comunidade precisa
+      // preservar o slot `children` já montado — a rajada de requisições
+      // concorrentes é o que faz `children` chegar vazio (confirmado via
+      // DebugMainProbe: 0 nós, genuinely ausente, não só coberto).
+      // 2ª tentativa (esta): elimina a rajada inteira, não só 1 link.
+      // Segue o padrão documentado do próprio Next ("Preventing too many
+      // prefetches" em prefetching.md): prefetch começa DESLIGADO pra
+      // todo item não-ativo e só é "armado" (delegado ao comportamento
+      // automático padrão — viewport + hover) depois de um sinal real de
+      // intenção do usuário (mouse entrando no link ou toque nele).
+      // Link ativo continua sempre sem prefetch (nunca faz sentido
+      // prefetch da própria página atual).
+      prefetch={active ? false : hoverArmed ? undefined : false}
+      onMouseEnter={() => setHoverArmed(true)}
+      onTouchStart={() => setHoverArmed(true)}
       className={`font-pro-sub relative flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-semibold transition-colors ${
         active
           ? 'bg-gradient-to-r from-[rgba(226,41,28,.22)] to-[rgba(226,41,28,.04)] text-[var(--pro-off)] shadow-[inset_2px_0_0_var(--pro-red)]'
