@@ -36,6 +36,11 @@ async function requireArtista() {
 export type CommunityTopicCard = {
   id: string;
   title: string;
+  // Item 6 — correção do ••• ausente nos cards (08/09/2026): precisa do
+  // profile_id real do autor pra decidir se o card mostra o menu de
+  // exclusão — nunca comparar por authorName (não é identificador
+  // único, ver a investigação de homônimos em @menções).
+  authorProfileId: string;
   authorName: string;
   replyCount: number;
   timeLabel: string;
@@ -46,6 +51,7 @@ function toCard(topic: CommunityTopic, authorsById: Map<string, CommunityAuthorS
   return {
     id: topic.id,
     title: topic.title,
+    authorProfileId: topic.author_profile_id,
     authorName: authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla',
     replyCount: topic.reply_count,
     timeLabel: formatRelativeTime(topic.last_activity_at),

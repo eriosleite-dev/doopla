@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,10 +8,12 @@ import { FullSheetHeader } from '@/components/shared/FullSheetHeader';
 import { ForumTopicRow } from '@/components/forum/ForumTopicRow';
 import { ErrorState, LoadingState, EmptyState } from '@/components/shared/ScreenState';
 import { formatRelativeDate } from '@/lib/format';
+import { useAuth } from '@/hooks/useAuth';
 import {
   fetchCommunityAuthors,
   fetchCommunityTopicsByIds,
   fetchSavedTopicIds,
+  removeCommunityTopic,
   unsaveTopic,
   type CommunityAuthorSnapshot,
 } from '@/lib/data/community';
@@ -24,9 +26,11 @@ type Phase = 'loading' | 'ready' | 'error';
 // salvar em qualquer tela — nunca um estado local/paralelo.
 export default function ForumSalvosScreen() {
   const router = useRouter();
+  const { professionalId } = useAuth();
   const [phase, setPhase] = useState<Phase>('loading');
   const [topics, setTopics] = useState<CommunityTopic[]>([]);
   const [authorsById, setAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
+  const [deletingTopicIds, setDeletingTopicIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setPhase('loading');
@@ -52,6 +56,36 @@ export default function ForumSalvosScreen() {
     unsaveTopic(topicId).catch(() => load());
   }
 
+  // Item 6 (08/09/2026, correção do ••• ausente nos cards) — mesmo
+  // padrão de forum/index.tsx e forum/[topicId].tsx.
+  function handleDeleteTopic(topicId: string) {
+    if (deletingTopicIds.has(topicId)) return;
+    Alert.alert('Excluir tópico?', 'Essa ação não pode ser desfeita.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          setDeletingTopicIds((prev) => new Set(prev).add(topicId));
+          removeCommunityTopic(topicId)
+            .then(() => {
+              setTopics((prev) => prev.filter((t) => t.id !== topicId));
+            })
+            .catch(() => {
+              Alert.alert('Não foi possível excluir', 'Tente novamente.');
+            })
+            .finally(() => {
+              setDeletingTopicIds((prev) => {
+                const next = new Set(prev);
+                next.delete(topicId);
+                return next;
+              });
+            });
+        },
+      },
+    ]);
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FullSheetHeader title="Salvos" onBack={() => router.back()} onClose={() => router.dismissAll()} />
@@ -74,6 +108,8 @@ export default function ForumSalvosScreen() {
               onToggleSave={() => handleUnsave(topic.id)}
               bordered={i > 0}
               onPress={() => router.push(`/forum/${topic.id}`)}
+              onDelete={topic.author_profile_id === professionalId ? () => handleDeleteTopic(topic.id) : undefined}
+              deleting={deletingTopicIds.has(topic.id)}
             />
           ))}
       </View>

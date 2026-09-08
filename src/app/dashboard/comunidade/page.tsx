@@ -53,6 +53,7 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
     return {
       id: topic.id,
       title: topic.title,
+      authorProfileId: topic.author_profile_id,
       authorName: authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla',
       replyCount: topic.reply_count,
       timeLabel: formatRelativeTime(topic.last_activity_at),
@@ -71,6 +72,7 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
         savedTopicIds={savedTopicIdSet}
         recentTopics={recentTopics.map(toCard)}
         initialQuery={q ?? ''}
+        currentProfileId={profile.id}
       />
     </main>
   );

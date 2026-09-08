@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,6 +15,7 @@ import {
   fetchCommunityCategories,
   fetchCommunityTopics,
   fetchSavedTopicIds,
+  removeCommunityTopic,
   saveTopic,
   searchCommunityTopics,
   unsaveTopic,
@@ -43,6 +44,7 @@ export default function ForumTopicListScreen() {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [retryTick, setRetryTick] = useState(0);
+  const [deletingTopicIds, setDeletingTopicIds] = useState<Set<string>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Categorias + salvos + ativação do perfil de Comunidade: uma vez só,
@@ -90,6 +92,39 @@ export default function ForumTopicListScreen() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [search, activeCategoryId, retryTick]);
+
+  // Item 6 (08/09/2026, correção do ••• ausente nos cards) — mesmo
+  // padrão já usado em forum/[topicId].tsx: Alert.alert nativo faz
+  // menu+confirmação num só passo (única opção é "Excluir"), removeCommunityTopic
+  // já existente (mesma RPC do painel web), sucesso tira o card da lista
+  // local sem precisar recarregar a tela inteira.
+  function handleDeleteTopic(topicId: string) {
+    if (deletingTopicIds.has(topicId)) return;
+    Alert.alert('Excluir tópico?', 'Essa ação não pode ser desfeita.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          setDeletingTopicIds((prev) => new Set(prev).add(topicId));
+          removeCommunityTopic(topicId)
+            .then(() => {
+              setTopics((prev) => prev.filter((t) => t.id !== topicId));
+            })
+            .catch(() => {
+              Alert.alert('Não foi possível excluir', 'Tente novamente.');
+            })
+            .finally(() => {
+              setDeletingTopicIds((prev) => {
+                const next = new Set(prev);
+                next.delete(topicId);
+                return next;
+              });
+            });
+        },
+      },
+    ]);
+  }
 
   function toggleSave(topicId: string) {
     const wasSaved = savedIds.has(topicId);
@@ -169,6 +204,8 @@ export default function ForumTopicListScreen() {
               onToggleSave={() => toggleSave(topic.id)}
               bordered={i > 0}
               onPress={() => router.push(`/forum/${topic.id}`)}
+              onDelete={topic.author_profile_id === professionalId ? () => handleDeleteTopic(topic.id) : undefined}
+              deleting={deletingTopicIds.has(topic.id)}
             />
           ))}
       </View>

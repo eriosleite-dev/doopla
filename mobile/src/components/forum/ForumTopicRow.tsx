@@ -3,6 +3,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '@/theme/tokens';
 import { BookmarkIcon } from '@/components/icons/Icons';
 
+// Item 6 (08/09/2026, correção do ••• ausente nos cards) — onDelete
+// opcional: só o chamador sabe se o tópico do card é do autor logado
+// (comparação por profile_id, feita em quem monta a lista — nunca
+// aqui). Sem onDelete, o card fica exatamente como sempre foi.
 export function ForumTopicRow({
   title,
   meta,
@@ -11,6 +15,8 @@ export function ForumTopicRow({
   onToggleSave,
   bordered,
   onPress,
+  onDelete,
+  deleting,
 }: {
   title: string;
   meta: string;
@@ -19,21 +25,39 @@ export function ForumTopicRow({
   onToggleSave: () => void;
   bordered?: boolean;
   onPress: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
 }) {
   return (
     <Pressable style={[styles.topic, bordered && styles.bordered]} onPress={onPress}>
       <View style={styles.head}>
         <Text style={styles.title}>{title}</Text>
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation();
-            onToggleSave();
-          }}
-          hitSlop={8}
-          style={styles.saveBtn}
-        >
-          <BookmarkIcon size={16} color={saved ? colors.red : colors.tx30} filled={saved} strokeWidth={1.8} />
-        </Pressable>
+        <View style={styles.rowActions}>
+          {onDelete && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              hitSlop={8}
+              disabled={deleting}
+              accessibilityRole="button"
+              accessibilityLabel="Mais opções"
+            >
+              <Text style={styles.moreText}>•••</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              onToggleSave();
+            }}
+            hitSlop={8}
+            style={styles.saveBtn}
+          >
+            <BookmarkIcon size={16} color={saved ? colors.red : colors.tx30} filled={saved} strokeWidth={1.8} />
+          </Pressable>
+        </View>
       </View>
       <Text style={styles.meta}>{meta}</Text>
       <Text style={styles.time}>{lastActivity}</Text>
@@ -62,8 +86,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 3,
   },
-  saveBtn: {
+  rowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     marginTop: -2,
+  },
+  saveBtn: {},
+  moreText: {
+    color: colors.tx30,
+    fontFamily: fonts.subBold,
+    fontSize: 13,
+    letterSpacing: 1,
   },
   meta: {
     color: colors.tx50,

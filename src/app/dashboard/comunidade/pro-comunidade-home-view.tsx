@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
 import { ProAccordion, ProCard, ProEmptyState } from '../pro-ui';
-import { searchCommunityTopicsAction, type CommunityTopicCard } from './actions';
+import { removeTopicAction, searchCommunityTopicsAction, type CommunityTopicCard } from './actions';
+import { DeleteMenu } from './[topicId]/delete-menu';
 import { SaveTopicButton } from './save-topic-button';
 
 // Comunidade — Fase 1 (06/09/2026). SEARCH-FIRST: a busca em linguagem
@@ -27,6 +28,7 @@ export function ProComunidadeHomeView({
   savedTopicIds,
   recentTopics,
   initialQuery,
+  currentProfileId,
 }: {
   savedTopics: (CommunityTopicCard & { saved: true })[];
   savedTopicIds: Set<string>;
@@ -38,6 +40,11 @@ export function ProComunidadeHomeView({
   // dependemos mais disso — refresh/deep link com ?q= também já chega
   // com a busca certa).
   initialQuery: string;
+  // Item 6 (08/09/2026, correção do ••• ausente nos cards) — decide,
+  // por card, se mostra o menu de exclusão (comparando profile_id, nunca
+  // nome). Segurança continua 100% do lado da RPC (remove_community_topic
+  // já rejeita quem não é o autor) — isso aqui é só visibilidade de UI.
+  currentProfileId: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -47,6 +54,22 @@ export function ProComunidadeHomeView({
   const [searchError, setSearchError] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+
+  // Item 6 — savedTopics/recentTopics viram estado local (seedado uma
+  // vez a partir das props do Server Component) só pra permitir remover
+  // um card otimisticamente depois de excluir, sem reload e sem
+  // revalidar a rota inteira. Um tópico pode aparecer em mais de uma
+  // lista ao mesmo tempo (salvo E recente, ou salvo E num resultado de
+  // busca) — handleTopicDeleted remove de TODAS pra nunca sobrar um
+  // card fantasma.
+  const [savedTopicsState, setSavedTopicsState] = useState(savedTopics);
+  const [recentTopicsState, setRecentTopicsState] = useState(recentTopics);
+
+  function handleTopicDeleted(topicId: string) {
+    setSavedTopicsState((prev) => prev.filter((t) => t.id !== topicId));
+    setRecentTopicsState((prev) => prev.filter((t) => t.id !== topicId));
+    setResults((prev) => (prev ? prev.filter((t) => t.id !== topicId) : prev));
+  }
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -104,6 +127,8 @@ export function ProComunidadeHomeView({
           error={searchError}
           topics={results ?? []}
           savedTopicIds={savedTopicIds}
+          currentProfileId={currentProfileId}
+          onDeleted={handleTopicDeleted}
           emptyMessage={`Nenhum resultado para "${query.trim()}". Tente outras palavras ou um jeito diferente de perguntar.`}
         />
       ) : (
@@ -124,20 +149,30 @@ export function ProComunidadeHomeView({
              salvos (sem corte de 20) — auditoria confirmou que nem
              listSavedTopicIds nem listCommunityTopicsByIds impõem
              restrição real de backend, o corte era só do app. */}
-          <ProAccordion title="Salvos por você" count={savedTopics.length}>
-            {savedTopics.length === 0 ? (
+          <ProAccordion title="Salvos por você" count={savedTopicsState.length}>
+            {savedTopicsState.length === 0 ? (
               <ProEmptyState message="Você ainda não salvou nenhum tópico. Toque no marcador em qualquer tópico da Comunidade pra guardá-lo aqui." />
             ) : (
-              <TopicCardGrid topics={savedTopics} savedTopicIds={savedTopicIds} />
+              <TopicCardGrid
+                topics={savedTopicsState}
+                savedTopicIds={savedTopicIds}
+                currentProfileId={currentProfileId}
+                onDeleted={handleTopicDeleted}
+              />
             )}
           </ProAccordion>
 
           <section>
             <p className="mb-2.5 font-pro-sub text-[13.5px] font-bold">Recentes</p>
-            {recentTopics.length === 0 ? (
+            {recentTopicsState.length === 0 ? (
               <ProEmptyState message="Nenhuma discussão por aqui ainda. Seja o primeiro a abrir um tópico." />
             ) : (
-              <TopicCardGrid topics={recentTopics} savedTopicIds={savedTopicIds} />
+              <TopicCardGrid
+                topics={recentTopicsState}
+                savedTopicIds={savedTopicIds}
+                currentProfileId={currentProfileId}
+                onDeleted={handleTopicDeleted}
+              />
             )}
           </section>
         </>
@@ -152,6 +187,8 @@ function TopicResultsSection({
   error,
   topics,
   savedTopicIds,
+  currentProfileId,
+  onDeleted,
   emptyMessage,
 }: {
   title: string;
@@ -159,6 +196,8 @@ function TopicResultsSection({
   error: boolean;
   topics: CommunityTopicCard[];
   savedTopicIds: Set<string>;
+  currentProfileId: string;
+  onDeleted: (topicId: string) => void;
   emptyMessage: string;
 }) {
   return (
@@ -171,13 +210,23 @@ function TopicResultsSection({
       ) : topics.length === 0 ? (
         <ProEmptyState message={emptyMessage} />
       ) : (
-        <TopicCardGrid topics={topics} savedTopicIds={savedTopicIds} />
+        <TopicCardGrid topics={topics} savedTopicIds={savedTopicIds} currentProfileId={currentProfileId} onDeleted={onDeleted} />
       )}
     </section>
   );
 }
 
-function TopicCardGrid({ topics, savedTopicIds }: { topics: CommunityTopicCard[]; savedTopicIds: Set<string> }) {
+function TopicCardGrid({
+  topics,
+  savedTopicIds,
+  currentProfileId,
+  onDeleted,
+}: {
+  topics: CommunityTopicCard[];
+  savedTopicIds: Set<string>;
+  currentProfileId: string;
+  onDeleted: (topicId: string) => void;
+}) {
   return (
     <div className="grid grid-cols-1 gap-2.5 @lg:grid-cols-2">
       {topics.map((topic) => (
@@ -195,11 +244,24 @@ function TopicCardGrid({ topics, savedTopicIds }: { topics: CommunityTopicCard[]
                 <span>{topic.timeLabel}</span>
               </p>
             </Link>
-            <SaveTopicButton
-              topicId={topic.id}
-              initialSaved={savedTopicIds.has(topic.id)}
-              className="flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
-            />
+            <div className="flex flex-none items-center gap-1">
+              <SaveTopicButton
+                topicId={topic.id}
+                initialSaved={savedTopicIds.has(topic.id)}
+                className="flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
+              />
+              {topic.authorProfileId === currentProfileId && (
+                <DeleteMenu
+                  itemLabel="tópico"
+                  onDelete={async () => {
+                    const result = await removeTopicAction(topic.id);
+                    if ('error' in result) throw new Error(result.error);
+                    onDeleted(topic.id);
+                  }}
+                  triggerClassName="flex h-8 w-8 items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+                />
+              )}
+            </div>
           </div>
         </ProCard>
       ))}
