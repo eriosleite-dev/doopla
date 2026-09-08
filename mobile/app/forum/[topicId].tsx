@@ -29,6 +29,8 @@ type SendPhase = 'idle' | 'sending' | 'error';
 type ReplyTarget = { postId: string; authorName: string; snippet: string };
 type MentionCandidate = { profileId: string; displayName: string };
 type ReplyToQuote = ReplyTarget & { removed: boolean };
+type TrackedMention = { profileId: string; displayName: string; insertedText: string };
+type MentionQuery = { start: number; query: string };
 
 function snippetOf(body: string, max = 80): string {
   const trimmed = body.trim().replace(/\s+/g, ' ');
@@ -37,6 +39,32 @@ function snippetOf(body: string, max = 80): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Espelha detectMentionQuery do painel web (mesmo critério: "@" no
+// início de uma palavra, sem espaço entre ele e o cursor).
+function detectMentionQuery(value: string, caret: number): MentionQuery | null {
+  const upToCaret = value.slice(0, caret);
+  const at = upToCaret.lastIndexOf('@');
+  if (at === -1) return null;
+  const before = at === 0 ? '' : upToCaret[at - 1];
+  if (before && !/\s/.test(before)) return null;
+  const between = upToCaret.slice(at + 1);
+  if (/\s/.test(between)) return null;
+  return { start: at, query: between };
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let index = 0;
+  while (true) {
+    const found = haystack.indexOf(needle, index);
+    if (found === -1) break;
+    count += 1;
+    index = found + needle.length;
+  }
+  return count;
 }
 
 // Comunidade — Fase 1 (06/09/2026). Substitui completamente a
@@ -73,7 +101,9 @@ export default function ForumConversationScreen() {
   const [draft, setDraft] = useState('');
   const [sendPhase, setSendPhase] = useState<SendPhase>('idle');
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
-  const [mentioned, setMentioned] = useState<MentionCandidate[]>([]);
+  const [mentioned, setMentioned] = useState<TrackedMention[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
 
   const load = useCallback(async () => {
     if (!topicId) return;
@@ -130,14 +160,54 @@ export default function ForumConversationScreen() {
     action.catch(() => setSaved(wasSaved));
   }
 
-  function toggleMention(candidate: MentionCandidate) {
-    setMentioned((prev) => {
-      const exists = prev.some((m) => m.profileId === candidate.profileId);
-      if (exists) return prev.filter((m) => m.profileId !== candidate.profileId);
-      if (prev.length >= 10) return prev;
-      setDraft((d) => `${d}@${candidate.displayName} `);
-      return [...prev, candidate];
-    });
+  // Correção de UX das menções (08/09/2026) — troca os toggles
+  // permanentes por autocomplete real (digitar "@" → sugestões →
+  // selecionar), espelhando o mesmo modelo do Web. Cada seleção vira
+  // um TrackedMention { profileId, displayName, insertedText } — nunca
+  // inferimos identidade lendo "@palavra" do texto depois. Diferente
+  // do Web (onde o valor do textarea precisa ser recalculado direto no
+  // DOM por causa do timing do form action), aqui handleSend já roda
+  // como função JS plana com o `draft` mais recente — computar os
+  // sobreviventes ali mesmo, sincronamente, é suficiente e correto.
+  const mentionSuggestions = mentionQuery
+    ? mentionCandidates
+        .filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR')))
+        .slice(0, 6)
+    : [];
+
+  function handleDraftChange(text: string) {
+    setDraft(text);
+    setMentionQuery(detectMentionQuery(text, selection.end));
+  }
+
+  function selectMention(candidate: MentionCandidate) {
+    if (!mentionQuery) return;
+    const insertion = `@${candidate.displayName} `;
+    const newText = draft.slice(0, mentionQuery.start) + insertion + draft.slice(mentionQuery.start + 1 + mentionQuery.query.length);
+    setDraft(newText);
+    setMentioned((prev) => [...prev, { profileId: candidate.profileId, displayName: candidate.displayName, insertedText: insertion }]);
+    setMentionQuery(null);
+  }
+
+  // Mesma lógica de "sobrevivência por contagem de ocorrência" do Web:
+  // conta quantas vezes o literal inserido ainda existe no texto final
+  // e só mantém, na ordem da seleção, tantas menções daquele texto
+  // quantas ocorrências sobraram. Apagar o "@Nome " do rascunho
+  // derruba a menção estruturada correspondente.
+  function computeSurvivingMentionIds(text: string): string[] {
+    const totalByText = new Map<string, number>();
+    const claimedByText = new Map<string, number>();
+    const survivors: string[] = [];
+    for (const m of mentioned) {
+      if (survivors.includes(m.profileId)) continue;
+      if (!totalByText.has(m.insertedText)) totalByText.set(m.insertedText, countOccurrences(text, m.insertedText));
+      const claimed = claimedByText.get(m.insertedText) ?? 0;
+      if (claimed < (totalByText.get(m.insertedText) ?? 0)) {
+        survivors.push(m.profileId);
+        claimedByText.set(m.insertedText, claimed + 1);
+      }
+    }
+    return survivors;
   }
 
   function handleSend() {
@@ -149,13 +219,14 @@ export default function ForumConversationScreen() {
       topicId,
       body: text,
       replyToPostId: replyTarget?.postId ?? null,
-      mentionedProfileIds: mentioned.map((m) => m.profileId),
+      mentionedProfileIds: computeSurvivingMentionIds(draft),
     })
       .then(() => load())
       .then(() => {
         setDraft('');
         setReplyTarget(null);
         setMentioned([]);
+        setMentionQuery(null);
         setSendPhase('idle');
       })
       .catch(() => setSendPhase('error'));
@@ -269,37 +340,33 @@ export default function ForumConversationScreen() {
                   </Pressable>
                 </View>
               )}
-              {mentionCandidates.length > 0 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.mentionRow}
-                  contentContainerStyle={styles.mentionRowContent}
-                >
-                  {mentionCandidates.map((candidate) => {
-                    const active = mentioned.some((m) => m.profileId === candidate.profileId);
-                    return (
+              {mentionQuery && mentionCandidates.length > 0 && (
+                <View style={styles.mentionDropdown} accessibilityRole="list">
+                  {mentionSuggestions.length === 0 ? (
+                    <Text style={styles.mentionEmptyText}>Nenhum participante encontrado.</Text>
+                  ) : (
+                    mentionSuggestions.map((candidate) => (
                       <Pressable
                         key={candidate.profileId}
-                        onPress={() => toggleMention(candidate)}
-                        style={[styles.mentionChip, active && styles.mentionChipActive]}
+                        onPress={() => selectMention(candidate)}
+                        style={styles.mentionOption}
                         accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
                       >
-                        <Text style={[styles.mentionChipText, active && styles.mentionChipTextActive]}>@{candidate.displayName}</Text>
+                        <Text style={styles.mentionOptionText}>@{candidate.displayName}</Text>
                       </Pressable>
-                    );
-                  })}
-                </ScrollView>
+                    ))
+                  )}
+                </View>
               )}
               <View style={styles.footer}>
                 <TextInput
                   style={styles.input}
-                  placeholder="Escreva uma mensagem..."
+                  placeholder="Escreva uma mensagem... (@ para mencionar)"
                   placeholderTextColor={colors.tx50}
                   accessibilityLabel="Escrever uma resposta"
                   value={draft}
-                  onChangeText={setDraft}
+                  onChangeText={handleDraftChange}
+                  onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
                   editable={sendPhase !== 'sending'}
                 />
                 <Pressable style={styles.sendBtn} onPress={handleSend} disabled={sendPhase === 'sending'}>
@@ -430,32 +497,32 @@ const styles = StyleSheet.create({
     fontFamily: fonts.subBold,
     fontSize: 13,
   },
-  mentionRow: {
+  mentionDropdown: {
+    marginHorizontal: 14,
     marginTop: 8,
-  },
-  mentionRowContent: {
-    gap: 6,
-    paddingHorizontal: 14,
-  },
-  mentionChip: {
+    maxHeight: 160,
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: colors.panelSolid,
+    paddingVertical: 4,
+    overflow: 'hidden',
   },
-  mentionChipActive: {
-    borderColor: colors.red,
-    backgroundColor: 'rgba(226,41,28,.15)',
+  mentionEmptyText: {
+    color: colors.tx30,
+    fontFamily: fonts.body,
+    fontSize: 11.5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  mentionChipText: {
-    color: colors.tx50,
-    fontFamily: fonts.mono,
-    fontSize: 9.5,
-    textTransform: 'uppercase',
+  mentionOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
-  mentionChipTextActive: {
-    color: colors.red,
+  mentionOptionText: {
+    color: colors.tx70,
+    fontFamily: fonts.body,
+    fontSize: 12.5,
   },
   footer: {
     flexDirection: 'row',

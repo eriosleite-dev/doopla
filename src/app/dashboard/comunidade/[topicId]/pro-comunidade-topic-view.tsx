@@ -154,12 +154,62 @@ export function ProComunidadeTopicChat({
   );
 }
 
-// O composer deixa de ser um <ProCard> flutuante e fecha a própria
-// timeline com um separador fino. Reply-to e mentions se integram sem
-// virar um editor complexo: um preview compacto e cancelável do alvo
-// da resposta, e uma lista de toggles pra menção (nunca autocomplete
-// digitado — os candidatos já são só os participantes desta conversa,
-// já carregados pela página, zero busca nova).
+type TrackedMention = { profileId: string; displayName: string; insertedText: string };
+type MentionQuery = { start: number; query: string };
+
+// Onde está o "@" ativo (se houver) relativo ao cursor: precisa estar
+// no início de uma palavra (início do texto ou precedido de espaço) e
+// sem espaço entre o "@" e o cursor — senão não é um contexto de
+// menção em andamento (ex.: e-mail digitado, ou "@" de uma menção já
+// fechada por um espaço).
+function detectMentionQuery(value: string, caret: number): MentionQuery | null {
+  const upToCaret = value.slice(0, caret);
+  const at = upToCaret.lastIndexOf('@');
+  if (at === -1) return null;
+  const before = at === 0 ? '' : upToCaret[at - 1];
+  if (before && !/\s/.test(before)) return null;
+  const between = upToCaret.slice(at + 1);
+  if (/\s/.test(between)) return null;
+  return { start: at, query: between };
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let index = 0;
+  while (true) {
+    const found = haystack.indexOf(needle, index);
+    if (found === -1) break;
+    count += 1;
+    index = found + needle.length;
+  }
+  return count;
+}
+
+// Correção de UX das menções (08/09/2026) — a versão anterior mostrava
+// toggles @Nome permanentemente abaixo do composer. Trocado por
+// autocomplete real (digitar "@" → sugestões → selecionar), sem
+// nenhuma lista visível quando não há "@" ativo. Universo de
+// candidatos inalterado (mentionCandidates, participantes já
+// carregados pela página).
+//
+// Associação texto <-> profile_id (o ponto sensível desta correção):
+// cada seleção do autocomplete vira um TrackedMention { profileId,
+// displayName, insertedText } — nunca inferimos identidade lendo
+// "@palavra" do texto. No submit, computeSurvivingMentionIds conta
+// quantas vezes o literal insertedText ("@Nome ", exatamente o que foi
+// inserido) ainda existe no texto atual e só mantém, na ordem em que
+// foram selecionadas, tantas menções daquele nome quantas ocorrências
+// sobraram — apagar o "@Nome " do texto derruba a menção estruturada
+// correspondente; editar em volta sem tocar no literal não afeta nada.
+// Isso é uma correspondência por texto literal, não uma associação
+// posicional real (um editor rico com tokens seria o jeito
+// definitivo, mas é exatamente a complexidade que este composer evita
+// de propósito) — o único caso ambíguo remanescente é duas pessoas
+// DIFERENTES com o mesmo nome de exibição, ambas mencionadas, com só
+// uma das ocorrências apagada: sobra uma menção (nunca as duas, nunca
+// nenhuma), mas não há garantia de qual delas — mesma ambiguidade que
+// um leitor humano teria olhando só pro texto.
 function ProComunidadeReplyForm({
   topicId,
   replyTarget,
@@ -175,8 +225,12 @@ function ProComunidadeReplyForm({
 }) {
   const [state, formAction, pending] = useActionState(createReplyAction.bind(null, topicId), {});
   const fieldId = useId();
+  const listboxId = useId();
   const wasPendingRef = useRef(false);
-  const [mentioned, setMentioned] = useState<MentionCandidate[]>([]);
+  const mentionedRef = useRef<TrackedMention[]>([]);
+  const hiddenMentionsRef = useRef<HTMLDivElement | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   // Textarea é não-controlada (defaultValue) de propósito — reset
   // nativo de formulário já limparia sozinho, mas como reply-to/
@@ -186,44 +240,102 @@ function ProComunidadeReplyForm({
   useEffect(() => {
     if (wasPendingRef.current && !pending && !state?.error) {
       if (textareaRef.current) textareaRef.current.value = '';
-      setMentioned([]);
+      mentionedRef.current = [];
+      if (hiddenMentionsRef.current) hiddenMentionsRef.current.replaceChildren();
+      setMentionQuery(null);
       onCancelReply();
     }
     wasPendingRef.current = pending;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, state]);
 
-  function insertMentionText(name: string) {
+  const suggestions = mentionQuery
+    ? mentionCandidates.filter((c) => c.displayName.toLocaleLowerCase('pt-BR').includes(mentionQuery.query.toLocaleLowerCase('pt-BR'))).slice(0, 6)
+    : [];
+
+  function selectMention(candidate: MentionCandidate) {
     const el = textareaRef.current;
-    if (!el) return;
-    const start = el.selectionStart ?? el.value.length;
-    const end = el.selectionEnd ?? el.value.length;
-    const insertion = `@${name} `;
-    el.value = `${el.value.slice(0, start)}${insertion}${el.value.slice(end)}`;
-    const caret = start + insertion.length;
+    if (!el || !mentionQuery) return;
+    const insertion = `@${candidate.displayName} `;
+    const value = el.value;
+    el.value = value.slice(0, mentionQuery.start) + insertion + value.slice(mentionQuery.start + 1 + mentionQuery.query.length);
+    const caret = mentionQuery.start + insertion.length;
     el.focus();
     el.setSelectionRange(caret, caret);
+    // Cada seleção vira uma entrada própria, na ordem em que
+    // aconteceu — nunca inferida depois lendo o texto.
+    mentionedRef.current = [...mentionedRef.current, { profileId: candidate.profileId, displayName: candidate.displayName, insertedText: insertion }];
+    setMentionQuery(null);
   }
 
-  function toggleMention(candidate: MentionCandidate) {
-    const el = textareaRef.current;
-    setMentioned((prev) => {
-      const exists = prev.some((m) => m.profileId === candidate.profileId);
-      if (exists) {
-        // Melhor esforço: remove o texto "@Nome " inserido ao marcar.
-        // Se o usuário editou manualmente, isso vira um no-op inofensivo
-        // — a menção sai da lista enviada de qualquer forma.
-        if (el) el.value = el.value.replace(`@${candidate.displayName} `, '');
-        return prev.filter((m) => m.profileId !== candidate.profileId);
+  function handleTextareaChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
+    const el = event.target;
+    setMentionQuery(detectMentionQuery(el.value, el.selectionStart ?? el.value.length));
+    setActiveIndex(0);
+  }
+
+  function handleTextareaKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!mentionQuery) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setMentionQuery(null);
+      return;
+    }
+    if (suggestions.length === 0) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveIndex((i) => (i + 1) % suggestions.length);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      selectMention(suggestions[activeIndex] ?? suggestions[0]);
+    }
+  }
+
+  function handleFormSubmit() {
+    // Recalcula na hora do submit, direto no DOM (nunca via re-render
+    // de estado React, que não teria garantia de terminar antes do
+    // FormData do form action ser montado) — só o container próprio,
+    // nunca tocado pelo React em nenhum outro momento, garante que o
+    // valor final seja exatamente o computado aqui.
+    const container = hiddenMentionsRef.current;
+    const text = textareaRef.current?.value ?? '';
+    if (!container) return;
+    container.replaceChildren();
+    const totalByText = new Map<string, number>();
+    const claimedByText = new Map<string, number>();
+    const survivors: string[] = [];
+    for (const m of mentionedRef.current) {
+      if (survivors.includes(m.profileId)) continue;
+      if (!totalByText.has(m.insertedText)) totalByText.set(m.insertedText, countOccurrences(text, m.insertedText));
+      const claimed = claimedByText.get(m.insertedText) ?? 0;
+      if (claimed < (totalByText.get(m.insertedText) ?? 0)) {
+        survivors.push(m.profileId);
+        claimedByText.set(m.insertedText, claimed + 1);
       }
-      if (prev.length >= 10) return prev;
-      insertMentionText(candidate.displayName);
-      return [...prev, candidate];
-    });
+    }
+    for (const profileId of survivors) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'mentionedProfileIds';
+      input.value = profileId;
+      container.appendChild(input);
+    }
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-2.5 border-t border-[var(--pro-line)] pt-4">
+    <form
+      action={formAction}
+      onSubmit={handleFormSubmit}
+      className="flex flex-col gap-2.5 border-t border-[var(--pro-line)] pt-4"
+    >
       {replyTarget && (
         <div className="flex items-start justify-between gap-3 rounded-[10px] border-l-2 border-[var(--pro-red)] bg-white/[0.03] py-1.5 pl-3 pr-2">
           <p className="min-w-0 text-[11.5px] text-[var(--pro-tx-50)]">
@@ -241,46 +353,63 @@ function ProComunidadeReplyForm({
         </div>
       )}
       <input type="hidden" name="replyToPostId" value={replyTarget?.postId ?? ''} />
-      {mentioned.map((m) => (
-        <input key={m.profileId} type="hidden" name="mentionedProfileIds" value={m.profileId} />
-      ))}
+      {/* Nunca recebe children via JSX — só handleFormSubmit escreve
+         aqui, direto no DOM, na hora do envio. */}
+      <div ref={hiddenMentionsRef} hidden />
 
-      <label htmlFor={fieldId} className="sr-only">
-        Escrever uma resposta
-      </label>
-      <textarea
-        id={fieldId}
-        ref={textareaRef}
-        name="body"
-        rows={3}
-        placeholder="Escreva sua resposta…"
-        className={`${proInputClass} resize-y`}
-        required
-      />
+      <div className="relative">
+        <label htmlFor={fieldId} className="sr-only">
+          Escrever uma resposta
+        </label>
+        <textarea
+          id={fieldId}
+          ref={textareaRef}
+          name="body"
+          rows={3}
+          placeholder="Escreva sua resposta… (@ para mencionar alguém da conversa)"
+          className={`${proInputClass} resize-y`}
+          required
+          onChange={handleTextareaChange}
+          onKeyDown={handleTextareaKeyDown}
+          onBlur={() => setMentionQuery(null)}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={mentionQuery !== null}
+          aria-controls={listboxId}
+        />
 
-      {mentionCandidates.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-[var(--pro-tx-30)]">Mencionar:</span>
-          {mentionCandidates.map((candidate) => {
-            const active = mentioned.some((m) => m.profileId === candidate.profileId);
-            return (
-              <button
-                key={candidate.profileId}
-                type="button"
-                onClick={() => toggleMention(candidate)}
-                aria-pressed={active}
-                className={`font-doopla-mono rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[.03em] transition-colors ${
-                  active
-                    ? 'border-[var(--pro-red)] bg-[var(--pro-red)]/15 text-[var(--pro-red)]'
-                    : 'border-[var(--pro-line)] text-[var(--pro-tx-50)] hover:border-[var(--pro-tx-30)]'
-                }`}
-              >
-                @{candidate.displayName}
-              </button>
-            );
-          })}
-        </div>
-      )}
+        {mentionQuery && mentionCandidates.length > 0 && (
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-label="Sugestões de menção"
+            className="absolute inset-x-0 top-full z-10 mt-1 max-h-[180px] overflow-y-auto rounded-[10px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] p-1.5 shadow-[0_10px_30px_rgba(0,0,0,.35)]"
+          >
+            {suggestions.length === 0 ? (
+              <p className="px-2.5 py-1.5 text-[11.5px] text-[var(--pro-tx-30)]">Nenhum participante encontrado.</p>
+            ) : (
+              suggestions.map((candidate, i) => (
+                <button
+                  key={candidate.profileId}
+                  type="button"
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    selectMention(candidate);
+                  }}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  className={`block w-full rounded-[8px] px-2.5 py-1.5 text-left text-[12.5px] ${
+                    i === activeIndex ? 'bg-white/[0.06] text-[var(--pro-off)]' : 'text-[var(--pro-tx-70)]'
+                  }`}
+                >
+                  @{candidate.displayName}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       {state?.error && <p className="text-[12.5px] text-[#ff8b80]">{state.error}</p>}
       <button type="submit" disabled={pending} className={`${proPrimaryButtonClass} self-end`}>
