@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
 
+import { DebugMainProbe } from './debug-main-probe';
 import { NotificationBell } from './notification-bell';
 import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
 import { ProSidebarReferralLink } from './pro-sidebar-referral-link';
@@ -166,6 +167,8 @@ export function ProfessionalShell({
           <footer className="mt-14 border-t border-[var(--pro-line)] pt-6 pb-2 text-[12px] text-[var(--pro-tx-30)]">
             © 2026 Doopla
           </footer>
+
+          <DebugMainProbe />
         </main>
       </div>
     </div>
