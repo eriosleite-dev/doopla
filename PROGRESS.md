@@ -9532,6 +9532,114 @@ Migrations: nenhuma. Zero RPC nova, zero tabela nova — reuso total de
 `is_operationally_ready()`/`payment_details`/`artist_profiles`/
 `getActivePaymentDetails`/`getArtistMatchingCompletion`.
 
+## 84. Bloco 6 — Nova Home pública, redesign a partir do mockup aprovado — `[DELIVERED/CLOSED]`
+
+Implementação do bloco que estava bloqueado por "aguardando mockup da
+Eduarda". Mockup recebido e usado como source of truth VISUAL; o
+codebase/decisões vigentes seguiram como source of truth
+FUNCIONAL/conteúdo — nunca o contrário. Auditoria/reconciliação
+completa foi feita ANTES de qualquer código (site×mockup×diff×ação,
+sem implementar), aprovada em seguida por 9 decisões explícitas mais
+um adendo sobre os mascotes (registradas em DECISOES.md). Commit único
+`9e8cba1` (home.html/home.css/home.js/page.tsx + remoção de
+`public/vendor/gsap`) — não foi possível dividir em commits menores
+sem deixar um estado intermediário quebrado: os três arquivos da Home
+(HTML/CSS/JS) são mutuamente dependentes (classes, IDs, seletores) e
+qualquer subconjunto isolado deles produziria erro de console ou
+layout quebrado num commit revisável isoladamente.
+
+**Removido como seção independente** (absorvido/descontinuado
+conforme decisão #2): "Manda" (as 6 situações + os olhos) — conceito
+absorvido pela nova seção "Chega de perder tempo com o operacional".
+"Feita com quem entende de booking". Marquee antigo.
+
+**Mantido, só com adaptação visual** (decisão #2): Planos — lógica de
+preço dinâmico (`market.pricing`, mesmos placeholders `__PRICE_*__`) e
+entitlements intactos, cards restilizados pro fundo dark. FAQ — todos
+os 8 itens preservados, só restilizado. Segurança — deixou de ter
+seção in-page duplicada; o item "Segurança" do header agora aponta
+direto pra `/seguranca` (página já existente, conteúdo não tocado).
+
+**Novo, do mockup**: seção "Para profissionais independentes" (ícones
+DJs/Fotógrafos/Beauty/Músicos/Palestrantes/Freelancers/e muito mais —
+copy editorial de marketing, explicitamente NÃO uma mudança na
+taxonomia canônica de `professions`, migration 0037, nunca tocada).
+Phone-mockup com a conversa transcrita do mockup na seção Hero. Seção
+"Sempre com você" com mascote grande. "Como funciona" reescrito com os
+4 passos canônicos do mockup (Cadastre seu perfil / Receba as
+conversas / Acompanhe e decida / Trabalho feito), preservando o
+`.human-layer` (escalonamento pra time humano) sem alteração de
+conteúdo.
+
+**Decisão técnica tomada durante a implementação, não pedida no
+mockup**: remoção completa de GSAP/ScrollTrigger. O hero pinado que
+justificava GSAP não existe mais no novo design contínuo; o que sobrava
+era só um fade-in decorativo por seção, que expôs um bug real de
+produção durante o QA visual — `ScrollTrigger` com
+`start:"top 85%"` aplicado a um elemento que já nasce dentro do
+viewport (o hero, sempre acima da dobra) nunca dispara `onEnter`,
+deixando esse elemento preso em `opacity:0` pra sempre (mesma classe de
+incidente "tela em branco ao rolar" já documentada no histórico do
+arquivo antigo). Substituído por `IntersectionObserver` puro
+(`initSectionReveal`), hero explicitamente fora do reveal (sempre
+visível de imediato), zero cálculo de posição de scroll.
+`public/vendor/gsap/*.min.js` removido junto (nunca deixado órfão).
+
+**Mascotes/olhos interativos preservados como identidade dinâmica
+obrigatória** (adendo explícito do usuário): pupila segue o cursor
+(`initMascotEyes`, portado pra vanilla JS a partir do mesmo algoritmo
+de `pro-mascot.tsx` — clamp de distância, easing suave, wander ocioso
+quando parado), generalizado pra qualquer instância de `.mascot`/
+`.nav-logo`/`.foot-logo` na página (nunca um "olho mestre" clonado como
+no sistema antigo). Um único timer de ociosidade global evita dois
+mecanismos escrevendo em `pupil.style.transform` ao mesmo tempo
+(jitter). `prefers-reduced-motion` desliga o tracking inteiro (pupilas
+ficam paradas). Mascote do Hero sem os 3 "riscos" acima da cabeça
+(regra já aprovada); mascote do CTA final os mantém.
+
+**Achado e corrigido durante o QA de responsividade** (não previsto na
+auditoria): a nav completa (5 links + Entrar + Criar conta grátis)
+ainda renderizava "aberta" em 834px (viewport de tablet), sem espaço
+suficiente — texto quebrando em 2-3 linhas e colidindo com o logo.
+O breakpoint de colapso da nav estava em 820px, 14px abaixo do
+necessário. Corrigido isolando o colapso da nav num breakpoint próprio
+em 900px (antes compartilhava os 820px do resto do layout de seção).
+
+**QA executado** (Playwright, Chromium real): screenshots em 4
+viewports (1600×1000 desktop amplo, 1280×900 laptop, 834×1112 tablet,
+390×844 mobile) × 3 posições de scroll, revisados visualmente um a um
+— hero, ícones de profissão, Recursos, Sempre com você, Como funciona,
+Planos, FAQ, CTA final e footer renderizam corretamente com a nova
+paleta em todos os breakpoints. Zero erro de console real em qualquer
+viewport — o único erro presente (`net::ERR_CONNECTION_RESET` do
+Google Fonts) é confirmado pré-existente/limitação deste ambiente
+sandboxed (mesmo `<link>` em `layout.tsx`, usado no site inteiro, nunca
+tocado aqui). Checklist de mascote pedido explicitamente: cursor nos 4
+cantos da tela, perto do mascote do Hero, longe dele, e com
+`prefers-reduced-motion` ativo — pupila nunca excedeu ~16% do raio do
+olho em nenhum caso, zero jitter, zero erro. `?plano=doopla`/
+`?plano=pro` continuam abrindo o `CreateAccountModal` com o plano
+correto; `/cadastro?ref=` (rota direta, nunca interceptada pela Home)
+continua funcionando; `#home-login-trigger` abre o `LoginModal`; Tab
+percorre logo → links → Entrar → CTA na ordem esperada.
+`HomeMenuOverlay` (trigger `#home-menu-trigger`, que não existe mais no
+novo nav inline) já era defensivo (`if (!trigger) return`) — vira
+no-op seguro, sem erro, consequência aceita da decisão #5 (nav inline
+substitui o antigo gatilho de menu na Home; `SiteMenuOverlay`
+continua servindo as páginas institucionais normalmente).
+
+`tsc --noEmit`, `eslint` e `next build` limpos (`/` prerenderizada como
+estática). Migrations: nenhuma. Zero tabela/RPC nova.
+
+**Gap real, fora de escopo por decisão explícita**: `SiteHeader`
+(páginas institucionais — Sobre/Segurança/Termos/Privacidade/Contato)
+não foi tocado, continua com o padrão "Menu" hamburger antigo, visualmente
+distinto do nav inline da Home (decisão #7 — evitar expandir esse
+bloco pra não arriscar regressão/escopo). Ícones de rede social do
+footer omitidos por não existirem URLs oficiais reais (decisão #6) —
+quando existirem, é um acréscimo pontual, não uma reabertura deste
+bloco.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

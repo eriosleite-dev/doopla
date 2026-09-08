@@ -1324,3 +1324,67 @@ paridade continua sendo backend/regra compartilhados, a apresentação
 é que reflete o que cada plataforma realmente tem pra oferecer hoje.
 Construir a tela de edição no App fica como candidato a bloco futuro,
 não decidido aqui.
+
+## Bloco 6 — Nova Home pública: mockup é source of truth visual, codebase é source of truth funcional; GSAP removido por bug real, não por preferência — 08/09/2026
+
+O bloqueio "aguardando mockup da Eduarda" foi removido quando o
+mockup chegou. Regra explícita antes de codar: o mockup manda na
+direção visual (paleta dark contínua, composição, copy exibida); o
+codebase/decisões já consolidadas mandam no funcional e no conteúdo
+que precisa sobreviver (preço dinâmico, Planos/FAQ, SEO, analytics,
+`?plano=`/`?ref=`, modais, etc.) — nunca o inverso, e nunca inventar
+elemento/copy/comportamento que não estivesse em nenhum dos dois.
+
+Conteúdo ausente do mockup foi decidido item a item, não descartado
+por padrão: "Manda" (6 situações) e "Feita com quem entende de
+booking" foram removidas como seções independentes porque o mockup as
+substitui conceitualmente (a primeira virou a seção "Chega de perder
+tempo com o operacional"; a segunda não tem equivalente e foi
+avaliada como redundante com o resto da página). "Segurança" continua
+existindo — só deixou de ter uma seção in-page duplicada (o header
+aponta pra `/seguranca`, página já existente e não tocada); a decisão
+explícita foi não duplicar conteúdo de governança em dois lugares.
+"Planos" e "FAQ" foram mantidos por decisão explícita mesmo não
+aparecendo em detalhe no mockup — são funcionalidade real (preço
+dinâmico, entitlements, dúvidas de conversão), não apenas estética; só
+a apresentação visual foi adaptada ao novo fundo dark.
+
+Os ícones/nomes de profissão do mockup (DJs, Fotógrafos, Beauty,
+Músicos, Palestrantes, Freelancers) são copy editorial de marketing da
+Home — decisão explícita de NUNCA alterar a taxonomia canônica de
+`professions` (migration 0037: dj/banda/cantor/fotografo/videomaker/
+influenciador/outro) pra fazê-la coincidir com essa lista. São
+vocabulários independentes de propósito.
+
+GSAP/ScrollTrigger foram removidos como decisão técnica tomada DURANTE
+a implementação — não pedida pelo mockup nem pelo usuário. Motivo: o
+hero pinado com timeline de scroll (única razão real pra GSAP existir
+ali) não existe mais no design novo (fundo contínuo, sem seções
+clara/escura alternando); o que sobrava era um reveal-on-scroll
+decorativo, e o QA visual encontrou esse reveal quebrando o hero de
+verdade — `ScrollTrigger` com `start:"top 85%"` nunca dispara pra um
+elemento que já nasce dentro do viewport, deixando-o preso em
+`opacity:0` pra sempre. Substituído por `IntersectionObserver` nativo,
+sem essa classe de bug por construção. Removido junto:
+`public/vendor/gsap/*.min.js` e os dois `<Script>` de GSAP em
+`page.tsx` — nunca deixados órfãos.
+
+As pupilas dos mascotes seguindo o cursor foram tratadas como
+identidade dinâmica de marca OBRIGATÓRIA de sobreviver ao redesign
+(adendo explícito do usuário, não uma preferência opcional) — mesmo
+sem estar visível num mockup estático. Reaproveitado o mesmo algoritmo
+já usado em `pro-mascot.tsx` (Professional Dashboard)/`MascotBall.tsx`
+(App): clamp de distância, easing suave, `prefers-reduced-motion`
+desliga tudo. Generalizado em vanilla JS pra qualquer instância de
+mascote na página (nunca clonado de um "olho mestre" único como no
+sistema antigo), com um único timer de ociosidade global coordenando
+todas as instâncias — evita dois mecanismos escrevendo
+`pupil.style.transform` ao mesmo tempo (fonte de jitter).
+
+`SiteHeader`/páginas institucionais (Sobre, Segurança, Termos,
+Privacidade, Contato) explicitamente NÃO foram redesenhadas junto —
+decisão de escopo pra evitar risco de regressão em componentes
+compartilhados (`SiteMenuOverlay`, `PageShell`) que essas páginas
+dependem. Convivem por enquanto dois idiomas de navegação (nav inline
+novo na Home vs. "Menu" hamburger nas institucionais) até que um bloco
+futuro decida unificar — não decidido aqui.
