@@ -5,9 +5,11 @@ import {
   ensureCommunityProfileActivated,
   getCommunityAuthors,
   listCommunityCategories,
+  listCommunityForYouTopics,
   listCommunityNotifications,
   listCommunityTopics,
   listCommunityTopicsByIds,
+  listCommunityTrendingTopics,
   listSavedTopicIds,
 } from '@/lib/community/data';
 import type { CommunityNotificationType } from '@/lib/supabase/types';
@@ -47,11 +49,13 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   await ensureCommunityProfileActivated(supabase);
 
-  const [recentTopics, savedTopicIds, notifications, categories] = await Promise.all([
+  const [recentTopics, savedTopicIds, notifications, categories, forYouTopics, trendingTopics] = await Promise.all([
     listCommunityTopics(supabase, { limit: 20 }),
     listSavedTopicIds(supabase),
     listCommunityNotifications(supabase),
     listCommunityCategories(supabase),
+    listCommunityForYouTopics(supabase, 6),
+    listCommunityTrendingTopics(supabase, 6),
   ]);
   const savedTopicIdSet = new Set(savedTopicIds);
   // Correção do item 2A (08/09/2026) — a versão anterior cortava em 20 e
@@ -69,7 +73,11 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   const savedTopics = await listCommunityTopicsByIds(supabase, savedTopicIds, savedTopicIds.length);
 
   const authorsById = await getCommunityAuthors(supabase, [
-    ...new Set([...recentTopics, ...savedTopics].map((t) => t.author_profile_id).concat(notifications.map((n) => n.actorProfileId))),
+    ...new Set(
+      [...recentTopics, ...savedTopics, ...forYouTopics, ...trendingTopics]
+        .map((t) => t.author_profile_id)
+        .concat(notifications.map((n) => n.actorProfileId))
+    ),
   ]);
 
   const notificationCards: CommunityNotificationCard[] = notifications.map((n) => ({
@@ -101,6 +109,8 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
       <ProComunidadeHomeView
         savedTopics={savedTopics.map((t) => ({ ...toCard(t), saved: true as const }))}
         savedTopicIds={savedTopicIdSet}
+        forYouTopics={forYouTopics.map(toCard)}
+        trendingTopics={trendingTopics.map(toCard)}
         recentTopics={recentTopics.map(toCard)}
         initialQuery={q ?? ''}
         currentProfileId={profile.id}

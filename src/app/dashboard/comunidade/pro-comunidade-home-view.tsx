@@ -2,33 +2,34 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { CommunityCategory } from '@/lib/supabase/types';
 
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
-import { ProAccordion, ProCard, ProEmptyState } from '../pro-ui';
+import { ProAccordion, ProEmptyState } from '../pro-ui';
 import { removeTopicAction, searchCommunityTopicsAction, type CommunityNotificationCard, type CommunityTopicCard } from './actions';
 import { CommunityNotificationsBell } from './community-notifications-bell';
 import { DeleteMenu } from './[topicId]/delete-menu';
 import { SaveTopicButton } from './save-topic-button';
 
-// Comunidade — Fase 1 (06/09/2026). SEARCH-FIRST: a busca em linguagem
-// natural é o mecanismo principal de descoberta, nunca chips de
-// categoria/profissão fixos dominando a tela (decisão explícita do
-// usuário — taxonomia fica por baixo, só usada dentro da busca pra
-// ranking, nunca como grade de navegação obrigatória). Quando não há
-// busca ativa: "Salvos por você" (accordion, item 2A/08-09-2026) +
-// "Recentes". Quando há busca: substitui tudo por resultado, sem
-// seções. "Em alta" fica pra Fase B (sinais reais de atividade, não
-// inventados agora). "Recentes" aqui AINDA é o feed global por
-// last_activity_at (mesmo de sempre) — não é histórico pessoal; isso
-// só chega no item 9 da Fase B, quando existir infraestrutura real de
-// acesso/visualização por profissional. Nunca fingir essa semântica
-// antes de existir de verdade.
+// Comunidade V2 — lapidação visual + descoberta + ranking V1
+// (08/09/2026). Hierarquia da Home (busca → Suas comunidades → Para
+// você → Em alta agora → Recentes) é conceitual, não uma obrigação de
+// cinco caixas grandes iguais — cada camada tem uma função diferente
+// (ver DECISOES.md) e ganha o tratamento visual que a função pede:
+// "Suas comunidades" é intenção explícita (fixação rápida, trilho
+// horizontal compacto); "Para você"/"Em alta"/"Recentes" são listas
+// densas de linhas (TopicRow), nunca mosaico de cards — sofisticação
+// vem de tipografia/spacing/hierarquia, não de caixa dentro de caixa.
+// Busca continua o mecanismo PRINCIPAL de descoberta; o ranking ajuda,
+// nunca domina (uma seção sem conteúdo útil simplesmente não aparece —
+// nunca uma caixa vazia grande fingindo atividade que não existe).
 export function ProComunidadeHomeView({
   savedTopics,
   savedTopicIds,
+  forYouTopics,
+  trendingTopics,
   recentTopics,
   initialQuery,
   currentProfileId,
@@ -37,18 +38,15 @@ export function ProComunidadeHomeView({
 }: {
   savedTopics: (CommunityTopicCard & { saved: true })[];
   savedTopicIds: Set<string>;
+  // Cold-start-safe: já chega vazio quando não há sinal real (a
+  // function SQL devolve [] de propósito — ver migration 0079). A
+  // seção some sozinha nesse caso, nunca finge personalização.
+  forYouTopics: CommunityTopicCard[];
+  // Cold-start-safe: comunidade pequena sem tópico acima do threshold
+  // de "Em alta" também chega vazia — mesma regra.
+  trendingTopics: CommunityTopicCard[];
   recentTopics: CommunityTopicCard[];
-  // Preservação de contexto (07/09/2026, item 1 da correção de
-  // navegação) — a busca digitada agora mora na URL (?q=), não só em
-  // estado de componente: sobrevive a abrir um tópico e voltar (o
-  // slide-over nunca desmonta esta rota por acidente, mas também não
-  // dependemos mais disso — refresh/deep link com ?q= também já chega
-  // com a busca certa).
   initialQuery: string;
-  // Item 6 (08/09/2026, correção do ••• ausente nos cards) — decide,
-  // por card, se mostra o menu de exclusão (comparando profile_id, nunca
-  // nome). Segurança continua 100% do lado da RPC (remove_community_topic
-  // já rejeita quem não é o autor) — isso aqui é só visibilidade de UI.
   currentProfileId: string;
   notifications: CommunityNotificationCard[];
   categories: CommunityCategory[];
@@ -59,31 +57,19 @@ export function ProComunidadeHomeView({
   const [results, setResults] = useState<CommunityTopicCard[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
-  // Filtro por categoria (08/09/2026) — fecha o gap de paridade
-  // registrado no §74 do PROGRESS.md: App já tinha chips, Web não tinha
-  // nada. Decisão de produto já registrada em pro-comunidade-home-view.tsx
-  // continua valendo (busca é o mecanismo principal, categoria nunca
-  // vira grade de chips dominando a tela) — por isso aqui é um <select>
-  // discreto ao lado da busca, não uma segunda seção. categoryId setado
-  // (com ou sem texto de busca) entra em modo resultado, reaproveitando
-  // o MESMO searchCommunityTopicsAction (RPC já suporta p_category_id
-  // com query vazia — nenhuma RPC/rota nova).
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
-  // Item 6 — savedTopics/recentTopics viram estado local (seedado uma
-  // vez a partir das props do Server Component) só pra permitir remover
-  // um card otimisticamente depois de excluir, sem reload e sem
-  // revalidar a rota inteira. Um tópico pode aparecer em mais de uma
-  // lista ao mesmo tempo (salvo E recente, ou salvo E num resultado de
-  // busca) — handleTopicDeleted remove de TODAS pra nunca sobrar um
-  // card fantasma.
   const [savedTopicsState, setSavedTopicsState] = useState(savedTopics);
+  const [forYouTopicsState, setForYouTopicsState] = useState(forYouTopics);
+  const [trendingTopicsState, setTrendingTopicsState] = useState(trendingTopics);
   const [recentTopicsState, setRecentTopicsState] = useState(recentTopics);
 
   function handleTopicDeleted(topicId: string) {
     setSavedTopicsState((prev) => prev.filter((t) => t.id !== topicId));
+    setForYouTopicsState((prev) => prev.filter((t) => t.id !== topicId));
+    setTrendingTopicsState((prev) => prev.filter((t) => t.id !== topicId));
     setRecentTopicsState((prev) => prev.filter((t) => t.id !== topicId));
     setResults((prev) => (prev ? prev.filter((t) => t.id !== topicId) : prev));
   }
@@ -92,21 +78,12 @@ export function ProComunidadeHomeView({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const trimmed = query.trim();
     if (!trimmed && !categoryId) {
-      // Limpa ?q= da URL imediatamente (sem debounce) — não é uma busca
-      // em andamento, é o usuário tendo apagado o campo (e nenhuma
-      // categoria filtrando por baixo).
       router.replace(pathname, { scroll: false });
       return;
     }
 
     const myRequestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(async () => {
-      // URL só reflete o texto digitado (?q=) — categoria fica só em
-      // estado de componente, nunca persistida na URL (escopo mínimo:
-      // não sobrevive a um refresh, diferente da busca por texto; ver
-      // relatório). URL só é atualizada quando a busca de fato dispara
-      // (mesmo debounce de 300ms) — evita empilhar/trocar a URL a cada
-      // tecla.
       if (trimmed) router.replace(`${pathname}?q=${encodeURIComponent(trimmed)}`, { scroll: false });
       setSearching(true);
       setSearchError(false);
@@ -132,8 +109,25 @@ export function ProComunidadeHomeView({
     ? `Nenhum resultado para "${query.trim()}"${activeCategoryLabel ? ` em ${activeCategoryLabel}` : ''}. Tente outras palavras ou um jeito diferente de perguntar.`
     : `Nenhum tópico em ${activeCategoryLabel ?? 'categoria'} ainda.`;
 
+  // Deduplicação de apresentação (regra 17 da rodada) — um tópico que
+  // já ocupou um slot em "Suas comunidades" não repete em "Para você"/
+  // "Em alta", e um que já apareceu em qualquer um dos dois anteriores
+  // não repete em "Recentes". Nunca mexe nos datasets canônicos (cada
+  // seção continua vindo da sua própria fonte/ranking, com sua própria
+  // ordem) — é só um filtro de apresentação aplicado na ordem de
+  // prioridade da hierarquia da Home.
+  const { dedupedForYou, dedupedTrending, dedupedRecent } = useMemo(() => {
+    const used = new Set(savedTopicsState.map((t) => t.id));
+    const forYou = forYouTopicsState.filter((t) => !used.has(t.id));
+    forYou.forEach((t) => used.add(t.id));
+    const trending = trendingTopicsState.filter((t) => !used.has(t.id));
+    trending.forEach((t) => used.add(t.id));
+    const recent = recentTopicsState.filter((t) => !used.has(t.id));
+    return { dedupedForYou: forYou, dedupedTrending: trending, dedupedRecent: recent };
+  }, [savedTopicsState, forYouTopicsState, trendingTopicsState, recentTopicsState]);
+
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 @lg:flex-row @lg:items-center">
         <input
           type="search"
@@ -142,9 +136,6 @@ export function ProComunidadeHomeView({
           placeholder="Busque por assunto, profissão, dúvida ou interesse — ex: “como negociar cachê”"
           className={`${proInputClass} @lg:flex-1`}
         />
-        {/* Filtro por categoria (08/09/2026) — <select> discreto, nunca
-           chips competindo por espaço com busca/Salvos/Recentes (decisão
-           já registrada acima). "Todas as categorias" = sem filtro. */}
         {categories.length > 0 && (
           <select
             value={categoryId ?? ''}
@@ -169,7 +160,7 @@ export function ProComunidadeHomeView({
       </div>
 
       {isSearchMode ? (
-        <TopicResultsSection
+        <TopicListSection
           title="Resultado da busca"
           loading={searching}
           error={searchError}
@@ -181,55 +172,70 @@ export function ProComunidadeHomeView({
         />
       ) : (
         <>
-          {/* Item 2A (08/09/2026) — accordion inline, fechado por
-             padrão (nenhum estado atual justifica abrir sozinho).
-             Mesma fonte real de sempre (savedTopics/savedTopicIds,
-             lidos de community_saved_topics via listCommunityTopicsByIds/
-             listSavedTopicIds em page.tsx) — nenhuma query nova, só o
-             container visual muda de <section> pra ProAccordion. Clicar
-             num tópico salvo usa o mesmo <Link href={topic.href}>
-             de sempre (dentro de TopicCardGrid), interceptado pela
-             mesma navegação do item 1 — nenhuma rota/lógica paralela.
-             Correção 08/09/2026 — removido o link "Ver todos" pra
-             /dashboard/comunidade/salvos: a decisão aprovada exige que
-             "Salvos por você" seja 100% inline na Home, sem precisar
-             sair pra outra superfície. page.tsx agora busca TODOS os
-             salvos (sem corte de 20) — auditoria confirmou que nem
-             listSavedTopicIds nem listCommunityTopicsByIds impõem
-             restrição real de backend, o corte era só do app. */}
-          <ProAccordion title="Salvos por você" count={savedTopicsState.length}>
-            {savedTopicsState.length === 0 ? (
-              <ProEmptyState message="Você ainda não salvou nenhum tópico. Toque no marcador em qualquer tópico da Comunidade pra guardá-lo aqui." />
-            ) : (
-              <TopicCardGrid
-                topics={savedTopicsState}
-                savedTopicIds={savedTopicIds}
-                currentProfileId={currentProfileId}
-                onDeleted={handleTopicDeleted}
-              />
-            )}
-          </ProAccordion>
+          {savedTopicsState.length > 0 && (
+            <ProAccordion title="Suas comunidades" count={savedTopicsState.length} defaultOpen>
+              <TopicRail topics={savedTopicsState} />
+            </ProAccordion>
+          )}
 
-          <section>
-            <p className="mb-2.5 font-pro-sub text-[13.5px] font-bold">Recentes</p>
-            {recentTopicsState.length === 0 ? (
-              <ProEmptyState message="Nenhuma discussão por aqui ainda. Seja o primeiro a abrir um tópico." />
-            ) : (
-              <TopicCardGrid
-                topics={recentTopicsState}
-                savedTopicIds={savedTopicIds}
-                currentProfileId={currentProfileId}
-                onDeleted={handleTopicDeleted}
-              />
-            )}
-          </section>
+          {dedupedForYou.length > 0 && (
+            <TopicListSection
+              title="Para você"
+              topics={dedupedForYou}
+              savedTopicIds={savedTopicIds}
+              currentProfileId={currentProfileId}
+              onDeleted={handleTopicDeleted}
+            />
+          )}
+
+          {dedupedTrending.length > 0 && (
+            <TopicListSection
+              title="Em alta agora"
+              topics={dedupedTrending}
+              savedTopicIds={savedTopicIds}
+              currentProfileId={currentProfileId}
+              onDeleted={handleTopicDeleted}
+            />
+          )}
+
+          <TopicListSection
+            title="Recentes"
+            topics={dedupedRecent}
+            savedTopicIds={savedTopicIds}
+            currentProfileId={currentProfileId}
+            onDeleted={handleTopicDeleted}
+            emptyMessage="Nenhuma discussão por aqui ainda. Seja o primeiro a abrir um tópico."
+          />
         </>
       )}
     </div>
   );
 }
 
-function TopicResultsSection({
+// Trilho horizontal compacto — "Suas comunidades" é acesso rápido ao
+// que a pessoa decidiu acompanhar, nunca um grid de cards grandes
+// competindo com o resto da Home (regra 6 da rodada).
+function TopicRail({ topics }: { topics: CommunityTopicCard[] }) {
+  return (
+    <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
+      {topics.map((topic) => (
+        <Link
+          key={topic.id}
+          href={topic.href}
+          className="flex-none rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] px-3.5 py-3 transition-colors hover:border-[var(--pro-tx-30)]"
+          style={{ maxWidth: 220 }}
+        >
+          <p className="line-clamp-2 font-pro-sub text-[12.5px] font-bold leading-snug">{topic.title}</p>
+          <p className="mt-1.5 text-[11px] text-[var(--pro-tx-30)]">
+            {topic.replyCount} {topic.replyCount === 1 ? 'resposta' : 'respostas'} · {topic.timeLabel}
+          </p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function TopicListSection({
   title,
   loading,
   error,
@@ -240,13 +246,16 @@ function TopicResultsSection({
   emptyMessage,
 }: {
   title: string;
-  loading: boolean;
-  error: boolean;
+  loading?: boolean;
+  error?: boolean;
   topics: CommunityTopicCard[];
   savedTopicIds: Set<string>;
   currentProfileId: string;
   onDeleted: (topicId: string) => void;
-  emptyMessage: string;
+  // Sem emptyMessage = a seção inteira não renderiza quando vazia
+  // (chamador já decide isso via `{cond && <TopicListSection .../>}`,
+  // exceto Recentes, que sempre mostra e por isso sempre passa uma).
+  emptyMessage?: string;
 }) {
   return (
     <section>
@@ -256,15 +265,19 @@ function TopicResultsSection({
       ) : error ? (
         <ProEmptyState message="Não deu pra buscar agora. Tente de novo em instantes." />
       ) : topics.length === 0 ? (
-        <ProEmptyState message={emptyMessage} />
+        emptyMessage && <ProEmptyState message={emptyMessage} />
       ) : (
-        <TopicCardGrid topics={topics} savedTopicIds={savedTopicIds} currentProfileId={currentProfileId} onDeleted={onDeleted} />
+        <TopicRowList topics={topics} savedTopicIds={savedTopicIds} currentProfileId={currentProfileId} onDeleted={onDeleted} />
       )}
     </section>
   );
 }
 
-function TopicCardGrid({
+// Linha densa — o essencial pra decidir se vale abrir (título, autor,
+// atividade), metadado sempre discreto e nunca competindo com o
+// título (regra 19/20 da rodada). Substitui o grid de cards anterior:
+// menos borda/caixa, mais tipografia fazendo o trabalho de hierarquia.
+function TopicRowList({
   topics,
   savedTopicIds,
   currentProfileId,
@@ -276,42 +289,40 @@ function TopicCardGrid({
   onDeleted: (topicId: string) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-2.5 @lg:grid-cols-2">
+    <div className="divide-y divide-[var(--pro-line)]">
       {topics.map((topic) => (
-        <ProCard key={topic.id} className="!p-4">
-          <div className="flex items-start justify-between gap-3">
-            <Link href={topic.href} className="min-w-0 flex-1">
-              <p className="font-pro-sub text-[13.5px] font-bold leading-snug">{topic.title}</p>
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px] text-[var(--pro-tx-50)]">
-                <span>{topic.authorName}</span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {topic.replyCount} {topic.replyCount === 1 ? 'resposta' : 'respostas'}
-                </span>
-                <span aria-hidden="true">·</span>
-                <span>{topic.timeLabel}</span>
-              </p>
-            </Link>
-            <div className="flex flex-none items-center gap-1">
-              <SaveTopicButton
-                topicId={topic.id}
-                initialSaved={savedTopicIds.has(topic.id)}
-                className="flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
+        <div key={topic.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+          <Link href={topic.href} className="min-w-0 flex-1">
+            <p className="font-pro-sub text-[13.5px] font-bold leading-snug">{topic.title}</p>
+            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[11.5px] text-[var(--pro-tx-30)]">
+              <span>{topic.authorName}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                {topic.replyCount} {topic.replyCount === 1 ? 'resposta' : 'respostas'}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>{topic.timeLabel}</span>
+            </p>
+          </Link>
+          <div className="flex flex-none items-center gap-1">
+            <SaveTopicButton
+              topicId={topic.id}
+              initialSaved={savedTopicIds.has(topic.id)}
+              className="flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
+            />
+            {topic.authorProfileId === currentProfileId && (
+              <DeleteMenu
+                itemLabel="tópico"
+                onDelete={async () => {
+                  const result = await removeTopicAction(topic.id);
+                  if ('error' in result) throw new Error(result.error);
+                  onDeleted(topic.id);
+                }}
+                triggerClassName="flex h-8 w-8 items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
               />
-              {topic.authorProfileId === currentProfileId && (
-                <DeleteMenu
-                  itemLabel="tópico"
-                  onDelete={async () => {
-                    const result = await removeTopicAction(topic.id);
-                    if ('error' in result) throw new Error(result.error);
-                    onDeleted(topic.id);
-                  }}
-                  triggerClassName="flex h-8 w-8 items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
-                />
-              )}
-            </div>
+            )}
           </div>
-        </ProCard>
+        </div>
       ))}
     </div>
   );
