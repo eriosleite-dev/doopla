@@ -8629,25 +8629,31 @@ Matriz de paridade (Fase 1):
 | Responder (post simples, sem reply-to/mention) | ✅ | ✅ | `create_community_post` RPC | Paridade |
 | Salvar/remover dos salvos | ✅ | ✅ | `community_saved_topics` | Paridade |
 | Área "Salvos" dedicada | ✅ `/comunidade/salvos` | ✅ `/forum/salvos` | mesma fonte acima | Paridade |
-| Preview de salvos na Home | ✅ | — (tela dedicada só, sem preview) | mesma fonte acima | Gap pequeno, registrado — App vai direto pra tela dedicada em vez de preview na Home |
-| Mentions, reply-to (UI) | — | — | schema pronto (0059), sem UI | Adiado pra Fase 3, combinado |
+| Preview de salvos na Home | ✅ | ✅ | mesma fonte acima | Paridade — entregue no §78 (commit `fbfadf1`) |
+| Mentions, reply-to (UI) | ✅ | ✅ | `create_community_post`/`community_mentions` (0059) | Paridade — entregue logo após esta fase (commits `67b6140`/`b241466`), com desambiguação progressiva de homônimos adicionada depois (§78, commit `1fc1cad`) |
+| Filtro por categoria | ✅ `<select>` discreto | ✅ chips | `community_categories` | Paridade — web entregue no §78 (commit `c5ca052`), como `<select>` (nunca chip, ver nota abaixo) |
 | Report/moderação | — | — | não existe nem no schema | Fora de escopo (decisão do usuário) |
-| "Em alta"/"Para você" | — | — | — | Fase 2 |
-| Notificações de Comunidade (UI) | — | — | `community_notifications` existe, sem UI | Fase 2/3 |
+| "Em alta"/"Para você" | — | — | — | Fase 2 — decisão de produto própria ainda não tomada (critério de ranking), fora de qualquer rodada até ser definida explicitamente |
+| Notificações de Comunidade (UI) | ✅ | ✅ | `community_notifications` (0059) | Paridade — entregue no §78 (commit `c5ca052`) |
+| Posição de leitura (pousar onde parou) | ✅ | ✅ | `community_topic_reads` (0077) | Paridade — entregue no §78 (commit `40d1af5`) |
 
-Nota sobre o gap de paridade do filtro de categoria: web não tem chip
-separado porque a Home já teria busca + salvos + recentes competindo
-por espaço; decisão de implementação, não perda de capability (a RPC
-de busca aceita `categoryId` nos dois lados, só falta UI web pra
-setá-lo) — registrado como ajuste pendente pra Fase 2/3, não escondido.
+Nota sobre o filtro de categoria na web (atualizada no §78): mesmo após
+virar `<select>` real, deliberadamente nunca um grid de chips — a busca
+continua sendo o mecanismo principal de descoberta (comentário original
+em `pro-comunidade-home-view.tsx`: "nunca chips de categoria/profissão
+fixos dominando a tela"), categoria é filtro subordinado.
 
 Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
 `eslint` (mobile) limpos nos dois lados.
 
 CURRENT: Comunidade — Fase 1 de 3 (Foundation + descoberta principal).
-STATUS: `[DELIVERED]`. Fase 2 (Home inteligente: Para você/Em
-alta/Recentes com ranking real) e Fase 3 (polish, mentions/reply-to UI,
-matriz final) ainda não iniciadas.
+STATUS: `[DELIVERED]`. Reconciliado no §78 (08/09/2026): dos gaps
+listados abaixo como "Fase 2/3" quando esta seção foi escrita, só "Em
+alta"/"Para você" (Fase 2, ranking) segue de fato pendente — todo o
+resto (mentions/reply-to UI, notificações, filtro de categoria web,
+preview de salvos no app, posição de leitura) já foi entregue em
+rodadas posteriores e está marcado acima. Fase 2 continua não iniciada,
+aguardando decisão de produto sobre critério de ranking.
 
 ## 75. Rodada de correções pontuais (Canais de booking, WhatsApp CTA, copy de Decisões, Minha equipe, UX de Decisões, Agenda, Home hero, Sino/Notificações) — `[DELIVERED]`
 
@@ -8875,6 +8881,121 @@ upgrade pro produto Booker Web/App.
 Validado: `tsc --noEmit`, `eslint`, `next build` limpos em cada
 commit desta rodada. SQL adversarial + teste de concorrência real
 descritos acima, rodados no Postgres local (`doopla_rls_test`).
+
+## 78. Comunidade — correção do fundo preto, desambiguação de @menções, 3 migrations destravadas e 4 itens do roadmap (Notificações, filtro por categoria, preview de Salvos no App, posição de leitura) — `[DELIVERED]`
+
+Sequência de trabalho na Comunidade nesta sessão (08/09/2026), registrada
+retroativamente porque nenhum destes itens tinha entrada própria ainda.
+
+**Bug do fundo preto (Comunidade Web, painel lateral).** Causa raiz:
+`experimental.staleTimes.dynamic = 0` (Segment Cache do Next.js) forçava
+refetch desnecessário do slot `children` a cada navegação interna da
+Comunidade, criando uma corrida em que o painel podia renderizar antes
+do conteúdo real chegar. Corrigido subindo `staleTimes.dynamic` pra 30
+em `next.config.ts` (commit `c4675ad`), depois estendido pra cobrir toda
+a rajada de prefetch da sidebar (`f08cee2`). Toda a instrumentação
+temporária de debug usada pra isolar a causa (probes, `DebugFetchLog`,
+logs server-side em `DashboardLayout`/`ProfessionalShellGate`, páginas
+`error.tsx` de diagnóstico) foi removida depois de confirmado (`1315c71`)
+— nada disso ficou no código.
+
+**Desambiguação de homônimos no autocomplete de @menções** (commit
+`1fc1cad`, migration `0076_community_profiles_public_id.sql`).
+Identidade técnica da menção continua sendo `profile_id`; a UI ganhou
+desambiguação progressiva quando dois+ candidatos, no mesmo conjunto
+mostrado, ficam visualmente idênticos: 1º nível é o nome, 2º nível é
+profissão+cidade, 3º nível (só quando ainda colide) usa
+`profiles.slug` como identificador público estável — nunca UUID
+exposto. `buildMentionCandidateDisplay` implementado uma vez em
+`src/lib/community/data.ts` e espelhado em
+`mobile/src/lib/data/community.ts`, mesmo padrão de cópia deliberada já
+usado no resto do módulo.
+
+**Migrations 0074/0075/0076 destravadas em produção.** Ao aplicar a
+0076, descobriu-se que 0074 (`artist_pro_entitlement_canonical`) e 0075
+(`subscriptions_write_authority`) nunca tinham sido aplicadas no
+Supabase real — só testadas localmente — apesar do código TypeScript já
+depender das RPCs da 0075 (upgrade/cancelamento Pro do booker, seleção
+de plano do artista no cadastro). Ou seja, esses fluxos estavam
+quebrados em produção sem que nenhum código novo tivesse causado isso.
+Diagnosticado com uma query adversarial rodada pelo usuário
+(confirmando função ausente, view desatualizada), as 3 migrations foram
+lidas por completo pra confirmar que eram idempotentes/auto-contidas, e
+entregues ao usuário via `SendUserFile` (não colado em chat — uma
+tentativa anterior por texto resultou no usuário colando o comando
+`cat` do shell por engano em vez do SQL) pra aplicação manual no SQL
+Editor do Supabase. As 3 foram aplicadas e validadas pelo usuário.
+Regra permanente combinada nesta sessão: toda migration necessária que
+eu não conseguir aplicar diretamente vira, sem exceção, SQL exato +
+instrução entregues ao usuário (nunca uma pendência silenciosa) — ele
+tem acesso ao SQL Editor do Supabase.
+
+**Os 4 itens do roadmap, decididos e executados nesta ordem, sem pausa
+entre eles** (o usuário pediu explicitamente só os itens com escopo já
+claro no roadmap — recusei propor um 5º/6º item pra "fechar o número"):
+
+1. **Notificações da Comunidade — UI Web + App** (commit `c5ca052`).
+   `community_notifications` (0059) já existia e já era populada, mas
+   nunca tinha consumidor de UI. Web: sino com badge no header da
+   Comunidade, popover com lista/marcar-como-lida otimista. App:
+   `mobile/app/forum/notificacoes.tsx`, tela dedicada espelhando o
+   padrão já usado em `/forum/salvos`. Mesma função `notificationCopy()`
+   duplicada nas duas plataformas (convenção do repo), mesmo texto por
+   tipo (`reply_to_topic`/`reply_to_post`/`mention`).
+2. **Filtro por categoria na Web** (commit `c5ca052`, mesmo checkpoint).
+   Fechou a paridade que já existia no App — reaproveita
+   `search_community_topics` (0068): passar `p_query` vazio faz a RPC
+   ignorar o filtro de texto e aplicar só `p_category_id` +
+   `last_activity_at desc`, sem RPC nova. Implementado como `<select>`
+   discreto, nunca chip — respeita a decisão de produto já registrada no
+   código (busca é o mecanismo principal, categoria é subordinada).
+3. **Preview de Salvos na Home do App** (commit `fbfadf1`). Fechou o gap
+   inverso ao do item anterior: Web já tinha preview de salvos na Home,
+   App só tinha a tela dedicada. `SAVED_PREVIEW_LIMIT = 3` +
+   `savedPreview`/`savedPreviewAuthorsById`, sincronizados nos dois
+   pontos que já mexiam em salvos (`toggleSave`, `handleDeleteTopic`).
+4. **Item 12 — posição de leitura** (commit `40d1af5`, migration
+   `0077_community_topic_reads.sql`). Tabela nova
+   `community_topic_reads` (par `profile_id`/`topic_id`, RLS direta sem
+   RPC, mesmo padrão de `community_saved_topics`) guarda só um marcador
+   de apresentação — nunca usado em regra de autorização. Extensão
+   exatamente como o próprio código já previa desde o Item 5
+   (`ComunidadeScrollAnchor`, comentário em `navigation-guard.tsx`:
+   "terceiro caso chegará como `{ messageId }`"). Web: captura via
+   medição de `getBoundingClientRect()` no `useLayoutEffect` de
+   desmontagem da tela do tópico (cleanup síncrono, DOM ainda intacto);
+   guarda explícita contra salvar `last_read_post_id = topic.id` — a
+   mensagem de abertura do tópico (`messages[0]` no Web) nunca é uma
+   linha de `community_posts`, e a FK rejeitaria silenciosamente esse
+   valor. App: captura via `onViewableItemsChanged`/`viewabilityConfig`
+   da própria `FlatList` (arquitetura já separa o header do tópico dos
+   posts — o problema estrutural do Web nem existe lá), persistida no
+   unmount; `viewabilityConfig`/callback como `useState` com
+   inicializador preguiçoso (nunca `.current` de `useRef` lido durante o
+   render — proibido pela regra `react-hooks/refs`). Nos dois lados,
+   escrita é fire-and-forget/silenciosa: falha nunca bloqueia navegação,
+   pior caso é a posição não avançar dessa vez.
+
+`PROGRESS.md` também foi reconciliado nesta rodada (ver matriz
+atualizada no §74 acima): "mentions/reply-to (UI)" e "Notificações de
+Comunidade (UI)" estavam registradas como adiadas pra Fase 3 desde que
+o §74 foi escrito, mas já tinham sido entregues em rodadas posteriores
+— corrigido pra não deixar uma dívida técnica falsa registrada.
+
+Validado a cada item (checkpoint separado por item, nunca um commit
+único): `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos. Migration 0077 entregue ao usuário via
+`SendUserFile` com instrução de aplicação + query de validação, mesma
+regra da 0074-0076.
+
+Gaps conhecidos, não escondidos: "Em alta"/"Para você" (ranking da Home
+da Comunidade) segue fora de qualquer rodada até virar uma decisão de
+produto própria — usuário pediu explicitamente pra não inventar
+critério baseado só em respostas/recência. Nenhum click-through E2E
+autenticado foi possível neste ambiente (mesma limitação já registrada
+em blocos anteriores); posição de leitura em particular precisa de
+validação manual: abrir um tópico com respostas, sair, reentrar, e
+confirmar que pousa onde parou (não no topo) nas duas plataformas.
 
 ## Como usar isso
 
