@@ -15,6 +15,7 @@ import {
   fetchCommunityCategories,
   fetchCommunityNotifications,
   fetchCommunityTopics,
+  fetchCommunityTopicsByIds,
   fetchSavedTopicIds,
   removeCommunityTopic,
   saveTopic,
@@ -25,6 +26,17 @@ import {
 import type { CommunityCategory, CommunityTopic } from '@/types/community';
 
 type Phase = 'loading' | 'ready' | 'error';
+
+// Preview de Salvos na Home do App (08/09/2026) — fecha o gap de
+// paridade registrado no §74 do PROGRESS.md ("App vai direto pra tela
+// dedicada em vez de preview na Home"). Diferente da Web (que decidiu
+// NÃO ter "Ver todos" pra manter "Salvos por você" 100% inline —
+// decisão própria da Web, registrada em pro-comunidade-home-view.tsx),
+// o paradigma do App já é navegação por tela cheia (/forum/salvos já
+// existe e continua existindo) — "Ver todos" aqui é nativo do
+// paradigma, não uma regressão da decisão web. SAVED_PREVIEW_LIMIT é
+// só o recorte do preview; a tela dedicada continua sem corte.
+const SAVED_PREVIEW_LIMIT = 3;
 
 // Comunidade — Fase 1 da rodada search-first (06/09/2026). Substitui
 // completamente o Fórum mockado (forumMock.ts, deletado): busca real
@@ -41,6 +53,8 @@ export default function ForumTopicListScreen() {
   const [topics, setTopics] = useState<CommunityTopic[]>([]);
   const [authorsById, setAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [savedPreview, setSavedPreview] = useState<CommunityTopic[]>([]);
+  const [savedPreviewAuthorsById, setSavedPreviewAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
   const [categories, setCategories] = useState<CommunityCategory[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -62,10 +76,20 @@ export default function ForumTopicListScreen() {
       setCategories(cats);
       setSavedIds(new Set(saved));
       setUnreadNotifications(notifications.filter((n) => !n.readAt).length);
+
+      if (saved.length > 0) {
+        const preview = await fetchCommunityTopicsByIds(saved, SAVED_PREVIEW_LIMIT);
+        const previewAuthors = await fetchCommunityAuthors([...new Set(preview.map((t) => t.author_profile_id))]);
+        setSavedPreview(preview);
+        setSavedPreviewAuthorsById(previewAuthors);
+      } else {
+        setSavedPreview([]);
+        setSavedPreviewAuthorsById(new Map());
+      }
     } catch {
       // Falha aqui não impede a listagem principal (efeito abaixo) — só
-      // deixa chips/estado de salvo/badge de notificação temporariamente
-      // vazios.
+      // deixa chips/estado de salvo/badge de notificação/preview de
+      // salvos temporariamente vazios.
     }
   }, []);
 
@@ -118,6 +142,7 @@ export default function ForumTopicListScreen() {
           removeCommunityTopic(topicId)
             .then(() => {
               setTopics((prev) => prev.filter((t) => t.id !== topicId));
+              setSavedPreview((prev) => prev.filter((t) => t.id !== topicId));
             })
             .catch(() => {
               Alert.alert('Não foi possível excluir', 'Tente novamente.');
@@ -142,6 +167,11 @@ export default function ForumTopicListScreen() {
       else next.add(topicId);
       return next;
     });
+    // Só remove do preview otimisticamente (unsave) — adicionar um
+    // salvo novo ao preview exigiria rebuscar a lista pra saber a
+    // posição/ordem certa; fica pro próximo mount (loadBase), mesmo
+    // gap aceito em outras partes da Comunidade sem realtime.
+    if (wasSaved) setSavedPreview((prev) => prev.filter((t) => t.id !== topicId));
     const action = wasSaved ? unsaveTopic(topicId) : saveTopic(topicId, professionalId ?? '');
     action.catch(() => {
       setSavedIds((prev) => {
@@ -182,6 +212,33 @@ export default function ForumTopicListScreen() {
             <Text style={[styles.actionText, styles.actionPrimaryText]}>Criar tópico</Text>
           </Pressable>
         </View>
+
+        {savedPreview.length > 0 && (
+          <View style={styles.savedPreviewSection}>
+            <View style={styles.savedPreviewHeader}>
+              <Text style={styles.sectionTitle}>Salvos por você</Text>
+              {savedIds.size > savedPreview.length && (
+                <Pressable onPress={() => router.push('/forum/salvos')}>
+                  <Text style={styles.savedPreviewSeeAll}>Ver todos</Text>
+                </Pressable>
+              )}
+            </View>
+            {savedPreview.map((topic, i) => (
+              <ForumTopicRow
+                key={topic.id}
+                title={topic.title}
+                meta={`${savedPreviewAuthorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · ${topic.reply_count} ${
+                  topic.reply_count === 1 ? 'resposta' : 'respostas'
+                }`}
+                lastActivity={formatRelativeDate(topic.last_activity_at)}
+                saved
+                onToggleSave={() => toggleSave(topic.id)}
+                bordered={i > 0}
+                onPress={() => router.push(`/forum/${topic.id}`)}
+              />
+            ))}
+          </View>
+        )}
 
         {categories.length > 0 && (
           <View style={styles.chips}>
@@ -318,5 +375,24 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.off,
+  },
+  savedPreviewSection: {
+    marginBottom: 16,
+  },
+  savedPreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    color: colors.off,
+    fontFamily: fonts.subBold,
+    fontSize: 13.5,
+  },
+  savedPreviewSeeAll: {
+    color: colors.tx50,
+    fontFamily: fonts.subSemiBold,
+    fontSize: 11.5,
   },
 });
