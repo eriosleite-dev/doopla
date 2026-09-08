@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -30,6 +31,8 @@ import {
   fetchCommunityPostsPage,
   fetchCommunityTopic,
   fetchSavedTopicIds,
+  removeCommunityPost,
+  removeCommunityTopic,
   saveTopic,
   unsaveTopic,
   type CommunityAuthorSnapshot,
@@ -136,6 +139,8 @@ export default function ForumConversationScreen() {
   const [mentioned, setMentioned] = useState<TrackedMention[]>([]);
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [isDeletingTopic, setIsDeletingTopic] = useState(false);
+  const [deletingPostIds, setDeletingPostIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!topicId) return;
@@ -223,6 +228,75 @@ export default function ForumConversationScreen() {
     setSaved(!wasSaved);
     const action = wasSaved ? unsaveTopic(topicId) : saveTopic(topicId, professionalId ?? '');
     action.catch(() => setSaved(wasSaved));
+  }
+
+  // Item 6 (08/09/2026, "Menu ••• + exclusão") — Alert.alert nativo faz
+  // dupla função de menu + confirmação num só passo (a única opção do
+  // menu é "Excluir", então pedir confirmação antes de mostrar um menu
+  // seria um passo extra sem propósito). isDeletingTopic desabilita a
+  // ação enquanto a RPC está em voo — protege contra double-tap mesmo
+  // que o usuário consiga tocar de novo entre o dismiss do Alert e a
+  // resposta da rede.
+  function handleDeleteTopic() {
+    if (!topicId || isDeletingTopic) return;
+    Alert.alert('Excluir tópico?', 'Essa ação não pode ser desfeita.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          setIsDeletingTopic(true);
+          removeCommunityTopic(topicId)
+            .then(() => {
+              // Mesma navegação já usada pelo ← do header
+              // (FullSheetHeader onBack abaixo) — Expo Router preserva a
+              // tela anterior na pilha, então sair do tópico excluído
+              // devolve exatamente pra onde a pessoa veio (lista/Salvos/
+              // busca), sem inventar uma rota nova aqui.
+              router.back();
+            })
+            .catch(() => {
+              setIsDeletingTopic(false);
+              Alert.alert('Não foi possível excluir', 'Tente novamente.');
+            });
+        },
+      },
+    ]);
+  }
+
+  function handleDeletePost(postId: string) {
+    if (deletingPostIds.has(postId)) return;
+    Alert.alert('Excluir mensagem?', 'Essa ação não pode ser desfeita.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          setDeletingPostIds((prev) => new Set(prev).add(postId));
+          removeCommunityPost(postId)
+            .then(() => {
+              // Soft-delete aplicado otimisticamente no array local —
+              // nunca removido fisicamente de `posts`, só o `status`
+              // muda pro mesmo valor que a RPC já gravou. Isso preserva
+              // ordem/posição (maintainVisibleContentPosition na
+              // FlatList não vê inserção/remoção, só um item mudando de
+              // conteúdo) e deixa `communityContentVisibility` já
+              // renderizar "Mensagem removida." no mesmo lugar de sempre.
+              setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, status: 'removed_by_author' } : p)));
+            })
+            .catch(() => {
+              Alert.alert('Não foi possível excluir', 'Tente novamente.');
+            })
+            .finally(() => {
+              setDeletingPostIds((prev) => {
+                const next = new Set(prev);
+                next.delete(postId);
+                return next;
+              });
+            });
+        },
+      },
+    ]);
   }
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
@@ -434,9 +508,22 @@ export default function ForumConversationScreen() {
               <Text style={styles.replyQuoteText}>{replyTo.removed ? 'Mensagem removida.' : `“${replyTo.snippet}”`}</Text>
             </View>
           ))}
-        <View style={styles.messageHead}>
-          <Text style={styles.author}>{authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla'}</Text>
-          <Text style={styles.time}>{formatRelativeDate(post.created_at)}</Text>
+        <View style={styles.messageHeadRow}>
+          <View style={styles.messageHead}>
+            <Text style={styles.author}>{authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla'}</Text>
+            <Text style={styles.time}>{formatRelativeDate(post.created_at)}</Text>
+          </View>
+          {!removed && post.author_profile_id === professionalId && (
+            <Pressable
+              onPress={() => handleDeletePost(post.id)}
+              hitSlop={8}
+              disabled={deletingPostIds.has(post.id)}
+              accessibilityRole="button"
+              accessibilityLabel="Mais opções"
+            >
+              <Text style={styles.moreText}>•••</Text>
+            </Pressable>
+          )}
         </View>
         {removed ? (
           <Text style={styles.removed}>Mensagem removida.</Text>
@@ -494,9 +581,22 @@ export default function ForumConversationScreen() {
                   <Text style={styles.topicMeta}>
                     {authorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · {formatRelativeDate(topic.created_at)}
                   </Text>
-                  <Pressable onPress={toggleSave} hitSlop={8}>
-                    <BookmarkIcon size={17} color={saved ? colors.red : colors.tx30} filled={saved} strokeWidth={1.8} />
-                  </Pressable>
+                  <View style={styles.topicHeadActions}>
+                    {topic.author_profile_id === professionalId && (
+                      <Pressable
+                        onPress={handleDeleteTopic}
+                        hitSlop={8}
+                        disabled={isDeletingTopic}
+                        accessibilityRole="button"
+                        accessibilityLabel="Mais opções"
+                      >
+                        <Text style={styles.moreText}>•••</Text>
+                      </Pressable>
+                    )}
+                    <Pressable onPress={toggleSave} hitSlop={8}>
+                      <BookmarkIcon size={17} color={saved ? colors.red : colors.tx30} filled={saved} strokeWidth={1.8} />
+                    </Pressable>
+                  </View>
                 </View>
                 {isTopicRemoved ? (
                   <Text style={styles.removed}>Este tópico foi removido.</Text>
@@ -606,6 +706,17 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 11,
   },
+  topicHeadActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  moreText: {
+    color: colors.tx30,
+    fontFamily: fonts.subBold,
+    fontSize: 13,
+    letterSpacing: 1,
+  },
   topicBody: {
     color: colors.tx70,
     fontFamily: fonts.body,
@@ -651,11 +762,17 @@ const styles = StyleSheet.create({
     color: colors.off,
     fontFamily: fonts.subBold,
   },
+  messageHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 3,
+  },
   messageHead: {
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 7,
-    marginBottom: 3,
   },
   author: {
     color: colors.off,

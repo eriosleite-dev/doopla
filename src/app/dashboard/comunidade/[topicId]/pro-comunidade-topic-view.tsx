@@ -3,8 +3,9 @@
 import { Fragment, useActionState, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from 'react';
 
 import { proInputClass, proPrimaryButtonClass } from '../../pro-format';
-import { createReplyAction, loadEarlierCommunityPostsAction } from '../actions';
+import { createReplyAction, loadEarlierCommunityPostsAction, removePostAction } from '../actions';
 import { useComunidadeScrollAnchor } from '../navigation-guard';
+import { DeleteMenu } from './delete-menu';
 import { snippetOf, type ChatTimelineMessage } from './timeline';
 
 export type { ChatTimelineMessage };
@@ -200,6 +201,21 @@ export function ProComunidadeTopicChat({
     setMessages((prev) => [...prev, message]);
   }
 
+  // Item 6 (08/09/2026, "Menu ••• + exclusão") — soft-delete via a RPC
+  // já existente, aplicado otimisticamente no array local (nunca
+  // removido fisicamente: só `removed` vira true, o pipeline de render
+  // abaixo já sabe mostrar `removedLabel` no mesmo lugar). Como isso só
+  // troca um campo de UM item já presente em `messages` — nunca insere/
+  // remove posição, nunca mexe nos refs de scroll pendente — o
+  // useLayoutEffect logo acima (que só age quando um desses refs está
+  // setado) não faz nada aqui: ordem cronológica, replies/referências e
+  // posição de scroll ficam exatamente como estavam.
+  async function handleDeletePost(postId: string) {
+    const result = await removePostAction(postId);
+    if ('error' in result) throw new Error(result.error);
+    setMessages((prev) => prev.map((m) => (m.postId === postId ? { ...m, removed: true } : m)));
+  }
+
   function renderMessage(message: ChatTimelineMessage) {
     const replyToLoaded = message.replyTo ? loadedIds.has(message.replyTo.postId) : false;
     const replyToContent = message.replyTo && (
@@ -223,10 +239,19 @@ export function ProComunidadeTopicChat({
           ) : (
             <div className={replyToClassName}>{replyToContent}</div>
           ))}
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="font-pro-sub text-[12.5px] font-bold text-[var(--pro-off)]">{message.authorName}</span>
-          <span className="font-doopla-mono text-[10px] text-[var(--pro-tx-30)]">{message.timeLabel}</span>
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="font-pro-sub text-[12.5px] font-bold text-[var(--pro-off)]">{message.authorName}</span>
+            <span className="font-doopla-mono text-[10px] text-[var(--pro-tx-30)]">{message.timeLabel}</span>
+          </p>
+          {message.postId && !message.removed && message.authorProfileId === currentProfileId && (
+            <DeleteMenu
+              itemLabel="mensagem"
+              onDelete={() => handleDeletePost(message.postId as string)}
+              triggerClassName="flex h-6 w-6 flex-none items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+            />
+          )}
+        </div>
         {message.removed ? (
           <p className="mt-1 text-[12.5px] italic text-[var(--pro-tx-30)]">{message.removedLabel}</p>
         ) : (

@@ -1,7 +1,11 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+
+import { removeTopicAction } from '../actions';
 import { useComunidadeChromeActions } from '../navigation-guard';
 import { SaveTopicButton } from '../save-topic-button';
+import { DeleteMenu } from './delete-menu';
 
 // Restruturação do header do tópico (08/09/2026) — correção do bug de
 // composição reportado após o primeiro fix (só padding, rejeitado por
@@ -25,18 +29,38 @@ import { SaveTopicButton } from '../save-topic-button';
 // devolve null e este componente não desenha ←/✕ (nunca teve: não há
 // "voltar" nem "fechar" fora de um painel sobreposto), preservando
 // exatamente o comportamento standalone de sempre.
+//
+// Item 6 (08/09/2026, "Menu ••• + exclusão") — ••• só aparece pro autor
+// (`isAuthor`, resolvido no Server Component). Depois da RPC confirmar
+// a exclusão do tópico, a pessoa não pode ficar parada numa tela de
+// tópico removido: dentro do slide-over reaproveita EXATAMENTE o mesmo
+// `nav.back()` do botão ← (mesmo guard de rascunho/profundidade de
+// history que Item 1 já garante — nunca uma navegação nova inventada
+// aqui); fora dele (rota cheia standalone, sem Provider), navega direto
+// pra lista via router.replace (troca a entrada do tópico já excluído
+// no histórico, em vez de empilhar mais uma).
 export function TopicHeader({
   title,
   categoryLabel,
   topicId,
   isSaved,
+  isAuthor,
 }: {
   title: string;
   categoryLabel: string | null;
   topicId: string;
   isSaved: boolean;
+  isAuthor: boolean;
 }) {
   const nav = useComunidadeChromeActions();
+  const router = useRouter();
+
+  async function handleDeleteTopic() {
+    const result = await removeTopicAction(topicId);
+    if ('error' in result) throw new Error(result.error);
+    if (nav) nav.back();
+    else router.replace('/dashboard/comunidade');
+  }
 
   return (
     <header className="border-b border-[var(--pro-line)] pb-4">
@@ -63,6 +87,7 @@ export function TopicHeader({
             initialSaved={isSaved}
             className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
           />
+          {isAuthor && <DeleteMenu itemLabel="tópico" onDelete={handleDeleteTopic} />}
           {nav && (
             <button
               type="button"

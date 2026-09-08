@@ -10,6 +10,8 @@ import {
   ensureCommunityProfileActivated,
   getCommunityAuthors,
   listCommunityPostsByIds,
+  removeCommunityPost,
+  removeCommunityTopic,
   saveTopic,
   searchCommunityTopics,
   unsaveTopic,
@@ -174,6 +176,41 @@ export async function createReplyAction(topicId: string, _prevState: ReplyAction
   };
 
   return { post };
+}
+
+export type RemoveActionResult = { ok: true } | { error: string };
+
+// Item 6 (08/09/2026, "Menu ••• + exclusão") — só usa as RPCs
+// soft-delete que já existem desde a migration 0059
+// (remove_community_topic/remove_community_post); ownership é
+// verificado inteiramente dentro delas (author_profile_id =
+// auth.uid()), nunca reconferido aqui. Sem revalidatePath da rota do
+// tópico (mesma razão de createReplyAction acima: o client é dono do
+// estado paginado, ver pro-comunidade-topic-view.tsx) — a exclusão do
+// post é aplicada otimisticamente no client depois da RPC confirmar.
+// A exclusão do tópico revalida só a lista/Salvos (onde o card
+// removido precisa sumir); o client sai da rota do tópico por conta
+// própria assim que esta action retorna sucesso.
+export async function removeTopicAction(topicId: string): Promise<RemoveActionResult> {
+  const { supabase } = await requireArtista();
+  try {
+    await removeCommunityTopic(supabase, topicId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Não foi possível excluir o tópico.' };
+  }
+  revalidatePath('/dashboard/comunidade');
+  revalidatePath('/dashboard/comunidade/salvos');
+  return { ok: true };
+}
+
+export async function removePostAction(postId: string): Promise<RemoveActionResult> {
+  const { supabase } = await requireArtista();
+  try {
+    await removeCommunityPost(supabase, postId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Não foi possível excluir a mensagem.' };
+  }
+  return { ok: true };
 }
 
 export type LoadEarlierCommunityPostsResult = { messages: ChatTimelineMessage[]; hasMore: boolean } | { error: string };

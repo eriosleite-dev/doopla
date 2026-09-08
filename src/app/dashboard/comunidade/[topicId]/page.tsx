@@ -49,7 +49,13 @@ export default async function ComunidadeTopicPage(props: { params: Promise<{ top
 
   return (
     <main className="flex flex-col gap-4">
-      <TopicHeader title={topic.title} categoryLabel={categoryLabel} topicId={topic.id} isSaved={isSaved} />
+      <TopicHeader
+        title={topic.title}
+        categoryLabel={categoryLabel}
+        topicId={topic.id}
+        isSaved={isSaved}
+        isAuthor={topic.author_profile_id === profile.id}
+      />
 
       <ProComunidadeTopicChat
         topicId={topicId}
