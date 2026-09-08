@@ -103,6 +103,23 @@ function ProNavItem({ link }: { link: ProNavLink }) {
   return (
     <Link
       href={link.href}
+      // Correção do fundo preto da Comunidade (08/09/2026) — achado via
+      // Runtime Logs da Vercel: no exato instante do clique em
+      // Comunidade, o item ATIVO da sidebar (ex.: "Início", enquanto
+      // /dashboard já está montado) disparava seu próprio prefetch de
+      // novo — 3 GETs simultâneos pra /dashboard nos logs. Como
+      // /dashboard/loading.tsx existe, o prefetch de uma rota dinâmica
+      // só resolve "layout até o primeiro loading boundary" (doc do
+      // Next: "With loading.js: Layout to first loading boundary",
+      // Client Cache TTL off por padrão) — nunca o conteúdo real da
+      // página. Esse prefetch truncado, disparado bem no momento em que
+      // a Comunidade interceptada precisa preservar o slot `children`
+      // já montado, é o que produz `children` chegando vazio (confirmado
+      // via DebugMainProbe: 0 nós, não coberto — genuinely ausente).
+      // Nunca faz sentido prefetch da página em que você JÁ está —
+      // suprimir isso especificamente pro item ativo elimina a corrida
+      // sem desligar prefetch pros outros itens.
+      prefetch={active ? false : undefined}
       className={`font-pro-sub relative flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[13.5px] font-semibold transition-colors ${
         active
           ? 'bg-gradient-to-r from-[rgba(226,41,28,.22)] to-[rgba(226,41,28,.04)] text-[var(--pro-off)] shadow-[inset_2px_0_0_var(--pro-red)]'
