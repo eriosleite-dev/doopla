@@ -38,10 +38,23 @@ export function DebugMainProbe() {
       const topEl = document.elementFromPoint(sampleX, sampleY);
       const isMainOrDescendant = topEl ? main.contains(topEl) : false;
 
+      // Nomeia cada filho direto de <main> individualmente (nunca só a
+      // contagem) — é o que separa "o ícone de notificação sumiu" de
+      // "children nunca renderizou nada": cada um dá uma contagem de 3
+      // filhos, só a LISTA nomeada distingue qual dos dois é.
+      const childList = Array.from(main.children)
+        .map((child, i) => {
+          const childRect = child.getBoundingClientRect();
+          const cls = (child.getAttribute('class') || '').slice(0, 50);
+          return `  [${i}] <${child.tagName.toLowerCase()} class="${cls}"> ${Math.round(childRect.width)}x${Math.round(childRect.height)} filhosDele=${child.children.length}`;
+        })
+        .join('\n');
+
       setInfo(
         `path=${window.location.pathname}\n` +
           `<main> rect=${Math.round(rect.width)}x${Math.round(rect.height)} filhos=${main.children.length} ` +
           `bg=${mainCs.backgroundColor} op=${mainCs.opacity} vis=${mainCs.visibility} disp=${mainCs.display}\n` +
+          `filhos de <main>:\n${childList || '  (nenhum)'}\n` +
           `ponto amostrado (${Math.round(sampleX)},${Math.round(sampleY)}) pertence a <main>? ${isMainOrDescendant}\n` +
           `elemento nesse ponto: ${describe(topEl)}`
       );
@@ -66,7 +79,9 @@ export function DebugMainProbe() {
         lineHeight: 1.4,
         padding: '6px 9px',
         borderRadius: 6,
-        maxWidth: '640px',
+        maxWidth: '720px',
+        maxHeight: '45vh',
+        overflowY: 'auto',
         whiteSpace: 'pre-wrap',
         boxShadow: '0 4px 16px rgba(0,0,0,.5)',
       }}
