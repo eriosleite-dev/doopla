@@ -990,6 +990,15 @@ toca a assinatura do artista). Não recriei nada disso.
   por nenhum código vigente. Regra geral adotada: "zero referência"
   significa runtime/UI/actions/data layer atual, nunca migrations
   históricas.
+  **Correção (08/09/2026)**: esta afirmação era verdadeira só pro Web
+  na época. Uma auditoria de fechamento do Professional Product UI
+  encontrou o fluxo de saque ainda 100% vivo no App
+  (`mobile/app/(tabs)/mais/financeiro.tsx`, gravando direto em
+  `payout_requests` via `mobile/src/lib/data/payments.ts`, nunca
+  removido quando o Web foi limpo). Corrigido — App agora também não
+  tem nenhum caminho de código que leia/escreva `payout_requests`,
+  igualando ao Web. A tabela em si continua intocada, mesma regra de
+  sempre.
 - **Escopo do redesign é só o profissional (artista)** — Booker/Agência
   seguem vendo exatamente as telas antigas nas mesmas rotas
   compartilhadas (`/dashboard/trabalhos`, `/dashboard/agenda`,

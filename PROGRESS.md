@@ -9707,6 +9707,111 @@ footer omitidos por não existirem URLs oficiais reais (decisão #6) —
 quando existirem, é um acréscimo pontual, não uma reabertura deste
 bloco.
 
+## 85. Professional Product UI — auditoria de fechamento + correção dos 4 achados P0 (Web + App) — `[P0 DELIVERED, P1/P2 PENDING]`
+
+Com o Bloco 6 (Home pública) congelado aguardando nova direção
+criativa externa a esta sessão, o trabalho seguiu no produto
+autenticado. Auditoria read-only completa de 11 superfícies
+(Home do profissional, Decisões, Bookings/Conversas, Agenda,
+Financeiro, Minha equipe/Booker, Canais de booking, Falar com minha
+Doopla, Notificações, Comunidade, Configurações) via 5 agentes de
+investigação em paralelo, cruzando implementação real × PROGRESS.md ×
+DECISOES.md × migrations. Entregou uma matriz de paridade Web↔App e
+uma lista priorizada (P0/P1/P2) de achados — só os P0 (risco real de
+produto/dado) foram corrigidos nesta rodada; P1/P2 ficam registrados
+como trabalho futuro, não implementados.
+
+**P0.1 — App: fluxo "Solicitar saque" removido por completo.**
+`mobile/app/(tabs)/mais/financeiro.tsx` tinha um formulário de saque
+100% funcional gravando direto em `payout_requests` (bypassando até o
+padrão de RPC usado no resto do produto) — a mesma feature que a
+revisão de 06/09/2026 já tinha removido do Web inteiro (`DECISOES.md`,
+"nenhum papel usa saque/carteira") mas que nunca tinha sido removida
+do App. Removidos: `RequestPayoutForm`, os states/handlers de saque, a
+seção "Solicitações de saque", o stat "Disponível" (dependia do
+cálculo de saldo pós-saque), e as funções `fetchPayoutRequests`/
+`requestPayout`/`computeAvailableToWithdraw` de
+`mobile/src/lib/data/payments.ts`. Tipo `PayoutRequest`/
+`PayoutRequestStatus` removido de `mobile/src/types/payment.ts` (sem
+uso restante em lugar nenhum, confirmado por grep). Campo vestigial
+`availableToWithdrawCents` (sempre igual a `netReceivedCents`, nunca
+lido por ninguém) removido de `ArtistStats`/`computeArtistStats`
+(`mobile/src/lib/data/bookings.ts`). Nenhum substituto criado — tela
+Financeiro do App agora reflete exatamente o mesmo modelo do Web
+(sem saque/carteira). Tabela `payout_requests` em si não foi tocada
+(fora de escopo desta correção — igual ao que o Web já aceitou desde
+06/09).
+
+**P0.2 — App Home: botões "Copiar link"/"Copiar código" agora copiam
+de verdade.** Antes só disparavam um toast de sucesso sem nenhum
+side-effect (`show('Link copiado.')` direto, sem `Clipboard`).
+Corrigido reaproveitando exatamente o padrão já usado em
+`mais/indique-e-ganhe.tsx` (`Clipboard.setStringAsync` do
+`expo-clipboard`, já uma dependência do projeto, nenhum pacote novo) —
+toast só dispara depois do `await` da escrita real no clipboard.
+Comentário desatualizado em `mobile/src/components/shared/Toast.tsx`
+("ações mockadas nesta fase") corrigido, já que deixou de ser verdade
+pros dois lugares que o usam.
+
+**P0.3 — Web Home: navegação de "Precisa de você" corrigida.** O
+accordion da Home ainda caía em `/dashboard/trabalhos` (lista de
+Bookings) quando a decisão não tinha `related_booking_id` — o exato
+bug que a página `/dashboard/decisoes` já tinha corrigido em
+06/09/2026 (rota `/dashboard/conversas/[id]` dedicada,
+`conversationHref()` em `decisoes/format-cards.ts`), mas que nunca
+tinha sido replicado na Home. Corrigido importando e reusando
+`conversationHref()` diretamente em `professional-home-view.tsx` —
+zero lógica de rota nova, mesma fonte canônica que a tela de Decisões
+já usa. (O link não relacionado "Atividade da Doopla → Ver todas", que
+aponta pra `/dashboard/trabalhos` de propósito, não foi tocado —
+pertence a outro conceito.)
+
+**P0.4 — App Home: contagem de decisões unificada com a tela de
+Decisões.** A Home contava `decisions.length` sobre a lista crua
+(`fetchActionableDecisions()`, uma linha por evento — uma conversa
+pode gerar tanto uma linha `pending_reply` quanto `prepared_draft`),
+enquanto o stat card ao lado usava a contagem já agrupada por
+conversa (`homeFacts.conversationsNeedingYouCount`). Reproduzia a
+mesma classe de bug "17≠20" já corrigida no Web em 06/09/2026, mas só
+no Web. Corrigido aplicando `groupDecisionsByConversation`/
+`sortDecisionsByPriority` (já existentes em
+`mobile/src/lib/data/decisions.ts`, espelho deliberado do
+`src/lib/decisions/data.ts` do Web, mas nunca chamadas antes desta
+correção) direto no retorno de `fetchActionableDecisions()` antes de
+guardar no state — `decisions` na Home do App agora é sempre a lista
+já deduplicada, tanto pra contagem quanto pra renderização da lista.
+
+**QA**: `tsc --noEmit` e `eslint` limpos em Web e App nos arquivos
+tocados (Web: `professional-home-view.tsx`; App: `index.tsx`,
+`mais/financeiro.tsx`, `src/lib/data/payments.ts`,
+`src/lib/data/bookings.ts`, `src/types/payment.ts`,
+`src/components/shared/Toast.tsx` — um erro de lint pré-existente e
+não-relacionado em `financeiro.tsx`, linha `load()` dentro de
+`useEffect`, confirmado presente antes desta rodada via `git stash`,
+fora de escopo). `next build` (Web) limpo. Script determinístico
+efêmero validou as duas funções puras centrais da correção
+(`conversationHref` e `groupDecisionsByConversation`+
+`sortDecisionsByPriority`) contra uma fixture reproduzindo o cenário
+exato do bug 17≠20 (4 linhas cruas → 3 conversas deduplicadas, ordem
+de prioridade correta, href nunca cai em `/dashboard/trabalhos` sem
+booking) — 4/4 asserções passaram. Confirmado por grep: zero
+referência restante a `payout_requests`/`PayoutRequest`/
+`fetchPayoutRequests`/`requestPayout`/`computeAvailableToWithdraw`/
+`availableToWithdrawCents` em `mobile/`. Migrations: nenhuma.
+
+**P1/P2 — não implementados nesta rodada**, permanecem como lista
+priorizada (auditoria completa, não repetida aqui): re-skin do
+detalhe de booking/conversa (Web, ainda 100% tema legado), clash de
+shell escuro+conteúdo claro em `perfil/page.tsx` pra `agencia`, "Perfil
+profissional" ainda no tema antigo dentro do Settings V2, promessa de
+tela de privacidade da Comunidade que não existe em código nenhum,
+App Agenda perdendo o estado "indisponível", divergência de
+cores/vocabulário de status entre Web e App, paginação/limite real na
+query de notificações (hoje ilimitada), cache compartilhado entre os
+2 sinos do Web, e outros itens menores. Bloco 6 (Home pública)
+permanece `[IMPLEMENTED / VISUAL QA PENDING]`, congelado, não tocado
+nesta rodada.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
