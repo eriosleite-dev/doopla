@@ -1388,3 +1388,31 @@ compartilhados (`SiteMenuOverlay`, `PageShell`) que essas páginas
 dependem. Convivem por enquanto dois idiomas de navegação (nav inline
 novo na Home vs. "Menu" hamburger nas institucionais) até que um bloco
 futuro decida unificar — não decidido aqui.
+
+## Bloco 6 — rodada de fidelidade visual: olhos do mascote são a ÚNICA exceção onde a regra canônica de identidade prevalece sobre o mockup — 08/09/2026
+
+Na primeira entrega do Bloco 6, a auditoria visual apontou uma
+divergência real entre a implementação (olho preto redondo + pupila
+branca redonda, seguindo o cursor) e a leitura do mockup (formas mais
+em crescente/fechadas). Decisão explícita do usuário: a regra canônica
+dos olhos da Doopla — olho PRETO, pupila BRANCA menor dentro do olho,
+nunca invertido, pupila sempre a única parte que se move seguindo o
+cursor dentro do limite do olho — prevalece sobre a leitura literal do
+mockup nesse ponto específico. Não houve mudança de olho. O mockup
+continua sendo fonte de verdade visual pra tudo mais nessa correção
+(corpo, patas/braços, postura apoiada, escala, posição, glow) — essa é
+a única exceção documentada, e vale como precedente: se uma leitura
+futura de mockup aparentar conflitar com a identidade canônica já
+aprovada do mascote (olhos, proporção do corpo, ausência de um
+personagem novo), o canônico vence, e isso deve ser levantado como
+pergunta explícita antes de qualquer mudança, nunca resolvido por
+inferência própria.
+
+Outros achados dessa rodada (caixa alta indevida em headings,
+phone-mockup do Hero pouco detalhado, ausência de patas/braços do
+mascote, ícones ausentes no "Como funciona", CTA final em pilha
+vertical em vez de composição horizontal) foram tratados como
+divergência de fidelidade genuína — sem tensão com nenhuma decisão
+prévia — e corrigidos diretamente, sem necessidade de nova aprovação
+prévia por já se enquadrarem em "adaptar com fidelidade ao mockup",
+não em "nova direção visual".

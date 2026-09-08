@@ -9553,6 +9553,54 @@ correção do que divergir sem reinterpretar/melhorar por preferência
 própria, e só então nova rodada de QA visual/responsivo/funcional/
 checks antes de fechar como DELIVERED/CLOSED.
 
+**Rodada de correção de fidelidade visual (mockup original reenviado)**:
+comparação explícita mockup×implementação feita (grid, tipografia,
+hero, phone-mockup, mascote, "Como funciona", CTA final, footer,
+desktop/tablet/mobile). Achados reais confirmados e corrigidos, todos
+preservando o baseline técnico/funcional intocado:
+1. **Caixa alta indevida** — `text-transform:uppercase` removido de
+   `.hero-copy h1` e `section h2` (`home.css`). O mockup usa caixa de
+   frase nos headings principais, maiúsculas só em eyebrows/labels
+   pequenos — isso já estava certo e continua.
+2. **Quebra de linha do H1** — consequência direta do item 1; ao tirar
+   as maiúsculas, "Cliente chamou? Manda pra doopla." volta a quebrar
+   em 2 linhas como no mockup (era 3).
+3. **Phone-mockup do Hero** — adicionado notch/câmera no topo da
+   moldura, seta de voltar + ícones de busca/menu na barra do chat,
+   rótulo "doopla" com mini-avatar acima do balão de saída, e ícones
+   de câmera/anexo na barra de mensagem (antes só um campo vazio).
+4. **Corpo do mascote** — patas/braços adicionados via `::before`/
+   `::after` em `.mascot` (percentuais relativos ao próprio tamanho de
+   cada instância, nunca px fixo — funciona igual nas 3 instâncias:
+   Hero, Sempre com você, CTA final). **Olhos permanecem canônicos**
+   (preto+pupila branca redonda, seguindo o cursor) — decisão explícita
+   do usuário overridando a leitura literal do mockup nesse ponto
+   específico (ver DECISOES.md).
+5. **Ícones do "Como funciona"** — círculo com ícone (pessoa/balão de
+   chat/documento/check) acima de cada número 01-04, confirmados no
+   mockup e ausentes na implementação anterior.
+6. **CTA final** — layout trocado de pilha vertical centralizada para
+   composição horizontal (mascote+texto à esquerda, botão+legenda à
+   direita), igual ao mockup; empilha de volta em telas estreitas
+   (breakpoint de 820px, botão vira full-width).
+
+QA pós-correção: `tsc`, `eslint`, `next build` limpos; screenshots
+completos (scroll real disparando o reveal, não só `fullPage` do
+Playwright — capturar sem isso deixa seções em branco por não disparar
+o `IntersectionObserver`, achado de metodologia, não bug de produção)
+em desktop (1280), tablet (834) e mobile (390) revisados um a um, zero
+erro de console real; revalidação funcional completa (`?plano=pro` e
+`?plano=doopla` abrindo o modal com o plano certo, `?ref=` direto sem
+interceptação, login modal, Tab); checklist do mascote (4 cantos,
+`prefers-reduced-motion`) repetido — pupila nunca excede ~16% do raio
+do olho, zero jitter, zero erro. Sem mockup mobile/tablet dedicado
+disponível nesta sessão — responsividade nesses breakpoints segue a
+adaptação já aprovada (reorganiza a composição do desktop preservando
+linguagem/hierarquia), não uma comparação pixel a pixel.
+
+Aguardando validação visual final do usuário (screenshots enviados)
+antes de qualquer fechamento como DELIVERED/CLOSED.
+
 Implementação do bloco que estava bloqueado por "aguardando mockup da
 Eduarda". Mockup recebido e usado como source of truth VISUAL; o
 codebase/decisões vigentes seguiram como source of truth
