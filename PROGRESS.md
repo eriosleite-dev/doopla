@@ -9350,6 +9350,117 @@ anteriores). Trackers #71 e #72 fechados nesta rodada.
 
 Bloco 6A+6B WhatsApp Outreach considerado `DELIVERED/CLOSED`.
 
+## 82. Comunidade V2 — lapidação visual + descoberta + ranking V1 (migration 0079) — `[DELIVERED]`
+
+Bloco #3 canônico. Baseline: funcional já `DELIVERED/CLOSED` (§74/§75/
+§76/§78) — preservado por completo (tópicos, respostas, timeline,
+paginação, busca, criação, salvar, exclusão própria, mentions,
+desambiguação de homônimos, notificações V1, posição de leitura,
+scroll restoration, deep links, RLS/RPCs). Nenhum bug encontrado na
+auditoria de baseline — rodada de lapidação/descoberta, não
+reconstrução.
+
+**Ranking V1 (migration `0079_community_ranking.sql`)** — duas
+functions SQL determinísticas, `security invoker`, sem LLM/ML:
+
+- `get_community_trending_topics(p_limit)` — "Em alta agora": soma
+  decaída (half-life 24h, janela 72h) de eventos recentes (abertura do
+  tópico + respostas), multiplicada por fator de diversidade
+  (participantes únicos / total de eventos — protege contra inflação
+  artificial sem sistema anti-fraude), mais um boost pequeno de saves.
+  Threshold: score ≥ 0.6 e ≥ 2 participantes únicos — sem isso, a
+  seção fica vazia (nunca "Em alta" com 1 resposta).
+- `get_community_for_you_topics(p_limit)` — "Para você": categoria/tag
+  de afinidade a partir de tópicos que o profissional salvou ou em que
+  participou (auth.uid() interno, nunca parâmetro). Profissão/
+  localização/buscas recentes avaliadas e descartadas como sinal (ver
+  DECISOES.md — sem mapeamento real profissão↔categoria, sem
+  telemetria de busca armazenada). Cold start devolve `[]` de
+  propósito.
+
+Índice novo: `community_posts_created_at_idx` (trending precisa
+filtrar por `created_at` recente, gap real — nenhum índice cobria essa
+coluna). Parâmetros do ranking documentados só dentro de cada function
+— nunca duplicados em TS.
+
+**Testes determinísticos** — script SQL efêmero
+(`psql`, transação com `ROLLBACK`, nunca commitado) rodado direto no
+`doopla_rls_test` (Postgres local deste ambiente — mesmo banco de
+sessões anteriores, trazido a par das migrations 0068 e reconciliado
+com grants base ausentes na cópia local, achado do ambiente, não do
+produto). 6 cenários adversariais, todos passaram:
+
+1. diversidade de participação — tópico com 12 participantes únicos
+   (1 msg cada) venceu tópico com 30 msgs entre só 2 pessoas
+   (11.45 vs 1.74);
+2. threshold — tópico com 1 evento/1 participante nunca apareceu;
+3. decay/janela — tópico com 200 respostas históricas, mas nada nas
+   últimas 72h, nunca apareceu em "Em alta";
+4. relevância pessoal — candidato com categoria+tag de afinidade
+   venceu candidato sem relação nenhuma (irrelevante ficou de fora,
+   não só em posição inferior);
+5. cold start — profissional sem nenhum salvo/participação recebeu
+   `for_you` vazio;
+6. empate determinístico — dois tópicos com score idêntico ordenaram
+   de forma estável por `id asc`, nunca por acaso.
+
+Confirmado também: `anon` recebe `permission denied` nas duas
+functions (revoke explícito, mesmo idioma de `activate_community_profile`
+etc.).
+
+**Home Web** (`pro-comunidade-home-view.tsx`) — reestruturada:
+Busca → Suas comunidades (accordion renomeado de "Salvos por você",
+trilho horizontal compacto `TopicRail`, nunca grid de cards) → Para
+você → Em alta agora (ambas condicionais, somem quando vazias) →
+Recentes (sempre presente, camada neutra). Grid de cards 2 colunas
+substituído por `TopicRowList` (linhas densas com `divide-y`, título
+> metadado, sem caixa por item) — menos "admin dashboard", mais
+tipografia/hierarquia fazendo o trabalho. Deduplicação de apresentação
+via `useMemo` client-side (Suas comunidades → Para você → Em alta →
+Recentes, nunca mexe nos datasets). Busca continua substituindo tudo
+por resultado quando ativa (comportamento preexistente, intocado).
+
+**Home App** (`mobile/app/forum/index.tsx`) — mesma hierarquia
+conceitual, adaptada ao paradigma mobile já existente (`ForumTopicRow`,
+já uma linha densa, não um card — nenhuma redundância pra remover
+aqui). "Suas comunidades"/"Para você"/"Em alta agora" só aparecem na
+navegação neutra (sem busca/categoria ativos, mesma regra da Web).
+Mesma dedup de apresentação via `useMemo`.
+
+**Tela de tópico (Web+App)** — auditada, classificada `KEEP`: já usa a
+mesma linguagem tipográfica/hierarquia que a Home lapidada adotou
+(aliás, `TopicRowList` foi modelada a partir do padrão já existente em
+`pro-comunidade-topic-view.tsx`) — sem card-dentro-de-card, metadado
+já discreto, sem estilo legado. Nenhuma mudança funcional ou visual
+necessária.
+
+**Backend** — zero duplicação Web/App: as duas plataformas chamam as
+mesmas duas RPCs (`get_community_trending_topics`/
+`get_community_for_you_topics`), wrappers finos em
+`src/lib/community/data.ts`/`mobile/src/lib/data/community.ts`
+(mesmo padrão de `searchCommunityTopics`).
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (Web) e `tsc --noEmit`,
+`eslint` (Mobile) limpos — nenhum erro/warning em arquivo tocado por
+este bloco (varredura completa do repo feita pra confirmar: os únicos
+achados de `eslint .` sem escopo são pré-existentes e não relacionados
+— bundles vendorizados do GSAP em `public/vendor/` e 8 arquivos
+mobile nunca tocados nesta rodada, como `MascotBall.tsx`/`useAuth.tsx`,
+já achados/registrados como dívida em sessões anteriores).
+
+Migration 0079 é só schema novo (function/índice) — sem necessidade de
+aplicação manual documentada aqui além do de sempre: entregue ao
+usuário via `SendUserFile` quando a rodada terminar, aplicação/
+validação em produção real pendente de confirmação do usuário (este
+ambiente não tem acesso ao Supabase real).
+
+Fora de escopo desta rodada, por instrução explícita: Nova Home
+pública, Professional Settings, Professional Dashboard fora desta
+integração, onboarding, WhatsApp Outreach, sistema geral de
+Notificações, Booker/Agência, pricing, account closure.
+
+Commits: (ver lista no relatório final da rodada).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

@@ -1251,3 +1251,51 @@ técnico normal não é decisão de produto, e não deve criar trabalho
 desnecessário. Registrado aqui só como evidência preservada; qualquer
 ação fica pra quando (e se) fizer sentido dentro de um bloco de
 implementação real.
+
+## Comunidade V2 — camadas de descoberta da Home e ranking V1 (migration 0079) — 08/09/2026
+
+Arquitetura conceitual da Home da Comunidade, cada camada com uma
+função diferente, nunca misturada:
+
+- **Busca** = mecanismo PRINCIPAL de descoberta (intenção explícita
+  por consulta em linguagem natural). Nunca voltar a chips fixos de
+  profissão/assunto dominando a tela — decisão já registrada na Fase 1
+  search-first, reafirmada aqui.
+- **Suas comunidades** = intenção explícita por save/fixação (dado já
+  existente, `community_saved_topics`).
+- **Para você** = relevância PESSOAL estimada — nunca popularidade.
+- **Em alta agora** = momentum COLETIVO recente — nunca personalizado.
+- **Recentes** = cronologia neutra, garante que descoberta nunca
+  dependa só de algoritmo.
+
+**Ranking V1 é determinístico, explicável e centralizado — nenhum
+LLM/ML decide ordem.** Parâmetros (janela/decay/threshold/pesos) vivem
+só dentro de cada function SQL (`get_community_trending_topics`/
+`get_community_for_you_topics`, migration 0079), nunca duplicados em
+outra camada.
+
+"Em alta agora": soma decaída (half-life 24h, janela 72h) de eventos
+recentes (abertura do tópico + respostas) multiplicada por um fator de
+diversidade (participantes únicos / total de eventos) — protege contra
+inflação artificial (poucas pessoas trocando muitas mensagens) sem
+sistema anti-fraude. Threshold mínimo (score ≥ 0.6, ≥ 2 participantes
+únicos) evita "Em alta" com atividade insignificante. Visualizações não
+entram no score — não existe esse dado no produto hoje, não inventado.
+
+"Para você": sinais REAIS auditados antes de codar — categoria/tag dos
+tópicos que o profissional salvou ou em que participou (autor ou
+respondeu). Profissão/nicho (`artist_profiles.category`) foi avaliada e
+DESCARTADA como sinal — não existe mapeamento real entre profissão e
+`community_categories` (taxonomias independentes, sem tabela de
+relação); usá-la seria inventar uma correlação inexistente, criando uma
+bolha rígida por profissão (proibido explicitamente pela rodada).
+Buscas recentes e localização também descartadas — nenhum histórico de
+busca é armazenado hoje. Cold start (sem nenhum salvo/participação)
+devolve conjunto vazio de propósito — a Home omite a seção, nunca finge
+personalização nem reaproveita Recentes disfarçado.
+
+Deduplicação entre seções é só de APRESENTAÇÃO (nunca dos datasets
+canônicos) — um tópico que já ocupou um slot em "Suas comunidades" não
+repete em "Para você"/"Em alta"; um que já apareceu em qualquer um dos
+dois não repete em "Recentes". Implementada no client (Web e App,
+mesma regra), na ordem de prioridade da hierarquia acima.
