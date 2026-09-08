@@ -9463,7 +9463,7 @@ Notificações, Booker/Agência, pricing, account closure.
 Commits: `8df5036` (migration 0079 + data layer Web/Mobile), `4265bbe`
 (Home Web), `1e7af71` (Home App), `33dd13e` (documentação).
 
-## 83. Bloco 4 — nudge progressivo de prontidão (dados de recebimento + contexto comercial) — `[DELIVERED, com um gap real documentado]`
+## 83. Bloco 4 — nudge progressivo de prontidão (dados de recebimento + contexto comercial) — `[DELIVERED/CLOSED]`
 
 Implementação da reconciliação de progressive profiling decidida no
 §79 (auditoria do onboarding). Escopo fechado, aprovado antes de
@@ -9501,14 +9501,16 @@ já existente (mesma fonte de `mais/financeiro.tsx`), mesmo idioma
 visual de `ChannelsCard`. `undefined` (ainda carregando) nunca mostra
 linha — evita falso positivo piscando antes do fetch resolver.
 
-**Gap real, registrado, não implementado nesta rodada**: o App não tem
-NENHUMA superfície de edição pra `regions`/`career_stage`/`help_areas`/
-`work_types` hoje (confirmado por grep — zero ocorrência em
-`mobile/app`). Construir essa tela seria inventar uma arquitetura nova
-de navegação, explicitamente fora do escopo aprovado — por isso a
+**Assimetria mobile — `[DEFERRED]`, não pendência ativa deste bloco**:
+o App não tem NENHUMA superfície de edição pra `regions`/`career_stage`/
+`help_areas`/`work_types` hoje (confirmado por grep — zero ocorrência
+em `mobile/app`). Construir essa tela seria inventar uma arquitetura
+nova de navegação, explicitamente fora do escopo aprovado — por isso a
 linha de "contexto comercial" só existe no Web nesta rodada. Assimetria
-deliberada e documentada, não um esquecimento; próximo bloco
-candidato quando fizer sentido.
+deliberada e documentada (ver DECISOES.md), não um esquecimento e não
+um bloqueio pro fechamento do Bloco 4: fica registrada como item futuro
+de paridade Professional App, sem reabrir este bloco quando for
+endereçada.
 
 **Validado**: 4 estados (tudo incompleto / só recebimento pronto / só
 contexto pronto / tudo completo) testados via fixture SQL efêmero
