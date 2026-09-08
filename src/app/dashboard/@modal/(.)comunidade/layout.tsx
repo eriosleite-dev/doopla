@@ -224,23 +224,18 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   return (
     <div className="pro-shell contents">
       <div className="fixed inset-0 z-[110]" role="presentation">
-        {/* Correção do fundo (08/09/2026) — bg-black/60 foi calibrado
+        {/* Correção de contraste (08/09/2026) — bg-black/60 foi calibrado
            pensando num host claro (--paper, ver ProfileModal). O
            Professional Shell é escuro por decisão de produto
            (--pro-bg: #0c0b0b, ver .pro-shell em globals.css): 60% de
            preto adicional sobre um fundo já quase preto esmaga o
-           contraste até a página de origem ficar irreconhecível — lida
-           por quem reporta como "o fundo virou preto", mesmo com
-           `children` renderizando normalmente por baixo (roteamento
-           confirmado correto: reproduzido isoladamente o mesmo padrão
-           slot paralelo + rota interceptadora + layout aninhado com o
-           mesmo Next.js 16.3.0 instalado aqui, via Playwright, e o
-           slot `children` preserva o estado da rota de origem em soft
-           navigation em todos os casos testados — não há indício de
-           regressão de roteamento pra corrigir). A correção real é de
-           contraste: opacidade bem mais baixa, calibrada pro host
-           escuro, o suficiente pra ainda separar visualmente o painel
-           da Comunidade sem apagar a página por trás. */}
+           contraste até a página de origem ficar irreconhecível.
+           Opacidade mais baixa, calibrada pro host escuro, ainda separa
+           visualmente o painel da Comunidade sem apagar a página por
+           trás. Isso é só contraste — não corrige (nem tenta corrigir)
+           o bug real, separado, de `children` chegando genuinamente
+           vazio em certas navegações; esse foi rastreado e corrigido em
+           next.config.ts (staleTimes.dynamic), ver commit c4675ad. */}
         <div
           className={`absolute inset-0 bg-black/25 transition-opacity duration-200 ${entered ? 'opacity-100' : 'opacity-0'}`}
           onClick={() => attemptNav('close')}

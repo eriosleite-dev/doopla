@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { headers } from 'next/headers';
 
 import { createClient } from '@/lib/supabase/server';
 import { siteOrigin } from '@/lib/site-url';
@@ -54,29 +53,6 @@ export default async function DashboardLayout({
   children,
   modal,
 }: LayoutProps<'/dashboard'> & { modal: React.ReactNode }) {
-  // INSTRUMENTAÇÃO TEMPORÁRIA (08/09/2026) — investigação do "fundo
-  // preto" da Comunidade. Confirmado, via DebugMainProbe no client, que
-  // `{children}` chega a <main> contribuindo ZERO nós de DOM (nem
-  // error.tsx foi acionado) — nenhuma das 5 reproduções estruturais
-  // isoladas tentadas (dev/build de produção, layout dinâmico via
-  // cookies(), loading.tsx, múltiplas rotas interceptadas irmãs,
-  // branch condicional artista/booker) reproduziu isso localmente.
-  // Este log SERVER-SIDE (visível nos Runtime Logs da Vercel, não no
-  // console do navegador) responde a próxima pergunta: o servidor
-  // sequer está re-executando este layout/segmento durante essa
-  // navegação, e com quais headers de roteamento (next-url/rsc/
-  // next-router-state-tree são exatamente os que decidem se um slot é
-  // tratado como "casado" ou "não casado" nessa requisição).
-  {
-    const h = await headers();
-    console.log('[DashboardLayout] render', {
-      nextUrl: h.get('next-url'),
-      rsc: h.get('rsc'),
-      routerStateTree: h.get('next-router-state-tree'),
-      routerPrefetch: h.get('next-router-prefetch'),
-      accept: h.get('accept'),
-    });
-  }
   const { supabase, user, profile } = await getSessionProfile();
 
   const opportunitiesBadge = await getOpportunitiesBadgeCount(supabase, user.id, profile.role);
@@ -163,12 +139,10 @@ async function ProfessionalShellGate({
   referralEligible: boolean;
   children: React.ReactNode;
 }) {
-  console.log('[ProfessionalShellGate] render start');
   const [homeFacts, conversationSummary] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
     getCachedConversationStateSummary(supabase),
   ]);
-  console.log('[ProfessionalShellGate] render end, about to return children');
   return (
     <ProfessionalShell
       fullName={fullName}

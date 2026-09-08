@@ -3,8 +3,6 @@ import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
 
-import { DebugFetchLog } from './debug-fetch-log';
-import { DebugMainProbe } from './debug-main-probe';
 import { NotificationBell } from './notification-bell';
 import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
 import { ProSidebarReferralLink } from './pro-sidebar-referral-link';
@@ -169,8 +167,6 @@ export function ProfessionalShell({
             © 2026 Doopla
           </footer>
 
-          <DebugMainProbe />
-          <DebugFetchLog />
         </main>
       </div>
     </div>
