@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
-import { ProCard, ProEmptyState } from '../pro-ui';
+import { ProAccordion, ProCard, ProEmptyState } from '../pro-ui';
 import { searchCommunityTopicsAction, type CommunityTopicCard } from './actions';
 import { SaveTopicButton } from './save-topic-button';
 
@@ -14,10 +14,14 @@ import { SaveTopicButton } from './save-topic-button';
 // categoria/profissão fixos dominando a tela (decisão explícita do
 // usuário — taxonomia fica por baixo, só usada dentro da busca pra
 // ranking, nunca como grade de navegação obrigatória). Quando não há
-// busca ativa: "Salvos por você" (preview) + "Recentes". Quando há
-// busca: substitui tudo por resultado, sem seções. "Em alta"/"Para
-// você" ficam pra Fase 2 (precisam de sinais de uso reais, não
-// inventados agora).
+// busca ativa: "Salvos por você" (accordion, item 2A/08-09-2026) +
+// "Recentes". Quando há busca: substitui tudo por resultado, sem
+// seções. "Em alta" fica pra Fase B (sinais reais de atividade, não
+// inventados agora). "Recentes" aqui AINDA é o feed global por
+// last_activity_at (mesmo de sempre) — não é histórico pessoal; isso
+// só chega no item 9 da Fase B, quando existir infraestrutura real de
+// acesso/visualização por profissional. Nunca fingir essa semântica
+// antes de existir de verdade.
 export function ProComunidadeHomeView({
   savedPreview,
   savedTopicIds,
@@ -106,19 +110,32 @@ export function ProComunidadeHomeView({
         />
       ) : (
         <>
-          {savedCount > 0 && (
-            <section>
-              <div className="mb-2.5 flex items-center justify-between">
-                <p className="font-pro-sub text-[13.5px] font-bold">Salvos por você</p>
+          {/* Item 2A (08/09/2026) — accordion inline, fechado por
+             padrão (nenhum estado atual justifica abrir sozinho).
+             Mesma fonte real de sempre (savedPreview/savedTopicIds,
+             lidos de community_saved_topics via listCommunityTopicsByIds/
+             listSavedTopicIds em page.tsx) — nenhuma query nova, só o
+             container visual muda de <section> pra ProAccordion. Clicar
+             num tópico salvo usa o mesmo <Link href={topic.href}>
+             de sempre (dentro de TopicCardGrid), interceptado pela
+             mesma navegação do item 1 — nenhuma rota/lógica paralela. */}
+          <ProAccordion title="Salvos por você" count={savedCount}>
+            {savedPreview.length === 0 ? (
+              <ProEmptyState message="Você ainda não salvou nenhum tópico. Toque no marcador em qualquer tópico da Comunidade pra guardá-lo aqui." />
+            ) : (
+              <>
+                <TopicCardGrid topics={savedPreview} savedTopicIds={savedTopicIds} />
                 {savedCount > savedPreview.length && (
-                  <Link href="/dashboard/comunidade/salvos" className="text-[12px] font-bold text-[var(--pro-red)] hover:underline">
+                  <Link
+                    href="/dashboard/comunidade/salvos"
+                    className="mt-3 inline-block text-[12px] font-bold text-[var(--pro-red)] hover:underline"
+                  >
                     Ver todos ({savedCount}) →
                   </Link>
                 )}
-              </div>
-              <TopicCardGrid topics={savedPreview} savedTopicIds={savedTopicIds} />
-            </section>
-          )}
+              </>
+            )}
+          </ProAccordion>
 
           <section>
             <p className="mb-2.5 font-pro-sub text-[13.5px] font-bold">Recentes</p>

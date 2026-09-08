@@ -31,7 +31,13 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   const [recentTopics, savedTopicIds] = await Promise.all([listCommunityTopics(supabase, { limit: 20 }), listSavedTopicIds(supabase)]);
   const savedTopicIdSet = new Set(savedTopicIds);
-  const savedPreviewTopics = await listCommunityTopicsByIds(supabase, savedTopicIds.slice(0, 4));
+  // Item 2A (08/09/2026) — "Salvos por você" virou accordion inline
+  // (ver ProComunidadeHomeView); o preview cresce de 4 pra 20 pra fazer
+  // sentido como "quantidade inicial razoável" já dentro do accordion
+  // expandido (mesmo limite já usado em Recentes nesta página) — a
+  // rota dedicada /dashboard/comunidade/salvos continua existindo,
+  // intocada, pro overflow além disso.
+  const savedPreviewTopics = await listCommunityTopicsByIds(supabase, savedTopicIds.slice(0, 20));
 
   const authorsById = await getCommunityAuthors(supabase, [
     ...new Set([...recentTopics, ...savedPreviewTopics].map((t) => t.author_profile_id)),
