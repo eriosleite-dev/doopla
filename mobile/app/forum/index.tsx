@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,9 +13,11 @@ import {
   ensureCommunityProfileActivated,
   fetchCommunityAuthors,
   fetchCommunityCategories,
+  fetchCommunityForYouTopics,
   fetchCommunityNotifications,
   fetchCommunityTopics,
   fetchCommunityTopicsByIds,
+  fetchCommunityTrendingTopics,
   fetchSavedTopicIds,
   removeCommunityTopic,
   saveTopic,
@@ -55,6 +57,14 @@ export default function ForumTopicListScreen() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [savedPreview, setSavedPreview] = useState<CommunityTopic[]>([]);
   const [savedPreviewAuthorsById, setSavedPreviewAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
+  // Comunidade V2 — ranking V1 (migration 0079). Cold-start-safe: as
+  // RPCs já devolvem [] quando não há sinal real (sem salvo/participação
+  // pra "Para você", sem tópico acima do threshold pra "Em alta") — as
+  // seções somem sozinhas, nunca uma caixa vazia grande.
+  const [forYouTopics, setForYouTopics] = useState<CommunityTopic[]>([]);
+  const [forYouAuthorsById, setForYouAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
+  const [trendingTopics, setTrendingTopics] = useState<CommunityTopic[]>([]);
+  const [trendingAuthorsById, setTrendingAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
   const [categories, setCategories] = useState<CommunityCategory[]>([]);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -68,14 +78,25 @@ export default function ForumTopicListScreen() {
   const loadBase = useCallback(async () => {
     try {
       await ensureCommunityProfileActivated();
-      const [cats, saved, notifications] = await Promise.all([
+      const [cats, saved, notifications, forYou, trending] = await Promise.all([
         fetchCommunityCategories(),
         fetchSavedTopicIds(),
         fetchCommunityNotifications(),
+        fetchCommunityForYouTopics(6),
+        fetchCommunityTrendingTopics(6),
       ]);
       setCategories(cats);
       setSavedIds(new Set(saved));
       setUnreadNotifications(notifications.filter((n) => !n.readAt).length);
+      setForYouTopics(forYou);
+      setTrendingTopics(trending);
+
+      const [forYouAuthors, trendingAuthors] = await Promise.all([
+        fetchCommunityAuthors([...new Set(forYou.map((t) => t.author_profile_id))]),
+        fetchCommunityAuthors([...new Set(trending.map((t) => t.author_profile_id))]),
+      ]);
+      setForYouAuthorsById(forYouAuthors);
+      setTrendingAuthorsById(trendingAuthors);
 
       if (saved.length > 0) {
         const preview = await fetchCommunityTopicsByIds(saved, SAVED_PREVIEW_LIMIT);
@@ -89,7 +110,7 @@ export default function ForumTopicListScreen() {
     } catch {
       // Falha aqui não impede a listagem principal (efeito abaixo) — só
       // deixa chips/estado de salvo/badge de notificação/preview de
-      // salvos temporariamente vazios.
+      // salvos/Para você/Em alta temporariamente vazios.
     }
   }, []);
 
@@ -143,6 +164,8 @@ export default function ForumTopicListScreen() {
             .then(() => {
               setTopics((prev) => prev.filter((t) => t.id !== topicId));
               setSavedPreview((prev) => prev.filter((t) => t.id !== topicId));
+              setForYouTopics((prev) => prev.filter((t) => t.id !== topicId));
+              setTrendingTopics((prev) => prev.filter((t) => t.id !== topicId));
             })
             .catch(() => {
               Alert.alert('Não foi possível excluir', 'Tente novamente.');
@@ -183,6 +206,27 @@ export default function ForumTopicListScreen() {
     });
   }
 
+  // "Suas comunidades"/"Para você"/"Em alta agora" só existem na
+  // navegação neutra (sem busca/filtro de categoria ativos) — mesma
+  // regra da Web (pro-comunidade-home-view.tsx): busca substitui tudo
+  // por resultado, sem seções de descoberta por baixo. Deduplicação de
+  // apresentação (regra 17 da rodada): um tópico que já ocupou um slot
+  // em "Suas comunidades" não repete em "Para você"/"Em alta", e um que
+  // já apareceu em qualquer um dos dois anteriores não repete na
+  // listagem principal (Recentes) — nunca mexe nos datasets canônicos,
+  // só filtra a apresentação na ordem de prioridade da hierarquia.
+  const isDefaultBrowse = search.trim().length === 0 && activeCategoryId === null;
+  const { dedupedForYou, dedupedTrending, dedupedTopics } = useMemo(() => {
+    if (!isDefaultBrowse) return { dedupedForYou: [], dedupedTrending: [], dedupedTopics: topics };
+    const used = new Set(savedPreview.map((t) => t.id));
+    const forYou = forYouTopics.filter((t) => !used.has(t.id));
+    forYou.forEach((t) => used.add(t.id));
+    const trending = trendingTopics.filter((t) => !used.has(t.id));
+    trending.forEach((t) => used.add(t.id));
+    const mainList = topics.filter((t) => !used.has(t.id));
+    return { dedupedForYou: forYou, dedupedTrending: trending, dedupedTopics: mainList };
+  }, [isDefaultBrowse, savedPreview, forYouTopics, trendingTopics, topics]);
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FullSheetHeader title="Fórum" onClose={() => router.dismissAll()} />
@@ -216,7 +260,7 @@ export default function ForumTopicListScreen() {
         {savedPreview.length > 0 && (
           <View style={styles.savedPreviewSection}>
             <View style={styles.savedPreviewHeader}>
-              <Text style={styles.sectionTitle}>Salvos por você</Text>
+              <Text style={styles.sectionTitle}>Suas comunidades</Text>
               {savedIds.size > savedPreview.length && (
                 <Pressable onPress={() => router.push('/forum/salvos')}>
                   <Text style={styles.savedPreviewSeeAll}>Ver todos</Text>
@@ -232,6 +276,46 @@ export default function ForumTopicListScreen() {
                 }`}
                 lastActivity={formatRelativeDate(topic.last_activity_at)}
                 saved
+                onToggleSave={() => toggleSave(topic.id)}
+                bordered={i > 0}
+                onPress={() => router.push(`/forum/${topic.id}`)}
+              />
+            ))}
+          </View>
+        )}
+
+        {isDefaultBrowse && dedupedForYou.length > 0 && (
+          <View style={styles.savedPreviewSection}>
+            <Text style={styles.sectionTitle}>Para você</Text>
+            {dedupedForYou.map((topic, i) => (
+              <ForumTopicRow
+                key={topic.id}
+                title={topic.title}
+                meta={`${forYouAuthorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · ${topic.reply_count} ${
+                  topic.reply_count === 1 ? 'resposta' : 'respostas'
+                }`}
+                lastActivity={formatRelativeDate(topic.last_activity_at)}
+                saved={savedIds.has(topic.id)}
+                onToggleSave={() => toggleSave(topic.id)}
+                bordered={i > 0}
+                onPress={() => router.push(`/forum/${topic.id}`)}
+              />
+            ))}
+          </View>
+        )}
+
+        {isDefaultBrowse && dedupedTrending.length > 0 && (
+          <View style={styles.savedPreviewSection}>
+            <Text style={styles.sectionTitle}>Em alta agora</Text>
+            {dedupedTrending.map((topic, i) => (
+              <ForumTopicRow
+                key={topic.id}
+                title={topic.title}
+                meta={`${trendingAuthorsById.get(topic.author_profile_id)?.displayName ?? 'Profissional Doopla'} · ${topic.reply_count} ${
+                  topic.reply_count === 1 ? 'resposta' : 'respostas'
+                }`}
+                lastActivity={formatRelativeDate(topic.last_activity_at)}
+                saved={savedIds.has(topic.id)}
                 onToggleSave={() => toggleSave(topic.id)}
                 bordered={i > 0}
                 onPress={() => router.push(`/forum/${topic.id}`)}
@@ -256,8 +340,14 @@ export default function ForumTopicListScreen() {
           </View>
         )}
 
+        {isDefaultBrowse && dedupedTopics.length > 0 && <Text style={styles.sectionTitle}>Recentes</Text>}
+
         {phase === 'loading' && <LoadingState label="Carregando tópicos…" />}
         {phase === 'error' && <ErrorState message="Não deu pra carregar o Fórum agora." onRetry={() => setRetryTick((t) => t + 1)} />}
+        {/* topics.length (dataset canônico), nunca dedupedTopics.length —
+           um tópico deduplicado (já mostrado em Para você/Em alta) não
+           significa Comunidade vazia, só que Recentes não precisa
+           repeti-lo (regra 17 da rodada). */}
         {phase === 'ready' && topics.length === 0 && (
           <EmptyState
             title="Nenhum tópico encontrado"
@@ -265,7 +355,7 @@ export default function ForumTopicListScreen() {
           />
         )}
         {phase === 'ready' &&
-          topics.map((topic, i) => (
+          dedupedTopics.map((topic, i) => (
             <ForumTopicRow
               key={topic.id}
               title={topic.title}
