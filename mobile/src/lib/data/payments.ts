@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { PaymentDetails, PayoutRequest, PixKeyType } from '@/types/payment';
+import type { PaymentDetails, PixKeyType } from '@/types/payment';
 
 export async function fetchActivePaymentDetails(profileId: string): Promise<PaymentDetails | null> {
   const { data, error } = await supabase
@@ -27,30 +27,6 @@ export async function setPaymentDetails(params: {
   });
   if (error) throw error;
   return data as PaymentDetails;
-}
-
-export async function fetchPayoutRequests(profileId: string): Promise<PayoutRequest[]> {
-  const { data, error } = await supabase
-    .from('payout_requests')
-    .select('*')
-    .eq('profile_id', profileId)
-    .order('created_at', { ascending: false })
-    .returns<PayoutRequest[]>();
-  if (error) throw error;
-  return data ?? [];
-}
-
-// Mesma regra do painel web (getPayoutBalance): disponível = total
-// líquido recebido (concluída) menos o que já foi solicitado — sem
-// saldo/carteira Doopla, nunca inventado.
-export function computeAvailableToWithdraw(netReceivedCents: number, requests: PayoutRequest[]): number {
-  const requested = requests.reduce((sum, r) => sum + r.amount_cents, 0);
-  return Math.max(netReceivedCents - requested, 0);
-}
-
-export async function requestPayout(profileId: string, amountCents: number): Promise<void> {
-  const { error } = await supabase.from('payout_requests').insert({ profile_id: profileId, amount_cents: amountCents });
-  if (error) throw error;
 }
 
 export function maskPixKey(pixKeyType: PixKeyType | null, pixKey: string | null): string {

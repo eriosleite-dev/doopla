@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 
 import { colors, fonts } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,7 +23,7 @@ import { NegotiationIcon, HourglassIcon, CheckIcon, MoneyIcon, LinkIcon, HashIco
 import { STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookings';
 import { fetchReferralSummary, type ReferralSummary } from '@/lib/data/referrals';
 import { fetchProfessionalHomeFacts, type ProfessionalHomeFacts } from '@/lib/data/home-facts';
-import { fetchActionableDecisions, type DecisionItem } from '@/lib/data/decisions';
+import { fetchActionableDecisions, groupDecisionsByConversation, sortDecisionsByPriority, type DecisionItem } from '@/lib/data/decisions';
 import { fetchActivePaymentDetails } from '@/lib/data/payments';
 import type { PaymentDetails } from '@/types/payment';
 import { fetchNotificationCards, markCommunityNotificationRead, type NotificationCard } from '@/lib/data/notifications';
@@ -60,7 +61,13 @@ export default function HomeScreen() {
       fetchReferralSummary(professionalId, profile.referral_code).then(setReferralSummary).catch(() => setReferralSummary(null));
     }
     fetchProfessionalHomeFacts().then(setHomeFacts).catch(() => setHomeFacts(null));
-    fetchActionableDecisions().then(setDecisions).catch(() => setDecisions([]));
+    // Mesma regra de dedupe/prioridade da tela de Decisões (1 card por
+    // conversa) — nunca contar a lista crua aqui, senão a Home pode
+    // divergir do card de estatística ao lado (mesma classe de bug já
+    // corrigida no painel Web).
+    fetchActionableDecisions()
+      .then((items) => setDecisions(sortDecisionsByPriority(groupDecisionsByConversation(items))))
+      .catch(() => setDecisions([]));
     // Bloco 4 (progressive profiling, 08/09/2026) — mesma fonte canônica
     // da tela Dinheiro (fetchActivePaymentDetails, mesma RLS/tabela do
     // Web). Falha vira `null` (nunca trava a Home nem finge "pronto").
@@ -118,6 +125,14 @@ export default function HomeScreen() {
   })();
   const whatsappUrl = whatsappNumber ? buildTalkToYourDooplaUrl(whatsappNumber) : null;
   const identityVerified = homeFacts?.whatsappIdentityStatus === 'verified';
+
+  // Mesmo padrão de mais/indique-e-ganhe.tsx — clipboard real, toast só
+  // depois do side effect (nunca sucesso mockado).
+  async function copy(text: string, label: string) {
+    await Clipboard.setStringAsync(text);
+    show(`${label} copiado.`);
+  }
+  const slug = profile?.slug;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -224,8 +239,8 @@ export default function HomeScreen() {
           <ChannelsCard
             title="Seus canais de booking"
             rows={[
-              ...(profile?.slug
-                ? [{ key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: `doopla.com/${profile.slug}`, onCopy: () => show('Link copiado.') }]
+              ...(slug
+                ? [{ key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: `doopla.com/${slug}`, onCopy: () => copy(`doopla.com/${slug}`, 'Link') }]
                 : []),
               {
                 key: 'whatsapp',
@@ -233,8 +248,8 @@ export default function HomeScreen() {
                 label: 'WhatsApp da Doopla',
                 value: whatsappNumber ?? 'Em configuração',
               },
-              ...(profile?.slug
-                ? [{ key: 'code', icon: <HashIcon size={13} color={colors.off} />, label: 'Seu código ID', value: profile.slug, onCopy: () => show('Código copiado.') }]
+              ...(slug
+                ? [{ key: 'code', icon: <HashIcon size={13} color={colors.off} />, label: 'Seu código ID', value: slug, onCopy: () => copy(slug, 'Código') }]
                 : []),
             ]}
           />

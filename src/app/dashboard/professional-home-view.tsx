@@ -8,6 +8,7 @@ import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
+import { conversationHref } from './decisoes/format-cards';
 import { getActivePaymentDetails, getArtistMatchingCompletion, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
@@ -144,9 +145,7 @@ export async function ProfessionalHomeView({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {needsYouDecisions.map((d) => {
                     const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
-                    const href = d.relatedBookingId
-                      ? `/dashboard/bookings/${d.relatedBookingId}/conversa/${d.conversationId}`
-                      : '/dashboard/trabalhos';
+                    const href = conversationHref(d.relatedBookingId, d.conversationId);
                     return (
                       <div key={d.id} className="rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4">
                         <p className="font-pro-sub text-[14.5px] font-bold">

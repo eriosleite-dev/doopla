@@ -12,8 +12,9 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 let nextId = 1;
 
 // Reproduz o toast-stack do protótipo: pilha de mensagens no rodapé,
-// fade-in/out, some sozinho depois de ~3.2s. Usado por botões de
-// copiar/ações mockadas nesta fase (sem side-effect real ainda).
+// fade-in/out, some sozinho depois de ~3.2s. Usado por confirmações de
+// ações reais (copiar pro clipboard, etc.) — o toast só aparece depois
+// do side effect de verdade, nunca antes.
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});

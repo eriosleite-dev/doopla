@@ -105,7 +105,6 @@ export function getBookingCheckpoints(booking: Booking): Checkpoint[] {
 export type ArtistStats = {
   totalGrossCents: number;
   netReceivedCents: number;
-  availableToWithdrawCents: number;
   monthNetReceivedCents: number;
   closedCount: number;
   activeCount: number;
@@ -143,7 +142,6 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
   return {
     totalGrossCents,
     netReceivedCents,
-    availableToWithdrawCents: netReceivedCents,
     monthNetReceivedCents,
     closedCount: concluded.length,
     activeCount,

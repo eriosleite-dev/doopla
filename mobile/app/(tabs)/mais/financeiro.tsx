@@ -6,17 +6,10 @@ import { colors, fonts, radii } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
 import { LoadingState, ErrorState } from '@/components/shared/ScreenState';
 import { BottomSheet } from '@/components/shared/BottomSheet';
-import { formatCentsAsBRL, formatDatePt } from '@/lib/format';
+import { formatCentsAsBRL } from '@/lib/format';
 import { computeArtistStats, fetchUserBookings, type ArtistStats } from '@/lib/data/bookings';
-import {
-  computeAvailableToWithdraw,
-  fetchActivePaymentDetails,
-  fetchPayoutRequests,
-  maskPixKey,
-  requestPayout,
-  setPaymentDetails,
-} from '@/lib/data/payments';
-import type { PaymentDetails, PayoutRequest, PixKeyType } from '@/types/payment';
+import { fetchActivePaymentDetails, maskPixKey, setPaymentDetails } from '@/lib/data/payments';
+import type { PaymentDetails, PixKeyType } from '@/types/payment';
 
 type Phase = 'loading' | 'ready' | 'error';
 
@@ -33,18 +26,15 @@ export default function DinheiroScreen() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [paymentDetails, setPaymentDetailsState] = useState<PaymentDetails | null>(null);
   const [stats, setStats] = useState<ArtistStats | null>(null);
-  const [payoutRequests, setPayoutRequests] = useState<PayoutRequest[]>([]);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
-  const [payoutSheetOpen, setPayoutSheetOpen] = useState(false);
 
   const load = useCallback(() => {
     if (!professionalId) return;
     setPhase('loading');
-    Promise.all([fetchActivePaymentDetails(professionalId), fetchUserBookings(professionalId), fetchPayoutRequests(professionalId)])
-      .then(([details, bookings, requests]) => {
+    Promise.all([fetchActivePaymentDetails(professionalId), fetchUserBookings(professionalId)])
+      .then(([details, bookings]) => {
         setPaymentDetailsState(details);
         setStats(computeArtistStats(bookings));
-        setPayoutRequests(requests);
         setPhase('ready');
       })
       .catch(() => setPhase('error'));
@@ -53,8 +43,6 @@ export default function DinheiroScreen() {
   useEffect(() => {
     load();
   }, [load]);
-
-  const availableCents = stats ? computeAvailableToWithdraw(stats.netReceivedCents, payoutRequests) : 0;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -96,31 +84,11 @@ export default function DinheiroScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Valores</Text>
             <View style={styles.statsGrid}>
-              <Stat label="Disponível" value={formatCentsAsBRL(availableCents)} />
               <Stat label="Recebido no mês" value={formatCentsAsBRL(stats.monthNetReceivedCents)} />
               <Stat label="Total recebido" value={formatCentsAsBRL(stats.netReceivedCents)} />
               <Stat label="Bookings pagos" value={String(stats.closedCount)} />
             </View>
-            {availableCents > 0 && (
-              <Pressable style={styles.editBtn} onPress={() => setPayoutSheetOpen(true)}>
-                <Text style={styles.editBtnText}>Solicitar saque</Text>
-              </Pressable>
-            )}
           </View>
-
-          {payoutRequests.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Solicitações de saque</Text>
-              {payoutRequests.map((r, i) => (
-                <View key={r.id} style={[styles.payoutRow, i > 0 && styles.payoutBordered]}>
-                  <Text style={styles.payoutValue}>{formatCentsAsBRL(r.amount_cents)}</Text>
-                  <Text style={styles.payoutMeta}>
-                    Solicitado · {formatDatePt(r.created_at.slice(0, 10))}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
         </ScrollView>
       )}
 
@@ -129,17 +97,6 @@ export default function DinheiroScreen() {
           initial={paymentDetails}
           onSaved={() => {
             setEditSheetOpen(false);
-            load();
-          }}
-        />
-      </BottomSheet>
-
-      <BottomSheet visible={payoutSheetOpen} onClose={() => setPayoutSheetOpen(false)}>
-        <RequestPayoutForm
-          professionalId={professionalId}
-          availableCents={availableCents}
-          onSaved={() => {
-            setPayoutSheetOpen(false);
             load();
           }}
         />
@@ -208,63 +165,6 @@ function PaymentDetailsForm({ initial, onSaved }: { initial: PaymentDetails | nu
   );
 }
 
-function RequestPayoutForm({
-  professionalId,
-  availableCents,
-  onSaved,
-}: {
-  professionalId: string | null;
-  availableCents: number;
-  onSaved: () => void;
-}) {
-  const [amount, setAmount] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function submit() {
-    if (!professionalId) return;
-    const cents = Math.round(Number(amount.replace(',', '.')) * 100);
-    if (!cents || cents <= 0) {
-      setError('Informe um valor válido.');
-      return;
-    }
-    if (cents > availableCents) {
-      setError('O valor solicitado é maior do que o disponível para saque.');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    requestPayout(professionalId, cents)
-      .then(() => {
-        setSubmitting(false);
-        onSaved();
-      })
-      .catch(() => {
-        setSubmitting(false);
-        setError('Não foi possível registrar o pedido agora.');
-      });
-  }
-
-  return (
-    <View>
-      <Text style={styles.formTitle}>Solicitar saque</Text>
-      <Text style={styles.label}>Disponível: {formatCentsAsBRL(availableCents)}</Text>
-      <TextInput
-        style={[styles.input, { marginTop: 12 }]}
-        value={amount}
-        onChangeText={setAmount}
-        placeholder="0,00"
-        placeholderTextColor={colors.tx50}
-        keyboardType="decimal-pad"
-      />
-      {error && <Text style={styles.error}>{error}</Text>}
-      <Pressable style={[styles.submit, submitting && styles.submitDisabled]} disabled={submitting} onPress={submit}>
-        <Text style={styles.submitText}>{submitting ? 'Enviando…' : 'Solicitar'}</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
@@ -301,10 +201,6 @@ const styles = StyleSheet.create({
   stat: { width: '45%' },
   statValue: { color: colors.off, fontFamily: fonts.display, fontSize: 17 },
   statLabel: { color: colors.tx50, fontFamily: fonts.body, fontSize: 10, marginTop: 2 },
-  payoutRow: { paddingVertical: 8 },
-  payoutBordered: { borderTopWidth: 1, borderTopColor: colors.line },
-  payoutValue: { color: colors.off, fontFamily: fonts.subBold, fontSize: 13 },
-  payoutMeta: { color: colors.tx50, fontFamily: fonts.mono, fontSize: 10, marginTop: 2 },
   formTitle: { color: colors.off, fontFamily: fonts.subBold, fontSize: 15, marginBottom: 14 },
   label: { color: colors.tx50, fontFamily: fonts.body, fontSize: 11, marginBottom: 6, marginTop: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },

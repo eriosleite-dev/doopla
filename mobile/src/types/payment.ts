@@ -1,5 +1,6 @@
-// Espelha payment_details (migration 0046) e payout_requests
-// (migration 0014).
+// Espelha payment_details (migration 0046). O modelo de saque/carteira
+// (payout_requests, migration 0014) foi removido do produto — ver
+// DECISOES.md — não existe mais tipo correspondente aqui.
 export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria';
 
 export type PaymentDetails = {
@@ -13,14 +14,4 @@ export type PaymentDetails = {
   created_at: string;
   created_by: string;
   superseded_at: string | null;
-};
-
-export type PayoutRequestStatus = 'solicitado';
-
-export type PayoutRequest = {
-  id: string;
-  profile_id: string;
-  amount_cents: number;
-  status: PayoutRequestStatus;
-  created_at: string;
 };
