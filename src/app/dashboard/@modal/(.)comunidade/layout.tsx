@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { proGhostButtonClass, proPrimaryButtonClass } from '../../pro-format';
@@ -32,18 +32,58 @@ import { ComunidadeGuardProvider } from '../../comunidade/navigation-guard';
 // salvos->topico são sempre exatamente um push, então back() já
 // devolve pro lugar certo de onde a navegação realmente veio, sem
 // precisarmos reconstruir isso). Fechar precisa sair da Comunidade
-// INTEIRA, não só um nível — como a profundidade real varia (1 na
-// lista, 2+ num subview alcançado direto ou via Salvos), rastreamos
-// quantos passos reais de history aconteceram desde que este layout
-// montou (nunca uma pilha de URLs própria — só contamos push/pop
-// reais via popstate, inclusive os disparados pelo botão nativo Voltar
-// do navegador) e usamos window.history.go(-n) pra fechar de qualquer
-// profundidade de uma vez. Escape e clique fora usam a MESMA ação de
-// Fechar (convenção padrão de modal — "me tire daqui", não "um passo
-// atrás").
+// INTEIRA, não só um nível, de qualquer profundidade.
+//
+// Correção 08/09/2026 (achado da auditoria do item 1) — a primeira
+// versão inferia profundidade por um boolean "houve popstate desde a
+// última checagem" (decrementa) vs "não houve" (incrementa). Isso
+// quebra com o botão/gesto nativo Avançar (Forward): Forward também
+// dispara popstate, e o código não distinguia direção — um Back
+// seguido de Forward fazia o contador decrementar DUAS vezes,
+// undershoot no Fechar (fecha só até um nível intermediário).
+//
+// Modelo atual: cada entrada de history da Comunidade carrega sua
+// própria profundidade carimbada em history.state.__comunidadeDepth
+// (nunca uma pilha de URLs paralela — é o próprio history do
+// navegador, só com um campo extra). Back/Forward nativos NUNCA
+// precisam ser distinguidos: cada entrada já sabe sua profundidade
+// correta desde que foi criada, então back/forward só LEEM o valor já
+// carimbado — nunca inferem incrementando/decrementando. Só um push
+// genuíno (entrada nova, sem carimbo ainda) soma +1 ao valor em
+// memória (depthRef) e carimba.
+//
+// Cuidado verificado contra o próprio código-fonte do Next instalado
+// (node_modules/next/dist/client/components/app-router.js): o
+// HistoryUpdater interno do Next reconstrói history.state a cada
+// navegação e só preserva campos customizados quando
+// pushRef.preserveCustomHistoryState é true — e isso É true pra
+// back/forward (completeTraverseNavigation), mas é FALSE tanto pra
+// push quanto pra replace (completeSoftNavigation) — ou seja, um
+// router.replace (nosso caso: busca ?q=) apaga nosso carimbo da
+// entrada atual mesmo sem mudar de pathname. Por isso existe um
+// segundo efeito, reagindo a useSearchParams(), que reafirma o
+// carimbo (a partir do valor em memória, nunca relido de
+// history.state) depois de qualquer replace — sem isso a busca
+// corromperia a profundidade na próxima navegação real.
+function stampComunidadeDepth(depth: number) {
+  const current = (window.history.state ?? {}) as Record<string, unknown>;
+  if (current.__comunidadeDepth === depth) return;
+  // Spread do estado atual — nunca um objeto novo do zero — preserva
+  // __NA/__PRIVATE_NEXTJS_INTERNALS_TREE (campos internos do Next) sem
+  // precisar conhecer seus nomes. Sem passar `url`: só enriquecemos o
+  // state da entrada atual, nunca navegamos.
+  window.history.replaceState({ ...current, __comunidadeDepth: depth }, '');
+}
+
+function readComunidadeDepth(): number | null {
+  const stamped = (window.history.state as Record<string, unknown> | null)?.__comunidadeDepth;
+  return typeof stamped === 'number' ? stamped : null;
+}
+
 export default function ComunidadeModalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [entered, setEntered] = useState(false);
   const [pendingNav, setPendingNav] = useState<'back' | 'close' | null>(null);
   const asideRef = useRef<HTMLElement | null>(null);
@@ -53,28 +93,30 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   const isTopicDetail = /^\/dashboard\/comunidade\/(?!novo$|salvos$)[^/]+$/.test(pathname);
   const isList = pathname === '/dashboard/comunidade';
 
-  const depthRef = useRef(1);
-  const prevPathnameRef = useRef(pathname);
-  const poppedRef = useRef(false);
+  const depthRef = useRef(0);
+  const prevPathnameRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    function handlePopState() {
-      poppedRef.current = true;
-    }
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  useEffect(() => {
+  // Dispara no mount (prevPathnameRef começa null) e em toda navegação
+  // real (push ou back/forward) — nunca em troca só de querystring
+  // (usePathname() não inclui search params). Entrada já carimbada
+  // (back/forward pra algo visitado nesta sessão) → adota o valor
+  // dela, é a fonte de verdade. Sem carimbo → é push genuíno, soma 1.
+  useLayoutEffect(() => {
     if (prevPathnameRef.current === pathname) return;
     prevPathnameRef.current = pathname;
-    if (poppedRef.current) {
-      depthRef.current = Math.max(1, depthRef.current - 1);
-      poppedRef.current = false;
-    } else {
-      depthRef.current += 1;
-    }
+    const stamped = readComunidadeDepth();
+    depthRef.current = stamped ?? depthRef.current + 1;
+    stampComunidadeDepth(depthRef.current);
   }, [pathname]);
+
+  // Reafirma o carimbo depois de qualquer replace (busca ?q=) — ver
+  // comentário acima: replace faz o Next reescrever history.state sem
+  // preservar campos customizados, mesmo sem trocar de pathname. Nunca
+  // relê de history.state aqui — sempre reaplica o valor em memória.
+  useLayoutEffect(() => {
+    if (depthRef.current === 0) return;
+    stampComunidadeDepth(depthRef.current);
+  }, [searchParams]);
 
   // Preserva a posição de scroll do painel por rota interna (ex.: lista
   // de resultados rolada, depois abre um tópico, depois volta — reabre
