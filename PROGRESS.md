@@ -9463,6 +9463,73 @@ Notificações, Booker/Agência, pricing, account closure.
 Commits: `8df5036` (migration 0079 + data layer Web/Mobile), `4265bbe`
 (Home Web), `1e7af71` (Home App), `33dd13e` (documentação).
 
+## 83. Bloco 4 — nudge progressivo de prontidão (dados de recebimento + contexto comercial) — `[DELIVERED, com um gap real documentado]`
+
+Implementação da reconciliação de progressive profiling decidida no
+§79 (auditoria do onboarding). Escopo fechado, aprovado antes de
+codar: nunca banner genérico/persistente — reaproveitar a arquitetura
+visual já existente da Home (linha label+descrição+CTA, mesmo idioma
+de `BookingChannelsCard`/`TalkToDooplaCard`), progressivo e nunca
+bloqueante, cada pendência desaparece sozinha quando resolvida, zero
+backend novo, zero campo novo, wizard antigo intocado, Settings V2 e
+Comunidade não reabertas, Booker não implementado.
+
+**Achado que definiu a implementação**: `getArtistMatchingCompletion`
+(`{filled, total}` sobre `regions`/`career_stage`/`fee_range`/
+`help_areas`) e o card `CompletePreferencesCard` já existiam —
+construídos antes do split Shell+Home, mas só alcançáveis hoje via
+`BookerHomeView` (legado, role='booker' gerenciando artista). Desde
+que `ProfessionalHomeView` passou a ser a Home exclusiva de
+`role='artista'`, esse branch em `booker-home-view.tsx` ficou morto
+pra artista — o profissional nunca via seu próprio card. Mesmo padrão
+de `getActivePaymentDetails` (já usado em `/dashboard/perfil/recebimento`)
+pro sinal de recebimento. **Zero função nova criada no Web** — as duas
+já existentes (nunca alteradas) foram só chamadas de um novo lugar.
+
+**Web** (`professional-home-view.tsx`) — novo `ReadinessCard` no topo
+da coluna direita da Home, antes de `BookingChannelsCard`. Duas linhas
+independentes (recebimento → `/dashboard/perfil/recebimento`; contexto
+profissional → `/dashboard/perfil/editar#preferencias-matching`, mesma
+âncora já usada em Preferências da Doopla desde Settings V2), cada uma
+some sozinha quando resolvida; o card inteiro não renderiza nada
+(nem título) quando as duas estão completas — zero ruído visual no
+estado "tudo pronto".
+
+**App** — só a linha de recebimento (`ReadinessCard.tsx` novo,
+`mobile/app/(tabs)/index.tsx`), reaproveitando `fetchActivePaymentDetails`
+já existente (mesma fonte de `mais/financeiro.tsx`), mesmo idioma
+visual de `ChannelsCard`. `undefined` (ainda carregando) nunca mostra
+linha — evita falso positivo piscando antes do fetch resolver.
+
+**Gap real, registrado, não implementado nesta rodada**: o App não tem
+NENHUMA superfície de edição pra `regions`/`career_stage`/`help_areas`/
+`work_types` hoje (confirmado por grep — zero ocorrência em
+`mobile/app`). Construir essa tela seria inventar uma arquitetura nova
+de navegação, explicitamente fora do escopo aprovado — por isso a
+linha de "contexto comercial" só existe no Web nesta rodada. Assimetria
+deliberada e documentada, não um esquecimento; próximo bloco
+candidato quando fizer sentido.
+
+**Validado**: 4 estados (tudo incompleto / só recebimento pronto / só
+contexto pronto / tudo completo) testados via fixture SQL efêmero
+(`doopla_rls_test`, transação com `ROLLBACK`) contra as MESMAS queries
+de `getActivePaymentDetails`/`getArtistMatchingCompletion` — todos os
+4 distinguidos corretamente. Lógica de visibilidade (quando cada linha
+aparece/some, Web e Mobile) validada via script `tsx` efêmero — 11
+asserções, incluindo desaparecimento individual de cada pendência
+sem afetar a outra. Nenhum estado impede navegação/uso do resto do
+painel (nudge nunca é gate — `is_operationally_ready()`/Policy Gate
+continuam a única fonte de bloqueio real, inalterados).
+
+`tsc --noEmit`, `eslint`, `next build` (Web) e `tsc --noEmit`, `eslint`
+(Mobile) limpos nos arquivos deste bloco — achados pré-existentes de
+`eslint` em `ChartCard.tsx`/`DecisionCard.tsx` (Mobile, nunca tocados
+aqui) confirmados fora de escopo.
+
+Migrations: nenhuma. Zero RPC nova, zero tabela nova — reuso total de
+`is_operationally_ready()`/`payment_details`/`artist_profiles`/
+`getActivePaymentDetails`/`getArtistMatchingCompletion`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

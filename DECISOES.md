@@ -1299,3 +1299,28 @@ canônicos) — um tópico que já ocupou um slot em "Suas comunidades" não
 repete em "Para você"/"Em alta"; um que já apareceu em qualquer um dos
 dois não repete em "Recentes". Implementada no client (Web e App,
 mesma regra), na ordem de prioridade da hierarquia acima.
+
+## Bloco 4 — nudge de prontidão nunca é banner genérico; App fica sem a linha de contexto comercial por enquanto — 08/09/2026
+
+Ressalva de UX antes da implementação: o nudge progressivo de
+prontidão (dados de recebimento + contexto comercial incompleto,
+decisão já registrada em "Dados de recebimento continuam fora do
+onboarding") não podia virar uma faixa genérica/persistente na Home —
+tinha que reaproveitar a arquitetura visual já existente. Resolvido
+reaproveitando o mesmo idioma de linha (label/descrição + CTA, borda
+entre linhas) já usado em `BookingChannelsCard`/`TalkToDooplaCard`
+(Web) e `ChannelsCard` (App) — nenhuma linguagem visual nova.
+
+Achado que mudou o escopo original: o App não tem NENHUMA superfície
+de edição pra `regions`/`career_stage`/`help_areas`/`work_types` hoje
+— zero tela, confirmado por auditoria de código. Construir essa tela
+seria inventar uma arquitetura de navegação nova, fora do que foi
+aprovado pra esta rodada ("reutilize a superfície já existente; a
+decisão de navegação de 'Treinar sua Doopla' continua fora de
+escopo"). Decisão: o App só recebe a linha de recebimento (superfície
+real: `/mais/financeiro`); a linha de contexto comercial existe só no
+Web nesta rodada. Assimetria deliberada, não regressão de paridade —
+paridade continua sendo backend/regra compartilhados, a apresentação
+é que reflete o que cada plataforma realmente tem pra oferecer hoje.
+Construir a tela de edição no App fica como candidato a bloco futuro,
+não decidido aqui.
