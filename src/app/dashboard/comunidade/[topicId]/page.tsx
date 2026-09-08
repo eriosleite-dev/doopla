@@ -49,17 +49,32 @@ export default async function ComunidadeTopicPage(props: { params: Promise<{ top
 
   return (
     <main className="flex flex-col gap-4">
+      {/* Correção de layout (08/09/2026) — @modal/(.)comunidade/layout.tsx
+         posiciona ← e X em absolute (top-4 left-4 / top-4 right-4,
+         h-9 w-9 = alcançam 52px a partir da borda do painel), mas o
+         wrapper de conteúdo daquele layout só tem p-6 (24px) de
+         respiro — o cabeçalho, sendo o primeiro conteúdo, começava
+         dentro da zona dos botões (28px de sobreposição de cada lado).
+         O <header> em si (e sua border-b) continua com a largura cheia
+         de sempre, alinhada aos divisores da lista de mensagens
+         abaixo — só o conteúdo INTERNO ganha px-10 extra, suficiente
+         pra nunca invadir os 52px reservados pros botões em nenhuma
+         largura (eles têm tamanho fixo, então o respiro necessário
+         também é fixo, não escala com a viewport). Nenhum
+         comportamento de ←/favoritar/X mudou — só espaçamento. */}
       <header className="border-b border-[var(--pro-line)] pb-4">
-        <p className="font-doopla-mono text-[10px] uppercase tracking-[.08em] text-[var(--pro-tx-30)]">
-          Comunidade{categoryLabel ? ` · ${categoryLabel}` : ''}
-        </p>
-        <div className="mt-1.5 flex items-start justify-between gap-3">
-          <h1 className="min-w-0 font-pro-sub text-[19px] font-bold leading-snug text-[var(--pro-off)]">{topic.title}</h1>
-          <SaveTopicButton
-            topicId={topic.id}
-            initialSaved={isSaved}
-            className="mt-0.5 flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
-          />
+        <div className="px-10">
+          <p className="font-doopla-mono text-[10px] uppercase tracking-[.08em] text-[var(--pro-tx-30)]">
+            Comunidade{categoryLabel ? ` · ${categoryLabel}` : ''}
+          </p>
+          <div className="mt-1.5 flex items-start justify-between gap-3">
+            <h1 className="min-w-0 font-pro-sub text-[19px] font-bold leading-snug text-[var(--pro-off)]">{topic.title}</h1>
+            <SaveTopicButton
+              topicId={topic.id}
+              initialSaved={isSaved}
+              className="mt-0.5 flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-red)]"
+            />
+          </div>
         </div>
       </header>
 
