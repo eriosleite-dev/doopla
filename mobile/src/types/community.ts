@@ -103,3 +103,13 @@ export type CommunityNotification = {
   read_at: string | null;
   created_at: string;
 };
+
+// Item 12 (08/09/2026, migration 0077) — posição de leitura por
+// (profile, topic). Só apresentação, nunca usado em regra de
+// autorização/negócio.
+export type CommunityTopicRead = {
+  profile_id: string;
+  topic_id: string;
+  last_read_post_id: string | null;
+  updated_at: string;
+};

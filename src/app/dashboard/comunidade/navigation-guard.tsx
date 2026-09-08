@@ -23,11 +23,13 @@ type GuardFn = () => boolean;
 // tópico (dois níveis abaixo) sabe que sua UX de chat quer pousar no
 // fim, não no topo — e só ele sabe se o que está carregado agora é
 // exatamente o que um mount novo reproduziria (ver isContentPristine).
-// 'start' | 'end' cobre só o que o Item 5 precisa; o formato nasce
-// pensado pra crescer pra um terceiro caso (`{ messageId: string }`,
-// Item 12 — pousar na posição de leitura) sem quebrar quem já usa
-// 'start'/'end'.
-export type ComunidadeScrollAnchor = 'start' | 'end';
+// 'start' | 'end' cobria só o que o Item 5 precisava; terceiro caso
+// (08/09/2026, Item 12) chegou exatamente como esse comentário previu —
+// `{ messageId }` pousa numa mensagem específica (posição de leitura),
+// sem quebrar quem só usa 'start'/'end'. Quem resolve o id -> pixel é
+// @modal/(.)comunidade/layout.tsx (dono do <aside>, ver aplicação do
+// anchor lá); este arquivo só carrega o valor.
+export type ComunidadeScrollAnchor = 'start' | 'end' | { messageId: string };
 export type ComunidadeScrollBehavior = {
   getAnchor: () => ComunidadeScrollAnchor;
   // true quando o conteúdo atualmente carregado é exatamente o que um

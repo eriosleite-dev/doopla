@@ -1068,6 +1068,16 @@ export type CommunityNotification = {
   created_at: string;
 };
 
+// Item 12 (08/09/2026, migration 0077) — posição de leitura por
+// (profile, topic). Só apresentação (onde pousar o scroll), nunca
+// usado em regra de autorização/negócio.
+export type CommunityTopicRead = {
+  profile_id: string;
+  topic_id: string;
+  last_read_post_id: string | null;
+  updated_at: string;
+};
+
 // A lib do Supabase exige `Relationships` em cada tabela (usado só pra
 // joins embutidos via .select('foo(*)')). Não usamos essa sintaxe — as
 // junções são feitas com queries separadas — então fica sempre [].
@@ -1435,6 +1445,12 @@ export type Database = {
         Row: CommunityNotification;
         Insert: never;
         Update: never;
+        Relationships: [];
+      };
+      community_topic_reads: {
+        Row: CommunityTopicRead;
+        Insert: Pick<CommunityTopicRead, 'profile_id' | 'topic_id'> & Partial<Pick<CommunityTopicRead, 'last_read_post_id' | 'updated_at'>>;
+        Update: Partial<Pick<CommunityTopicRead, 'last_read_post_id' | 'updated_at'>>;
         Relationships: [];
       };
     };

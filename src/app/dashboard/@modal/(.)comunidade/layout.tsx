@@ -151,8 +151,18 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   //
   // Cache válido (pristine) sempre vence — é o comportamento de
   // sempre, intocado. Sem cache válido, cai pro anchor que a rota
-  // filha registrou (`end` = fim do conteúdo) ou, se nada registrou
-  // (toda rota que não é o tópico), pro `0` de sempre.
+  // filha registrou ('end' = fim do conteúdo; { messageId } = Item 12,
+  // posição de leitura — pousa numa mensagem específica, ver
+  // id={`msg-${id}`} em pro-comunidade-topic-view.tsx) ou, se nada
+  // registrou (toda rota que não é o tópico), pro `0` de sempre.
+  //
+  // getBoundingClientRect() em vez de offsetTop pra achar a mensagem —
+  // não depende de nenhuma suposição sobre qual ancestral é o
+  // offsetParent (o <aside> é position:fixed, mas não custa nada
+  // calcular por diferença de retângulo em vez de confiar nessa
+  // cadeia). Se o id não existir no DOM ainda (mensagem fora da
+  // página mais recente carregada — ver pro-comunidade-topic-view.tsx),
+  // cai pro mesmo fallback de sempre ('end'), nunca quebra.
   useLayoutEffect(() => {
     const el = asideRef.current;
     if (!el) return;
@@ -162,6 +172,17 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       return;
     }
     const anchor = scrollBehaviorRef.current?.getAnchor();
+    if (anchor && typeof anchor === 'object') {
+      const target = el.querySelector(`#msg-${CSS.escape(anchor.messageId)}`);
+      if (target) {
+        const containerRect = el.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        // 12px de folga — a mensagem-alvo fica logo abaixo do topo
+        // visível, nunca colada na borda.
+        el.scrollTop = el.scrollTop + (targetRect.top - containerRect.top) - 12;
+        return;
+      }
+    }
     el.scrollTop = anchor === 'end' ? el.scrollHeight : 0;
   }, [pathname]);
 

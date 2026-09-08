@@ -5,7 +5,7 @@ import { Fragment, useActionState, useEffect, useId, useLayoutEffect, useMemo, u
 import { buildMentionCandidateDisplay, type MentionCandidateDisplay } from '@/lib/community/data';
 
 import { proInputClass, proPrimaryButtonClass } from '../../pro-format';
-import { createReplyAction, loadEarlierCommunityPostsAction, removePostAction } from '../actions';
+import { createReplyAction, loadEarlierCommunityPostsAction, removePostAction, saveTopicReadPositionAction } from '../actions';
 import { useComunidadeScrollAnchor } from '../navigation-guard';
 import { DeleteMenu } from './delete-menu';
 import { snippetOf, type ChatTimelineMessage } from './timeline';
@@ -100,6 +100,7 @@ export function ProComunidadeTopicChat({
   initialHasMore,
   currentProfileId,
   topicRemoved,
+  initialReadPostId,
 }: {
   topicId: string;
   initialMessages: ChatTimelineMessage[];
@@ -109,6 +110,12 @@ export function ProComunidadeTopicChat({
   initialHasMore: boolean;
   currentProfileId: string;
   topicRemoved: boolean;
+  // Item 12 (08/09/2026) — id da última mensagem vista nesta sessão de
+  // leitura (community_topic_reads, migration 0077), resolvido no
+  // servidor (page.tsx) antes do primeiro render. null = nunca leu
+  // este tópico antes (ou não existe registro ainda) — cai no
+  // comportamento de sempre ('end').
+  initialReadPostId: string | null;
 }) {
   const [messages, setMessages] = useState(() => initialMessages);
   const [hasEarlier, setHasEarlier] = useState(initialHasMore);
@@ -128,10 +135,49 @@ export function ProComunidadeTopicChat({
   // nesta montagem: a partir daí, um pixel salvo enquanto esse
   // conteúdo extra estava carregado não descreve mais o que um mount
   // novo (só a página recente) vai produzir sozinho.
+  //
+  // Item 12 — só usa a posição de leitura se a mensagem-alvo estiver
+  // entre as JÁ CARREGADAS (initialMessages é sempre a página mais
+  // recente — ver arquitetura C do Item 5): se o usuário parou de ler
+  // muito antes disso (fora da página inicial), cai pro fallback de
+  // sempre ('end') em vez de fingir uma posição que exigiria "carregar
+  // anteriores" sozinho.
   useComunidadeScrollAnchor({
-    getAnchor: () => 'end',
+    getAnchor: () =>
+      initialReadPostId && messages.some((m) => m.id === initialReadPostId) ? { messageId: initialReadPostId } : 'end',
     isContentPristine: () => !hasLoadedEarlierOnce,
   });
+
+  // Item 12 — grava a posição de leitura ao SAIR do tópico (nunca em
+  // tempo real: sem scroll listener novo, pra não arriscar interferir
+  // com a lógica já validada de prepend/scroll-to-bottom do Item 5).
+  // useLayoutEffect porque o cleanup precisa medir o DOM ainda intacto
+  // (um useEffect comum já veria os nós desmontados nesse momento).
+  // "Última mensagem visível" = a última cujo topo ainda está acima da
+  // borda inferior visível do container — nunca a última carregada,
+  // que pode estar bem abaixo do que o usuário realmente viu.
+  useLayoutEffect(() => {
+    const messagesEl = messagesContainerRef.current;
+    return () => {
+      const container = getScrollContainer(messagesEl);
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+      const msgEls = container.querySelectorAll('[id^="msg-"]');
+      let lastVisibleId: string | null = null;
+      msgEls.forEach((el) => {
+        if (el.getBoundingClientRect().top <= containerRect.bottom) {
+          lastVisibleId = el.id.slice('msg-'.length);
+        }
+      });
+      // A mensagem de abertura do tópico usa id={`msg-${topic.id}`}
+      // (ver topicToTimelineMessage em timeline.ts) mas NÃO é uma linha
+      // de community_posts — salvar isso violaria a FK de
+      // last_read_post_id. Se só o cabeçalho do tópico estava visível
+      // (nenhuma resposta ainda vista), não grava nada — mesmo
+      // comportamento de "nunca leu" de antes.
+      if (lastVisibleId && lastVisibleId !== topicId) void saveTopicReadPositionAction(topicId, lastVisibleId);
+    };
+  }, [topicId]);
 
   // Universo de menção = participantes das mensagens já carregadas
   // (nunca uma busca nova de perfil) — cresce conforme mais páginas

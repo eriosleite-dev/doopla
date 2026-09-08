@@ -32,9 +32,11 @@ import {
   fetchCommunityPostsPage,
   fetchCommunityTopic,
   fetchSavedTopicIds,
+  fetchTopicReadPosition,
   removeCommunityPost,
   removeCommunityTopic,
   saveTopic,
+  saveTopicReadPosition,
   unsaveTopic,
   type CommunityAuthorSnapshot,
   type MentionCandidateDisplay,
@@ -136,10 +138,18 @@ export default function ForumConversationScreen() {
   const hasScrolledToEndRef = useRef(false);
   const isNearBottomRef = useRef(true);
   const pendingScrollToEndRef = useRef(false);
+  // Item 12 (08/09/2026, migration 0077) — espelha o mecanismo do Web
+  // (captura via medição de DOM na desmontagem), adaptado pra FlatList:
+  // onViewableItemsChanged já reporta os itens visíveis diretamente, sem
+  // precisar medir nada manualmente. lastVisiblePostIdRef guarda o post
+  // mais visível no momento; persistido só na desmontagem/troca de
+  // tópico (mesmo padrão fire-and-forget do Web).
+  const lastVisiblePostIdRef = useRef<string | null>(null);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [topic, setTopic] = useState<CommunityTopic | null>(null);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [initialReadPostId, setInitialReadPostId] = useState<string | null>(null);
   const [extraPostsById, setExtraPostsById] = useState<Map<string, CommunityPost>>(new Map());
   const [hasEarlier, setHasEarlier] = useState(false);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -160,12 +170,14 @@ export default function ForumConversationScreen() {
     if (!topicId) return;
     setPhase('loading');
     hasScrolledToEndRef.current = false;
+    lastVisiblePostIdRef.current = null;
     try {
       await ensureCommunityProfileActivated();
-      const [t, page, savedIds] = await Promise.all([
+      const [t, page, savedIds, readPostId] = await Promise.all([
         fetchCommunityTopic(topicId),
         fetchCommunityPostsPage(topicId, { limit: PAGE_SIZE }),
         fetchSavedTopicIds(),
+        fetchTopicReadPosition(topicId),
       ]);
       if (!t) {
         setPhase('error');
@@ -199,6 +211,7 @@ export default function ForumConversationScreen() {
       setAuthorsById(authors);
       setMentionsByPost(mentionsMap);
       setSaved(savedIds.includes(topicId));
+      setInitialReadPostId(readPostId);
       setPhase('ready');
     } catch {
       setPhase('error');
@@ -242,6 +255,32 @@ export default function ForumConversationScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     }
   }, [posts]);
+
+  // Item 12 (08/09/2026, migration 0077) — viewabilityConfig e o
+  // callback precisam de identidade estável entre renders (exigência da
+  // própria FlatList: mudar a referência a cada render dispara um
+  // warning e pode derrubar o tracking). useState com inicializador
+  // preguiçoso cria o valor uma única vez, nunca reatribuído — ao
+  // contrário de ler `.current` de um useRef durante o render, que a
+  // regra react-hooks/refs proíbe.
+  const [viewabilityConfig] = useState({ itemVisiblePercentThreshold: 50 });
+  const [onViewableItemsChanged] = useState(() => ({ viewableItems }: { viewableItems: Array<{ item: CommunityPost }> }) => {
+    if (viewableItems.length === 0) return;
+    lastVisiblePostIdRef.current = viewableItems[viewableItems.length - 1].item.id;
+  });
+
+  // Persiste a posição de leitura na desmontagem (saiu do tópico) ou
+  // troca de tópico — nunca durante a leitura, mesmo padrão
+  // fire-and-forget/silencioso do Web (saveTopicReadPosition já
+  // engole erro dentro de si, ver @/lib/data/community).
+  useEffect(() => {
+    return () => {
+      const postId = lastVisiblePostIdRef.current;
+      if (postId && topicId && professionalId) {
+        saveTopicReadPosition(topicId, professionalId, postId).catch(() => {});
+      }
+    };
+  }, [topicId, professionalId]);
 
   function toggleSave() {
     if (!topicId) return;
@@ -591,10 +630,17 @@ export default function ForumConversationScreen() {
             maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
             onScroll={handleScroll}
             scrollEventThrottle={100}
+            viewabilityConfig={viewabilityConfig}
+            onViewableItemsChanged={onViewableItemsChanged}
             onContentSizeChange={() => {
               if (!hasScrolledToEndRef.current) {
                 hasScrolledToEndRef.current = true;
-                flatListRef.current?.scrollToEnd({ animated: false });
+                const targetIndex = initialReadPostId ? posts.findIndex((post) => post.id === initialReadPostId) : -1;
+                if (targetIndex !== -1) {
+                  flatListRef.current?.scrollToIndex({ index: targetIndex, animated: false, viewPosition: 0.3 });
+                } else {
+                  flatListRef.current?.scrollToEnd({ animated: false });
+                }
               }
             }}
             onScrollToIndexFailed={(info) => {

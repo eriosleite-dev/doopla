@@ -1,7 +1,14 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 
-import { ensureCommunityProfileActivated, getCommunityAuthors, getCommunityTopic, listCommunityCategories, listSavedTopicIds } from '@/lib/community/data';
+import {
+  ensureCommunityProfileActivated,
+  getCommunityAuthors,
+  getCommunityTopic,
+  getTopicReadPosition,
+  listCommunityCategories,
+  listSavedTopicIds,
+} from '@/lib/community/data';
 
 import { getSessionProfile } from '../../session';
 import { ProComunidadeTopicChat } from './pro-comunidade-topic-view';
@@ -34,11 +41,12 @@ export default async function ComunidadeTopicPage(props: { params: Promise<{ top
   const topic = await getCommunityTopic(supabase, topicId);
   if (!topic) notFound();
 
-  const [categories, savedTopicIds, topicAuthorsById, { messages: postMessages, hasMore }] = await Promise.all([
+  const [categories, savedTopicIds, topicAuthorsById, { messages: postMessages, hasMore }, initialReadPostId] = await Promise.all([
     listCommunityCategories(supabase),
     listSavedTopicIds(supabase),
     getCommunityAuthors(supabase, [topic.author_profile_id]),
     loadCommunityPostsPage(supabase, topicId, { limit: COMMUNITY_POSTS_PAGE_SIZE }),
+    getTopicReadPosition(supabase, topicId),
   ]);
 
   const categoryLabel = categories.find((c) => c.id === topic.category_id)?.label ?? null;
@@ -63,6 +71,7 @@ export default async function ComunidadeTopicPage(props: { params: Promise<{ top
         initialHasMore={hasMore}
         currentProfileId={profile.id}
         topicRemoved={topicMessage.removed}
+        initialReadPostId={initialReadPostId}
       />
     </main>
   );

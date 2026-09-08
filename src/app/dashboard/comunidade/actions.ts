@@ -14,6 +14,7 @@ import {
   removeCommunityPost,
   removeCommunityTopic,
   saveTopic,
+  saveTopicReadPosition,
   searchCommunityTopics,
   unsaveTopic,
   type CommunityAuthorSnapshot,
@@ -272,5 +273,20 @@ export async function loadEarlierCommunityPostsAction(topicId: string, before: C
     return await loadCommunityPostsPage(supabase, topicId, { limit: COMMUNITY_POSTS_PAGE_SIZE, before });
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Não foi possível carregar mensagens anteriores.' };
+  }
+}
+
+// Item 12 (08/09/2026, migration 0077) — chamada no unmount da tela do
+// tópico (ver pro-comunidade-topic-view.tsx), fire-and-forget do
+// client. Falha aqui nunca bloqueia navegação nem aparece como erro
+// pro usuário — pior caso é a posição de leitura não avançar dessa vez,
+// nunca um dado incorreto persistido (RLS garante ownership de
+// qualquer forma).
+export async function saveTopicReadPositionAction(topicId: string, postId: string): Promise<void> {
+  const { supabase, user } = await requireArtista();
+  try {
+    await saveTopicReadPosition(supabase, topicId, user.id, postId);
+  } catch {
+    // Silencioso de propósito — ver comentário acima.
   }
 }

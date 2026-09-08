@@ -11,6 +11,7 @@ import type {
   CommunityTag,
   CommunityTopic,
   CommunityTopicAudience,
+  CommunityTopicRead,
   CommunityVisibilityStatus,
 } from '@/types/community';
 
@@ -368,6 +369,25 @@ export async function fetchCommunityNotifications(): Promise<CommunityNotificati
 
 export async function markCommunityNotificationRead(notificationId: string): Promise<void> {
   const { error } = await supabase.rpc('mark_community_notification_read', { p_notification_id: notificationId });
+  if (error) throw error;
+}
+
+// Item 12 (08/09/2026, migration 0077) — espelha getTopicReadPosition/
+// saveTopicReadPosition do painel web (src/lib/community/data.ts).
+// Sem RPC (mesmo padrão RLS direto de community_saved_topics): só
+// leitura/escrita da própria linha, sem regra de negócio.
+export async function fetchTopicReadPosition(topicId: string): Promise<string | null> {
+  const { data } = await supabase.from('community_topic_reads').select('last_read_post_id').eq('topic_id', topicId).maybeSingle();
+  return (data as Pick<CommunityTopicRead, 'last_read_post_id'> | null)?.last_read_post_id ?? null;
+}
+
+export async function saveTopicReadPosition(topicId: string, profileId: string, postId: string): Promise<void> {
+  const { error } = await supabase
+    .from('community_topic_reads')
+    .upsert(
+      { profile_id: profileId, topic_id: topicId, last_read_post_id: postId, updated_at: new Date().toISOString() },
+      { onConflict: 'profile_id,topic_id' }
+    );
   if (error) throw error;
 }
 

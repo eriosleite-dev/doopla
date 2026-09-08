@@ -13,6 +13,7 @@ import type {
   CommunityTag,
   CommunityTopic,
   CommunityTopicAudience,
+  CommunityTopicRead,
   CommunityVisibilityStatus,
 } from '@/lib/supabase/types';
 
@@ -425,6 +426,27 @@ export async function listCommunityNotifications(supabase: AnySupabaseClient): P
 
 export async function markCommunityNotificationRead(supabase: AnySupabaseClient, notificationId: string): Promise<void> {
   const { error } = await supabase.rpc('mark_community_notification_read', { p_notification_id: notificationId });
+  if (error) throw error;
+}
+
+// --- Posição de leitura (Item 12, migration 0077) -----------------------
+// Mesmo padrão de escrita direta (RLS, não RPC) de community_saved_topics
+// — sem regra de negócio, só "o dono lê/escreve a própria linha".
+
+export async function getTopicReadPosition(supabase: AnySupabaseClient, topicId: string): Promise<string | null> {
+  const { data } = await supabase.from('community_topic_reads').select('last_read_post_id').eq('topic_id', topicId).maybeSingle();
+  return (data as Pick<CommunityTopicRead, 'last_read_post_id'> | null)?.last_read_post_id ?? null;
+}
+
+// profileId vem explícito do chamador (mesmo padrão de saveTopic) —
+// nunca lido daqui, pra este módulo continuar sem depender de sessão.
+export async function saveTopicReadPosition(supabase: AnySupabaseClient, topicId: string, profileId: string, postId: string): Promise<void> {
+  const { error } = await supabase
+    .from('community_topic_reads')
+    .upsert(
+      { profile_id: profileId, topic_id: topicId, last_read_post_id: postId, updated_at: new Date().toISOString() },
+      { onConflict: 'profile_id,topic_id' }
+    );
   if (error) throw error;
 }
 
