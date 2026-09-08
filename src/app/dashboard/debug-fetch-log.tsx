@@ -32,7 +32,25 @@ type FetchLogEntry = {
   error?: string;
   bodyLength?: number;
   bodySnippet?: string;
+  modalExcerpt?: string | null;
+  childrenExcerpt?: string | null;
 };
+
+// Print real (08/09/2026) mostrou que os primeiros 260 caracteres do
+// corpo são só a lista de referências de módulo (OutletBoundary,
+// ViewportBoundary, Suspense...) — a definição real da árvore de rota
+// (o que populate `children` vs `modal`) fica MAIS ADIANTE no payload,
+// fora dessa janela. Em vez de aumentar cegamente o corte (o corpo tem
+// milhares de bytes), procura direto pelos marcadores decisivos e
+// mostra só o trecho ao redor deles — prova direta do conteúdo, não
+// mais um chute de quantos caracteres bastam.
+function excerptAround(text: string, marker: string, radius = 260): string | null {
+  const idx = text.indexOf(marker);
+  if (idx === -1) return null;
+  const start = Math.max(0, idx - 20);
+  const end = Math.min(text.length, idx + radius);
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`;
+}
 
 declare global {
   interface Window {
@@ -94,7 +112,16 @@ if (typeof window !== 'undefined' && !window.__dooplaFetchPatched) {
             .text()
             .then((text) => {
               capturedEntry.bodyLength = text.length;
-              capturedEntry.bodySnippet = text.slice(0, 260);
+              capturedEntry.bodySnippet = text.slice(0, 200);
+              // "modal":[ mostra o que populate o slot @modal (deveria
+              // ser real quando a resposta é pro clique em Comunidade).
+              // "children":["dashboard" é a definição RAIZ do segmento
+              // children (não uma ocorrência aninhada mais profunda —
+              // essa string específica só aparece nesse nível) — é o
+              // que decide se o servidor mandou `children` vazio ou se
+              // o cliente está descartando conteúdo real.
+              capturedEntry.modalExcerpt = excerptAround(text, '"modal":[');
+              capturedEntry.childrenExcerpt = excerptAround(text, '"children":["dashboard"');
             })
             .catch((bodyErr) => {
               capturedEntry.bodySnippet = `(erro lendo corpo: ${bodyErr instanceof Error ? bodyErr.message : String(bodyErr)})`;
@@ -117,15 +144,19 @@ function formatEntry(e: FetchLogEntry, loadT: number, now: number): string {
   const ageSec = ((now - e.t) / 1000).toFixed(1);
   const status = e.error ? `ERRO:${e.error}` : e.status !== undefined ? `${e.status}` : '(pendente)';
   const dur = e.durationMs !== undefined ? `${e.durationMs}ms` : '…';
-  const body =
-    e.headers.rsc === '1'
-      ? `    corpo(${e.bodyLength ?? '…'}b)=${e.bodySnippet !== undefined ? e.bodySnippet : '(lendo…)'}`
-      : null;
+  const bodyLines: string[] = [];
+  if (e.headers.rsc === '1') {
+    bodyLines.push(`    corpo(${e.bodyLength ?? '…'}b) início=${e.bodySnippet !== undefined ? e.bodySnippet : '(lendo…)'}`);
+    if (e.bodyLength !== undefined) {
+      bodyLines.push(`    "modal":[ → ${e.modalExcerpt ?? '(marcador não encontrado no corpo)'}`);
+      bodyLines.push(`    "children":["dashboard" → ${e.childrenExcerpt ?? '(marcador não encontrado no corpo)'}`);
+    }
+  }
   return (
     `[+${relSec}s, há ${ageSec}s] ${e.method} ${e.url}\n` +
     `    rsc=${e.headers.rsc || '-'} nextUrl=${e.headers.nextUrl || '-'} prefetch=${e.headers.routerPrefetch || '-'} status=${status} dur=${dur}\n` +
     `    tree=${e.headers.routerStateTree || '-'}` +
-    (body ? `\n${body}` : '')
+    (bodyLines.length ? `\n${bodyLines.join('\n')}` : '')
   );
 }
 
@@ -144,7 +175,7 @@ function formatLog(): { count: number; realCount: number; prefetchCount: number;
   const prefetchCount = log.filter((e) => e.headers.routerPrefetch === '1').length;
 
   const realLines = real
-    .slice(-6)
+    .slice(-4)
     .map((e) => formatEntry(e, loadT, now))
     .join('\n');
 
