@@ -9448,18 +9448,20 @@ achados de `eslint .` sem escopo são pré-existentes e não relacionados
 mobile nunca tocados nesta rodada, como `MascotBall.tsx`/`useAuth.tsx`,
 já achados/registrados como dívida em sessões anteriores).
 
-Migration 0079 é só schema novo (function/índice) — sem necessidade de
-aplicação manual documentada aqui além do de sempre: entregue ao
-usuário via `SendUserFile` quando a rodada terminar, aplicação/
-validação em produção real pendente de confirmação do usuário (este
-ambiente não tem acesso ao Supabase real).
+Migration 0079 entregue ao usuário via `SendUserFile` (migration +
+query de validação) — **aplicada no Supabase real e validada pelo
+usuário em 08/09/2026** (`get_community_trending_topics` existe,
+`get_community_for_you_topics` existe, `community_posts_created_at_idx`
+existe: `trending_existe=1`, `for_you_existe=1`, `indice_existe=1`).
+Ranking V1 considerado operacional em produção.
 
 Fora de escopo desta rodada, por instrução explícita: Nova Home
 pública, Professional Settings, Professional Dashboard fora desta
 integração, onboarding, WhatsApp Outreach, sistema geral de
 Notificações, Booker/Agência, pricing, account closure.
 
-Commits: (ver lista no relatório final da rodada).
+Commits: `8df5036` (migration 0079 + data layer Web/Mobile), `4265bbe`
+(Home Web), `1e7af71` (Home App), `33dd13e` (documentação).
 
 ## Como usar isso
 
