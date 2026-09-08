@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
 
+import { DebugFetchLog } from './debug-fetch-log';
 import { DebugMainProbe } from './debug-main-probe';
 import { NotificationBell } from './notification-bell';
 import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
@@ -169,6 +170,7 @@ export function ProfessionalShell({
           </footer>
 
           <DebugMainProbe />
+          <DebugFetchLog />
         </main>
       </div>
     </div>
