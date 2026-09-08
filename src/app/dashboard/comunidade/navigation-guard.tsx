@@ -43,6 +43,15 @@ export type ComunidadeScrollBehavior = {
 type ComunidadeGuardContextValue = {
   registerGuard: (fn: GuardFn | null) => void;
   registerScrollBehavior: (behavior: ComunidadeScrollBehavior | null) => void;
+  // Correção do header do tópico (08/09/2026) — sentido inverso dos dois
+  // campos acima: aqui é o ANCESTRAL (layout.tsx) que expõe uma
+  // capacidade pro descendente, não o contrário. attemptNav já contém
+  // TODA a lógica de fechamento (guarda de rascunho, diálogo de
+  // confirmação, router.back()/history.go(-depth)) — around isso nunca
+  // foi duplicado aqui, só exposto, pra que a rota do tópico possa
+  // desenhar o próprio botão ←/✕ dentro do seu header de 3 áreas em vez
+  // de herdar os botões `position: absolute` do layout compartilhado.
+  attemptNav: (kind: 'back' | 'close') => void;
 };
 
 const ComunidadeGuardContext = createContext<ComunidadeGuardContextValue | null>(null);
@@ -51,15 +60,19 @@ export function ComunidadeGuardProvider({
   children,
   guardFnRef,
   scrollBehaviorRef,
+  attemptNav,
 }: {
   children: React.ReactNode;
   guardFnRef: React.MutableRefObject<GuardFn | null>;
   scrollBehaviorRef: React.MutableRefObject<ComunidadeScrollBehavior | null>;
+  attemptNav: (kind: 'back' | 'close') => void;
 }) {
   // Refs nunca mudam de identidade — o value do context fica estável
   // entre renders do layout, então os hooks abaixo não re-registram a
   // cada render do slide-over, só quando o consumidor de fato
-  // monta/desmonta.
+  // monta/desmonta. attemptNav É memoizado pelo próprio layout.tsx
+  // (useCallback) antes de chegar aqui — se não fosse, entraria como
+  // dep abaixo e quebraria essa estabilidade a cada render.
   const value = useMemo<ComunidadeGuardContextValue>(
     () => ({
       registerGuard: (fn) => {
@@ -68,8 +81,9 @@ export function ComunidadeGuardProvider({
       registerScrollBehavior: (behavior) => {
         scrollBehaviorRef.current = behavior;
       },
+      attemptNav,
     }),
-    [guardFnRef, scrollBehaviorRef]
+    [guardFnRef, scrollBehaviorRef, attemptNav]
   );
   return <ComunidadeGuardContext.Provider value={value}>{children}</ComunidadeGuardContext.Provider>;
 }
@@ -119,4 +133,20 @@ export function useComunidadeScrollAnchor(behavior: ComunidadeScrollBehavior) {
     });
     return () => ctx.registerScrollBehavior(null);
   }, [ctx]);
+}
+
+// Correção do header do tópico (08/09/2026) — dá pro conteúdo (hoje só
+// o header de [topicId]) o par voltar/fechar já resolvido pelo layout,
+// sem duplicar a lógica de guarda/profundidade/diálogo de descarte.
+// `null` fora do slide-over (rota cheia standalone, sem Provider) — o
+// header do tópico usa isso pra decidir se desenha os botões ← e ✕: a
+// rota standalone nunca teve esses botões (não há pra onde "voltar"
+// nem "fechar" fora do slide-over) e continua sem eles.
+export function useComunidadeChromeActions(): { back: () => void; close: () => void } | null {
+  const ctx = useContext(ComunidadeGuardContext);
+  if (!ctx) return null;
+  return {
+    back: () => ctx.attemptNav('back'),
+    close: () => ctx.attemptNav('close'),
+  };
 }

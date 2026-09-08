@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { proGhostButtonClass, proPrimaryButtonClass } from '../../pro-format';
 import { ComunidadeGuardProvider, type ComunidadeScrollBehavior } from '../../comunidade/navigation-guard';
@@ -172,18 +172,30 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
     scrollPositionsRef.current.set(pathname, { top: el.scrollTop, pristine });
   }
 
-  function performNav(kind: 'back' | 'close') {
-    if (kind === 'back') router.back();
-    else window.history.go(-depthRef.current);
-  }
+  const performNav = useCallback(
+    (kind: 'back' | 'close') => {
+      if (kind === 'back') router.back();
+      else window.history.go(-depthRef.current);
+    },
+    [router]
+  );
 
-  function attemptNav(kind: 'back' | 'close') {
-    if (guardFnRef.current?.()) {
-      setPendingNav(kind);
-      return;
-    }
-    performNav(kind);
-  }
+  // useCallback aqui não é só estilo: attemptNav agora também viaja pro
+  // context (ComunidadeGuardProvider, ver navigation-guard.tsx) pra que
+  // a rota do tópico desenhe seus próprios botões ←/✕ — se fosse
+  // recriada a cada render, o `value` memoizado do Provider recriaria
+  // junto, quebrando a estabilidade que os outros consumidores do
+  // context (registerGuard/registerScrollBehavior) dependem.
+  const attemptNav = useCallback(
+    (kind: 'back' | 'close') => {
+      if (guardFnRef.current?.()) {
+        setPendingNav(kind);
+        return;
+      }
+      performNav(kind);
+    },
+    [performNav]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => setEntered(true), 0);
@@ -212,8 +224,25 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   return (
     <div className="pro-shell contents">
       <div className="fixed inset-0 z-[110]" role="presentation">
+        {/* Correção do fundo (08/09/2026) — bg-black/60 foi calibrado
+           pensando num host claro (--paper, ver ProfileModal). O
+           Professional Shell é escuro por decisão de produto
+           (--pro-bg: #0c0b0b, ver .pro-shell em globals.css): 60% de
+           preto adicional sobre um fundo já quase preto esmaga o
+           contraste até a página de origem ficar irreconhecível — lida
+           por quem reporta como "o fundo virou preto", mesmo com
+           `children` renderizando normalmente por baixo (roteamento
+           confirmado correto: reproduzido isoladamente o mesmo padrão
+           slot paralelo + rota interceptadora + layout aninhado com o
+           mesmo Next.js 16.3.0 instalado aqui, via Playwright, e o
+           slot `children` preserva o estado da rota de origem em soft
+           navigation em todos os casos testados — não há indício de
+           regressão de roteamento pra corrigir). A correção real é de
+           contraste: opacidade bem mais baixa, calibrada pro host
+           escuro, o suficiente pra ainda separar visualmente o painel
+           da Comunidade sem apagar a página por trás. */}
         <div
-          className={`absolute inset-0 bg-black/60 transition-opacity duration-200 ${entered ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 bg-black/25 transition-opacity duration-200 ${entered ? 'opacity-100' : 'opacity-0'}`}
           onClick={() => attemptNav('close')}
           aria-hidden="true"
         />
@@ -227,7 +256,19 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
             entered ? 'translate-x-0' : 'translate-x-full'
           } ${isTopicDetail ? 'w-[760px]' : 'w-[460px]'}`}
         >
-          {!isList && (
+          {/* Restruturação do header do tópico (08/09/2026) — ←/✕
+             flutuando em absolute sobre o conteúdo nunca compôs um
+             header de verdade com breadcrumb/título/favoritar (o
+             problema era de composição, não só de espaçamento — ver
+             navigation-guard.tsx). Pro tópico (isTopicDetail), esses
+             botões deixam de existir aqui: [topicId]/topic-header.tsx
+             desenha os próprios ←/✕ dentro do seu header de 3 áreas,
+             chamando attemptNav via useComunidadeChromeActions (mesmo
+             guard de rascunho, mesmo diálogo de descarte, mesmo
+             back()/history.go(-depth) — nada disso muda, só ONDE o
+             botão é desenhado no DOM). Lista/novo/salvos continuam
+             exatamente como antes. */}
+          {!isList && !isTopicDetail && (
             <button
               type="button"
               onClick={() => attemptNav('back')}
@@ -237,16 +278,18 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
               ←
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => attemptNav('close')}
-            aria-label="Fechar"
-            className="absolute top-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
-          >
-            ✕
-          </button>
+          {!isTopicDetail && (
+            <button
+              type="button"
+              onClick={() => attemptNav('close')}
+              aria-label="Fechar"
+              className="absolute top-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
+            >
+              ✕
+            </button>
+          )}
           <div className="p-6">
-            <ComunidadeGuardProvider guardFnRef={guardFnRef} scrollBehaviorRef={scrollBehaviorRef}>
+            <ComunidadeGuardProvider guardFnRef={guardFnRef} scrollBehaviorRef={scrollBehaviorRef} attemptNav={attemptNav}>
               {children}
             </ComunidadeGuardProvider>
           </div>
