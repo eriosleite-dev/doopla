@@ -113,3 +113,7 @@ export type CommunityTopicRead = {
   last_read_post_id: string | null;
   updated_at: string;
 };
+
+// Comunidade V2 — ranking V1 (migration 0079).
+export type CommunityTrendingTopic = CommunityTopic & { trending_score: number };
+export type CommunityForYouTopic = CommunityTopic & { for_you_score: number };

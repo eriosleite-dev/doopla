@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type {
   CommunityCategory,
   CommunityContentStatus,
+  CommunityForYouTopic,
   CommunityMention,
   CommunityNotification,
   CommunityNotificationType,
@@ -12,6 +13,7 @@ import type {
   CommunityTopic,
   CommunityTopicAudience,
   CommunityTopicRead,
+  CommunityTrendingTopic,
   CommunityVisibilityStatus,
 } from '@/types/community';
 
@@ -191,6 +193,22 @@ export async function searchCommunityTopics(params: SearchCommunityTopicsParams)
   });
   if (error) throw error;
   return (data ?? []) as CommunityTopic[];
+}
+
+// Comunidade V2 — ranking V1 (migration 0079). Espelha
+// listCommunityTrendingTopics/listCommunityForYouTopics do painel web
+// — mesma RPC, mesmos parâmetros (janela/decay/threshold/pesos
+// documentados só na function, nunca duplicados aqui).
+export async function fetchCommunityTrendingTopics(limit = 6): Promise<CommunityTopic[]> {
+  const { data, error } = await supabase.rpc('get_community_trending_topics', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as CommunityTrendingTopic[];
+}
+
+export async function fetchCommunityForYouTopics(limit = 6): Promise<CommunityTopic[]> {
+  const { data, error } = await supabase.rpc('get_community_for_you_topics', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as CommunityForYouTopic[];
 }
 
 // Espelha listCommunityTopicsByIds do painel web — usado por "Salvos".

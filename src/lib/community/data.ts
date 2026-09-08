@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   CommunityCategory,
   CommunityContentStatus,
+  CommunityForYouTopic,
   CommunityMention,
   CommunityNotification,
   CommunityNotificationType,
@@ -14,6 +15,7 @@ import type {
   CommunityTopic,
   CommunityTopicAudience,
   CommunityTopicRead,
+  CommunityTrendingTopic,
   CommunityVisibilityStatus,
 } from '@/lib/supabase/types';
 
@@ -223,6 +225,29 @@ export async function searchCommunityTopics(supabase: AnySupabaseClient, params:
   });
   if (error) throw error;
   return (data ?? []) as CommunityTopic[];
+}
+
+// Comunidade V2 — ranking V1 (migration 0079). "Em alta agora" =
+// momentum coletivo recente, determinístico (janela/decay/threshold
+// documentados na function em si — este boundary nunca duplica esses
+// parâmetros). Sem personalização nenhuma — mesmo resultado pra
+// qualquer profissional autenticado.
+export async function listCommunityTrendingTopics(supabase: AnySupabaseClient, limit = 6): Promise<CommunityTopic[]> {
+  const { data, error } = await supabase.rpc('get_community_trending_topics', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as CommunityTrendingTopic[];
+}
+
+// "Para você" = relevância pessoal (categoria/tag de afinidade a
+// partir de salvos+participação real do profissional — auth.uid()
+// interno na function, nunca um parâmetro de profile_id vindo daqui).
+// Cold start (sem nenhum salvo/participação) devolve array vazio de
+// propósito — o caller decide omitir a seção, nunca fingir
+// personalização.
+export async function listCommunityForYouTopics(supabase: AnySupabaseClient, limit = 6): Promise<CommunityTopic[]> {
+  const { data, error } = await supabase.rpc('get_community_for_you_topics', { p_limit: limit });
+  if (error) throw error;
+  return (data ?? []) as CommunityForYouTopic[];
 }
 
 // Usado pra "Salvos" (Home preview + página dedicada) — busca tópicos

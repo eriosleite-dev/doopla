@@ -1032,6 +1032,11 @@ export type CommunityTopic = {
   updated_at: string;
 };
 
+// Comunidade V2 — ranking (migration 0079). Mesma forma de CommunityTopic
+// + o score calculado pela function (nunca recomputado no client).
+export type CommunityTrendingTopic = CommunityTopic & { trending_score: number };
+export type CommunityForYouTopic = CommunityTopic & { for_you_score: number };
+
 export type CommunityTopicTag = {
   topic_id: string;
   tag_id: string;
@@ -1760,6 +1765,14 @@ export type Database = {
       close_own_account: {
         Args: Record<string, never>;
         Returns: undefined;
+      };
+      get_community_trending_topics: {
+        Args: { p_limit?: number };
+        Returns: CommunityTrendingTopic[];
+      };
+      get_community_for_you_topics: {
+        Args: { p_limit?: number };
+        Returns: CommunityForYouTopic[];
       };
     };
   };
