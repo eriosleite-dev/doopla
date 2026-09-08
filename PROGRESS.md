@@ -9279,6 +9279,77 @@ Commits: `6db70b9` (migration 0078), `9064a01` (Settings V2 Web),
 `7f675ef` (account closure App + remoção de `/precos`), `14e710e`
 (documentação).
 
+## 81. Fechamento técnico e documental do bloco 6A+6B — WhatsApp Outreach — `[DELIVERED/CLOSED]`
+
+Rodada de fechamento, não de implementação: reconciliação de trackers
+#71/#72 contra o código e a documentação atuais (§59/§60), sem reabrir
+arquitetura, sem alterar comportamento já entregue.
+
+**Achado**: a implementação, os testes originais e a documentação de
+6A (primeiro canal real WhatsApp + sender de `outbound_intents`) e 6B
+(Fase 2 — outreach frio "profissional manda contato -> Doopla inicia")
+já estavam completos e commitados em sessões anteriores (`8c88dca`,
+`f4eb371`, `47a5eb1`, `0384263`, `25b98b1`, todos já em `origin` antes
+desta rodada). Trackers #71/#72 estavam desatualizados (`in_progress`/
+`pending`) em relação ao estado real — mesmo padrão de tracker
+desatualizado já visto na Comunidade.
+
+**Reverificação feita nesta rodada** (sem mudança de comportamento):
+
+- Releitura de `pipeline.ts` (ramo `shouldSendColdOutreachTemplate`/
+  `runColdOutreachTemplateBranch`) — intacto, ainda posicionado antes
+  de qualquer etapa que chama o model, sem interação com o bloco de
+  Beta Instrumentation (`product.demand_received`) adicionado depois
+  (condições de `authorType` mutuamente exclusivas).
+- Confirmado que as migrations 0056/0057/0058 continuam como arquivos
+  e que `send-outbound-intents/route.ts` ainda usa `resolveSendAction`.
+- Busca por TODOs específicos de 6A/6B/outreach/outbound: nenhum real
+  encontrado.
+- **Testes determinísticos**: script `tsx` efêmero (não commitado, mesma
+  convenção do resto do projeto) reexercitando as 44 asserções
+  documentadas em §59/§60 contra a implementação atual —
+  `normalizeWhatsappPhone`/`toWhatsappApiRecipient` (E.164, DDI BR
+  implícito, formatos inválidos), `verifyWhatsappWebhookSignature`
+  (válida/corpo adulterado/secret errado/header ausente/hex de tamanho
+  diferente) e `verifyWhatsappWebhookChallenge`, `classifyMetaSendError`
+  (código transient/permanent conhecido, código desconhecido e
+  `null`/`undefined` — todos fail-closed pra `permanent`) e
+  `isKnownPermanentMetaErrorCode`, `renderColdOutreachTemplateContent`/
+  `buildColdOutreachTemplateComponents` (determinístico, mesmo conteúdo
+  humano-legível e payload da Meta), `isCswOpen` (fronteira exata das
+  24h — 23h59 aberta, exatamente 24h e além fechada), `shouldSendColdOutreachTemplate`
+  (5 condições de elegibilidade, uma por uma) e `resolveSendAction` (3
+  ramos: `send_template` sempre quando `sendAs='template'`,
+  `send_free_text` com CSW aberta, `fail_closed_csw_expired` com CSW
+  fechada — nunca converte `free_text` em template sozinho). **44/44
+  passaram** — zero desvio do comportamento documentado.
+- **Regressão**: `npx tsc --noEmit` limpo; `eslint` limpo em
+  `src/lib/channels/whatsapp/`, `src/lib/runtime/pipeline.ts`,
+  `src/lib/runtime/cold-outreach.ts`, `src/app/api/whatsapp/`,
+  `src/app/api/runtime/send-outbound-intents/`,
+  `src/app/dashboard/whatsapp/`; `next build` limpo, com
+  `/api/whatsapp/webhook`, `/api/runtime/send-outbound-intents` e
+  `/dashboard/whatsapp` presentes na listagem de rotas. Nenhuma
+  superfície compartilhada com Mobile neste bloco (canal WhatsApp
+  Outreach é só Web/cron) — sem necessidade de checks de Mobile aqui.
+- **Nenhum gap objetivo encontrado** — nenhuma correção de código foi
+  necessária nesta rodada.
+
+**Banco/migrations**: nenhuma migration nova criada. 0056/0057/0058 já
+documentadas em §59/§60 como aplicadas e validadas no Supabase real em
+sessão anterior; `OUTBOUND_SENDER_CRON_SECRET` já confirmado registrado
+em Vercel Production (evidência de `curl` em §60). Nenhuma ação minha
+no Supabase pendente para este bloco.
+
+**Nenhuma decisão de produto nova** — rodada estritamente técnica e
+documental, sem entrada nova em `DECISOES.md`.
+
+Commits preservados como evidência de 6A+6B: `8c88dca`, `f4eb371`,
+`47a5eb1`, `0384263`, `25b98b1` (implementação/testes/config, sessões
+anteriores). Trackers #71 e #72 fechados nesta rodada.
+
+Bloco 6A+6B WhatsApp Outreach considerado `DELIVERED/CLOSED`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
