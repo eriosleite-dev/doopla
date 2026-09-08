@@ -46,18 +46,32 @@
     <div class="hero-visual">
       <span class="callout"><span class="dot"></span>Booking de um jeito novo.</span>
       <div class="phone">
+        <div class="phone-notch"></div>
         <div class="phone-screen">
           <div class="phone-status"><span>9:41</span><span>●●●</span></div>
           <div class="phone-chatbar">
+            <span class="phone-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
             <div class="phone-avatar"></div>
             <div><div class="who">Cliente</div><div class="status">online</div></div>
+            <span class="phone-chat-icons">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            </span>
           </div>
           <div class="phone-messages">
             <div class="bubble in">Oi! Vocês têm disponibilidade para o dia 12/10? Qual o valor?<span class="time">11:21</span></div>
-            <div class="bubble out">Oi! Vou verificar a disponibilidade do profissional, considerando a agenda e as condições dele. Já te retorno com as opções, tudo bem?<span class="time">11:22</span></div>
+            <div class="bubble-group">
+              <span class="bubble-sender"><span class="bubble-avatar"><span class="mascot-eye" style="width:8px;height:8px;"><span class="mascot-pupil" style="width:3px;height:3px;"></span></span><span class="mascot-eye" style="width:8px;height:8px;"><span class="mascot-pupil" style="width:3px;height:3px;"></span></span></span>doopla</span>
+              <div class="bubble out">Oi! Vou verificar a disponibilidade do profissional, considerando a agenda e as condições dele. Já te retorno com as opções, tudo bem?<span class="time">11:22</span></div>
+            </div>
             <div class="bubble in">Perfeito, obrigado!<span class="time">14:23</span></div>
           </div>
-          <div class="phone-input"><div class="field"></div><div class="phone-mic"></div></div>
+          <div class="phone-input">
+            <span class="phone-input-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg></span>
+            <div class="field">Mensagem...</div>
+            <span class="phone-input-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.19 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.49"/></svg></span>
+            <div class="phone-mic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></div>
+          </div>
         </div>
       </div>
       <div class="mascot peek" style="width:84px;height:84px;" aria-hidden="true">
@@ -149,10 +163,22 @@
       <span class="mono">Como funciona</span>
       <h2>A doopla representa você.</h2>
       <div class="flow">
-        <div class="flow-step"><span class="n">01</span><p><strong>Cadastre seu perfil.</strong><br>Conte pra doopla sobre você, seu trabalho e suas regras.</p></div>
-        <div class="flow-step"><span class="n">02</span><p><strong>Receba as conversas.</strong><br>O cliente chama e a doopla atende por você.</p></div>
-        <div class="flow-step"><span class="n">03</span><p><strong>Acompanhe e decida.</strong><br>Veja tudo no seu painel e aprove apenas o que precisa.</p></div>
-        <div class="flow-step"><span class="n">04</span><p><strong>Trabalho feito.</strong><br>Combinou, agendou, confirmou. Você segue com o seu trabalho.</p></div>
+        <div class="flow-step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>
+          <span class="n">01</span><p><strong>Cadastre seu perfil.</strong><br>Conte pra doopla sobre você, seu trabalho e suas regras.</p>
+        </div>
+        <div class="flow-step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>
+          <span class="n">02</span><p><strong>Receba as conversas.</strong><br>O cliente chama e a doopla atende por você.</p>
+        </div>
+        <div class="flow-step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span>
+          <span class="n">03</span><p><strong>Acompanhe e decida.</strong><br>Veja tudo no seu painel e aprove apenas o que precisa.</p>
+        </div>
+        <div class="flow-step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <span class="n">04</span><p><strong>Trabalho feito.</strong><br>Combinou, agendou, confirmou. Você segue com o seu trabalho.</p>
+        </div>
       </div>
       <p class="flow-note">Você acompanha tudo e aprova as decisões comerciais importantes.</p>
       <div class="human-layer">
@@ -249,18 +275,22 @@
 <!-- 6. CTA FINAL -->
 <section class="final-cta-wrap">
   <div class="final-cta">
-    <div class="mascot" style="width:64px;height:64px;" aria-hidden="true">
-      <div class="mascot-sparks"><span></span><span></span><span></span></div>
-      <div class="mascot-eye" style="width:15px;height:15px;"><div class="mascot-pupil" style="width:6px;height:6px;"></div></div>
-      <div class="mascot-eye" style="width:15px;height:15px;"><div class="mascot-pupil" style="width:6px;height:6px;"></div></div>
+    <div class="final-cta-copy">
+      <div class="mascot" style="width:64px;height:64px;" aria-hidden="true">
+        <div class="mascot-sparks"><span></span><span></span><span></span></div>
+        <div class="mascot-eye" style="width:15px;height:15px;"><div class="mascot-pupil" style="width:6px;height:6px;"></div></div>
+        <div class="mascot-eye" style="width:15px;height:15px;"><div class="mascot-pupil" style="width:6px;height:6px;"></div></div>
+      </div>
+      <span class="mono">Pronto para ter sua Doopla?</span>
+      <h2>Comece agora. É grátis.</h2>
+      <p class="lead">Crie sua conta, teste por 7 dias e sinta a diferença.</p>
     </div>
-    <span class="mono">Pronto para ter sua Doopla?</span>
-    <h2>Comece agora. É grátis.</h2>
-    <p class="lead" style="margin:0 auto;">Crie sua conta, teste por 7 dias e sinta a diferença.</p>
-    <a href="/cadastro" class="btn btn-primary" style="margin-top:24px;">Criar conta grátis
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-    </a>
-    <span class="cta-caption">Sem cartão. Sem compromisso.</span>
+    <div class="final-cta-action">
+      <a href="/cadastro" class="btn btn-primary">Criar conta grátis
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <span class="cta-caption">Sem cartão. Sem compromisso.</span>
+    </div>
   </div>
 </section>
 

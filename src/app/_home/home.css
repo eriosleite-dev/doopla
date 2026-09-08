@@ -59,6 +59,16 @@
     box-shadow:0 0 60px 10px var(--red-glow), inset -8px -10px 24px rgba(0,0,0,.35);
     flex:none;
   }
+  /* patas/braços — corpo apoiado numa superfície, igual ao mockup (nunca
+     tocam nos olhos, que ficam centralizados acima) */
+  #home-marketing .mascot::before,
+  #home-marketing .mascot::after{
+    content:''; position:absolute; bottom:-8%; width:32%; height:24%; border-radius:50% 50% 45% 45%;
+    background:radial-gradient(circle at 35% 25%, #ff4a38, var(--red) 60%, #a81a10 100%);
+    box-shadow:inset -3px -5px 8px rgba(0,0,0,.35);
+  }
+  #home-marketing .mascot::before{ left:0%; }
+  #home-marketing .mascot::after{ right:0%; }
   #home-marketing .mascot-eye{ border-radius:50%; background:var(--black); display:flex; align-items:center; justify-content:center; }
   #home-marketing .mascot-pupil{ border-radius:50%; background:var(--off); will-change:transform; }
   #home-marketing .mascot-sparks{ position:absolute; top:-14%; left:50%; transform:translateX(-50%); display:flex; gap:5px; }
@@ -76,7 +86,7 @@
   #home-marketing .hero{ padding:150px 44px 90px; }
   #home-marketing .hero-grid{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center; }
   #home-marketing .hero-copy .eyebrow{ display:block; color:var(--red); font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; margin-bottom:18px; }
-  #home-marketing .hero-copy h1{ font-family:'Anton',sans-serif; font-weight:400; color:var(--off); font-size:clamp(2.1rem,4.6vw,3.4rem); line-height:1.08; text-transform:uppercase; margin-bottom:20px; }
+  #home-marketing .hero-copy h1{ font-family:'Anton',sans-serif; font-weight:400; color:var(--off); font-size:clamp(2.1rem,4.6vw,3.4rem); line-height:1.08; margin-bottom:20px; }
   #home-marketing .hero-copy h1 .accent{ color:var(--red); }
   #home-marketing .hero-copy p.lead{ font-size:1.05rem; line-height:1.6; color:var(--tx-70); max-width:480px; margin-bottom:28px; }
   #home-marketing .hero-badges{ display:flex; flex-wrap:wrap; gap:22px; margin-top:32px; }
@@ -87,23 +97,44 @@
      idêntico ao mockup aprovado) */
   #home-marketing .hero-visual{ position:relative; display:flex; justify-content:center; }
   #home-marketing .phone{
-    width:min(100%,300px); border-radius:34px; background:var(--panel-solid);
-    border:1px solid var(--line); padding:10px; box-shadow:0 30px 70px rgba(0,0,0,.55);
+    position:relative; width:min(100%,300px); border-radius:38px; background:#1a1a1a;
+    border:1px solid rgba(255,255,255,.12); padding:12px 10px; box-shadow:0 30px 70px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.4);
   }
-  #home-marketing .phone-screen{ background:#0e1310; border-radius:24px; overflow:hidden; }
-  #home-marketing .phone-status{ display:flex; justify-content:space-between; padding:8px 16px 4px; font-size:.66rem; color:var(--tx-50); font-family:'IBM Plex Mono',monospace; }
+  #home-marketing .phone-notch{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%); width:70px; height:18px;
+    border-radius:0 0 12px 12px; background:#1a1a1a; z-index:2;
+  }
+  #home-marketing .phone-notch::before{
+    content:''; position:absolute; top:6px; left:50%; transform:translateX(-50%); width:8px; height:8px;
+    border-radius:50%; background:#050505;
+  }
+  #home-marketing .phone-screen{ background:#0e1310; border-radius:28px; overflow:hidden; }
+  #home-marketing .phone-status{ display:flex; justify-content:space-between; padding:10px 16px 4px; font-size:.66rem; color:var(--tx-50); font-family:'IBM Plex Mono',monospace; }
   #home-marketing .phone-chatbar{ display:flex; align-items:center; gap:10px; padding:8px 14px 12px; border-bottom:1px solid rgba(255,255,255,.06); }
+  #home-marketing .phone-back{ display:flex; color:var(--tx-50); flex:none; }
+  #home-marketing .phone-back svg{ width:16px; height:16px; }
   #home-marketing .phone-avatar{ width:30px; height:30px; border-radius:50%; background:var(--line); flex:none; }
   #home-marketing .phone-chatbar .who{ font-size:.78rem; font-weight:600; color:var(--off); }
   #home-marketing .phone-chatbar .status{ font-size:.62rem; color:var(--tx-50); }
+  #home-marketing .phone-chat-icons{ display:flex; align-items:center; gap:12px; margin-left:auto; color:var(--tx-50); flex:none; }
+  #home-marketing .phone-chat-icons svg{ width:15px; height:15px; }
   #home-marketing .phone-messages{ display:flex; flex-direction:column; gap:10px; padding:16px 14px; min-height:220px; }
   #home-marketing .bubble{ max-width:82%; padding:9px 12px; border-radius:14px; font-size:.72rem; line-height:1.42; }
   #home-marketing .bubble.in{ align-self:flex-start; background:#1c211d; color:var(--tx-70); border-bottom-left-radius:4px; }
   #home-marketing .bubble.out{ align-self:flex-end; background:var(--red); color:var(--off); border-bottom-right-radius:4px; }
   #home-marketing .bubble .time{ display:block; margin-top:4px; font-size:.58rem; opacity:.6; text-align:right; }
+  #home-marketing .bubble-group{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  #home-marketing .bubble-sender{ display:flex; align-items:center; gap:5px; font-size:.62rem; font-weight:600; color:var(--tx-50); padding-right:2px; }
+  #home-marketing .bubble-avatar{
+    display:flex; align-items:center; justify-content:center; gap:2px; width:16px; height:16px; border-radius:50%; flex:none;
+    background:radial-gradient(circle at 38% 32%, #ff4a38, var(--red) 60%, #a81a10 100%);
+  }
   #home-marketing .phone-input{ display:flex; align-items:center; gap:8px; padding:10px 14px; border-top:1px solid rgba(255,255,255,.06); }
-  #home-marketing .phone-input .field{ flex:1; height:26px; border-radius:13px; background:#1c211d; }
-  #home-marketing .phone-mic{ width:26px; height:26px; border-radius:50%; background:var(--red); flex:none; }
+  #home-marketing .phone-input-icon{ display:flex; color:var(--tx-50); flex:none; }
+  #home-marketing .phone-input-icon svg{ width:16px; height:16px; }
+  #home-marketing .phone-input .field{ flex:1; height:26px; border-radius:13px; background:#1c211d; display:flex; align-items:center; padding:0 10px; font-size:.66rem; color:var(--tx-30); }
+  #home-marketing .phone-mic{ display:flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%; background:var(--red); color:var(--off); flex:none; }
+  #home-marketing .phone-mic svg{ width:13px; height:13px; }
 
   #home-marketing .hero-visual .callout{
     position:absolute; top:-10px; right:-6px; display:flex; align-items:center; gap:8px;
@@ -124,7 +155,7 @@
   #home-marketing .narrow{ max-width:760px; margin:0 auto; }
   #home-marketing .wide{ max-width:1080px; margin:0 auto; }
   #home-marketing section .mono{ color:var(--red); display:block; margin-bottom:14px; }
-  #home-marketing section h2{ font-family:'Anton',sans-serif; font-weight:400; color:var(--off); font-size:clamp(1.7rem,3.6vw,2.8rem); line-height:1.14; margin-bottom:20px; text-transform:uppercase; }
+  #home-marketing section h2{ font-family:'Anton',sans-serif; font-weight:400; color:var(--off); font-size:clamp(1.7rem,3.6vw,2.8rem); line-height:1.14; margin-bottom:20px; }
   #home-marketing section p.lead{ font-size:1.02rem; color:var(--tx-70); line-height:1.65; max-width:620px; }
   #home-marketing .section-side-label{
     font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
@@ -160,6 +191,11 @@
   /* como funciona */
   #home-marketing .comofunciona .wide{ max-width:1080px; }
   #home-marketing .flow{ display:grid; grid-template-columns:repeat(4,1fr); gap:24px; margin-top:44px; }
+  #home-marketing .flow-step .step-icon{
+    display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%;
+    border:1px solid var(--red); color:var(--red); margin-bottom:12px;
+  }
+  #home-marketing .flow-step .step-icon svg{ width:16px; height:16px; }
   #home-marketing .flow-step .n{ font-family:'Anton',sans-serif; font-size:1.7rem; color:var(--red); display:block; margin-bottom:10px; }
   #home-marketing .flow-step p{ font-size:.86rem; color:var(--tx-70); line-height:1.5; }
   #home-marketing .flow-note{ margin-top:32px; font-size:.92rem; color:var(--tx-50); line-height:1.6; max-width:560px; }
@@ -198,16 +234,19 @@
   #home-marketing .btn-primary{ background:var(--red); color:var(--off); box-shadow:0 0 30px var(--red-glow); }
   #home-marketing .btn-invert{ background:var(--off); color:var(--black); }
 
-  /* cta final */
+  /* cta final — composição horizontal (texto+mascote à esquerda, ação à
+     direita), igual ao mockup */
   #home-marketing .final-cta{
-    max-width:720px; margin:0 auto; text-align:center; padding:64px 40px; border:1px solid var(--line);
+    max-width:1040px; margin:0 auto; padding:56px 56px; border:1px solid var(--line);
     border-radius:28px; background:var(--panel); backdrop-filter:blur(14px);
+    display:flex; align-items:center; justify-content:space-between; gap:40px; flex-wrap:wrap;
   }
-  #home-marketing .final-cta .mascot{ margin:0 auto 24px; }
-  #home-marketing .final-cta h2{ margin:0 auto 10px; }
-  #home-marketing .final-cta .cta-sub{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--off); margin-bottom:14px; }
-  #home-marketing .final-cta p.lead{ margin:0 auto 28px; }
-  #home-marketing .final-cta .cta-caption{ display:block; margin-top:14px; font-size:.78rem; color:var(--tx-30); }
+  #home-marketing .final-cta-copy{ flex:1 1 380px; min-width:260px; }
+  #home-marketing .final-cta .mascot{ margin-bottom:20px; }
+  #home-marketing .final-cta h2{ margin-bottom:8px; }
+  #home-marketing .final-cta p.lead{ margin:0; }
+  #home-marketing .final-cta-action{ display:flex; flex-direction:column; align-items:flex-start; gap:12px; flex:none; }
+  #home-marketing .final-cta .cta-caption{ font-size:.78rem; color:var(--tx-30); }
 
   /* footer */
   #home-marketing footer{ padding:44px; border-top:1px solid var(--line); }
@@ -241,6 +280,9 @@
     #home-marketing .flow{ grid-template-columns:1fr 1fr; gap:28px 20px; }
     #home-marketing .foot-top{ flex-direction:column; }
     #home-marketing .foot-bottom{ flex-direction:column; align-items:flex-start; }
+    #home-marketing .final-cta{ padding:40px 28px; }
+    #home-marketing .final-cta-action{ width:100%; }
+    #home-marketing .final-cta-action .btn{ width:100%; justify-content:center; }
   }
   @media (max-width:420px){
     #home-marketing .flow{ grid-template-columns:1fr; }
