@@ -9156,6 +9156,127 @@ necessário.
 STATUS do Bloco 4: `[AUDIT DELIVERED]`. Implementação (se/quando
 decidida) é trabalho de um bloco futuro separado, não desta auditoria.
 
+## 80. Doopla Professional Settings V2 + gaps reais do Professional Dashboard (migration 0078) — `[DELIVERED]`
+
+Substitui a execução separada dos antigos Blocos #1 (Settings V2), #2
+(Dashboard) e #5 (Dados de recebimento — já `DELIVERED + ABSORBED` na
+reconciliação do §79). Baseline: implementação existente classificada
+como `PARTIAL, quase DELIVERED pra artista` — preservada, nunca
+redesenhada do zero. Escopo continua só artista (Booker/Agência fora
+desta rodada, por decisão já registrada).
+
+**Settings V2 (Web)** — `pro-configuracoes-view.tsx` deixa de ser uma
+página flat de cards sequenciais e vira uma lista navegável agrupada
+(Assinatura e cobrança / Sua conta / Doopla / Privacidade e suporte),
+cada linha uma rota própria sob `/dashboard/perfil/*`
+(`assinatura`, `conta`, `seguranca`, `preferencias`, `notificacoes`,
+`canais`, `recebimento`, `privacidade`, `privacidade/excluir`,
+`suporte`), sempre com resumo curto só quando há dado real (nunca
+placeholder). `settings-ui.tsx` (novo) fornece o cabeçalho/linha/grupo
+compartilhados — nenhuma subpágina reimplementa a navegação.
+
+- **Plano e assinatura**: estados reais auditados (trial/ativo/
+  cancelado); troca de plano só durante trial, via `select_artist_plan`
+  já existente (nova Server Action `updateArtistPlanAction`, mesma
+  RPC); "Pagamento" mostra estado honesto — sem processador real, nunca
+  UI de cartão/histórico inventada.
+- **Dados de recebimento**: reposicionado pra rota própria, mesmo
+  `PaymentDetailsFields`/`set_payment_details` de sempre — zero segunda
+  implementação, `is_operationally_ready()` intocado.
+- **Informações da conta**: nome/telefone editáveis (nova
+  `updateAccountInfoAction`); alterar e-mail via
+  `supabase.auth.updateUser({ email })` (fluxo de confirmação real do
+  GoTrue, nenhum e-mail "fantasma" fora de `auth.users`).
+- **Segurança e acesso**: trocar senha (reautenticação com a senha
+  atual antes de aceitar a nova) e "sair dos outros dispositivos"
+  (`supabase.auth.signOut({ scope: 'others' })`, API real do GoTrue) —
+  auditado antes de codar: 2FA e lista de sessões/dispositivos não
+  existem, nenhum toggle falso criado pra preencher a tela.
+- **Preferências da Doopla**: `attention_channel` (etapa 4/6 do
+  onboarding) deixa de ser write-once — nova `updateAttentionChannelAction`.
+  Link pra "Perfil profissional" (`/dashboard/perfil/editar`) como
+  superfície de contexto comercial/profissional, nunca duplicado dentro
+  de Configurações.
+- **"Emite nota fiscal?" deixa de ser write-once** (decisão de produto
+  fechada na reconciliação do §79) — campo novo em `ArtistProfileForm.tsx`
+  (`issues_invoice`, mesma coluna da migration 0037), nunca em Conta.
+- **Notificações/Canais e conexões**: estado honesto do que existe hoje
+  (sino V1 = só Comunidade; WhatsApp Identity reposicionado de dentro
+  de Configurações pra cá) — nenhuma seção vazia forçada, nenhuma
+  notificação de Bookings/Decisões inventada.
+- **Ajuda e suporte**: `SUPPORT_EMAIL` centralizado em novo
+  `src/lib/support.ts` (elimina duplicação em `contato/ContactForm.tsx`,
+  `contato/page.tsx`); "Falar com minha Doopla" (IA) explicitamente
+  distinguido de "Falar com o suporte" (produto/conta).
+- **Privacidade e dados + Excluir minha conta**: account closure flow
+  completo — ver detalhe abaixo.
+
+**Account closure (migration `0078_account_closure.sql`)** — decisão de
+produto já fechada, implementada como estado terminal
+(`profiles.status`), nunca hard delete. `close_own_account()`
+(SECURITY DEFINER) encerra toda representação ativa nos dois sentidos
+reaproveitando `terminate_representation` (migration 0033, zero lógica
+duplicada), desativa `artist_profiles.public_enabled` e
+`community_profiles.available_for_referrals`, marca
+`status='closed'`. **Nunca `DELETE` em `auth.users`**: `profiles.id`
+referencia `auth.users(id) ON DELETE CASCADE`, e `bookings` referencia
+`profiles(id) ON DELETE CASCADE` — apagar a linha de auth cascatearia
+até apagar bookings/contratos da OUTRA parte, o oposto do que o fluxo
+promete preservar. `community_profiles_public` (view) passa a devolver
+"Usuário removido" e todo campo de apresentação como `null` quando
+`profiles.status='closed'`, independente de `visibility_status`
+(moderação e encerramento de conta nunca se misturam) — tópicos/posts
+continuam existindo intactos, sem cascade-delete de discussão coletiva.
+
+Boundary do server (`account-closure-actions.ts`, Web;
+`/api/mobile/account/close`, App — mesmo padrão de
+`whatsapp-identity/request`, Admin API é segredo de servidor): reauth
+por senha (`signInWithPassword` contra a própria sessão) → RPC →
+`auth.admin.updateUserById` trocando o e-mail por um valor sintético
+(`closed-<uuid>@closed.doopla.internal`, libera o e-mail original pra
+um cadastro novo) + `ban_duration` (bloqueia login/refresh futuros) →
+`signOut()`. Defesa em profundidade em `session.ts`
+(`getSessionProfile`): qualquer access token ainda válido é barrado no
+próximo carregamento do painel (`profiles.status==='closed'` →
+signOut + redirect pra `/conta-encerrada`, página neutra sem sessão).
+
+**Web**: 10 rotas novas sob `/dashboard/perfil/*` + `/conta-encerrada`.
+**App**: "Excluir minha conta" adicionado a `mais/configuracoes.tsx`
+(mesma copy/regras do Web — reauth, checkbox, sem dark pattern),
+consumindo a rota `/api/mobile/account/close` nova.
+
+**Gap residual do Dashboard fechado**: `/precos` (StubPage órfã)
+removida — auditada antes (`grep` em todo o repo, incluindo
+`home.html`): zero referência real em qualquer superfície do produto,
+só um comentário histórico em `pro-upgrade-modal.tsx` confirmando que
+já era destino de upgrade descontinuado desde 07/09. Decisão técnica
+normal (rota sem função real, eliminável com segurança), não altera
+nenhuma oferta comercial.
+
+**Gaps residuais reconfirmados, não fechados nesta rodada** (dependência
+externa, sem ação de código possível): asset de logo real (auditado em
+04/09 e 06/09, continua não existindo em nenhuma plataforma — não
+redesenhado, não inventado); `NEXT_PUBLIC_WHATSAPP_NUMBER` (número
+oficial ainda em aprovação no WhatsApp/Meta).
+
+**Fora de escopo desta rodada, por instrução explícita**: Nova Home
+pública (#6), redesign visual da Comunidade (#3), "Em alta/Para você",
+mudanças de onboarding/progressive profiling além do mínimo (`issues_invoice`
+editável, `attention_channel` editável — ambos reaproveitando colunas
+já existentes, sem schema novo), sistema amplo de Notificações V2,
+Booker/Agência UI completa, 6A+6B WhatsApp Outreach.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos em cada checkpoint. Este ambiente não tem
+acesso a um Postgres real — migration 0078 **ainda não foi aplicada em
+nenhum banco** (nem local nem produção). SQL exato + instrução de
+aplicação e validação entregues separadamente ao usuário, mesma regra
+permanente de migrations pendentes. Nenhum item deste bloco deve ser
+considerado operacional em produção até a confirmação da aplicação.
+
+Commits: `6db70b9` (migration 0078), `9064a01` (Settings V2 Web),
+`7f675ef` (account closure App + remoção de `/precos`).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
