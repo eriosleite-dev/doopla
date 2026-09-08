@@ -9267,15 +9267,17 @@ já existentes, sem schema novo), sistema amplo de Notificações V2,
 Booker/Agência UI completa, 6A+6B WhatsApp Outreach.
 
 Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
-`eslint` (mobile) limpos em cada checkpoint. Este ambiente não tem
-acesso a um Postgres real — migration 0078 **ainda não foi aplicada em
-nenhum banco** (nem local nem produção). SQL exato + instrução de
-aplicação e validação entregues separadamente ao usuário, mesma regra
-permanente de migrations pendentes. Nenhum item deste bloco deve ser
-considerado operacional em produção até a confirmação da aplicação.
+`eslint` (mobile) limpos em cada checkpoint. Migration 0078 entregue ao
+usuário via `SendUserFile` (este ambiente não tem acesso a um Postgres
+real) — **aplicada no Supabase real e validada pelo usuário em
+08/09/2026** (`profiles.status` existe, `close_own_account()` existe,
+`community_profiles_public` existe: `coluna_status=1`,
+`funcao_existe=1`, `view_existe=1`). Bloco #1/#2 (Settings V2 + gaps do
+Dashboard) considerado `DELIVERED` e operacional em produção.
 
 Commits: `6db70b9` (migration 0078), `9064a01` (Settings V2 Web),
-`7f675ef` (account closure App + remoção de `/precos`).
+`7f675ef` (account closure App + remoção de `/precos`), `14e710e`
+(documentação).
 
 ## Como usar isso
 
