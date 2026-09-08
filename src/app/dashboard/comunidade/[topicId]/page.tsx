@@ -13,16 +13,17 @@ export async function generateMetadata(props: { params: Promise<{ topicId: strin
   return { title: `Comunidade | Doopla` , description: topicId };
 }
 
-// Item 5 (08/09/2026) — o tópico só busca a PRIMEIRA página de
-// respostas (as mais antigas, COMMUNITY_POSTS_PAGE_SIZE por vez — ver
-// timeline.ts pro porquê da direção e do tamanho). Páginas seguintes
-// ("carregar mais respostas") e a resposta recém-enviada são geridas
-// inteiramente no client (ProComunidadeTopicChat), nunca mais
-// recarregando este Server Component inteiro — daí createReplyAction
-// não usar mais revalidatePath nesta rota (ver actions.ts): um
-// revalidate reexecutaria este page.tsx do zero, devolvendo de novo só
-// a primeira página, e apagaria qualquer página adicional que o
-// client já tivesse carregado.
+// Correção do Item 5 (08/09/2026, arquitetura C aprovada após
+// auditoria) — o tópico busca a página mais RECENTE de respostas
+// (`loadCommunityPostsPage` sem cursor = as últimas COMMUNITY_POSTS_
+// PAGE_SIZE — ver timeline.ts/data.ts pro porquê da direção e do
+// tamanho). "Carregar mensagens anteriores" e a resposta recém-enviada
+// são geridas inteiramente no client (ProComunidadeTopicChat), nunca
+// recarregando este Server Component — daí createReplyAction não usar
+// mais revalidatePath nesta rota (ver actions.ts): um revalidate
+// reexecutaria este page.tsx do zero, devolvendo de novo só a página
+// mais recente e apagaria qualquer página anterior que o client já
+// tivesse carregado.
 export default async function ComunidadeTopicPage(props: { params: Promise<{ topicId: string }> }) {
   const { topicId } = await props.params;
   const { supabase, profile } = await getSessionProfile();

@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { proGhostButtonClass, proPrimaryButtonClass } from '../../pro-format';
-import { ComunidadeGuardProvider } from '../../comunidade/navigation-guard';
+import { ComunidadeGuardProvider, type ComunidadeScrollBehavior } from '../../comunidade/navigation-guard';
 
 // Comunidade volta a ser painel lateral no Web (07/09/2026) — a UX
 // original aprovada (protótipo do bloco Shell+Home, "slide da direita,
@@ -65,6 +65,31 @@ import { ComunidadeGuardProvider } from '../../comunidade/navigation-guard';
 // carimbo (a partir do valor em memória, nunca relido de
 // history.state) depois de qualquer replace — sem isso a busca
 // corromperia a profundidade na próxima navegação real.
+//
+// Correção do Item 5 (08/09/2026) — scroll anchor. O restore de
+// scroll abaixo sempre pousava numa rota nunca visitada em `0`
+// (topo), o que é certo pra lista/busca/salvos mas errado pro chat de
+// um tópico (quer pousar no fim, na conversa recente). Em vez de
+// hardcodar isso aqui (o que faria este arquivo compartilhado saber
+// de UX específica de uma rota filha), a rota do tópico REGISTRA seu
+// próprio comportamento via useComunidadeScrollAnchor
+// (navigation-guard.tsx) — mesma ideia já usada pelo guard de
+// rascunho (guardFnRef), só que agora também cobrindo "qual o pixel
+// de fallback" e "esse cache em Map ainda é confiável pro que vai
+// remontar". Nenhuma rota que não registrar nada (lista/busca/novo/
+// salvos) muda de comportamento: os `?? true`/`?? 0` abaixo reproduzem
+// exatamente o que já existia.
+//
+// scrollPositionsRef ganhou um `pristine` ao lado do pixel: como cada
+// mount desta rota SEMPRE busca de novo só a página mais recente
+// (client nunca herda páginas adicionais entre remounts — ver
+// pro-comunidade-topic-view.tsx), um pixel salvo enquanto o usuário
+// tinha carregado "mensagens anteriores" descreve um documento mais
+// alto do que o remount vai produzir; restaurá-lo cegamente pousaria
+// num lugar sem relação com o que ele via. `pristine` é a resposta
+// determinística: só confiamos no pixel em cache se ele foi
+// registrado enquanto o conteúdo carregado ainda era exatamente o que
+// um mount novo reproduz sozinho.
 function stampComunidadeDepth(depth: number) {
   const current = (window.history.state ?? {}) as Record<string, unknown>;
   if (current.__comunidadeDepth === depth) return;
@@ -87,8 +112,9 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   const [entered, setEntered] = useState(false);
   const [pendingNav, setPendingNav] = useState<'back' | 'close' | null>(null);
   const asideRef = useRef<HTMLElement | null>(null);
-  const scrollPositionsRef = useRef<Map<string, number>>(new Map());
+  const scrollPositionsRef = useRef<Map<string, { top: number; pristine: boolean }>>(new Map());
   const guardFnRef = useRef<(() => boolean) | null>(null);
+  const scrollBehaviorRef = useRef<ComunidadeScrollBehavior | null>(null);
 
   const isTopicDetail = /^\/dashboard\/comunidade\/(?!novo$|salvos$)[^/]+$/.test(pathname);
   const isList = pathname === '/dashboard/comunidade';
@@ -122,16 +148,28 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   // de resultados rolada, depois abre um tópico, depois volta — reabre
   // exatamente onde estava). O `<aside>` é o único elemento com
   // scroll — nunca a window.
+  //
+  // Cache válido (pristine) sempre vence — é o comportamento de
+  // sempre, intocado. Sem cache válido, cai pro anchor que a rota
+  // filha registrou (`end` = fim do conteúdo) ou, se nada registrou
+  // (toda rota que não é o tópico), pro `0` de sempre.
   useLayoutEffect(() => {
     const el = asideRef.current;
     if (!el) return;
-    el.scrollTop = scrollPositionsRef.current.get(pathname) ?? 0;
+    const cached = scrollPositionsRef.current.get(pathname);
+    if (cached && cached.pristine) {
+      el.scrollTop = cached.top;
+      return;
+    }
+    const anchor = scrollBehaviorRef.current?.getAnchor();
+    el.scrollTop = anchor === 'end' ? el.scrollHeight : 0;
   }, [pathname]);
 
   function handleScroll() {
     const el = asideRef.current;
     if (!el) return;
-    scrollPositionsRef.current.set(pathname, el.scrollTop);
+    const pristine = scrollBehaviorRef.current?.isContentPristine() ?? true;
+    scrollPositionsRef.current.set(pathname, { top: el.scrollTop, pristine });
   }
 
   function performNav(kind: 'back' | 'close') {
@@ -208,7 +246,9 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
             ✕
           </button>
           <div className="p-6">
-            <ComunidadeGuardProvider guardFnRef={guardFnRef}>{children}</ComunidadeGuardProvider>
+            <ComunidadeGuardProvider guardFnRef={guardFnRef} scrollBehaviorRef={scrollBehaviorRef}>
+              {children}
+            </ComunidadeGuardProvider>
           </div>
 
           {pendingNav && (

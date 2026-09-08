@@ -9,6 +9,8 @@ import {
   TextInput,
   View,
   type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -82,38 +84,49 @@ function countOccurrences(haystack: string, needle: string): number {
 // conversa mockada (forumMock.ts, deletado) — mesma RPC/tabela/RLS do
 // painel web (create_community_post, migration 0059).
 //
-// Item 5 (08/09/2026) — migra de ScrollView pra FlatList: precisamos
-// de scrollToIndex pra tap-na-citação (jump-to-message), e uma
-// ScrollView gigante nunca ofereceria isso de forma correta (só
-// onLayout+scrollTo por item, frágil e não é a primitive certa aqui).
-// Paginação sempre do início do tópico pra frente (mesmo desenho do
-// Web, ver timeline.ts lá) — cada "carregar mais respostas" busca a
-// PRÓXIMA leva, nunca a anterior. Como é sempre um prefixo contínuo
-// desde o começo, o alvo de um reply-to já carregado SEMPRE existe em
-// `posts` — jump-to-message nunca precisa lidar com "página não
-// carregada".
+// Correção do Item 5 (08/09/2026, arquitetura C aprovada após
+// auditoria) — direção trocada da v1 deste item: carrega a página mais
+// RECENTE primeiro (`fetchCommunityPostsPage` sem cursor), "carregar
+// mensagens anteriores" busca pra trás sob demanda. FlatList continua
+// sendo a primitive certa (scrollToIndex pra tap-na-citação), mas o
+// prepend usa `maintainVisibleContentPosition` — a ferramenta nativa do
+// RN feita exatamente pra "adicionei itens acima do que já está
+// visível, não deixe a tela pular", em vez de reimplementar a medição
+// manual que o Web precisa fazer (Web não tem equivalente nativo).
 //
-// Enviar uma resposta nova NUNCA recarrega o tópico inteiro (evitaria
-// perder páginas adicionais já carregadas) — quando o autor está "em
-// dia" (hasMore === false), a resposta publicada é buscada pontualmente
-// (fetchCommunityPostsByIds) e anexada ao fim de `posts`; quando não
-// está em dia, ela é gravada normalmente mas só aparece quando o
-// usuário continuar clicando "carregar mais" até alcançá-la (evita
-// fingir uma posição cronológica que criaria um buraco na lista).
+// Como a paginação agora vem de trás pra frente, o alvo de um reply-to
+// pode legitimamente estar fora de QUALQUER página já carregada —
+// `fetchCommunityPostsByIds` resolve esses poucos ids pontuais (autor/
+// corpo/status, pra citação nunca ficar vazia), e `renderedIds` decide,
+// a cada render, se isso vira toque-pra-pular ou só uma referência
+// visual sem toque.
+//
+// Enviar uma resposta nova sempre é buscada pontualmente
+// (fetchCommunityPostsByIds) e anexada ao fim de `posts` — nunca
+// recarrega o tópico inteiro (perderia páginas anteriores já
+// carregadas). Como a paginação é sempre "recentes primeiro", o que já
+// está carregado nunca fica "atrasado" em relação ao que acabou de ser
+// publicado (não existe mais o parâmetro caughtUp que a v1 deste item
+// precisava).
 const PAGE_SIZE = 20;
+const NEAR_BOTTOM_THRESHOLD = 120;
 
 export default function ForumConversationScreen() {
   const { topicId } = useLocalSearchParams<{ topicId: string }>();
   const router = useRouter();
   const { professionalId } = useAuth();
   const flatListRef = useRef<FlatList<CommunityPost>>(null);
+  const hasScrolledToEndRef = useRef(false);
+  const isNearBottomRef = useRef(true);
+  const pendingScrollToEndRef = useRef(false);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [topic, setTopic] = useState<CommunityTopic | null>(null);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadMoreError, setLoadMoreError] = useState(false);
+  const [extraPostsById, setExtraPostsById] = useState<Map<string, CommunityPost>>(new Map());
+  const [hasEarlier, setHasEarlier] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [loadEarlierError, setLoadEarlierError] = useState(false);
   const [authorsById, setAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
   const [mentionsByPost, setMentionsByPost] = useState<Map<string, string[]>>(new Map());
   const [saved, setSaved] = useState(false);
@@ -127,6 +140,7 @@ export default function ForumConversationScreen() {
   const load = useCallback(async () => {
     if (!topicId) return;
     setPhase('loading');
+    hasScrolledToEndRef.current = false;
     try {
       await ensureCommunityProfileActivated();
       const [t, page, savedIds] = await Promise.all([
@@ -138,17 +152,31 @@ export default function ForumConversationScreen() {
         setPhase('error');
         return;
       }
-      const authors = await fetchCommunityAuthors([...new Set([t.author_profile_id, ...page.posts.map((post) => post.author_profile_id)])]);
+
+      const loadedIds = new Set(page.posts.map((post) => post.id));
+      const missingTargetIds = [
+        ...new Set(page.posts.map((post) => post.reply_to_post_id).filter((id): id is string => id !== null && !loadedIds.has(id))),
+      ];
+      const extras = missingTargetIds.length > 0 ? await fetchCommunityPostsByIds(missingTargetIds) : [];
+
       const mentions = await fetchCommunityMentions(page.posts.map((post) => post.id));
+      const authorIds = new Set<string>([t.author_profile_id]);
+      for (const post of page.posts) authorIds.add(post.author_profile_id);
+      for (const post of extras) authorIds.add(post.author_profile_id);
+      for (const mention of mentions) authorIds.add(mention.mentioned_profile_id);
+      const authors = await fetchCommunityAuthors([...authorIds]);
+
       const mentionsMap = new Map<string, string[]>();
       for (const mention of mentions) {
         const name = authors.get(mention.mentioned_profile_id)?.displayName;
         if (!name) continue;
         mentionsMap.set(mention.post_id, [...(mentionsMap.get(mention.post_id) ?? []), name]);
       }
+
       setTopic(t);
       setPosts(page.posts);
-      setHasMore(page.hasMore);
+      setHasEarlier(page.hasMore);
+      setExtraPostsById(new Map(extras.map((post) => [post.id, post])));
       setAuthorsById(authors);
       setMentionsByPost(mentionsMap);
       setSaved(savedIds.includes(topicId));
@@ -163,7 +191,13 @@ export default function ForumConversationScreen() {
     return () => clearTimeout(timer);
   }, [load]);
 
-  const postsById = useMemo(() => new Map(posts.map((post) => [post.id, post])), [posts]);
+  const postsById = useMemo(() => {
+    const map = new Map(posts.map((post) => [post.id, post]));
+    for (const [id, post] of extraPostsById) if (!map.has(id)) map.set(id, post);
+    return map;
+  }, [posts, extraPostsById]);
+
+  const renderedIds = useMemo(() => new Set(posts.map((post) => post.id)), [posts]);
 
   const mentionCandidates = useMemo<MentionCandidate[]>(() => {
     if (!topic) return [];
@@ -176,6 +210,13 @@ export default function ForumConversationScreen() {
       .map((author) => ({ profileId: author.profileId, displayName: author.displayName }));
   }, [topic, posts, authorsById, professionalId]);
 
+  useEffect(() => {
+    if (pendingScrollToEndRef.current) {
+      pendingScrollToEndRef.current = false;
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }
+  }, [posts]);
+
   function toggleSave() {
     if (!topicId) return;
     const wasSaved = saved;
@@ -184,20 +225,37 @@ export default function ForumConversationScreen() {
     action.catch(() => setSaved(wasSaved));
   }
 
-  async function handleLoadMore() {
-    if (!topicId || loadingMore || !hasMore) return;
-    const lastPost = posts[posts.length - 1];
-    if (!lastPost) return;
-    setLoadingMore(true);
-    setLoadMoreError(false);
+  function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    isNearBottomRef.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - NEAR_BOTTOM_THRESHOLD;
+  }
+
+  async function handleLoadEarlier() {
+    if (!topicId || loadingEarlier || !hasEarlier) return;
+    const earliestPost = posts[0];
+    if (!earliestPost) return;
+    setLoadingEarlier(true);
+    setLoadEarlierError(false);
     try {
       const page = await fetchCommunityPostsPage(topicId, {
         limit: PAGE_SIZE,
-        after: { createdAt: lastPost.created_at, id: lastPost.id },
+        before: { createdAt: earliestPost.created_at, id: earliestPost.id },
       });
+
+      const loadedIds = new Set([...posts.map((post) => post.id), ...page.posts.map((post) => post.id)]);
+      const missingTargetIds = [
+        ...new Set(
+          page.posts
+            .map((post) => post.reply_to_post_id)
+            .filter((id): id is string => id !== null && !loadedIds.has(id) && !extraPostsById.has(id))
+        ),
+      ];
+      const extras = missingTargetIds.length > 0 ? await fetchCommunityPostsByIds(missingTargetIds) : [];
+
       const mentions = await fetchCommunityMentions(page.posts.map((post) => post.id));
       const neededAuthorIds = new Set<string>();
       for (const post of page.posts) neededAuthorIds.add(post.author_profile_id);
+      for (const post of extras) neededAuthorIds.add(post.author_profile_id);
       for (const mention of mentions) neededAuthorIds.add(mention.mentioned_profile_id);
       const missingAuthorIds = [...neededAuthorIds].filter((id) => !authorsById.has(id));
       const mergedAuthors =
@@ -212,12 +270,21 @@ export default function ForumConversationScreen() {
 
       setAuthorsById(mergedAuthors);
       setMentionsByPost(mergedMentions);
-      setPosts((prev) => [...prev, ...page.posts]);
-      setHasMore(page.hasMore);
+      if (extras.length > 0) {
+        setExtraPostsById((prev) => {
+          const next = new Map(prev);
+          for (const post of extras) next.set(post.id, post);
+          return next;
+        });
+      }
+      // Prepend puro — maintainVisibleContentPosition (na FlatList,
+      // abaixo) é quem garante que isso não faça a tela pular.
+      setPosts((prev) => [...page.posts, ...prev]);
+      setHasEarlier(page.hasMore);
     } catch {
-      setLoadMoreError(true);
+      setLoadEarlierError(true);
     } finally {
-      setLoadingMore(false);
+      setLoadingEarlier(false);
     }
   }
 
@@ -272,7 +339,6 @@ export default function ForumConversationScreen() {
     const text = draft.trim();
     if (!text || sendPhase === 'sending' || !topicId) return;
     const survivingMentionIds = computeSurvivingMentionIds(draft);
-    const caughtUp = !hasMore;
 
     setSendPhase('sending');
     try {
@@ -283,26 +349,27 @@ export default function ForumConversationScreen() {
         mentionedProfileIds: survivingMentionIds,
       });
 
-      if (caughtUp) {
-        const idsToFetch = [newPostId, ...(replyTarget ? [replyTarget.postId] : [])];
-        const rows = await fetchCommunityPostsByIds(idsToFetch);
-        const newPost = rows.find((row) => row.id === newPostId);
-        if (newPost) {
-          const replyTargetRow = replyTarget ? rows.find((row) => row.id === replyTarget.postId) : undefined;
-          const neededAuthorIds = new Set<string>(survivingMentionIds);
-          if (professionalId) neededAuthorIds.add(professionalId);
-          if (replyTargetRow) neededAuthorIds.add(replyTargetRow.author_profile_id);
-          const missingAuthorIds = [...neededAuthorIds].filter((id) => !authorsById.has(id));
-          const mergedAuthors =
-            missingAuthorIds.length > 0 ? new Map([...authorsById, ...(await fetchCommunityAuthors(missingAuthorIds))]) : authorsById;
+      const rows = await fetchCommunityPostsByIds([newPostId]);
+      const newPost = rows.find((row) => row.id === newPostId);
+      if (newPost) {
+        const missingAuthorIds = [professionalId, ...survivingMentionIds]
+          .filter((id): id is string => typeof id === 'string')
+          .filter((id) => !authorsById.has(id));
+        const mergedAuthors =
+          missingAuthorIds.length > 0 ? new Map([...authorsById, ...(await fetchCommunityAuthors(missingAuthorIds))]) : authorsById;
 
-          if (survivingMentionIds.length > 0) {
-            const names = survivingMentionIds.map((id) => mergedAuthors.get(id)?.displayName).filter((n): n is string => Boolean(n));
-            if (names.length > 0) setMentionsByPost((prev) => new Map(prev).set(newPost.id, names));
-          }
-          setAuthorsById(mergedAuthors);
-          setPosts((prev) => [...prev, newPost]);
+        if (survivingMentionIds.length > 0) {
+          const names = survivingMentionIds.map((id) => mergedAuthors.get(id)?.displayName).filter((n): n is string => Boolean(n));
+          if (names.length > 0) setMentionsByPost((prev) => new Map(prev).set(newPost.id, names));
         }
+        setAuthorsById(mergedAuthors);
+        // "Perto do fim" checado antes de anexar — se o autor estava
+        // lendo histórico mais acima, enviar não deve arrastá-lo pra
+        // baixo; se já estava perto do fim (o caso comum), rola até a
+        // resposta nova depois que o useEffect abaixo confirmar que ela
+        // já está no `posts`.
+        pendingScrollToEndRef.current = isNearBottomRef.current;
+        setPosts((prev) => [...prev, newPost]);
       }
 
       setDraft('');
@@ -352,14 +419,21 @@ export default function ForumConversationScreen() {
   function renderPost({ item: post }: ListRenderItemInfo<CommunityPost>) {
     const removed = communityContentVisibility(post.status) === 'removed';
     const replyTo = resolveReplyTo(post);
+    const replyToLoaded = replyTo ? renderedIds.has(replyTo.postId) : false;
     return (
       <View style={styles.message}>
-        {replyTo && (
-          <Pressable onPress={() => jumpToMessage(replyTo.postId)} style={styles.replyQuote} accessibilityRole="button">
-            <Text style={styles.replyQuoteAuthor}>{replyTo.authorName}</Text>
-            <Text style={styles.replyQuoteText}>{replyTo.removed ? 'Mensagem removida.' : `“${replyTo.snippet}”`}</Text>
-          </Pressable>
-        )}
+        {replyTo &&
+          (replyToLoaded ? (
+            <Pressable onPress={() => jumpToMessage(replyTo.postId)} style={styles.replyQuote} accessibilityRole="button">
+              <Text style={styles.replyQuoteAuthor}>{replyTo.authorName}</Text>
+              <Text style={styles.replyQuoteText}>{replyTo.removed ? 'Mensagem removida.' : `“${replyTo.snippet}”`}</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.replyQuote}>
+              <Text style={styles.replyQuoteAuthor}>{replyTo.authorName}</Text>
+              <Text style={styles.replyQuoteText}>{replyTo.removed ? 'Mensagem removida.' : `“${replyTo.snippet}”`}</Text>
+            </View>
+          ))}
         <View style={styles.messageHead}>
           <Text style={styles.author}>{authorsById.get(post.author_profile_id)?.displayName ?? 'Profissional Doopla'}</Text>
           <Text style={styles.time}>{formatRelativeDate(post.created_at)}</Text>
@@ -402,6 +476,15 @@ export default function ForumConversationScreen() {
             data={posts}
             keyExtractor={(post) => post.id}
             renderItem={renderPost}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            onContentSizeChange={() => {
+              if (!hasScrolledToEndRef.current) {
+                hasScrolledToEndRef.current = true;
+                flatListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
             onScrollToIndexFailed={(info) => {
               flatListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true });
             }}
@@ -420,26 +503,31 @@ export default function ForumConversationScreen() {
                 ) : (
                   <Text style={styles.topicBody}>{topic.body}</Text>
                 )}
-              </View>
-            }
-            ListFooterComponent={
-              <>
-                {hasMore && (
+                {hasEarlier && (
                   <View style={styles.loadMoreWrap}>
-                    <Pressable onPress={handleLoadMore} disabled={loadingMore} accessibilityRole="button" accessibilityState={{ busy: loadingMore }}>
-                      <Text style={styles.loadMoreText}>{loadingMore ? 'Carregando…' : 'Carregar mais respostas'}</Text>
+                    <Pressable
+                      onPress={handleLoadEarlier}
+                      disabled={loadingEarlier}
+                      accessibilityRole="button"
+                      accessibilityState={{ busy: loadingEarlier }}
+                    >
+                      <Text style={styles.loadMoreText}>{loadingEarlier ? 'Carregando…' : 'Carregar mensagens anteriores'}</Text>
                     </Pressable>
-                    {loadMoreError && (
+                    {loadEarlierError && (
                       <View style={{ alignItems: 'center', gap: 4, marginTop: 6 }}>
-                        <Text style={styles.loadMoreErrorText}>Não deu pra carregar mais respostas.</Text>
-                        <Pressable onPress={handleLoadMore} accessibilityRole="button">
+                        <Text style={styles.loadMoreErrorText}>Não deu pra carregar mensagens anteriores.</Text>
+                        <Pressable onPress={handleLoadEarlier} accessibilityRole="button">
                           <Text style={styles.retryText}>Tentar de novo</Text>
                         </Pressable>
                       </View>
                     )}
                   </View>
                 )}
-                {!isTopicRemoved && posts.length === 0 && !hasMore && (
+              </View>
+            }
+            ListFooterComponent={
+              <>
+                {!isTopicRemoved && posts.length === 0 && !hasEarlier && (
                   <Text style={styles.noRepliesText}>Nenhuma resposta ainda. Seja o primeiro a responder.</Text>
                 )}
                 {sendPhase === 'error' && <ErrorState message="A mensagem não foi enviada." onRetry={handleSend} />}
@@ -587,7 +675,6 @@ const styles = StyleSheet.create({
   },
   loadMoreWrap: {
     alignItems: 'center',
-    paddingTop: 4,
     paddingBottom: 12,
   },
   loadMoreText: {

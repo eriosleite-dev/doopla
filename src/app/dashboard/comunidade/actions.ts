@@ -107,25 +107,29 @@ export type ReplyActionState = { error?: string; post?: ChatTimelineMessage };
 // aceitava os dois parâmetros desde a migration 0059, só a UI nunca
 // os preenchia.
 //
-// Item 5 (08/09/2026) — SEM revalidatePath desta rota: o tópico agora
-// pagina no client (ver [topicId]/pro-comunidade-topic-view.tsx), e um
-// revalidate reexecutaria page.tsx do zero, devolvendo de novo só a
-// primeira página e derrubando qualquer página adicional que o client
-// já tivesse carregado. Em vez disso, quando o autor já está "em dia"
-// (caughtUp=true — não há nenhuma página mais recente ainda não
-// carregada), esta action devolve a mensagem pronta pra o client
-// simplesmente anexar ao fim da lista que já tem. Quando NÃO está em
-// dia, a resposta é gravada normalmente (nunca perdida), mas só
-// aparece quando o usuário continuar clicando "carregar mais" até
-// alcançá-la — evita fingir uma posição cronológica que criaria um
-// buraco na paginação.
+// Correção do Item 5 (08/09/2026) — SEM revalidatePath desta rota: o
+// tópico agora pagina no client (ver
+// [topicId]/pro-comunidade-topic-view.tsx), e um revalidate
+// reexecutaria page.tsx do zero, devolvendo de novo só a página mais
+// recente e derrubando qualquer página anterior que o client já
+// tivesse carregado via "carregar anteriores". Em vez disso, esta
+// action sempre devolve a mensagem pronta pra o client anexar direto
+// ao fim da lista. Isso é seguro porque a paginação agora é
+// "recentes primeiro": o que já está carregado sempre inclui a borda
+// mais nova conhecida até aqui — uma resposta recém-criada é sempre
+// cronologicamente posterior a tudo isso, nunca cria buraco (não
+// existe mais o cenário "cliente atrasado" que a v1 deste item
+// precisava tratar com o parâmetro caughtUp). A única lacuna possível
+// é a mesma de sempre nesta funcionalidade sem realtime: uma resposta
+// de OUTRO usuário criada entre o último carregamento e agora só
+// aparece ao reabrir o tópico — fora de escopo aqui (realtime
+// explicitamente não implementado).
 export async function createReplyAction(topicId: string, _prevState: ReplyActionState, formData: FormData): Promise<ReplyActionState> {
   const { supabase, user } = await requireArtista();
   const body = String(formData.get('body') ?? '').trim();
   if (!body) return { error: 'Escreva sua resposta antes de enviar.' };
   const replyToPostId = String(formData.get('replyToPostId') ?? '').trim() || null;
   const mentionedProfileIds = formData.getAll('mentionedProfileIds').map(String).filter(Boolean).slice(0, 10);
-  const caughtUp = formData.get('caughtUp') === 'true';
 
   let postId: string;
   try {
@@ -135,8 +139,6 @@ export async function createReplyAction(topicId: string, _prevState: ReplyAction
   }
 
   revalidatePath('/dashboard/comunidade');
-
-  if (!caughtUp) return {};
 
   const rows = await listCommunityPostsByIds(supabase, [postId, ...(replyToPostId ? [replyToPostId] : [])]);
   const newPost = rows.find((r) => r.id === postId);
@@ -174,17 +176,19 @@ export async function createReplyAction(topicId: string, _prevState: ReplyAction
   return { post };
 }
 
-export type LoadMoreCommunityPostsResult = { messages: ChatTimelineMessage[]; hasMore: boolean } | { error: string };
+export type LoadEarlierCommunityPostsResult = { messages: ChatTimelineMessage[]; hasMore: boolean } | { error: string };
 
-// Item 5 (08/09/2026) — "carregar mais respostas": avança a partir do
-// cursor (created_at, id) do último post já carregado no client. Nunca
-// revalida a rota inteira — devolve só a página nova, pronta pra ser
-// anexada ao fim da lista já carregada.
-export async function loadMoreCommunityPostsAction(topicId: string, after: CommunityPostsCursor): Promise<LoadMoreCommunityPostsResult> {
+// Correção do Item 5 (08/09/2026) — "carregar mensagens anteriores":
+// busca a página imediatamente anterior ao cursor (created_at, id) do
+// post mais ANTIGO já carregado no client. Nunca revalida a rota
+// inteira — devolve só a página nova, pronta pra ser inserida no
+// início da lista de respostas já carregadas (depois da mensagem de
+// abertura do tópico, que nunca é paginada).
+export async function loadEarlierCommunityPostsAction(topicId: string, before: CommunityPostsCursor): Promise<LoadEarlierCommunityPostsResult> {
   const { supabase } = await requireArtista();
   try {
-    return await loadCommunityPostsPage(supabase, topicId, { limit: COMMUNITY_POSTS_PAGE_SIZE, after });
+    return await loadCommunityPostsPage(supabase, topicId, { limit: COMMUNITY_POSTS_PAGE_SIZE, before });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : 'Não foi possível carregar mais respostas.' };
+    return { error: err instanceof Error ? err.message : 'Não foi possível carregar mensagens anteriores.' };
   }
 }

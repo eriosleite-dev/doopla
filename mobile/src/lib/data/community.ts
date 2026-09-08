@@ -212,37 +212,44 @@ export async function fetchCommunityTopic(topicId: string): Promise<CommunityTop
 export type CommunityPostsCursor = { createdAt: string; id: string };
 export type CommunityPostsPage = { posts: CommunityPost[]; hasMore: boolean };
 
-// Item 5 (08/09/2026) — espelha listCommunityPostsPage do painel web:
-// paginação por cursor (created_at, id) do começo do tópico pra
-// frente, mesmo desempate por id (uuid aleatório, só usado em caso de
-// created_at empatado). Sem RPC/tabela nova.
+// Correção do Item 5 (08/09/2026) — espelha listCommunityPostsPage do
+// painel web: direção trocada pra "mais recentes primeiro, carregar
+// anteriores sob demanda" (arquitetura C). Sem cursor (`before`
+// omitido) = a página mais recente; com cursor = a página
+// imediatamente anterior a ela. Mesmo cursor (created_at, id) de
+// antes, só invertendo comparação (`lt`) e ordenação (`desc`) — sem
+// RPC nova.
 export async function fetchCommunityPostsPage(
   topicId: string,
-  params: { limit?: number; after?: CommunityPostsCursor } = {}
+  params: { limit?: number; before?: CommunityPostsCursor } = {}
 ): Promise<CommunityPostsPage> {
   const limit = params.limit ?? 20;
   let query = supabase
     .from('community_posts')
     .select('*')
     .eq('topic_id', topicId)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit + 1);
 
-  if (params.after) {
-    query = query.or(`created_at.gt.${params.after.createdAt},and(created_at.eq.${params.after.createdAt},id.gt.${params.after.id})`);
+  if (params.before) {
+    query = query.or(`created_at.lt.${params.before.createdAt},and(created_at.eq.${params.before.createdAt},id.lt.${params.before.id})`);
   }
 
   const { data, error } = await query;
   if (error) throw error;
   const rows = (data ?? []) as CommunityPost[];
-  return { posts: rows.slice(0, limit), hasMore: rows.length > limit };
+  const hasMore = rows.length > limit;
+  const posts = rows.slice(0, limit).reverse();
+  return { posts, hasMore };
 }
 
-// Espelha listCommunityPostsByIds do painel web — a paginação carrega
-// sempre um prefixo contínuo desde o início, então o alvo de um
-// reply-to só falta aqui se apontar pra uma página já carregada antes
-// que não veio na query atual. Usada só pra esses poucos ids pontuais.
+// Espelha listCommunityPostsByIds do painel web. Com a paginação
+// "recentes primeiro", o alvo de um reply-to pode legitimamente estar
+// fora de QUALQUER página já carregada (uma resposta perto do fim pode
+// citar algo lá do começo, ainda não buscado) — usada pra resolver
+// esses poucos ids pontuais; a tela decide, com base no que já está
+// carregado, se isso vira toque-pra-pular ou só uma referência visual.
 export async function fetchCommunityPostsByIds(ids: string[]): Promise<CommunityPost[]> {
   if (ids.length === 0) return [];
   const { data, error } = await supabase.from('community_posts').select('*').in('id', ids);

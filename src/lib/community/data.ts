@@ -245,47 +245,60 @@ export async function getCommunityTopic(supabase: AnySupabaseClient, topicId: st
 export type CommunityPostsCursor = { createdAt: string; id: string };
 export type CommunityPostsPage = { posts: CommunityPost[]; hasMore: boolean };
 
-// Item 5 (08/09/2026) — paginação por cursor, do começo do tópico pra
-// frente (mais antigas primeiro, cada "carregar mais" avança no
-// tempo). `id` é uuid aleatório (não ordenável por si só), então o
-// cursor é sempre (created_at, id) — id só entra como desempate
-// determinístico em caso de created_at igual, nunca como critério
-// principal. Sem RPC nova: o desempate é expresso direto no filtro
-// `.or()` do PostgREST (`created_at > cursor` OU `created_at = cursor
-// E id > cursor`), a mesma RLS de sempre ("select visible") continua
-// se aplicando por baixo. Busca limit+1 pra saber se há mais sem uma
-// segunda query de contagem.
+// Correção do Item 5 (08/09/2026) — direção trocada pra "mais
+// recentes primeiro, carregar anteriores sob demanda" (arquitetura C,
+// aprovada após auditoria: pousar sempre no início não escala pra
+// tópicos longos, e exigiria a mesma correção de scroll-anchor em
+// layout.tsx mais tarde de qualquer forma quando o Item 12 chegasse —
+// ver navigation-guard.tsx/layout.tsx). Sem cursor (`before` omitido)
+// = a página mais recente. Com cursor = a página imediatamente
+// anterior a ela, nunca a seguinte.
+//
+// `id` é uuid aleatório (não ordenável por si só), então o cursor é
+// sempre (created_at, id) — id só entra como desempate determinístico
+// em caso de created_at igual, nunca como critério principal. Sem RPC
+// nova: o desempate é expresso direto no filtro `.or()` do PostgREST
+// (`created_at < cursor` OU `created_at = cursor E id < cursor`), a
+// mesma RLS de sempre ("select visible") continua se aplicando por
+// baixo. Busca limit+1 pra saber se há mais sem uma segunda query de
+// contagem; devolve sempre em ordem cronológica ascendente (a busca
+// interna é DESC pra pegar "as mais recentes", o resultado final é
+// invertido antes de devolver).
 export async function listCommunityPostsPage(
   supabase: AnySupabaseClient,
   topicId: string,
-  params: { limit?: number; after?: CommunityPostsCursor } = {}
+  params: { limit?: number; before?: CommunityPostsCursor } = {}
 ): Promise<CommunityPostsPage> {
   const limit = params.limit ?? 20;
   let query = supabase
     .from('community_posts')
     .select('*')
     .eq('topic_id', topicId)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(limit + 1);
 
-  if (params.after) {
-    query = query.or(`created_at.gt.${params.after.createdAt},and(created_at.eq.${params.after.createdAt},id.gt.${params.after.id})`);
+  if (params.before) {
+    query = query.or(`created_at.lt.${params.before.createdAt},and(created_at.eq.${params.before.createdAt},id.lt.${params.before.id})`);
   }
 
   const { data, error } = await query;
   if (error) throw error;
   const rows = (data ?? []) as CommunityPost[];
-  return { posts: rows.slice(0, limit), hasMore: rows.length > limit };
+  const hasMore = rows.length > limit;
+  const posts = rows.slice(0, limit).reverse();
+  return { posts, hasMore };
 }
 
-// A paginação carrega sempre um prefixo contíguo do começo do tópico
-// pra frente, então o alvo de um reply-to já carregado em QUALQUER
-// página anterior sempre existe — a única lacuna possível é dentro da
-// MESMA chamada: um post da página que está sendo resolvida agora
-// referenciando um post de uma página JÁ carregada antes, que não veio
-// nesta query. Usada só para esses poucos ids pontuais (nunca a
-// listagem inteira).
+// A paginação carrega sempre a partir das mensagens mais recentes,
+// avançando pra trás sob demanda — diferente do prefixo contínuo da
+// v1 deste item, aqui o alvo de um reply-to pode legitimamente estar
+// fora de QUALQUER página já carregada (uma resposta perto do fim
+// pode citar algo lá do começo, ainda não buscado). Usada pra
+// resolver esses poucos ids pontuais (nunca a listagem inteira) — a
+// UI decide, com base no que já está carregado, se isso vira um link
+// clicável ou só uma referência visual sem link (ver
+// pro-comunidade-topic-view.tsx / mobile forum/[topicId].tsx).
 export async function listCommunityPostsByIds(supabase: AnySupabaseClient, ids: string[]): Promise<CommunityPost[]> {
   if (ids.length === 0) return [];
   const { data, error } = await supabase.from('community_posts').select('*').in('id', ids);

@@ -105,18 +105,19 @@ function toTimelineMessage(
 
 // Busca uma página de respostas já totalmente resolvida (autores,
 // menções, citação de reply-to) — chamada tanto pelo primeiro load
-// quanto por "carregar mais", sempre a mesma lógica. A paginação é
-// sempre um prefixo contíguo a partir do início (listCommunityPostsPage
-// nunca pula nem embaralha), então o alvo de um reply-to só pode
-// faltar aqui se apontar pra uma página ANTERIOR já carregada, fora do
-// lote que acabou de ser buscado — a busca pontual abaixo cobre
-// exatamente esse caso, nunca a listagem inteira, e na prática quase
-// sempre roda com 0 ids (a maioria das respostas cita algo próximo,
-// já dentro do próprio lote).
+// (mais recentes) quanto por "carregar anteriores", sempre a mesma
+// lógica. Diferente da v1 deste item, a paginação agora vem de trás
+// pra frente (mais recentes primeiro) — o alvo de um reply-to pode
+// legitimamente estar fora de QUALQUER página já carregada. A busca
+// pontual abaixo resolve autor/corpo/status desse alvo mesmo assim
+// (pra citação nunca ficar vazia), mas NÃO garante que ele esteja
+// entre as mensagens renderizadas — quem decide se isso vira link
+// clicável é o client, comparando com o que já tem carregado (ver
+// pro-comunidade-topic-view.tsx / mobile forum/[topicId].tsx).
 export async function loadCommunityPostsPage(
   supabase: AnySupabaseClient,
   topicId: string,
-  params: { limit?: number; after?: CommunityPostsCursor } = {}
+  params: { limit?: number; before?: CommunityPostsCursor } = {}
 ): Promise<{ messages: ChatTimelineMessage[]; hasMore: boolean }> {
   const { posts, hasMore } = await listCommunityPostsPage(supabase, topicId, params);
 
