@@ -1,3 +1,4 @@
+import { apiBaseUrl } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 
 // Update direto sob RLS própria (profiles/artist_profiles: update own,
@@ -15,4 +16,26 @@ export async function updateArtistProfileFields(
 ): Promise<void> {
   const { error } = await supabase.from('artist_profiles').update(fields).eq('profile_id', profileId);
   if (error) throw error;
+}
+
+export type CloseAccountResult = { ok: true } | { ok: false; error: string };
+
+// Account closure flow (Settings V2, 08/09/2026) — espelha
+// requestAccountClosureAction do painel web, mas via rota de API
+// (src/app/api/mobile/account/close/route.ts): banir a conta e trocar
+// o e-mail exigem a Admin API (service_role), segredo de servidor que
+// nunca chega ao app — mesmo racional de requestWhatsappVerification
+// em data/whatsapp-identity.ts. A RPC close_own_account roda dentro
+// dessa rota, nunca chamada direto daqui.
+export async function closeAccount(password: string, accessToken: string): Promise<CloseAccountResult> {
+  const response = await fetch(`${apiBaseUrl()}/api/mobile/account/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ password }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error === 'wrong_password' ? 'Senha incorreta.' : 'Não foi possível excluir sua conta agora.' };
+  }
+  return { ok: true };
 }

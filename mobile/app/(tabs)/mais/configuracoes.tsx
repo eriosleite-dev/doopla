@@ -8,16 +8,16 @@ import { LoadingState, ErrorState } from '@/components/shared/ScreenState';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { ChevronRightIcon } from '@/components/icons/Icons';
 import { fetchArtistProfile, fetchArtistSubscription } from '@/lib/data/artistProfile';
-import { updateArtistProfileFields, updateProfileFields } from '@/lib/data/settings';
+import { closeAccount, updateArtistProfileFields, updateProfileFields } from '@/lib/data/settings';
 import type { ArtistProfile, ArtistSubscription } from '@/types/artistProfile';
 
 type Phase = 'loading' | 'ready' | 'error';
-type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'publico' | 'ajuda' | null;
+type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'publico' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
 
 export default function ConfiguracoesScreen() {
-  const { user, profile, signOut } = useAuth();
+  const { user, session, profile, signOut } = useAuth();
   const [phase, setPhase] = useState<Phase>('loading');
   const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
   const [subscription, setSubscription] = useState<ArtistSubscription | null>(null);
@@ -36,7 +36,8 @@ export default function ConfiguracoesScreen() {
   }, [user]);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
   }, [load]);
 
   function confirmSignOut() {
@@ -62,7 +63,8 @@ export default function ConfiguracoesScreen() {
             <SettingsRow label="Plano" sub={subscription?.artist_plan ? PLAN_LABELS[subscription.artist_plan] : undefined} onPress={() => setOpenSheet('plano')} />
             <SettingsRow label="WhatsApp" sub={profile?.phone ?? 'Não cadastrado'} onPress={() => setOpenSheet('whatsapp')} />
             <SettingsRow label="Perfil público" sub={artistProfile?.public_enabled ? 'Ativo' : 'Desativado'} onPress={() => setOpenSheet('publico')} />
-            <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} last />
+            <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} />
+            <SettingsRow label="Excluir minha conta" onPress={() => setOpenSheet('excluir')} last />
           </View>
 
           <Pressable style={styles.signOutBtn} onPress={confirmSignOut}>
@@ -105,7 +107,7 @@ export default function ConfiguracoesScreen() {
           <Text style={styles.sheetText}>{profile?.phone ?? 'Nenhum número cadastrado'}</Text>
           <Text style={styles.gapNote}>
             Ainda não existe verificação de posse do número no app — o que está aqui é só o número cadastrado na sua conta,
-            sem selo de "verificado".
+            sem selo de &ldquo;verificado&rdquo;.
           </Text>
         </View>
       </BottomSheet>
@@ -131,6 +133,10 @@ export default function ConfiguracoesScreen() {
             importantes.
           </Text>
         </View>
+      </BottomSheet>
+
+      <BottomSheet visible={openSheet === 'excluir'} onClose={() => setOpenSheet(null)}>
+        {session && <DeleteAccountSheet accessToken={session.access_token} onClosed={signOut} />}
       </BottomSheet>
     </SafeAreaView>
   );
@@ -241,6 +247,62 @@ function PublicProfileForm({
   );
 }
 
+// Account closure flow (Settings V2, 08/09/2026) — mesma copy/regras
+// do painel web (ver src/app/dashboard/perfil/privacidade/excluir/
+// page.tsx): explica o que acontece ANTES de pedir confirmação, exige
+// senha (reauth) + checkbox marcado, sem dark pattern. Sem cancelar
+// dedicado — fechar o BottomSheet já cumpre esse papel.
+function DeleteAccountSheet({ accessToken, onClosed }: { accessToken: string; onClosed: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function submit() {
+    setSubmitting(true);
+    setError(null);
+    closeAccount(password, accessToken).then((result) => {
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onClosed();
+    });
+  }
+
+  return (
+    <View>
+      <Text style={styles.sheetTitle}>Excluir sua conta é uma ação permanente.</Text>
+      <Text style={styles.sheetText}>
+        Sua assinatura é cancelada e a Doopla para de representar você. Bookings e contratos continuam existindo, intactos,
+        pra preservar o histórico de quem trabalhou com você. Seu perfil na Comunidade passa a aparecer como &ldquo;Usuário
+        removido&rdquo;, sem apagar discussões. Um cadastro novo com o mesmo e-mail no futuro é uma conta nova.
+      </Text>
+      <Text style={styles.label}>Digite sua senha pra confirmar</Text>
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        placeholderTextColor={colors.tx50}
+      />
+      <Pressable style={styles.checkboxRow} onPress={() => setConfirmed((c) => !c)}>
+        <View style={[styles.checkbox, confirmed && styles.checkboxChecked]} />
+        <Text style={styles.checkboxLabel}>Entendo que esta ação é permanente.</Text>
+      </Pressable>
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      <Pressable
+        style={[styles.deleteBtn, (!confirmed || submitting) && styles.submitDisabled]}
+        disabled={!confirmed || submitting}
+        onPress={submit}
+      >
+        <Text style={styles.deleteBtnText}>{submitting ? 'Excluindo…' : 'Excluir minha conta'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4 },
@@ -287,4 +349,11 @@ const styles = StyleSheet.create({
   submit: { backgroundColor: colors.red, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 18 },
   submitDisabled: { opacity: 0.6 },
   submitText: { color: colors.off, fontFamily: fonts.subBold, fontSize: 13 },
+  checkboxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 16 },
+  checkbox: { width: 18, height: 18, borderRadius: 5, borderWidth: 1, borderColor: colors.line, marginTop: 1 },
+  checkboxChecked: { backgroundColor: colors.red, borderColor: colors.red },
+  checkboxLabel: { flex: 1, color: colors.tx50, fontFamily: fonts.body, fontSize: 12 },
+  errorText: { color: '#ff8b80', fontFamily: fonts.body, fontSize: 12, marginTop: 10 },
+  deleteBtn: { backgroundColor: colors.red, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 18 },
+  deleteBtnText: { color: colors.off, fontFamily: fonts.subBold, fontSize: 13 },
 });
