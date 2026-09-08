@@ -137,6 +137,7 @@ export default function ForumConversationScreen() {
                 style={styles.input}
                 placeholder="Escreva uma mensagem..."
                 placeholderTextColor={colors.tx50}
+                accessibilityLabel="Escrever uma resposta"
                 value={draft}
                 onChangeText={setDraft}
                 editable={sendPhase !== 'sending'}
