@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   CommunityCategory,
   CommunityContentStatus,
+  CommunityMention,
   CommunityNotification,
   CommunityNotificationType,
   CommunityPost,
@@ -245,6 +246,17 @@ export async function listCommunityPosts(supabase: AnySupabaseClient, topicId: s
   const { data, error } = await supabase.from('community_posts').select('*').eq('topic_id', topicId).order('created_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as CommunityPost[];
+}
+
+// Item 4 (08/09/2026) — leitura que faltava pra usar community_mentions
+// (migration 0059, nunca lida antes). RLS ("select relevant") já
+// libera pra qualquer autenticado ver menções de um post publicado —
+// nenhuma tabela/RPC nova, só esta query direta.
+export async function listCommunityMentions(supabase: AnySupabaseClient, postIds: string[]): Promise<CommunityMention[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase.from('community_mentions').select('*').in('post_id', postIds);
+  if (error) throw error;
+  return (data ?? []) as CommunityMention[];
 }
 
 export type CreateCommunityTopicParams = {

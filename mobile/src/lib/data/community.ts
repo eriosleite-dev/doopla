@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type {
   CommunityCategory,
   CommunityContentStatus,
+  CommunityMention,
   CommunityNotification,
   CommunityNotificationType,
   CommunityPost,
@@ -212,6 +213,17 @@ export async function fetchCommunityPosts(topicId: string): Promise<CommunityPos
   const { data, error } = await supabase.from('community_posts').select('*').eq('topic_id', topicId).order('created_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as CommunityPost[];
+}
+
+// Item 4 (08/09/2026) — espelha listCommunityMentions do painel web.
+// Leitura que faltava sobre community_mentions (migration 0059, nunca
+// lida antes) — RLS já libera pra qualquer autenticado ver menções de
+// um post publicado, nenhuma tabela/RPC nova.
+export async function fetchCommunityMentions(postIds: string[]): Promise<CommunityMention[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase.from('community_mentions').select('*').in('post_id', postIds);
+  if (error) throw error;
+  return (data ?? []) as CommunityMention[];
 }
 
 export type CreateCommunityTopicParams = {

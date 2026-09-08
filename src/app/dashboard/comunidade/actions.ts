@@ -97,13 +97,20 @@ export async function createTopicAction(_prevState: CreateTopicActionState, form
 
 export type ReplyActionState = { error?: string };
 
+// Item 4 (08/09/2026) — replyToPostId/mentionedProfileIds passam pelo
+// mesmo formData de sempre (hidden inputs no composer), repassados
+// direto pra createCommunityPost/create_community_post — que já
+// aceitava os dois parâmetros desde a migration 0059, só a UI nunca
+// os preenchia.
 export async function createReplyAction(topicId: string, _prevState: ReplyActionState, formData: FormData): Promise<ReplyActionState> {
   const { supabase } = await requireArtista();
   const body = String(formData.get('body') ?? '').trim();
   if (!body) return { error: 'Escreva sua resposta antes de enviar.' };
+  const replyToPostId = String(formData.get('replyToPostId') ?? '').trim() || null;
+  const mentionedProfileIds = formData.getAll('mentionedProfileIds').map(String).filter(Boolean).slice(0, 10);
 
   try {
-    await createCommunityPost(supabase, { topicId, body });
+    await createCommunityPost(supabase, { topicId, body, replyToPostId, mentionedProfileIds });
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Não foi possível enviar sua resposta.' };
   }

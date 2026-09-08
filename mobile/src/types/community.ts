@@ -80,6 +80,13 @@ export type CommunityPost = {
   updated_at: string;
 };
 
+export type CommunityMention = {
+  id: string;
+  post_id: string;
+  mentioned_profile_id: string;
+  created_at: string;
+};
+
 export type CommunityNotificationType = 'reply_to_topic' | 'reply_to_post' | 'mention';
 
 export type CommunityNotification = {
