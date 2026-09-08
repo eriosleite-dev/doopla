@@ -16,12 +16,15 @@ import { DecisionCard } from '@/components/home/DecisionCard';
 import { ChannelsCard } from '@/components/home/ChannelsCard';
 import { IndiqueGanheCard } from '@/components/home/IndiqueGanheCard';
 import { FalarComDooplaCard } from '@/components/home/FalarComDooplaCard';
+import { ReadinessCard, type ReadinessRowData } from '@/components/home/ReadinessCard';
 import { useToast } from '@/components/shared/Toast';
 import { NegotiationIcon, HourglassIcon, CheckIcon, MoneyIcon, LinkIcon, HashIcon, WhatsAppLogoIcon } from '@/components/icons/Icons';
 import { STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookings';
 import { fetchReferralSummary, type ReferralSummary } from '@/lib/data/referrals';
 import { fetchProfessionalHomeFacts, type ProfessionalHomeFacts } from '@/lib/data/home-facts';
 import { fetchActionableDecisions, type DecisionItem } from '@/lib/data/decisions';
+import { fetchActivePaymentDetails } from '@/lib/data/payments';
+import type { PaymentDetails } from '@/types/payment';
 import { fetchNotificationCards, markCommunityNotificationRead, type NotificationCard } from '@/lib/data/notifications';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { dooplaWhatsappNumber } from '@/lib/env';
@@ -35,6 +38,7 @@ export default function HomeScreen() {
   const [referralSummary, setReferralSummary] = useState<ReferralSummary | null>(null);
   const [homeFacts, setHomeFacts] = useState<ProfessionalHomeFacts | null>(null);
   const [decisions, setDecisions] = useState<DecisionItem[]>([]);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null | undefined>(undefined);
   const [notifications, setNotifications] = useState<NotificationCard[]>([]);
   const [notificationsPhase, setNotificationsPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -57,6 +61,10 @@ export default function HomeScreen() {
     }
     fetchProfessionalHomeFacts().then(setHomeFacts).catch(() => setHomeFacts(null));
     fetchActionableDecisions().then(setDecisions).catch(() => setDecisions([]));
+    // Bloco 4 (progressive profiling, 08/09/2026) — mesma fonte canônica
+    // da tela Dinheiro (fetchActivePaymentDetails, mesma RLS/tabela do
+    // Web). Falha vira `null` (nunca trava a Home nem finge "pronto").
+    fetchActivePaymentDetails(professionalId).then(setPaymentDetails).catch(() => setPaymentDetails(null));
   }, [professionalId, profile?.referral_code]);
 
   // Badge de não lidas precisa existir mesmo com o sheet fechado —
@@ -80,6 +88,26 @@ export default function HomeScreen() {
   const upcoming = bookings
     .filter((b) => ['proposta_enviada', 'aceita', 'aguardando_pagamento'].includes(b.status))
     .slice(0, 5);
+
+  // Bloco 4 — nudge progressivo (08/09/2026). `undefined` (ainda
+  // carregando) nunca mostra a linha — evita um falso positivo piscando
+  // antes do fetch resolver. Só "Dados de recebimento" no App nesta
+  // rodada: "Contexto profissional" (regions/careerStage/helpAreas)
+  // não tem superfície de edição real no App ainda (gap real,
+  // registrado no PROGRESS.md) — nunca aponta pra uma tela que não
+  // existe.
+  const readinessRows: ReadinessRowData[] =
+    paymentDetails === null
+      ? [
+          {
+            key: 'payment',
+            label: 'Dados de recebimento',
+            description: 'Sem isso, a Doopla não consegue fechar pagamento com o cliente.',
+            ctaLabel: 'Completar →',
+            onPress: () => router.push('/(tabs)/mais/financeiro'),
+          },
+        ]
+      : [];
 
   const whatsappNumber = (() => {
     try {
@@ -191,6 +219,8 @@ export default function HomeScreen() {
              nunca referral_code, que é de outro conceito/Indique e
              ganhe). Booker não é canal de booking — vive só em Minha
              equipe, removido daqui. */}
+          <ReadinessCard rows={readinessRows} />
+
           <ChannelsCard
             title="Seus canais de booking"
             rows={[
