@@ -66,6 +66,7 @@ export default async function TrabalhosPage() {
       <ProTrabalhosView
         bookings={bookings}
         role={profile.role}
+        userId={user.id}
         conversationIdByBookingId={conversationIdByBookingId}
         pendingReviewBookingIds={pendingReviewBookingIds}
       />

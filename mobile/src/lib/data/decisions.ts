@@ -183,13 +183,16 @@ type RawResolvedMessageRow = {
   prepared_response_outcome: string | null;
 };
 
-function pendingReplyOutcomeLabel(status: string, supersededById: string | null): string {
+// Exportadas (correção 09/09/2026, C4) — DecisionCard.tsx e
+// mais/decisoes.tsx importam daqui em vez de reimplementar o mesmo
+// texto, pra nunca existir uma terceira versão divergente do rótulo.
+export function pendingReplyOutcomeLabel(status: string | null, supersededById: string | null): string {
   if (status === 'completed') return 'Você respondeu e a Doopla retomou a conversa.';
   if (supersededById) return 'Substituída por uma decisão mais recente na mesma conversa.';
   return 'Encerrada — a negociação nesta conversa chegou ao fim.';
 }
 
-function preparedDraftOutcomeLabel(outcome: string | null): string {
+export function preparedDraftOutcomeLabel(outcome: string | null): string {
   if (outcome === 'edited') return 'Você editou o rascunho da Doopla antes de enviar.';
   return 'Você aprovou e enviou o rascunho da Doopla.';
 }

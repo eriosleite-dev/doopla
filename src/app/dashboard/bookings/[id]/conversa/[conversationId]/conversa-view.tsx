@@ -10,19 +10,12 @@ import {
 } from '@/lib/conversations/data';
 
 import { getSessionProfile } from '../../../../session';
+import { PRO_CONVERSATION_STATE_TONE, proStatusPillClass } from '../../../../pro-format';
 import { CONVERSATION_STATE_LABELS } from '../../../../ui';
 import { ReplyForm } from './reply-form';
 
-const CONVERSATION_STATE_TONE: Record<string, string> = {
-  needs_you: 'bg-[rgba(226,41,28,.18)] text-[#ff8b80]',
-  waiting_client: 'bg-[rgba(245,166,35,.18)] text-[var(--pro-amber)]',
-  in_progress: 'border border-[var(--pro-line)] text-[var(--pro-tx-50)]',
-  closed: 'bg-white/[0.06] text-[var(--pro-tx-30)]',
-};
-
 function conversationStatePill(state: string): string {
-  const tone = CONVERSATION_STATE_TONE[state] ?? CONVERSATION_STATE_TONE.in_progress;
-  return `font-pro-sub inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[10.5px] font-bold ${tone}`;
+  return proStatusPillClass(PRO_CONVERSATION_STATE_TONE[state] ?? 'neutral');
 }
 
 function initials(name: string): string {

@@ -3,15 +3,18 @@
 // (mesma decisão de booking.ts). Se o schema mudar, os dois lugares
 // precisam ser atualizados manualmente.
 
+// Fonte única do tipo (correção 09/09/2026, C5): antes havia uma
+// segunda declaração idêntica aqui — reimporta/reexporta de
+// conversation-state.ts (que também tem deriveConversationState) pra
+// nunca divergir.
+import type { ConversationState } from '@/lib/conversation-state';
+export type { ConversationState };
+
 export type ConversationStatus = 'open' | 'closed' | 'archived';
 export type ConversationType = 'external_inquiry' | 'professional_self';
 export type MessageDirection = 'inbound' | 'outbound';
 export type MessageAuthorType = 'external_participant' | 'professional' | 'ai' | 'system';
 export type PreparedResponseOutcome = 'sent' | 'edited';
-
-// Espelha src/lib/conversations/state.ts — ver esse arquivo pro
-// racional completo de cada estado/prioridade.
-export type ConversationState = 'needs_you' | 'waiting_client' | 'in_progress' | 'closed';
 
 export type ConversationOperationalFacts = {
   conversationId: string;

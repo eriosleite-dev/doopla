@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Booking, BookingEvent, BookingStatus } from '@/types/booking';
+import type { StatusPillTone } from '@/components/shared/StatusPill';
 
 // Labels portados 1:1 de src/app/dashboard/ui.ts (STATUS_LABELS) —
 // mesma linguagem de produto já usada no painel web, sem inventar
@@ -38,6 +39,27 @@ export function classifyBookingForChip(booking: Booking, viewerId: string): Book
 function wasProposedByViewer(booking: Booking, viewerId: string): boolean {
   if (booking.proposed_by === 'artista') return booking.artist_profile_id === viewerId;
   return booking.booker_profile_id === viewerId;
+}
+
+// Tom visual por status de booking — espelha
+// src/app/dashboard/pro-format.ts (bookingStatusTone) no painel web,
+// mesma regra nos dois lugares (correção 09/09/2026, D1/D2): nunca uma
+// tela decide cor sozinha, nunca o mesmo booking muda de sentido entre
+// Home e Bookings.
+export function bookingStatusTone(booking: Booking, viewerId: string): StatusPillTone {
+  switch (booking.status) {
+    case 'proposta_enviada':
+      return wasProposedByViewer(booking, viewerId) ? 'amber' : 'red';
+    case 'aceita':
+    case 'concluida':
+      return 'green';
+    case 'aguardando_pagamento':
+      return 'amber';
+    case 'cancelada':
+      return 'red';
+    default:
+      return 'neutral'; // recusada
+  }
 }
 
 export type BookingWithOtherParty = Booking & { otherPartyName: string };

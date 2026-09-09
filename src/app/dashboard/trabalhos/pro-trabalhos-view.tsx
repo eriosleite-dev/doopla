@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { formatRelativeDate } from '@/lib/format';
 
 import { bookingLine } from '../bookings-list';
-import { BOOKING_STATUS_FILTERS, type BookingWithOtherParty } from '../data';
-import { proStatusPillClass, PRO_BOOKING_PILL_TONE } from '../pro-format';
+import { BOOKING_ATTENTION_FILTERS, classifyBookingAttention } from '../booking-attention';
+import type { BookingWithOtherParty } from '../data';
+import { proStatusPillClass, bookingStatusTone } from '../pro-format';
 import { ProSearchFilter } from '../pro-ui';
 import { STATUS_LABELS } from '../ui';
 import type { Profile } from '@/lib/supabase/types';
@@ -15,15 +16,20 @@ import type { Profile } from '@/lib/supabase/types';
 // 06/09/2026) — mesma lógica de dados que já existia (getUserBookings,
 // bookingLine, STATUS_LABELS), só a pele muda. Booker continua vendo a
 // TrabalhosList legada (trabalhos/page.tsx decide por role) — este
-// componente é exclusivo da superfície profissional (artista).
+// componente é exclusivo da superfície profissional (artista). Filtros
+// por atenção (D4, 09/09/2026): mesma classificação do App
+// (classifyBookingForChip), nunca um agrupamento divergente por
+// status cru.
 export function ProTrabalhosView({
   bookings,
   role,
+  userId,
   conversationIdByBookingId,
   pendingReviewBookingIds = [],
 }: {
   bookings: BookingWithOtherParty[];
   role: Profile['role'];
+  userId: string;
   conversationIdByBookingId: Record<string, string>;
   pendingReviewBookingIds?: string[];
 }) {
@@ -33,8 +39,8 @@ export function ProTrabalhosView({
       items={bookings}
       getSearchText={(b) => `${b.otherPartyName} ${b.description ?? ''} ${bookingLine(b, role)}`}
       searchPlaceholder="Buscar por cliente, trabalho..."
-      statusFilters={BOOKING_STATUS_FILTERS}
-      getStatus={(b) => b.status}
+      statusFilters={BOOKING_ATTENTION_FILTERS}
+      getStatus={(b) => classifyBookingAttention(b, userId)}
       itemLabel={{ singular: 'booking encontrado', plural: 'bookings encontrados' }}
       emptyMessage="Nenhum booking encontrado com esses filtros."
       renderItem={(b) => {
@@ -57,7 +63,7 @@ export function ProTrabalhosView({
               </div>
             </Link>
             <div className="flex flex-none flex-col items-end gap-1.5">
-              <span className={proStatusPillClass(PRO_BOOKING_PILL_TONE[b.status] ?? 'amber')}>{STATUS_LABELS[b.status] ?? b.status}</span>
+              <span className={proStatusPillClass(bookingStatusTone(b, userId))}>{STATUS_LABELS[b.status] ?? b.status}</span>
               <span className="font-doopla-mono text-[10px] text-[var(--pro-tx-30)]">{formatRelativeDate(b.updated_at)}</span>
             </div>
             {needsReviewSet.has(b.id) && (

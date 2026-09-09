@@ -75,8 +75,14 @@ export default function BookingsListScreen() {
           />
         )}
         {phase === 'ready' &&
+          professionalId &&
           filtered.map((booking) => (
-            <BookingListRow key={booking.id} booking={booking} onPress={() => router.push(`/(tabs)/bookings/${booking.id}`)} />
+            <BookingListRow
+              key={booking.id}
+              booking={booking}
+              viewerId={professionalId}
+              onPress={() => router.push(`/(tabs)/bookings/${booking.id}`)}
+            />
           ))}
       </ScrollView>
     </SafeAreaView>

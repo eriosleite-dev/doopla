@@ -2,20 +2,20 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii } from '@/theme/tokens';
 import { formatCentsAsBRL, formatDatePt } from '@/lib/format';
-import { STATUS_LABELS, type BookingWithOtherParty } from '@/lib/data/bookings';
+import { bookingStatusTone, STATUS_LABELS, type BookingWithOtherParty } from '@/lib/data/bookings';
+import { StatusPill } from '@/components/shared/StatusPill';
 
-const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
-  proposta_enviada: { bg: 'rgba(245,166,35,.18)', fg: colors.amber },
-  aceita: { bg: 'rgba(62,207,110,.18)', fg: colors.green },
-  aguardando_pagamento: { bg: 'rgba(245,166,35,.18)', fg: colors.amber },
-  concluida: { bg: 'rgba(251,249,242,.12)', fg: colors.off },
-  recusada: { bg: 'rgba(251,249,242,.08)', fg: colors.tx50 },
-  cancelada: { bg: 'rgba(226,41,28,.18)', fg: '#ff8b80' },
-};
-
-export function BookingListRow({ booking, onPress }: { booking: BookingWithOtherParty; onPress: () => void }) {
-  const tone = STATUS_TONE[booking.status];
-
+// Tom do pill vem de bookingStatusTone (correção 09/09/2026, D1/D2) —
+// mesma regra do painel web, nunca um mapa local divergente por tela.
+export function BookingListRow({
+  booking,
+  viewerId,
+  onPress,
+}: {
+  booking: BookingWithOtherParty;
+  viewerId: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <View style={styles.main}>
@@ -32,9 +32,7 @@ export function BookingListRow({ booking, onPress }: { booking: BookingWithOther
             .join(' · ') || booking.otherPartyName}
         </Text>
       </View>
-      <View style={[styles.pill, { backgroundColor: tone.bg }]}>
-        <Text style={[styles.pillText, { color: tone.fg }]}>{STATUS_LABELS[booking.status]}</Text>
-      </View>
+      <StatusPill label={STATUS_LABELS[booking.status]} tone={bookingStatusTone(booking, viewerId)} />
     </Pressable>
   );
 }
@@ -64,14 +62,5 @@ const styles = StyleSheet.create({
     color: colors.tx50,
     fontFamily: fonts.body,
     fontSize: 11,
-  },
-  pill: {
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  pillText: {
-    fontFamily: fonts.subBold,
-    fontSize: 9.5,
   },
 });

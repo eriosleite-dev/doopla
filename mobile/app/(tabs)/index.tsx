@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -20,7 +20,8 @@ import { FalarComDooplaCard } from '@/components/home/FalarComDooplaCard';
 import { ReadinessCard, type ReadinessRowData } from '@/components/home/ReadinessCard';
 import { useToast } from '@/components/shared/Toast';
 import { NegotiationIcon, HourglassIcon, CheckIcon, MoneyIcon, LinkIcon, HashIcon, WhatsAppLogoIcon } from '@/components/icons/Icons';
-import { STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookings';
+import { bookingStatusTone, classifyBookingForChip, STATUS_LABELS, computeArtistStats, fetchUserBookings, type BookingWithOtherParty } from '@/lib/data/bookings';
+import { StatusPill } from '@/components/shared/StatusPill';
 import { fetchReferralSummary, type ReferralSummary } from '@/lib/data/referrals';
 import { fetchProfessionalHomeFacts, type ProfessionalHomeFacts } from '@/lib/data/home-facts';
 import { fetchActionableDecisions, groupDecisionsByConversation, sortDecisionsByPriority, type DecisionItem } from '@/lib/data/decisions';
@@ -96,6 +97,16 @@ export default function HomeScreen() {
     .filter((b) => ['proposta_enviada', 'aceita', 'aguardando_pagamento'].includes(b.status))
     .slice(0, 5);
 
+  // "Precisa de você" unificado (D3/D5, auditoria de divergência
+  // Web×App, 09/09/2026) — mesma soma e mesmo racional do painel Web
+  // (professional-home-view.tsx): conversations.related_booking_id
+  // nunca é escrito hoje ligando uma conversa à proposta que ela mesma
+  // gerou, então bookings aguardando resposta e conversas precisando
+  // de você são conjuntos disjuntos — a soma nunca conta a mesma
+  // pendência duas vezes.
+  const bookingsNeedingResponse = professionalId ? bookings.filter((b) => classifyBookingForChip(b, professionalId) === 'precisa_de_voce') : [];
+  const attentionCount = bookingsNeedingResponse.length + decisions.length;
+
   // Bloco 4 — nudge progressivo (08/09/2026). `undefined` (ainda
   // carregando) nunca mostra a linha — evita um falso positivo piscando
   // antes do fetch resolver. Só "Dados de recebimento" no App nesta
@@ -147,7 +158,7 @@ export default function HomeScreen() {
         <View style={styles.main}>
           <HomeHero
             firstName={capitalizeName(profile?.full_name?.split(' ')[0] ?? '')}
-            needsYouCount={homeFacts?.conversationsNeedingYouCount ?? 0}
+            needsYouCount={attentionCount}
             hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
           />
 
@@ -159,8 +170,8 @@ export default function HomeScreen() {
               label="Aguardando sua resposta"
             />
             <StatCard
-              icon={<HourglassIcon size={14} color={colors.amber} />}
-              tone="amber"
+              icon={<HourglassIcon size={14} color={colors.red} />}
+              tone="red"
               num={String(homeFacts?.conversationsNeedingYouCount ?? 0)}
               label="Conversas que precisam de você"
             />
@@ -178,25 +189,40 @@ export default function HomeScreen() {
             />
           </StatsCarousel>
 
-          <AccordionSection title="Precisa de você" count={decisions.length}>
-            {decisions.length === 0 ? (
+          <AccordionSection title="Precisa de você" count={attentionCount}>
+            {attentionCount === 0 ? (
               <Text style={styles.emptyText}>Tudo certo por aqui.</Text>
             ) : (
-              decisions.map((d, i) => {
-                const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
-                return (
-                  <DecisionCard
-                    key={d.id}
-                    otherPartyName={booking?.otherPartyName ?? 'Conversa em andamento'}
-                    kind={d.kind}
-                    blockReason={d.blockReason}
-                    preparedContent={d.preparedContent}
-                    createdAt={d.createdAt}
-                    bordered={i > 0}
-                    onPress={() => router.push(`/conversas/${d.conversationId}`)}
-                  />
-                );
-              })
+              <>
+                {bookingsNeedingResponse.map((b, i) => (
+                  <Pressable
+                    key={b.id}
+                    style={[styles.bookingAttentionCard, i > 0 && styles.bookingAttentionCardBordered]}
+                    onPress={() => router.push(`/(tabs)/bookings/${b.id}`)}
+                  >
+                    <Text style={styles.bookingAttentionName}>{b.otherPartyName}</Text>
+                    <Text style={styles.bookingAttentionNote}>Proposta de booking aguardando sua resposta.</Text>
+                    <View style={styles.bookingAttentionPill}>
+                      <StatusPill label={STATUS_LABELS[b.status]} tone={bookingStatusTone(b, professionalId ?? '')} />
+                    </View>
+                  </Pressable>
+                ))}
+                {decisions.map((d, i) => {
+                  const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
+                  return (
+                    <DecisionCard
+                      key={d.id}
+                      otherPartyName={booking?.otherPartyName ?? 'Conversa em andamento'}
+                      kind={d.kind}
+                      blockReason={d.blockReason}
+                      preparedContent={d.preparedContent}
+                      createdAt={d.createdAt}
+                      bordered={bookingsNeedingResponse.length > 0 || i > 0}
+                      onPress={() => router.push(`/conversas/${d.conversationId}`)}
+                    />
+                  );
+                })}
+              </>
             )}
           </AccordionSection>
 
@@ -214,7 +240,7 @@ export default function HomeScreen() {
                     name={b.description || b.otherPartyName}
                     place={b.event_location ?? ''}
                     statusLabel={STATUS_LABELS[b.status]}
-                    statusTone={b.status === 'aceita' || b.status === 'aguardando_pagamento' ? 'green' : 'amber'}
+                    statusTone={bookingStatusTone(b, professionalId ?? '')}
                     bordered={i > 0}
                   />
                 );
@@ -293,5 +319,28 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 12,
     paddingVertical: 6,
+  },
+  bookingAttentionCard: {
+    paddingVertical: 12,
+  },
+  bookingAttentionCardBordered: {
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+  bookingAttentionName: {
+    color: colors.off,
+    fontFamily: fonts.subBold,
+    fontSize: 13.5,
+    marginBottom: 3,
+  },
+  bookingAttentionNote: {
+    color: colors.tx50,
+    fontFamily: fonts.body,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  bookingAttentionPill: {
+    marginTop: 8,
+    alignItems: 'flex-start',
   },
 });

@@ -16,9 +16,9 @@ import {
   respondBookingAction,
 } from '../../actions';
 import type { BookingWithOtherParty } from '../../data';
-import { CONVERSATION_STATE_LABELS } from '../../ui';
+import { CONVERSATION_STATE_LABELS, STATUS_LABELS } from '../../ui';
 import { ProCard, ProPageHeader } from '../../pro-ui';
-import { PRO_BOOKING_PILL_TONE, proGhostButtonClass, proPrimaryButtonClass, proStatusPillClass } from '../../pro-format';
+import { bookingStatusTone, PRO_CONVERSATION_STATE_TONE, proGhostButtonClass, proPrimaryButtonClass, proStatusPillClass } from '../../pro-format';
 import { DISPUTE_LABELS, PAYMENT_DUE_LABELS, invoiceStages, paymentDueState, paymentPolicySummary } from './booking-detail-shared';
 import { ProCancelBookingForm } from './pro-cancel-booking-form';
 import { ProContractSection } from './pro-contract-section';
@@ -27,28 +27,8 @@ import { ProInvoiceTermForm } from './pro-invoice-term-form';
 import { ProRescheduleForm } from './pro-reschedule-form';
 import { ProReviewPanel } from './pro-review-panel';
 
-const STATUS_LABELS: Record<string, string> = {
-  proposta_enviada: 'Aguardando resposta',
-  aceita: 'Aceita',
-  recusada: 'Recusada',
-  aguardando_pagamento: 'Aguardando pagamento',
-  concluida: 'Concluída',
-  cancelada: 'Cancelada',
-};
-
-const CONVERSATION_STATE_TONE: Record<string, 'red' | 'amber' | 'green' | 'neutral'> = {
-  needs_you: 'red',
-  waiting_client: 'amber',
-  in_progress: 'neutral',
-  closed: 'neutral',
-};
-
 function conversationStatePill(state: string): string {
-  const tone = CONVERSATION_STATE_TONE[state] ?? 'neutral';
-  if (tone === 'neutral') {
-    return 'font-pro-sub inline-block whitespace-nowrap rounded-full border border-[var(--pro-line)] px-2.5 py-1 text-[10.5px] font-bold text-[var(--pro-tx-50)]';
-  }
-  return proStatusPillClass(tone);
+  return proStatusPillClass(PRO_CONVERSATION_STATE_TONE[state] ?? 'neutral');
 }
 
 function proCpDotClass(done: boolean): string {
@@ -139,7 +119,7 @@ export function ProBookingDetailView({
       <ProPageHeader
         title={booking.otherPartyName}
         subtitle="Negociação"
-        action={<span className={proStatusPillClass(PRO_BOOKING_PILL_TONE[booking.status] ?? 'amber')}>{STATUS_LABELS[booking.status]}</span>}
+        action={<span className={proStatusPillClass(bookingStatusTone(booking, userId))}>{STATUS_LABELS[booking.status]}</span>}
         badge={
           <span className="font-pro-sub flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-[var(--pro-off)]">
             {initials(booking.otherPartyName)}

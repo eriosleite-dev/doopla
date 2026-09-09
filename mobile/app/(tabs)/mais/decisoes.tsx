@@ -12,6 +12,8 @@ import {
   decisionBlockReasonLabel,
   fetchActionableDecisionsPage,
   fetchResolvedDecisionsPage,
+  pendingReplyOutcomeLabel,
+  preparedDraftOutcomeLabel,
   type ActionableDecisionSort,
   type RawActionableDecisionPageRow,
   type RawResolvedDecisionPageRow,
@@ -52,17 +54,6 @@ type ResolvedCard = {
   timeLabel: string;
   conversationId: string;
 };
-
-function pendingReplyOutcomeLabel(status: string | null, supersededById: string | null): string {
-  if (status === 'completed') return 'Você respondeu e a Doopla retomou a conversa.';
-  if (supersededById) return 'Substituída por uma decisão mais recente na mesma conversa.';
-  return 'Encerrada — a negociação nesta conversa chegou ao fim.';
-}
-
-function preparedDraftOutcomeLabel(outcome: string | null): string {
-  if (outcome === 'edited') return 'Você editou o rascunho da Doopla antes de enviar.';
-  return 'Você aprovou e enviou o rascunho da Doopla.';
-}
 
 // Reescrita pra paginação real server-side (migration 0070/hotfix
 // pedido explicitamente) — espelha src/app/dashboard/decisoes (painel

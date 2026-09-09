@@ -30,7 +30,7 @@ export function HomeHero({
         <View style={styles.pulse} />
         <Text style={styles.statusText}>
           {needsYouCount > 0
-            ? `Ativa, com ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
+            ? `Ativa, com ${needsYouCount} pendência${needsYouCount > 1 ? 's' : ''} esperando por você`
             : 'Ativa, trabalhando por você'}
         </Text>
       </View>

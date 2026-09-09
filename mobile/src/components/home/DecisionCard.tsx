@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radii } from '@/theme/tokens';
+import { decisionBlockReasonLabel } from '@/lib/data/decisions';
 
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -10,14 +11,6 @@ function formatRelativeTime(iso: string): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `Há ${hours}h`;
   return `Há ${Math.floor(hours / 24)}d`;
-}
-
-function blockReasonLabel(reason: string | null): string {
-  if (!reason) return 'A Doopla está esperando uma decisão sua pra continuar essa conversa.';
-  if (reason === 'professional_not_operationally_ready') {
-    return 'Precisa confirmar alguns dados antes da Doopla continuar por você.';
-  }
-  return 'A Doopla pausou aqui e precisa de você pra seguir.';
 }
 
 // Card individual de "Precisa de você" — leitura sobre
@@ -45,7 +38,7 @@ export function DecisionCard({
     <View style={[styles.card, bordered && styles.bordered]}>
       <Text style={styles.name}>{otherPartyName}</Text>
       <Text style={styles.note}>
-        {kind === 'prepared_draft' ? 'A Doopla preparou uma resposta. Revise antes de enviar.' : blockReasonLabel(blockReason)}
+        {kind === 'prepared_draft' ? 'A Doopla preparou uma resposta. Revise antes de enviar.' : decisionBlockReasonLabel(blockReason)}
       </Text>
       {kind === 'prepared_draft' && preparedContent && (
         <Text style={styles.preview} numberOfLines={2}>

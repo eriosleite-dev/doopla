@@ -5,6 +5,8 @@
 // exatamente essa mistura que causava "Attempted to call X() from the
 // server" quando essas duas viviam em pro-ui.tsx.
 
+import { wasBookingProposedByViewer, type BookingProposalFields } from './booking-attention';
+
 // Correção 06/09/2026 — nome cadastrado sem capitalização consistente
 // (ex.: "eduarda") não deve vazar pra saudação da Home ("Oi, eduarda").
 // Normaliza pra Title Case preservando acentos, via toLocaleUpperCase/
@@ -28,11 +30,16 @@ export function formatRelativeTime(iso: string): string {
   return `Há ${days}d`;
 }
 
-export function proStatusPillClass(tone: 'red' | 'amber' | 'green'): string {
+export type ProPillTone = 'red' | 'amber' | 'green' | 'neutral';
+
+export function proStatusPillClass(tone: ProPillTone): string {
   const base = 'font-pro-sub inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[10.5px] font-bold';
   if (tone === 'red') return `${base} bg-[rgba(226,41,28,.18)] text-[#ff8b80]`;
   if (tone === 'amber') return `${base} bg-[rgba(245,166,35,.18)] text-[var(--pro-amber)]`;
-  return `${base} bg-[rgba(62,207,110,.18)] text-[var(--pro-green)]`;
+  if (tone === 'green') return `${base} bg-[rgba(62,207,110,.18)] text-[var(--pro-green)]`;
+  // neutral — estado final/informativo, sem ação pendente (ex.: recusada,
+  // conversa in_progress/closed): nunca a mesma cor de urgência/atenção.
+  return `${base} border border-[var(--pro-line)] text-[var(--pro-tx-50)]`;
 }
 
 // Badge PRO/BÁSICO — mesmo estilo visual já usado em Minha equipe
@@ -61,13 +68,40 @@ export const proInputClass =
 export const proLabelClass = 'text-[11.5px] font-semibold text-[var(--pro-tx-50)]';
 
 // Tom visual por status de booking — compartilhado entre Home,
-// Bookings e Agenda (revisão Professional Web Dashboard, 06/09/2026)
-// pra nunca cada tela inventar sua própria cor pro mesmo status.
-export const PRO_BOOKING_PILL_TONE: Record<string, 'red' | 'amber' | 'green'> = {
-  proposta_enviada: 'red',
-  aceita: 'green',
-  aguardando_pagamento: 'amber',
-  concluida: 'green',
-  cancelada: 'amber',
-  recusada: 'amber',
+// Bookings e Agenda (revisão Professional Web Dashboard, 06/09/2026;
+// revisado 09/09/2026 na auditoria de divergência Web×App). Nunca uma
+// tela decide cor sozinha: aceita/concluida=green (resultado
+// positivo), aguardando_pagamento=amber (atenção sem caráter
+// negativo), cancelada=red (evento negativo relevante), recusada=
+// neutral (estado final, sem ação — não é uma cor de urgência).
+// proposta_enviada depende de QUEM propôs (mesma regra de
+// classifyBookingAttention, booking-attention.ts): se foi a outra
+// parte, o profissional precisa decidir agora (red); se foi o próprio
+// profissional, está só aguardando resposta (amber) — nunca as duas
+// situações com a mesma cor, senão uma proposta que ele mesmo enviou
+// pareceria "urgente pra ele" outra vez.
+export function bookingStatusTone(booking: BookingProposalFields, viewerId: string): ProPillTone {
+  switch (booking.status) {
+    case 'proposta_enviada':
+      return wasBookingProposedByViewer(booking, viewerId) ? 'amber' : 'red';
+    case 'aceita':
+    case 'concluida':
+      return 'green';
+    case 'aguardando_pagamento':
+      return 'amber';
+    case 'cancelada':
+      return 'red';
+    default:
+      return 'neutral'; // recusada
+  }
+}
+
+// Tom visual por estado de conversa — mesma regra em toda parte que
+// mostra o pill (booking detail, conversa-view); nunca um mapa local
+// duplicado por tela (correção 09/09/2026).
+export const PRO_CONVERSATION_STATE_TONE: Record<string, ProPillTone> = {
+  needs_you: 'red',
+  waiting_client: 'amber',
+  in_progress: 'neutral',
+  closed: 'neutral',
 };

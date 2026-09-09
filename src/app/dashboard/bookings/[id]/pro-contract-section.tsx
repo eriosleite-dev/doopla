@@ -6,13 +6,9 @@ import { setContractUrlAction } from '../../actions';
 import { ProGenerateContractForm } from '../../contratos/pro-generate-contract-form';
 import { contractStatus, type BookingWithOtherParty } from '../../data';
 import { proInputClass, proPrimaryButtonClass, proStatusPillClass } from '../../pro-format';
+import { CONTRACT_STATUS_LABELS } from '../../ui';
 
 type Mode = 'closed' | 'gerar' | 'anexar';
-
-const CONTRACT_STATUS_LABELS: Record<'anexado' | 'sem_contrato', string> = {
-  anexado: 'Anexado',
-  sem_contrato: 'Sem contrato',
-};
 
 // Pro re-skin (Bloco 7, P1) de ContractSection — mesma action/lógica,
 // só o tema --pro-*.

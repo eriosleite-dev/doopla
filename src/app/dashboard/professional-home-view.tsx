@@ -8,11 +8,12 @@ import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
+import { classifyBookingAttention } from './booking-attention';
 import { conversationHref } from './decisoes/format-cards';
 import { getActivePaymentDetails, getArtistMatchingCompletion, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
-import { capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass, PRO_BOOKING_PILL_TONE } from './pro-format';
+import { bookingStatusTone, capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass } from './pro-format';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
 import { ProAccordion, ProCopyButton } from './pro-ui';
 import { STATUS_LABELS } from './ui';
@@ -46,6 +47,25 @@ export async function ProfessionalHomeView({
   const needsYouDecisions = sortDecisionsByPriority(
     groupDecisionsByConversation(decisions).filter((d) => conversationSummary.needsYouConversationIds.includes(d.conversationId))
   ).slice(0, 5);
+
+  // "Precisa de você" unificado (D3/D5, auditoria de divergência
+  // Web×App, 09/09/2026): antes a Home só contava conversas
+  // (conversationSummary.needsYouCount) — uma proposta de booking
+  // aguardando resposta do profissional (classifyBookingAttention ===
+  // 'precisa_de_voce') ficava invisível aqui, só aparecendo como badge
+  // no menu lateral. Investigação confirmou que os dois nunca se
+  // sobrepõem hoje: conversations.related_booking_id (FK que ligaria
+  // uma conversa à SUA própria proposta) nunca é escrito em nenhum
+  // caminho de código atual (proposeBookingAction/
+  // selectBookerForOpportunityAction criam bookings sem tocar
+  // conversations; ensure_opportunity_for_conversation, migration
+  // 0051, só grava related_opportunity_id) — os dois conjuntos são
+  // estruturalmente disjuntos, então a soma abaixo nunca conta a mesma
+  // pendência real duas vezes. Se algum dia related_booking_id passar
+  // a ser escrito ligando uma conversa à proposta que ela mesma gerou,
+  // esta soma precisa ser revisada antes de continuar ingênua.
+  const bookingsNeedingResponse = bookings.filter((b) => classifyBookingAttention(b, userId) === 'precisa_de_voce');
+  const attentionCount = bookingsNeedingResponse.length + conversationSummary.needsYouCount;
 
   const [recentActivity, orcamentoInfo, referralSummary, activePaymentDetails, matchingCompletion] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
@@ -100,7 +120,7 @@ export async function ProfessionalHomeView({
                 <p className="font-pro-sub truncate text-[13.5px] font-bold">{b.otherPartyName}</p>
                 <p className="truncate text-[11px] text-[var(--pro-tx-50)]">{b.event_location || 'Local a definir'}</p>
               </div>
-              <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(PRO_BOOKING_PILL_TONE[b.status] ?? 'amber')}>
+              <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(bookingStatusTone(b, userId))}>
                 {STATUS_LABELS[b.status] ?? b.status}
               </Link>
             </div>
@@ -112,10 +132,10 @@ export async function ProfessionalHomeView({
 
   return (
     <div>
-      <ProHero fullName={profile.full_name} needsYouCount={conversationSummary.needsYouCount} hasDooplaPro={homeFacts.hasDooplaPro} />
+      <ProHero fullName={profile.full_name} needsYouCount={attentionCount} hasDooplaPro={homeFacts.hasDooplaPro} />
 
       <StatsRow
-        needsYou={conversationSummary.needsYouCount}
+        needsYou={attentionCount}
         waitingClient={conversationSummary.waitingClientCount}
         confirmed={homeFacts.bookingsConfirmedCount}
         completed={homeFacts.bookingsCompletedCount}
@@ -135,13 +155,32 @@ export async function ProfessionalHomeView({
          de lá não têm margin próprio. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
         <div className="min-w-0">
-          <ProAccordion id="precisa-de-voce" title="Precisa de você" count={conversationSummary.needsYouCount} defaultOpen={false}>
-            {needsYouDecisions.length === 0 ? (
+          <ProAccordion id="precisa-de-voce" title="Precisa de você" count={attentionCount} defaultOpen={false}>
+            {attentionCount === 0 ? (
               <p className="font-pro-sub py-2 text-[14px] font-semibold text-[var(--pro-off)]">
                 Tudo certo por aqui.
               </p>
             ) : (
               <>
+                {bookingsNeedingResponse.length > 0 && (
+                  <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {bookingsNeedingResponse.map((b) => (
+                      <Link
+                        key={b.id}
+                        href={`/dashboard/bookings/${b.id}`}
+                        className="block rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4"
+                      >
+                        <p className="font-pro-sub text-[14.5px] font-bold">{b.otherPartyName}</p>
+                        <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
+                          Proposta de booking aguardando sua resposta.
+                        </p>
+                        <span className={`mt-3 inline-block ${proStatusPillClass(bookingStatusTone(b, userId))}`}>
+                          {STATUS_LABELS[b.status]}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {needsYouDecisions.map((d) => {
                     const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
@@ -174,12 +213,24 @@ export async function ProfessionalHomeView({
                     );
                   })}
                 </div>
-                <Link
-                  href="/dashboard/decisoes"
-                  className="font-pro-sub mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
-                >
-                  Ver todas as decisões →
-                </Link>
+                <div className="mt-4 flex flex-wrap gap-4">
+                  {needsYouDecisions.length > 0 && (
+                    <Link
+                      href="/dashboard/decisoes"
+                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
+                    >
+                      Ver todas as decisões →
+                    </Link>
+                  )}
+                  {bookingsNeedingResponse.length > 0 && (
+                    <Link
+                      href="/dashboard/trabalhos"
+                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
+                    >
+                      Ver bookings aguardando resposta →
+                    </Link>
+                  )}
+                </div>
               </>
             )}
           </ProAccordion>
@@ -277,7 +328,7 @@ function ProHero({
             <span className="absolute inset-[-4px] rounded-full bg-[var(--pro-green)] opacity-50 [animation:pro-pulse_1.8s_ease-out_infinite]" />
           </span>
           {needsYouCount > 0
-            ? `Sua Doopla está ativa, com ${needsYouCount} conversa${needsYouCount > 1 ? 's' : ''} esperando por você`
+            ? `Sua Doopla está ativa, com ${needsYouCount} pendência${needsYouCount > 1 ? 's' : ''} esperando por você`
             : 'Sua Doopla está ativa, trabalhando por você'}
         </div>
       </div>
