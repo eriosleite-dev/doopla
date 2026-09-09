@@ -49,7 +49,6 @@ export default async function PrepararPage() {
       initialLocal={artistProfile.local ?? ''}
       initialBio={artistProfile.bio ?? ''}
       initialLink={artistProfile.other_links ?? ''}
-      initialIssuesInvoice={artistProfile.issues_invoice}
       initialNegotiationNotes={artistProfile.negotiation_notes ?? ''}
       initialChannel={artistProfile.attention_channel}
     />

@@ -45,6 +45,14 @@ async function requireArtist() {
 // UPDATE nunca toca nessas duas colunas: ficam com o que já existia
 // (nunca sobrescritas pra null por um onboarding que não coleta mais
 // esse dado).
+//
+// Mesma lógica pra "Você emite nota fiscal?" (09/09/2026, fechamento
+// do onboarding): removida da Etapa 3 — coluna issues_invoice
+// (artist_profiles, migration 0037) continua existindo, nullable,
+// lida pelo Runtime (get-professional-business-context.ts) e já
+// editável em /dashboard/perfil/editar (Settings V2, 08/09/2026) —
+// esta action simplesmente para de escrever nela; nunca sobrescreve
+// pra null um valor que já tenha sido preenchido depois, no perfil.
 export async function savePrepareAction(
   _prevState: OnboardingFormState,
   formData: FormData
@@ -57,7 +65,6 @@ export async function savePrepareAction(
   const bio = String(formData.get('bio') ?? '').trim();
   const link = String(formData.get('link') ?? '').trim();
 
-  const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
   const negotiationNotes = String(formData.get('negotiationNotes') ?? '').trim();
   const channel = String(formData.get('channel') ?? '');
 
@@ -78,7 +85,6 @@ export async function savePrepareAction(
       local,
       bio,
       other_links: link || null,
-      issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
       negotiation_notes: negotiationNotes || null,
       attention_channel: channel as 'whatsapp' | 'painel' | 'ambos',
     })

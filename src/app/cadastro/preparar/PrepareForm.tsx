@@ -80,7 +80,6 @@ export function PrepareForm({
   initialLocal,
   initialBio,
   initialLink,
-  initialIssuesInvoice,
   initialNegotiationNotes,
   initialChannel,
   modalMode = false,
@@ -92,7 +91,6 @@ export function PrepareForm({
   initialLocal: string;
   initialBio: string;
   initialLink: string;
-  initialIssuesInvoice: boolean | null;
   initialNegotiationNotes: string;
   initialChannel: 'whatsapp' | 'painel' | 'ambos' | null;
   // Funil iniciado no modal da Home (ver CreateAccountModal.tsx) — quando
@@ -124,7 +122,6 @@ export function PrepareForm({
   const [bio, setBio] = useState(initialBio);
   const [link, setLink] = useState(initialLink);
 
-  const [issuesInvoice, setIssuesInvoice] = useState<boolean | null>(initialIssuesInvoice);
   const [negotiationNotes, setNegotiationNotes] = useState(initialNegotiationNotes);
 
   const [channel, setChannel] = useState<'whatsapp' | 'painel' | 'ambos' | null>(initialChannel);
@@ -156,11 +153,6 @@ export function PrepareForm({
       <input type="hidden" name="local" value={local} />
       <input type="hidden" name="bio" value={bio} />
       <input type="hidden" name="link" value={link} />
-      <input
-        type="hidden"
-        name="issuesInvoice"
-        value={issuesInvoice === null ? '' : String(issuesInvoice)}
-      />
       <input type="hidden" name="negotiationNotes" value={negotiationNotes} />
       <input type="hidden" name="channel" value={channel ?? ''} />
 
@@ -267,25 +259,7 @@ export function PrepareForm({
             </p>
 
             <div className="field">
-              <label>Você emite nota fiscal?</label>
-              <div className="chip-group">
-                <div
-                  className={`chip${issuesInvoice === true ? ' selected' : ''}`}
-                  onClick={() => setIssuesInvoice(true)}
-                >
-                  Sim
-                </div>
-                <div
-                  className={`chip${issuesInvoice === false ? ' selected' : ''}`}
-                  onClick={() => setIssuesInvoice(false)}
-                >
-                  Não
-                </div>
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Tem algo que sua Doopla sempre deve saber antes de negociar por você?</label>
+              <label>Tem algo que sua Doopla sempre deve saber antes de negociar por você? (opcional)</label>
               <p className="hint" style={{ marginTop: '-4px', marginBottom: '10px' }}>
                 Pode ser uma preferência, condição ou algo que você sempre faz questão de aprovar.
               </p>
