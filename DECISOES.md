@@ -1517,3 +1517,35 @@ montagem client-only do portal, porque a régua de lint deste projeto
 (`react-hooks/set-state-in-effect`) proíbe setState síncrono dentro de
 efeito — mesmo sendo o padrão "isMounted" mais comum em React, esse
 projeto especificamente exige a variante sem state-in-effect.
+
+## Padrão técnico — modal `position: fixed` dentro de `ProCard` precisa de portal — 09/09/2026
+
+Alerta de arquitetura, não específico ao formulário onde foi
+encontrado (`ProArtistProfileForm`, bloco 7 P1 2/N): **qualquer**
+modal/overlay `position: fixed` renderizado como descendente de um
+`ProCard` (ou de qualquer elemento com `backdrop-filter`, classe
+`backdrop-blur-*`) fica preso ao containing block criado por esse
+ancestral, em vez de cobrir a viewport inteira. Isso é comportamento
+do Chromium: `backdrop-filter` cria containing block pra descendentes
+`fixed`/`absolute` do mesmo jeito que `filter`/`transform`/
+`perspective` já criam — não é bug do React nem do Tailwind, é regra
+de CSS que qualquer novo componente Pro com um modal interno vai
+reproduzir se for colocado dentro de um `ProCard`.
+
+**Regra pra qualquer trabalho futuro no sistema Pro**: antes de
+envolver um componente com modal/overlay `fixed` num `ProCard` (ou
+qualquer wrapper com `backdrop-blur-*`), avaliar se o modal precisa
+realmente cobrir a viewport inteira. Se precisar, renderizar via
+`createPortal(..., document.body)` — com as duas consequências que
+isso traz e que também precisam ser tratadas: (1) gate de montagem
+client-only pra evitar mismatch de hidratação (`useSyncExternalStore`
+preferido a `useEffect`+`setState`, que a régua de lint deste projeto
+proíbe); (2) se o modal contém campos de formulário que devem submeter
+junto com um `<form>` que ficou fora da subárvore DOM do portal,
+associar cada campo/botão explicitamente via atributo HTML
+`form="<id-do-form>"` — portais React não preservam associação de
+formulário nativa via nesting DOM, e sem isso os campos param de ser
+enviados silenciosamente (nenhum erro visível, só dado que nunca
+chega no submit). O legado (`cardClass`, sem `backdrop-filter`) nunca
+teve esse problema — só surge em componentes novos que adotam o
+sistema Pro.
