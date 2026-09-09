@@ -8,6 +8,40 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Bloco 85/P1 fechado: item (i) "outros itens menores" nunca teve conteúdo recuperável — não é dívida pendente — 09/09/2026
+
+O bloco 85 (auditoria de fechamento do Professional Product UI, 5
+agentes em paralelo) resumiu tudo que não virou P0 nem os 8 itens P1
+nomeados (a)-(h) na frase solta "e outros itens menores", sem
+enumerar nada. Com (a)-(h) todos entregues (blocos 86-92), investiguei
+se essa frase escondia algum item real esquecido antes de declarar o
+bloco fechado.
+
+**Não escondia.** O próprio texto do bloco 85 já avisa que é um
+resumo ("auditoria completa, não repetida aqui") — o output bruto dos
+5 agentes nunca foi persistido em nenhum arquivo, commit ou contexto
+de sessão acessível hoje (`git log -S"outros itens menores"` só
+retorna o commit que criou a frase; nenhum arquivo de auditoria foi
+deletado do histórico; a sessão que rodou os 5 agentes já tinha
+terminado antes desta janela de trabalho começar). Toda "achado
+fora de escopo"/"pendência" registrada nos próprios blocos 86-92 (o
+trabalho de entregar a-h, que naturalmente tropeçou em detalhes
+adjacentes) já corresponde a itens que o usuário identificou
+explicitamente como *outros* achados conhecidos, não parte do (i):
+`available_for_referrals`, Contract/PaymentDue/Dispute no App,
+`MonthCalendar.tsx`, Home pública congelada. O único resíduo fora
+dessa lista (botão "X" do `ProfileModal` fora do tema `--pro-*`,
+bloco 86) já é uma decisão de escopo deliberada e documentada — não
+um item esquecido.
+
+**Decisão**: (i) não é uma tarefa adiada, é uma frase de resumo cujo
+conteúdo original se perdeu com o fim daquela sessão. Não inventei
+itens novos pra "preencher" o rótulo — isso seria criar um roadmap
+não pedido. Bloco 85/P1 declarado `[CLOSED]`. Qualquer achado pequeno
+real que aparecer depois disso entra como achado novo, com contexto
+próprio — o rótulo "(i)" deixa de ter qualquer significado
+operacional daqui pra frente.
+
 ## Professional Product UI — Shell + Home, QA closure pass: mascote "sumido" é o mesmo incidente do erro de dados — 04/09/2026 (mesmo dia, terceira review)
 
 Achado que vale registrar pra nunca mais investigar do zero: o

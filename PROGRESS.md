@@ -9707,7 +9707,7 @@ footer omitidos por não existirem URLs oficiais reais (decisão #6) —
 quando existirem, é um acréscimo pontual, não uma reabertura deste
 bloco.
 
-## 85. Professional Product UI — auditoria de fechamento + correção dos 4 achados P0 (Web + App) — `[P0 DELIVERED, P1/P2 PENDING]`
+## 85. Professional Product UI — auditoria de fechamento + correção dos 4 achados P0 (Web + App) — `[P0 DELIVERED, P1 DELIVERED/CLOSED — ver bloco 93]`
 
 Com o Bloco 6 (Home pública) congelado aguardando nova direção
 criativa externa a esta sessão, o trabalho seguiu no produto
@@ -10609,6 +10609,78 @@ sandbox. A garantia de sincronização em si não depende de teste
 visual: os dois componentes leem do mesmo objeto React Context, então
 divergência de estado entre eles deixa de ser possível por construção
 (garantia do próprio React), não por disciplina de código.
+
+## 93. Bloco 7, P1 — fechamento consolidado do bloco 85: item (i) "outros itens menores" é irrecuperável — `[P1 CLOSED]`
+
+Com (a)-(h) todos `[DELIVERED]` (blocos 86-92), o único item restante
+da lista priorizada do bloco 85 era (i) — "e outros itens menores",
+citado no texto original sem nenhuma enumeração. Antes de considerar
+o P1 fechado, investigação read-only pra recuperar o que esse item
+representava de fato, em vez de simplesmente descartá-lo.
+
+**O que a investigação encontrou**: o bloco 85 descreve a auditoria
+original como 5 agentes de investigação em paralelo que "entregou uma
+matriz de paridade Web↔App e uma lista priorizada (P0/P1/P2) de
+achados", explicitando na própria frase que "auditoria completa, não
+repetida aqui" — ou seja, o texto do bloco 85 sempre foi um resumo
+condensado do output real dos 5 agentes, nunca o output em si. Os 4
+achados P0 foram transcritos com detalhe total (commit `645ca84`); os
+achados P1 viraram a lista de 8 itens (a)-(h), também com detalhe;
+tudo que sobrou de P2/observações menores foi comprimido na frase "e
+outros itens menores", sem nenhum item nomeado.
+
+**Busca por qualquer rastro do conteúdo real**:
+- `git log -S"outros itens menores" -- PROGRESS.md`: um único commit
+  (`d636fba`, o que criou o bloco 85) — a frase nunca foi expandida
+  em nenhum commit posterior.
+- Nenhuma entrada em `DECISOES.md` documenta a matriz P0/P1/P2 além
+  da correção pontual sobre `payout_requests` (já parte do P0.1).
+  Nenhuma entrada com data 08/09/2026 cobre "outros itens menores".
+- `git log --diff-filter=D --all`: nenhum arquivo de auditoria/matriz
+  deletado do repositório em nenhum momento.
+- O transcript desta sessão (que já registrou o checkpoint de
+  09/09/2026) começou depois do bloco 85 ter sido escrito — os 5
+  agentes daquela auditoria rodaram numa sessão anterior, cujo
+  contexto/output não é acessível a partir daqui.
+- Revisão de toda anotação "fora de escopo"/"achado"/"pendente"
+  registrada nos blocos 86-92 (o próprio trabalho de entregar (a)-(h),
+  que naturalmente encontrou pontos adjacentes menores): todos os
+  achados reais encontrados já são explicitamente os itens que o
+  usuário mandou NÃO absorver aqui — `available_for_referrals`
+  (bloco 88), Contract status/Payment due/Dispute no App (bloco 89),
+  `MonthCalendar.tsx` (bloco 90), Home pública congelada (bloco 84).
+  O único achado remanescente fora dessa lista de exclusão (botão "X"
+  do `ProfileModal` fora do tema `--pro-*`, bloco 86) já está
+  registrado como decisão deliberada de não mexer em componente
+  compartilhado com Professional/Agency Profile — não é um item
+  esquecido do bloco 85, é uma decisão de escopo já tomada e já
+  documentada no próprio bloco 86.
+
+**Conclusão factual**: (i) não tem conteúdo recuperável. Não é um
+item pendente com implementação adiada — é uma frase-resumo cujo
+conteúdo original nunca foi persistido em nenhum artefato (arquivo,
+commit, ou contexto de sessão) acessível hoje. Não existe lista
+oculta pra reconstruir, e inventar itens novos sob o rótulo (i)
+violaria a instrução explícita de não criar um roadmap novo. Esta
+sessão já vinha sinalizando essa mesma constatação desde o bloco 92
+(`"outros itens menores" (nunca enumerados)`), antes mesmo deste
+pedido de fechamento — não é uma descoberta nova desta rodada, é a
+confirmação formal de um gap de documentação já suspeitado.
+
+**Decisão de fechamento**: como todo o conteúdo verificável do bloco
+85 (P0 + P1 a-h) está `[DELIVERED]`, e (i) não representa nenhum
+trabalho concreto identificável, o bloco 85/P1 é declarado
+`[P1 CLOSED]`. Se um item pequeno e real surgir no futuro (visual,
+paridade, etc.), ele entra como um achado novo, registrado com seu
+próprio contexto — nunca como "parte do (i)", rótulo que não carrega
+mais nenhum significado operacional.
+
+**Nenhum código alterado neste bloco** — é puramente documental/de
+investigação, sem correção porque não havia nenhum alvo concreto de
+correção identificado. QA: `tsc --noEmit` e `eslint` re-executados no
+estado atual do repositório (pós-bloco 92) só pra confirmar que a
+árvore segue limpa antes do fechamento — sem diffs de código neste
+bloco, então nada novo a validar além disso.
 
 ## Como usar isso
 
