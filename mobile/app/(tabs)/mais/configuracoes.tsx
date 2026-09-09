@@ -8,11 +8,17 @@ import { LoadingState, ErrorState } from '@/components/shared/ScreenState';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { ChevronRightIcon } from '@/components/icons/Icons';
 import { fetchArtistProfile, fetchArtistSubscription } from '@/lib/data/artistProfile';
+import {
+  ensureCommunityProfileActivated,
+  fetchMyCommunityProfile,
+  updateCommunityProfile,
+  type CommunityProfileSnapshot,
+} from '@/lib/data/community';
 import { closeAccount, updateArtistProfileFields, updateProfileFields } from '@/lib/data/settings';
 import type { ArtistProfile, ArtistSubscription } from '@/types/artistProfile';
 
 type Phase = 'loading' | 'ready' | 'error';
-type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'publico' | 'ajuda' | 'excluir' | null;
+type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'publico' | 'comunidade' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
 
@@ -63,6 +69,7 @@ export default function ConfiguracoesScreen() {
             <SettingsRow label="Plano" sub={subscription?.artist_plan ? PLAN_LABELS[subscription.artist_plan] : undefined} onPress={() => setOpenSheet('plano')} />
             <SettingsRow label="WhatsApp" sub={profile?.phone ?? 'Não cadastrado'} onPress={() => setOpenSheet('whatsapp')} />
             <SettingsRow label="Perfil público" sub={artistProfile?.public_enabled ? 'Ativo' : 'Desativado'} onPress={() => setOpenSheet('publico')} />
+            <SettingsRow label="Privacidade na Comunidade" onPress={() => setOpenSheet('comunidade')} />
             <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} />
             <SettingsRow label="Excluir minha conta" onPress={() => setOpenSheet('excluir')} last />
           </View>
@@ -123,6 +130,10 @@ export default function ConfiguracoesScreen() {
             }}
           />
         )}
+      </BottomSheet>
+
+      <BottomSheet visible={openSheet === 'comunidade'} onClose={() => setOpenSheet(null)}>
+        <CommunityPrivacySheet visible={openSheet === 'comunidade'} />
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'ajuda'} onClose={() => setOpenSheet(null)}>
@@ -247,6 +258,129 @@ function PublicProfileForm({
   );
 }
 
+type CommunityToggleKey = 'showCity' | 'showAvatar' | 'showBio' | 'showSpecialties' | 'showWorkTypes' | 'showInstagram' | 'showPortfolio';
+
+const COMMUNITY_TOGGLES: { key: CommunityToggleKey; label: string }[] = [
+  { key: 'showCity', label: 'Mostrar minha cidade' },
+  { key: 'showAvatar', label: 'Mostrar minha foto' },
+  { key: 'showBio', label: 'Mostrar minha bio' },
+  { key: 'showSpecialties', label: 'Mostrar minhas especialidades' },
+  { key: 'showWorkTypes', label: 'Mostrar tipos de trabalho' },
+  { key: 'showInstagram', label: 'Mostrar meu Instagram' },
+  { key: 'showPortfolio', label: 'Mostrar meu portfólio' },
+];
+
+// Bloco 7, P1 (09/09/2026) — mesma feature nova do painel web (ver
+// src/app/dashboard/perfil/privacidade/comunidade/), reutilizando a
+// mesma data layer já existente em mobile/src/lib/data/community.ts
+// (fetchMyCommunityProfile/updateCommunityProfile/
+// ensureCommunityProfileActivated — cópia deliberada de
+// src/lib/community/data.ts, mesmo backend/RPC/RLS). Busca só ao abrir
+// o sheet (não no load() da tela toda) — abrir Configurações não deve
+// silenciosamente ativar a participação na Comunidade; só entrar
+// NESTE sheet especificamente é uma ação relacionada à Comunidade.
+// Refaz a busca toda vez que o sheet reabre, pra nunca mostrar valor
+// desatualizado depois de fechar/reabrir.
+//
+// availableForReferrals nunca vira toggle aqui (não é um dos 7 campos
+// pedidos) — só é lido do snapshot atual e reenviado sem alteração no
+// submit, pela mesma razão documentada na action do Web: a RPC exige
+// os 8 parâmetros juntos, sem update parcial.
+function CommunityPrivacySheet({ visible }: { visible: boolean }) {
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [snapshot, setSnapshot] = useState<CommunityProfileSnapshot | null>(null);
+  const [values, setValues] = useState<Record<CommunityToggleKey, boolean>>({
+    showCity: false,
+    showAvatar: false,
+    showBio: false,
+    showSpecialties: false,
+    showWorkTypes: false,
+    showInstagram: false,
+    showPortfolio: false,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setPhase('loading');
+    setError(null);
+    setSaved(false);
+    ensureCommunityProfileActivated()
+      .then(() => fetchMyCommunityProfile())
+      .then((profile) => {
+        if (!profile) {
+          setPhase('error');
+          return;
+        }
+        setSnapshot(profile);
+        setValues({
+          showCity: profile.showCity,
+          showAvatar: profile.showAvatar,
+          showBio: profile.showBio,
+          showSpecialties: profile.showSpecialties,
+          showWorkTypes: profile.showWorkTypes,
+          showInstagram: profile.showInstagram,
+          showPortfolio: profile.showPortfolio,
+        });
+        setPhase('ready');
+      })
+      .catch(() => setPhase('error'));
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
+  }, [visible, load]);
+
+  function submit() {
+    if (!snapshot) return;
+    setSubmitting(true);
+    setError(null);
+    setSaved(false);
+    updateCommunityProfile({ availableForReferrals: snapshot.availableForReferrals, ...values })
+      .then(() => {
+        setSubmitting(false);
+        setSaved(true);
+      })
+      .catch(() => {
+        setSubmitting(false);
+        setError('Não foi possível salvar agora. Tente novamente.');
+      });
+  }
+
+  if (phase === 'loading') return <LoadingState label="Carregando…" />;
+  if (phase === 'error') return <ErrorState message="Não conseguimos carregar suas preferências agora." onRetry={load} />;
+
+  return (
+    <View>
+      <Text style={styles.sheetTitle}>Privacidade na Comunidade</Text>
+      <Text style={styles.sheetSubtext}>
+        O que outros profissionais veem no seu perfil público dentro da Comunidade — não afeta seu Perfil profissional
+        geral na Doopla.
+      </Text>
+      <View style={{ marginTop: 12 }}>
+        {COMMUNITY_TOGGLES.map((toggle) => (
+          <View key={toggle.key} style={styles.toggleRow}>
+            <Text style={styles.label}>{toggle.label}</Text>
+            <Switch
+              value={values[toggle.key]}
+              onValueChange={(next) => setValues((prev) => ({ ...prev, [toggle.key]: next }))}
+              trackColor={{ true: colors.red }}
+            />
+          </View>
+        ))}
+      </View>
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      {saved && !error && <Text style={styles.savedText}>Salvo.</Text>}
+      <Pressable style={[styles.submit, submitting && styles.submitDisabled]} disabled={submitting} onPress={submit}>
+        <Text style={styles.submitText}>{submitting ? 'Salvando…' : 'Salvar'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 // Account closure flow (Settings V2, 08/09/2026) — mesma copy/regras
 // do painel web (ver src/app/dashboard/perfil/privacidade/excluir/
 // page.tsx): explica o que acontece ANTES de pedir confirmação, exige
@@ -354,6 +488,7 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: colors.red, borderColor: colors.red },
   checkboxLabel: { flex: 1, color: colors.tx50, fontFamily: fonts.body, fontSize: 12 },
   errorText: { color: '#ff8b80', fontFamily: fonts.body, fontSize: 12, marginTop: 10 },
+  savedText: { color: colors.green, fontFamily: fonts.body, fontSize: 12, marginTop: 10 },
   deleteBtn: { backgroundColor: colors.red, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 18 },
   deleteBtnText: { color: colors.off, fontFamily: fonts.subBold, fontSize: 13 },
 });
