@@ -8,6 +8,32 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Nova Home Pública: aprovada pela fundadora — bloco fechado, débitos residuais não reabrem o bloco — 09/09/2026
+
+A fundadora aprovou a Home pública nova (mockup `doopla-home-mockup.html`
++ ajuste exato da seção "Sempre com você", bloco 96). Commits que
+compõem a versão aprovada: `df7192b`, `420016e` (Nova Home V2),
+`7b4f159`, `102068c` (ajuste exato dos olhos legados/CTA do header).
+Ver `PROGRESS.md` §97 para o fechamento formal completo.
+
+Decisão: o bloco "Nova Home Pública" está `[APPROVED / CLOSED]`. Os
+achados já documentados que ficaram de fora do escopo aprovado —
+tema claro de SiteHeader/SiteFooter/PageShell (decisão anterior,
+fora de escopo desde antes), `legal-page.tsx`/`legal.css` órfãos,
+âncoras quebradas `/seguranca#pagamento`/`#verified` no rodapé do
+dashboard legado, e a excursão transitória dos olhos na fase de
+entrada em mobile (bloco 96) — continuam registrados como débitos,
+mas **não reabrem este bloco**. Se algum desses precisar de correção
+no futuro, isso é um pedido novo e explícito, não uma decorrência
+automática do fechamento da Home.
+
+Lição/princípio: fechar um bloco não é o mesmo que resolver todos os
+achados adjacentes a ele. Débitos de outros blocos (tema do
+header/footer, links quebrados legados) pertencem aos blocos donos
+daquele código, não ao bloco que por acaso os revelou durante o QA.
+
+---
+
 ## Nova Home V2: os "olhos da Home anterior" não são o sistema .mascot — são o GSAP dos "pulinhos", recuperado do git — 09/09/2026
 
 A primeira tentativa de reaproveitar "os olhos grandes da Home

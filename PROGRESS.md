@@ -10682,7 +10682,7 @@ estado atual do repositório (pós-bloco 92) só pra confirmar que a
 árvore segue limpa antes do fechamento — sem diffs de código neste
 bloco, então nada novo a validar além disso.
 
-## 94. Bloco 6 — Nova Home pública V2, redesign a partir do doopla-home-mockup.html — `[IMPLEMENTED / VISUAL QA PENDING]`
+## 94. Bloco 6 — Nova Home pública V2, redesign a partir do doopla-home-mockup.html — `[DELIVERED / APPROVED / CLOSED — ver bloco 97]`
 
 Substitui a Home V1 (§84) por completo: auditoria pré-implementação
 (bloco anterior, sem número próprio — mapa do site institucional) foi
@@ -10845,9 +10845,9 @@ fonte `Inter 800`/`IBM Plex Mono 700` adicionados ao `<link>` do
 Google Fonts já existente — necessários pros headings/eyebrows do
 novo desenho, nenhum link novo).
 
-Segue `[VISUAL QA PENDING]` — aguardando validação visual final do
-usuário contra o mockup aprovado, mesmo critério de fechamento já
-usado no bloco 84.
+**Status atualizado (09/09/2026, mesmo dia)**: aprovado pela fundadora
+após a rodada de ajuste do bloco 96 (olhos legados da seção "sempre com
+você"). Ver bloco 97 para o fechamento formal.
 
 ## 95. Onboarding/cadastro — fechamento: remove "Você emite nota fiscal?" da Etapa 3, mantém resto do Fluxo 1 já minimalista — `[DELIVERED]`
 
@@ -11052,6 +11052,54 @@ originais, o oposto do que essa tarefa pediu.
 do logo (header/footer), os 3 mascotes com blink (hero/CTA final,
 bloco 94), Menu overlay, FAQ, planos, footer, rotas reais, `SiteHeader`/
 `SiteFooter`/páginas institucionais.
+
+## 97. Bloco 6 — Nova Home pública — FECHAMENTO FORMAL: aprovada pela fundadora — `[APPROVED / CLOSED]`
+
+A fundadora revisou a Home pública (V2, a partir do
+`doopla-home-mockup.html`, blocos 94 e 96) e **aprovou**. O bloco "Nova
+Home Pública" do roadmap mestre está encerrado.
+
+**O que foi aprovado**: a implementação final completa — header/Menu
+overlay, hero, profissões, "você cuida do seu trabalho", seção "sempre
+com você" (fundo vermelho, texto preto, olhos grandes legados com
+pulinhos recuperados do histórico, CTA preto com glow — bloco 96, a
+versão final dessa seção), "como funciona", planos (`market.pricing`
+dinâmico), FAQ, CTA final, footer. Logo do header/footer usando a
+implementação real (`EyeLogo.tsx`, portada pra HTML cru), tracking do
+logo e blink dos 3 mascotes (hero/CTA final) conforme especificado.
+
+**Commits finais que compõem a versão aprovada**: `df7192b` (Nova Home
+V2, redesign completo), `420016e` (docs do bloco 94), `7b4f159`
+(recuperação dos olhos legados reais + correção do CTA do header,
+bloco 96), `102068c` (docs do bloco 96).
+
+**Findings/débitos que permanecem fora deste fechamento** (já
+documentados em blocos anteriores, não absorvidos aqui nem reabertos):
+- `SiteHeader`/`SiteFooter`/`PageShell`/páginas institucionais
+  (Sobre/Segurança/Termos/Privacidade/Contato) continuam no tema claro
+  antigo — decisão de escopo já registrada (bloco 94/auditoria
+  pré-implementação), pertence a um bloco futuro de unificação, não à
+  Home.
+- `legal-page.tsx`/`legal.css` continuam órfãos (zero import) —
+  achado de limpeza técnica, não bloqueia nada, não reaberto.
+- Links quebrados `/seguranca#pagamento`/`#verified` (usados pelo
+  footer do dashboard legado) — débito já registrado como fora de
+  escopo da Home, pertence a quem for mexer em `/seguranca` ou no
+  footer do dashboard legado.
+- Excursão lateral transitória dos olhos legados durante a entrada em
+  viewports estreitos (bloco 96) — achado técnico registrado, herdado
+  da fórmula original, não uma regressão; permanece registrado, não é
+  motivo pra reabrir a Home.
+
+Nenhum desses débitos pertence ao bloco "Nova Home Pública" — todos já
+estavam corretamente escopados fora dele antes desta aprovação, e
+continuam assim. **Reabrir a Home por qualquer um desses itens exigiria
+um pedido explícito novo, não decisão desta sessão.**
+
+**Roadmap mestre**: `HOME PÚBLICA` → `APPROVED / CLOSED`. Próximo passo
+combinado: fechamento documental (este bloco) seguido de checkpoint
+audit-only de Cadastro/Onboarding (ver bloco 98) antes de Settings V2
+— sequência não reorganizada, só executada na ordem já definida.
 
 ## Como usar isso
 
