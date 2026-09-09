@@ -9,6 +9,7 @@ import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
 import { AvatarUploader } from './avatar-uploader';
 import { BookerProfileForm } from './booker-profile-form';
+import { ProAgenciaPerfilView } from './pro-agencia-perfil-view';
 import { ProConfiguracoesView } from './pro-configuracoes-view';
 
 export const metadata: Metadata = {
@@ -23,9 +24,17 @@ const ROLE_LABELS: Record<'artista' | 'booker' | 'agencia', string> = {
 
 // Rota compartilhada — item 12/13 da revisão Professional Web Dashboard
 // (06/09/2026): profissional/artista vê a nova tela de Configurações
-// (ProConfiguracoesView); Booker/Agência continuam vendo exatamente o
-// Perfil legado de sempre (fora de escopo desta revisão, shell legado
+// (ProConfiguracoesView); Booker continua vendo exatamente o Perfil
+// legado de sempre (fora de escopo desta revisão, shell legado
 // intocado — mesmo padrão de Bookings/Agenda/Financeiro).
+//
+// Re-skin --pro-* (Bloco 7, P1, 09/09/2026) — `agencia` ganhou branch
+// próprio (ProAgenciaPerfilView) pelo mesmo motivo do artista: o shell
+// escuro (layout.tsx, `role !== 'booker'`) já valia pra agencia, mas
+// até aqui ela caía no mesmo JSX legado (card branco) do Booker por
+// baixo — clash resolvido dando a ela sua própria saída antecipada,
+// igual à do artista. O restante da função (branch do Booker) fica
+// intocado, só deixa de ser alcançável por agencia.
 export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
@@ -41,6 +50,18 @@ export default async function PerfilPage() {
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         paymentConfigured={paymentDetails !== null}
+      />
+    );
+  }
+
+  if (profile.role === 'agencia') {
+    const details = (await getRoleDetails('agencia', user.id, supabase)) as AgencyDetails | null;
+    return (
+      <ProAgenciaPerfilView
+        fullName={profile.full_name}
+        email={user.email ?? ''}
+        avatarUrl={profile.avatar_url}
+        details={details}
       />
     );
   }
@@ -170,7 +191,7 @@ type BookerDetails = {
   website_url: string | null;
 };
 
-type AgencyDetails = {
+export type AgencyDetails = {
   agency_name: string;
   roster: string | null;
   agentes: string | null;

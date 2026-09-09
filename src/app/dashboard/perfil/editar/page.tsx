@@ -5,11 +5,11 @@ import { redirect } from 'next/navigation';
 import { siteOrigin } from '@/lib/site-url';
 
 import { getArtistBookers, getArtistLinkRouting } from '../../data';
+import { ProPageHeader, ProCard } from '../../pro-ui';
 import { getSessionProfile } from '../../session';
-import { cardClass, eyebrowClass } from '../../ui';
-import { ArtistProfileForm } from '../artist-profile-form';
-import { AvatarUploader } from '../avatar-uploader';
 import { LinkRoutingCard } from '../link-routing-card';
+import { ProArtistProfileForm } from '../pro-artist-profile-form';
+import { ProAvatarUploader } from '../pro-avatar-uploader';
 import { PublicProfileCard } from '../public-profile-card';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
 
@@ -47,10 +47,14 @@ type ArtistDetails = {
 // Item 13 da revisão Professional Web Dashboard (06/09/2026) — "Perfil"
 // (informações profissionais que representam a pessoa) separado
 // conceitualmente de "Configurações" (plano/conta/WhatsApp/segurança).
-// Mesmos componentes reais de sempre (ArtistProfileForm/AvatarUploader/
-// PublicProfileCard/LinkRoutingCard), só relocados pra uma rota própria
-// — nenhuma lógica/campo novo, nenhum re-skin visual (fora de escopo
-// desta rodada, registrado no relatório final).
+// Mesmos componentes reais de sempre, só relocados pra uma rota própria
+// — nenhuma lógica/campo novo.
+//
+// Re-skin --pro-* (Bloco 7, P1, 09/09/2026) — artista-only continua
+// artista-only (guard/redirect intocado); só o tema visual muda, pros
+// forks Pro de ArtistProfileForm/AvatarUploader (PublicProfileCard/
+// LinkRoutingCard editados no lugar, sem contraparte Booker a
+// preservar).
 export default async function EditarPerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard/perfil');
@@ -73,25 +77,24 @@ export default async function EditarPerfilPage() {
     <main className="flex max-w-xl flex-col gap-8">
       <Link
         href="/dashboard/perfil/preferencias"
-        className="text-[12.5px] font-medium text-[var(--ink)]/50 underline underline-offset-2 hover:text-[var(--ink)]"
+        className="text-[12.5px] font-semibold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
       >
         ← Preferências da Doopla
       </Link>
-      <header>
-        <p className={eyebrowClass}>Perfil profissional</p>
-        <h1 className="font-doopla-display mt-1 text-3xl font-semibold">{profile.full_name || user.email}</h1>
-        <p className="mt-1.5 text-sm text-[var(--ink)]/55">O que aparece pra clientes e bookers quando alguém vê seu link ou perfil.</p>
-      </header>
+      <ProPageHeader
+        title={profile.full_name || user.email || ''}
+        subtitle="O que aparece pra clientes e bookers quando alguém vê seu link ou perfil."
+      />
 
-      <section className={cardClass}>
-        <p className={eyebrowClass}>Foto</p>
+      <ProCard>
+        <p className="font-pro-sub text-[13.5px] font-bold">Foto</p>
         <div className="mt-4">
-          <AvatarUploader currentUrl={profile.avatar_url} fallbackName={profile.full_name} />
+          <ProAvatarUploader currentUrl={profile.avatar_url} fallbackName={profile.full_name} />
         </div>
-      </section>
+      </ProCard>
 
-      <section className={cardClass}>
-        <ArtistProfileForm
+      <ProCard>
+        <ProArtistProfileForm
           stageName={artistDetails?.stage_name ?? null}
           category={artistDetails?.category ?? null}
           subcategory={artistDetails?.subcategory ?? null}
@@ -114,7 +117,7 @@ export default async function EditarPerfilPage() {
           helpAreas={artistDetails?.help_areas ?? []}
           issuesInvoice={artistDetails?.issues_invoice ?? null}
         />
-      </section>
+      </ProCard>
 
       <PublicProfileCard
         slug={profile.slug}
