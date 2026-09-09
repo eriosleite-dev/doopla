@@ -10,7 +10,6 @@ import {
   ensureCommunityProfileActivated,
   getCommunityAuthors,
   listCommunityPostsByIds,
-  markCommunityNotificationRead,
   removeCommunityPost,
   removeCommunityTopic,
   saveTopic,
@@ -78,28 +77,11 @@ export async function searchCommunityTopicsAction(query: string, categoryId?: st
   return topics.map((t) => toCard(t, authorsById));
 }
 
-// Notificações da Comunidade — UI (08/09/2026). Schema/RPC já existiam
-// desde a migration 0059 (community_notifications, mark_community_notification_read),
-// nunca conectados a nenhuma tela. Nenhuma migration/RPC nova aqui.
-// `text` já vem pronto do servidor (page.tsx) — nunca recomputado no
-// client a partir de type/actorName, uma única fonte da cópia por tipo.
-export type CommunityNotificationCard = {
-  id: string;
-  text: string;
-  readAt: string | null;
-  timeLabel: string;
-  href: string;
-};
-
-export async function markCommunityNotificationReadAction(notificationId: string): Promise<{ ok: true } | { error: string }> {
-  const { supabase } = await requireArtista();
-  try {
-    await markCommunityNotificationRead(supabase, notificationId);
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : 'Não foi possível marcar como lida.' };
-  }
-  return { ok: true };
-}
+// Notificações da Comunidade (08/09/2026, refeito 09/09/2026) — a UI
+// (NotificationBell/CommunityNotificationsBell) agora usa uma fonte
+// compartilhada única (NotificationsProvider, ver
+// ../notifications-context.tsx + ../notifications-actions.ts), correção
+// do P1 "2 sinos" — nunca mais uma cópia própria de tipo/action aqui.
 
 export async function toggleSaveTopicAction(topicId: string, save: boolean): Promise<{ ok: boolean }> {
   const { supabase, user } = await requireArtista();

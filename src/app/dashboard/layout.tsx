@@ -11,6 +11,7 @@ import { BookerProModal } from './booker-pro/booker-pro-modal';
 import { ProModalProvider } from './booker-pro/pro-modal-context';
 import { getAttentionItems, getReferralSummary, getSubscription, getUserBookings } from './data';
 import { LegacyDashboardShell } from './legacy-shell';
+import { NotificationsProvider } from './notifications-context';
 import { getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProfessionalShell } from './pro-shell';
 import { ReferralModal } from './referral-modal';
@@ -144,16 +145,25 @@ async function ProfessionalShellGate({
     getCachedConversationStateSummary(supabase),
   ]);
   return (
-    <ProfessionalShell
-      fullName={fullName}
-      email={email}
-      avatarUrl={avatarUrl}
-      hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
-      bookingsAwaitingCount={homeFacts?.bookingsAwaitingResponseCount ?? 0}
-      decisionsCount={conversationSummary.needsYouCount}
-      referralEligible={referralEligible}
-    >
-      {children}
-    </ProfessionalShell>
+    // NotificationsProvider aqui (não em DashboardLayout) — Booker não
+    // tem sino de notificação nenhum, escopar à árvore não-booker evita
+    // uma busca desperdiçada pra quem nunca vai usar (correção
+    // 09/09/2026, P1 "2 sinos": fonte única compartilhada entre
+    // NotificationBell, no topbar deste shell, e
+    // CommunityNotificationsBell, dentro de /dashboard/comunidade —
+    // ambos descendentes daqui).
+    <NotificationsProvider>
+      <ProfessionalShell
+        fullName={fullName}
+        email={email}
+        avatarUrl={avatarUrl}
+        hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
+        bookingsAwaitingCount={homeFacts?.bookingsAwaitingResponseCount ?? 0}
+        decisionsCount={conversationSummary.needsYouCount}
+        referralEligible={referralEligible}
+      >
+        {children}
+      </ProfessionalShell>
+    </NotificationsProvider>
   );
 }

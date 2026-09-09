@@ -2,39 +2,21 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import {
-  countUnreadCommunityNotifications,
   ensureCommunityProfileActivated,
   getCommunityAuthors,
   listCommunityCategories,
   listCommunityForYouTopics,
-  listCommunityNotifications,
   listCommunityTopics,
   listCommunityTopicsByIds,
   listCommunityTrendingTopics,
   listSavedTopicIds,
 } from '@/lib/community/data';
-import type { CommunityNotificationType } from '@/lib/supabase/types';
 
 import { formatRelativeTime } from '../pro-format';
 import { ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
-import type { CommunityNotificationCard, CommunityTopicCard } from './actions';
+import type { CommunityTopicCard } from './actions';
 import { ProComunidadeHomeView } from './pro-comunidade-home-view';
-
-// Notificações da Comunidade (08/09/2026) — cópia por tipo, sempre a
-// mesma nos dois lados (Web/App) pra nunca divergir. actor_profile_id
-// nunca aparece pro usuário — só o nome já resolvido via
-// community_profiles_public (mesma leitura segura de sempre).
-function notificationCopy(type: CommunityNotificationType, actorName: string): string {
-  switch (type) {
-    case 'reply_to_topic':
-      return `${actorName} respondeu no seu tópico`;
-    case 'reply_to_post':
-      return `${actorName} respondeu sua mensagem`;
-    case 'mention':
-      return `${actorName} mencionou você`;
-  }
-}
 
 export const metadata: Metadata = {
   title: 'Comunidade | Doopla',
@@ -50,11 +32,9 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   await ensureCommunityProfileActivated(supabase);
 
-  const [recentTopics, savedTopicIds, notifications, notificationsUnreadCount, categories, forYouTopics, trendingTopics] = await Promise.all([
+  const [recentTopics, savedTopicIds, categories, forYouTopics, trendingTopics] = await Promise.all([
     listCommunityTopics(supabase, { limit: 20 }),
     listSavedTopicIds(supabase),
-    listCommunityNotifications(supabase),
-    countUnreadCommunityNotifications(supabase),
     listCommunityCategories(supabase),
     listCommunityForYouTopics(supabase, 6),
     listCommunityTrendingTopics(supabase, 6),
@@ -75,20 +55,8 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   const savedTopics = await listCommunityTopicsByIds(supabase, savedTopicIds, savedTopicIds.length);
 
   const authorsById = await getCommunityAuthors(supabase, [
-    ...new Set(
-      [...recentTopics, ...savedTopics, ...forYouTopics, ...trendingTopics]
-        .map((t) => t.author_profile_id)
-        .concat(notifications.map((n) => n.actorProfileId))
-    ),
+    ...new Set([...recentTopics, ...savedTopics, ...forYouTopics, ...trendingTopics].map((t) => t.author_profile_id)),
   ]);
-
-  const notificationCards: CommunityNotificationCard[] = notifications.map((n) => ({
-    id: n.id,
-    text: notificationCopy(n.type, authorsById.get(n.actorProfileId)?.displayName ?? 'Profissional Doopla'),
-    readAt: n.readAt,
-    timeLabel: formatRelativeTime(n.createdAt),
-    href: `/dashboard/comunidade/${n.topicId}${n.postId ? `#msg-${n.postId}` : ''}`,
-  }));
 
   function toCard(topic: (typeof recentTopics)[number]): CommunityTopicCard {
     return {
@@ -116,8 +84,6 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
         recentTopics={recentTopics.map(toCard)}
         initialQuery={q ?? ''}
         currentProfileId={profile.id}
-        notifications={notificationCards}
-        notificationsUnreadCount={notificationsUnreadCount}
         categories={categories}
       />
     </main>

@@ -1,43 +1,52 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { markCommunityNotificationReadAction, type CommunityNotificationCard } from './actions';
+import type { CommunityNotificationType } from '@/lib/supabase/types';
+
+import { useNotifications } from '../notifications-context';
+import type { NotificationEntry } from '../notifications-actions';
 
 // Notificações da Comunidade (08/09/2026) — schema/RPC já existiam
 // desde a migration 0059 (community_notifications, mark_community_notification_read),
 // nunca conectados a nenhuma tela. Escopo só Comunidade — nunca a
-// central de notificações genérica do produto (NotificationBell em
-// pro-shell.tsx é outro sistema, outras tabelas, nunca misturados
-// aqui). Estado local seedado uma vez do Server Component (page.tsx) —
-// sem polling/realtime, mesmo padrão já aceito no resto da Comunidade.
-export function CommunityNotificationsBell({
-  initialNotifications,
-  initialUnreadCount,
-}: {
-  initialNotifications: CommunityNotificationCard[];
-  // Contagem exata separada da lista (que é só um preview das últimas
-  // 20, correção 09/09/2026 — ver src/lib/community/data.ts) — nunca
-  // derivada de notifications.filter() aqui, senão uma não lida mais
-  // antiga que o preview subcontaria o badge.
-  initialUnreadCount: number;
-}) {
-  const [notifications, setNotifications] = useState(initialNotifications);
-  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+// central de notificações genérica do produto. Fonte compartilhada com
+// NotificationBell via NotificationsProvider (correção 09/09/2026, P1
+// "2 sinos") — mesma busca/estado/mark-as-read; só a apresentação
+// (mensagem sem título do tópico, link com âncora #msg-N) continua
+// própria desta tela.
+function notificationCopy(type: CommunityNotificationType, actorName: string): string {
+  switch (type) {
+    case 'reply_to_topic':
+      return `${actorName} respondeu no seu tópico`;
+    case 'reply_to_post':
+      return `${actorName} respondeu sua mensagem`;
+    case 'mention':
+      return `${actorName} mencionou você`;
+  }
+}
+
+function notificationHref(entry: NotificationEntry): string {
+  return `/dashboard/comunidade/${entry.topicId}${entry.postId ? `#msg-${entry.postId}` : ''}`;
+}
+
+export function CommunityNotificationsBell() {
+  const { phase, items, unreadCount, refresh, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
 
+  // Preserva o comportamento de sempre desta tela (dado fresco a cada
+  // visita a /dashboard/comunidade, que antes vinha de SSR a cada
+  // render de page.tsx) — como agora é a MESMA fonte compartilhada,
+  // isso também deixa o sino global (NotificationBell) atualizado
+  // depois, sem ele precisar buscar nada.
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleOpenNotification(id: string) {
-    setNotifications((prev) => {
-      const clicked = prev.find((n) => n.id === id);
-      if (clicked && !clicked.readAt) setUnreadCount((c) => Math.max(0, c - 1));
-      return prev.map((n) => (n.id === id ? { ...n, readAt: n.readAt ?? new Date().toISOString() } : n));
-    });
-    // Fire-and-forget — otimista, mesmo padrão de SaveTopicButton/DeleteMenu
-    // no resto da Comunidade. Falha de rede não desfaz o estado local: o
-    // pior caso é a notificação continuar contando como não lida no
-    // servidor até o próximo clique, nunca um bloqueio de navegação.
-    void markCommunityNotificationReadAction(id);
+    markRead(id);
     setOpen(false);
   }
 
@@ -71,28 +80,39 @@ export function CommunityNotificationsBell({
             aria-label="Notificações"
             className="absolute right-0 top-full z-20 mt-2 max-h-[320px] w-[300px] overflow-y-auto rounded-[12px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] p-1.5 shadow-[0_10px_30px_rgba(0,0,0,.35)]"
           >
-            {notifications.length === 0 ? (
+            {phase === 'loading' && items.length === 0 && (
+              <p className="px-2.5 py-3 text-[12px] text-[var(--pro-tx-30)]">Carregando…</p>
+            )}
+            {phase === 'error' && items.length === 0 && (
+              <div className="px-2.5 py-3 text-center">
+                <p className="mb-1.5 text-[12px] text-[var(--pro-tx-30)]">Não deu pra carregar agora.</p>
+                <button type="button" onClick={refresh} className="text-[12px] font-bold text-[var(--pro-off)] underline">
+                  Tentar de novo
+                </button>
+              </div>
+            )}
+            {phase === 'ready' && items.length === 0 && (
               <p className="px-2.5 py-3 text-[12px] text-[var(--pro-tx-30)]">Nenhuma notificação por aqui ainda.</p>
-            ) : (
-              notifications.map((n) => (
+            )}
+            {items.length > 0 &&
+              items.map((n) => (
                 <Link
                   key={n.id}
-                  href={n.href}
+                  href={notificationHref(n)}
                   onClick={() => handleOpenNotification(n.id)}
                   className={`block rounded-[8px] px-2.5 py-2 text-[12px] leading-snug hover:bg-white/[0.05] ${
-                    n.readAt ? 'text-[var(--pro-tx-50)]' : 'text-[var(--pro-off)]'
+                    n.unread ? 'text-[var(--pro-off)]' : 'text-[var(--pro-tx-50)]'
                   }`}
                 >
                   <span className="flex items-start gap-1.5">
-                    {!n.readAt && <span className="mt-1 h-1.5 w-1.5 flex-none rounded-full bg-[var(--pro-red)]" aria-hidden="true" />}
+                    {n.unread && <span className="mt-1 h-1.5 w-1.5 flex-none rounded-full bg-[var(--pro-red)]" aria-hidden="true" />}
                     <span className="min-w-0">
-                      {n.text}
+                      {notificationCopy(n.type, n.actorName)}
                       <span className="font-doopla-mono mt-0.5 block text-[10px] text-[var(--pro-tx-30)]">{n.timeLabel}</span>
                     </span>
                   </span>
                 </Link>
-              ))
-            )}
+              ))}
           </div>
         </>
       )}

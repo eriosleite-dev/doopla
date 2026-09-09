@@ -1,6 +1,7 @@
 'use server';
 
 import { countUnreadCommunityNotifications, getCommunityAuthors, listCommunityNotifications, listCommunityTopicsByIds, markCommunityNotificationRead } from '@/lib/community/data';
+import type { CommunityNotificationType } from '@/lib/supabase/types';
 
 import { formatRelativeTime } from './pro-format';
 import { getSessionProfile } from './session';
@@ -21,12 +22,24 @@ import { getSessionProfile } from './session';
 // comunidade/actions.ts) — booker nunca tem community_notifications
 // (nunca ativa community_profiles), então o sino aqui devolve lista
 // vazia pra booker em vez de estourar erro.
-export type NotificationCard = {
+//
+// Correção 09/09/2026 (P1 "2 sinos", item h): esta é a ÚNICA leitura
+// de notificações do Web — NotificationBell e CommunityNotificationsBell
+// consomem via NotificationsProvider (notifications-context.tsx), nunca
+// cada um buscando por conta própria. Devolve dados CRUS (actorName/
+// topicTitle já resolvidos, mas sem mensagem/link formatados) — cada
+// sino formata sua própria apresentação (ver notification-bell.tsx/
+// community-notifications-bell.tsx), só a busca/estado são
+// compartilhados.
+export type NotificationEntry = {
   id: string;
+  type: CommunityNotificationType;
+  topicId: string;
+  postId: string | null;
+  actorName: string;
+  topicTitle: string;
   unread: boolean;
-  message: string;
   timeLabel: string;
-  href: string;
 };
 
 // unreadCount SEMPRE vem de countUnreadCommunityNotifications — nunca
@@ -36,13 +49,7 @@ export type NotificationCard = {
 // recentes existir sem aparecer no preview NÃO pode fazer o badge
 // subcontar (correção 09/09/2026, P1 "paginação/limite real na query
 // de notificações").
-export type NotificationsResult = { items: NotificationCard[]; unreadCount: number };
-
-function notificationMessage(type: string, actorName: string, topicTitle: string): string {
-  if (type === 'mention') return `${actorName} mencionou você em "${topicTitle}"`;
-  if (type === 'reply_to_post') return `${actorName} respondeu sua mensagem em "${topicTitle}"`;
-  return `${actorName} respondeu seu tópico "${topicTitle}"`;
-}
+export type NotificationsResult = { items: NotificationEntry[]; unreadCount: number };
 
 export async function listNotificationsAction(): Promise<NotificationsResult> {
   const { supabase, profile } = await getSessionProfile();
@@ -60,17 +67,16 @@ export async function listNotificationsAction(): Promise<NotificationsResult> {
   ]);
   const topicById = new Map(topics.map((t) => [t.id, t]));
 
-  const items = notifications.map((n) => {
-    const actorName = authorsById.get(n.actorProfileId)?.displayName ?? 'Um profissional Doopla';
-    const topicTitle = topicById.get(n.topicId)?.title ?? 'um tópico';
-    return {
-      id: n.id,
-      unread: n.readAt === null,
-      message: notificationMessage(n.type, actorName, topicTitle),
-      timeLabel: formatRelativeTime(n.createdAt),
-      href: `/dashboard/comunidade/${n.topicId}`,
-    };
-  });
+  const items = notifications.map((n) => ({
+    id: n.id,
+    type: n.type,
+    topicId: n.topicId,
+    postId: n.postId,
+    actorName: authorsById.get(n.actorProfileId)?.displayName ?? 'Um profissional Doopla',
+    topicTitle: topicById.get(n.topicId)?.title ?? 'um tópico',
+    unread: n.readAt === null,
+    timeLabel: formatRelativeTime(n.createdAt),
+  }));
   return { items, unreadCount };
 }
 

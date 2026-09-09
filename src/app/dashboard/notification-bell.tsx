@@ -1,44 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { listNotificationsAction, markNotificationReadAction, type NotificationCard } from './notifications-actions';
+import { useNotifications } from './notifications-context';
+import type { NotificationEntry } from './notifications-actions';
 
-type Phase = 'loading' | 'ready' | 'error';
+function notificationMessage(entry: NotificationEntry): string {
+  if (entry.type === 'mention') return `${entry.actorName} mencionou você em "${entry.topicTitle}"`;
+  if (entry.type === 'reply_to_post') return `${entry.actorName} respondeu sua mensagem em "${entry.topicTitle}"`;
+  return `${entry.actorName} respondeu seu tópico "${entry.topicTitle}"`;
+}
 
 // Correção de UX do sino (07/09/2026) — nunca mais navega pra Início:
 // abre um popover ancorado no próprio ícone, sobre a página atual.
-// Fonte única: community_notifications, via notifications-actions.ts
-// (ver comentário lá sobre por que Decisões não entra aqui no V1).
+// Fonte compartilhada com CommunityNotificationsBell via
+// NotificationsProvider (correção 09/09/2026, P1 "2 sinos") — este
+// componente só formata mensagem/link, nunca busca ou guarda estado
+// de notificação por conta própria.
 export function NotificationBell() {
+  const { phase, items, unreadCount, refresh, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [items, setItems] = useState<NotificationCard[]>([]);
-  // Nunca derivado de items.filter() — items é só um preview (últimas
-  // 20), unreadCount vem de uma contagem exata separada no servidor
-  // (ver notifications-actions.ts). Só decrementado localmente quando
-  // o item marcado como lido estava, de fato, no preview e não lido.
-  const [unreadCount, setUnreadCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const load = useCallback(() => {
-    setPhase('loading');
-    listNotificationsAction()
-      .then(({ items: data, unreadCount: count }) => {
-        setItems(data);
-        setUnreadCount(count);
-        setPhase('ready');
-      })
-      .catch(() => setPhase('error'));
-  }, []);
-
-  // Carrega uma vez ao montar — o badge de não lidas precisa existir
-  // mesmo com o popover fechado, nunca só depois de abrir.
-  useEffect(() => {
-    const timer = setTimeout(load, 0);
-    return () => clearTimeout(timer);
-  }, [load]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,12 +40,7 @@ export function NotificationBell() {
   }, [open]);
 
   function handleItemClick(id: string) {
-    setItems((prev) => {
-      const clicked = prev.find((i) => i.id === id);
-      if (clicked?.unread) setUnreadCount((c) => Math.max(0, c - 1));
-      return prev.map((i) => (i.id === id ? { ...i, unread: false } : i));
-    });
-    markNotificationReadAction(id).catch(() => {});
+    markRead(id);
     setOpen(false);
   }
 
@@ -93,11 +71,13 @@ export function NotificationBell() {
           </div>
 
           <div className="max-h-[360px] overflow-y-auto">
-            {phase === 'loading' && <p className="px-4 py-6 text-center text-[12px] text-[var(--pro-tx-50)]">Carregando…</p>}
-            {phase === 'error' && (
+            {phase === 'loading' && items.length === 0 && (
+              <p className="px-4 py-6 text-center text-[12px] text-[var(--pro-tx-50)]">Carregando…</p>
+            )}
+            {phase === 'error' && items.length === 0 && (
               <div className="px-4 py-6 text-center">
                 <p className="mb-2 text-[12px] text-[var(--pro-tx-50)]">Não deu pra carregar suas notificações agora.</p>
-                <button type="button" onClick={load} className="text-[12px] font-bold text-[var(--pro-off)] underline">
+                <button type="button" onClick={refresh} className="text-[12px] font-bold text-[var(--pro-off)] underline">
                   Tentar de novo
                 </button>
               </div>
@@ -105,11 +85,11 @@ export function NotificationBell() {
             {phase === 'ready' && items.length === 0 && (
               <p className="px-4 py-6 text-center text-[12px] text-[var(--pro-tx-50)]">Nenhuma notificação por aqui.</p>
             )}
-            {phase === 'ready' &&
+            {items.length > 0 &&
               items.map((item) => (
                 <Link
                   key={item.id}
-                  href={item.href}
+                  href={`/dashboard/comunidade/${item.topicId}`}
                   onClick={() => handleItemClick(item.id)}
                   className={`flex flex-col gap-1 border-b border-[var(--pro-line)] px-4 py-3 text-[12px] last:border-b-0 hover:bg-white/[.03] ${
                     item.unread ? 'text-[var(--pro-off)]' : 'text-[var(--pro-tx-50)]'
@@ -117,7 +97,7 @@ export function NotificationBell() {
                 >
                   <span className="flex items-start gap-2">
                     {item.unread && <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-[var(--pro-red)]" />}
-                    <span className={item.unread ? 'font-medium' : ''}>{item.message}</span>
+                    <span className={item.unread ? 'font-medium' : ''}>{notificationMessage(item)}</span>
                   </span>
                   <span className="font-doopla-mono pl-3.5 text-[10px] text-[var(--pro-tx-30)]">{item.timeLabel}</span>
                 </Link>

@@ -8,7 +8,7 @@ import type { CommunityCategory } from '@/lib/supabase/types';
 
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
 import { ProAccordion, ProEmptyState } from '../pro-ui';
-import { removeTopicAction, searchCommunityTopicsAction, type CommunityNotificationCard, type CommunityTopicCard } from './actions';
+import { removeTopicAction, searchCommunityTopicsAction, type CommunityTopicCard } from './actions';
 import { CommunityNotificationsBell } from './community-notifications-bell';
 import { DeleteMenu } from './[topicId]/delete-menu';
 import { SaveTopicButton } from './save-topic-button';
@@ -33,8 +33,6 @@ export function ProComunidadeHomeView({
   recentTopics,
   initialQuery,
   currentProfileId,
-  notifications,
-  notificationsUnreadCount,
   categories,
 }: {
   savedTopics: (CommunityTopicCard & { saved: true })[];
@@ -49,12 +47,6 @@ export function ProComunidadeHomeView({
   recentTopics: CommunityTopicCard[];
   initialQuery: string;
   currentProfileId: string;
-  // notifications é só um preview (últimas 20, ver
-  // COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT em src/lib/community/data.ts,
-  // correção 09/09/2026) — notificationsUnreadCount vem de uma
-  // contagem exata separada, nunca derivada dessa lista limitada.
-  notifications: CommunityNotificationCard[];
-  notificationsUnreadCount: number;
   categories: CommunityCategory[];
 }) {
   const router = useRouter();
@@ -158,7 +150,7 @@ export function ProComunidadeHomeView({
           </select>
         )}
         <div className="flex items-center gap-2">
-          <CommunityNotificationsBell initialNotifications={notifications} initialUnreadCount={notificationsUnreadCount} />
+          <CommunityNotificationsBell />
           <Link href="/dashboard/comunidade/novo" className={`${proPrimaryButtonClass} flex-1 whitespace-nowrap @lg:flex-none`}>
             Criar tópico
           </Link>
