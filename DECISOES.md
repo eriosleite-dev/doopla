@@ -1597,3 +1597,136 @@ quando `visibility_status = 'active' AND show_x = true`, sem
 divergência entre o nome da coluna e o que a view realmente faz. Nada
 de schema/RPC/RLS/semântica foi alterado nesta rodada — só consumo via
 UI do que já existia.
+
+## Divergência de vocabulário/cor Web×App (D1-D6) — "Precisa de você" nunca soma o mesmo bloqueador duas vezes porque `conversations.related_booking_id` nunca é escrito hoje — 09/09/2026
+
+Auditoria completa (Web×App) encontrou seis pontos de divergência de
+cor/vocabulário/agrupamento entre o painel Web e o App para o mesmo
+conceito de produto. Decisões de produto explícitas do usuário (D1-D6)
++ correções técnicas seguras (C1-C6), implementadas juntas neste
+bloco.
+
+**Modelo semântico de cor único, agora compartilhado (D1/D2)**: verde =
+resultado positivo; âmbar = atenção/espera sem caráter negativo;
+vermelho = evento negativo relevante ou ação urgente pendente;
+neutro = estado final/informativo, sem ação. `aceita`/`concluida` =
+verde; `aguardando_pagamento` = âmbar; `cancelada` = vermelho;
+`recusada` = neutro (não é mais âmbar, que sugeria falsamente "ainda
+em aberto"). `proposta_enviada` deixa de ter UMA cor fixa: agora
+depende de quem propôs, calculado por uma única função pura por
+plataforma — `bookingStatusTone(booking, viewerId)` (Web:
+`src/app/dashboard/pro-format.ts`; App:
+`mobile/src/lib/data/bookings.ts`) — que reusa a mesma checagem de
+`wasBookingProposedByViewer`/`wasProposedByViewer` já existente pro
+App: se a OUTRA parte propôs, vermelho (o profissional precisa
+decidir agora); se o próprio profissional propôs, âmbar (só
+aguardando resposta). Nunca duas fontes de verdade: a mesma função
+alimenta o pill de booking em toda superfície de cada plataforma (Home,
+Bookings, detalhe do booking) — o mesmo booking nunca muda de cor
+entre telas.
+
+**D4 — agrupamento de Bookings unificado**: Web ganhou os mesmos
+grupos que o App já tinha (`Todos`/`Precisa de você`/`Em negociação`/
+`Confirmados`/`Concluídos`/`Cancelados`), via novo módulo
+`src/app/dashboard/booking-attention.ts` (`classifyBookingAttention`,
+`BOOKING_ATTENTION_FILTERS`) espelhando
+`classifyBookingForChip`/`BookingChip` do App linha a linha. Cancelada
+e recusada dividem o mesmo grupo de filtro ("Cancelados") — decisão
+de agrupamento já validada e presente no App — mas continuam com
+cores/labels individuais distintas (D1), nunca confundidas.
+
+**D3/D5 — "Precisa de você" unificado sem mudança de backend/RPC**:
+antes de tocar em qualquer UI, foi obrigatório investigar se um
+booking `proposta_enviada` aguardando resposta e sua conversa
+associada podiam contar como "precisa de você" duas vezes pro mesmo
+bloqueador real. Rastreamento completo de todos os caminhos de
+escrita confirmou que **`conversations.related_booking_id` nunca é
+escrito com valor não-nulo em nenhum caminho de código atual**:
+`proposeBookingAction` e `selectBookerForOpportunityAction`
+(`src/app/dashboard/actions.ts`) criam bookings sem tocar a tabela
+`conversations`; `ensure_opportunity_for_conversation` (migration
+0051, a única função SQL que popula esses campos a partir de uma
+conversa) só grava `related_opportunity_id` — o branch que gravaria
+`related_booking_id` fica de fato null (`update ... set
+related_opportunity_id = v_new_id, related_booking_id = null`); e
+nenhuma tool de IA (`src/lib/intelligence/tools/`) escreve na tabela
+`bookings`. Ou seja: hoje, um booking aguardando resposta e uma
+conversa "precisa de você" são **conjuntos estruturalmente
+disjuntos** — nunca o mesmo bloqueador real contado duas vezes. Isso
+respondeu ao gate do usuário ("se unificar exigir RPC/schema ou
+houver ambiguidade de dedup, parar e reportar antes de alterar
+schema") sem exigir parar: nenhuma mudança de schema/RPC foi
+necessária.
+
+Com isso provado, a Home (Web: `professional-home-view.tsx`; App:
+`app/(tabs)/index.tsx`) passou a somar as duas fontes
+(`bookingsNeedingResponse.length + conversationSummary.needsYouCount`)
+num único `attentionCount` canônico, usado no hero, no card de
+estatística e no header do accordion "Precisa de você" — nunca mais
+três números competindo sem relação clara. O corpo do accordion agora
+mostra AMBOS os tipos (cards de booking aguardando resposta + cards de
+decisão/conversa), então o header nunca mostra um total maior do que
+o que está listado. Se algum dia `related_booking_id` passar a ser
+escrito ligando uma conversa à proposta que ela mesma gerou, essa soma
+precisa ser revisada antes de continuar ingênua — comentário deixado
+no código nos dois pontos de soma (Web e App).
+
+Achado incidental corrigido junto: no App, o card de estatística
+"Conversas que precisam de você" usava tom âmbar — errado pelo próprio
+modelo semântico (needs_you é sempre vermelho, é ação urgente
+pendente, não espera passiva). Corrigido pra vermelho, consistente com
+`PRO_CONVERSATION_STATE_TONE.needs_you` (Web) e
+`conversationStateColor('needs_you')` (App).
+
+**D6 — apresentação de Conversation State continua divergente de
+propósito**: Web usa pill preenchido (`conversationStatePill`), App
+usa ponto colorido + texto (`conversationStateColor` +
+`CONVERSATION_STATE_LABELS`, `mobile/src/lib/conversation-labels.ts`).
+Isso é adaptação de plataforma intencional, não um bug — NÃO deve
+convergir visualmente. O que precisa (e já) permanece idêntico entre
+as duas: os 4 labels (`Precisa de você`/`Aguardando cliente`/`Em
+andamento`/`Encerrada`), o peso semântico de cada estado, e agora
+também a paleta de cor (vermelho/âmbar/neutro/neutro) — só o
+componente visual que carrega essa informação é diferente por
+design de plataforma.
+
+**Correções técnicas C1-C6 (sem mudança de comportamento, só remoção
+de duplicação)**: C1 removeu o `STATUS_LABELS` local duplicado de
+`pro-booking-detail-view.tsx` (agora importa de `ui.ts`); C2 removeu o
+`CONTRACT_STATUS_LABELS` local duplicado de `pro-contract-section.tsx`
+(idem); C3 criou `PRO_CONVERSATION_STATE_TONE` em `pro-format.ts` e
+estendeu `proStatusPillClass`/`StatusPillTone` (Web e App) com o tom
+`'neutral'`, substituindo três mapas de tom locais divergentes
+(`pro-booking-detail-view.tsx`, `conversa-view.tsx`) por um só; C4
+exportou `pendingReplyOutcomeLabel`/`preparedDraftOutcomeLabel`/
+`decisionBlockReasonLabel` de `mobile/src/lib/data/decisions.ts`,
+removendo as reimplementações idênticas em
+`app/(tabs)/mais/decisoes.tsx` e `DecisionCard.tsx`; C5 consolidou a
+declaração duplicada do tipo `ConversationState` no App
+(`mobile/src/types/conversation.ts` agora reimporta/reexporta de
+`mobile/src/lib/conversation-state.ts`, fonte única); C6 corrigiu o
+ternário simplificado de 2 tons da Home do App (`aceita`/
+`aguardando_pagamento` → verde, resto → âmbar) pra usar o
+`bookingStatusTone` completo, a mesma função usada em toda outra
+superfície.
+
+**Gaps de paridade funcional registrados, não implementados nesta
+rodada** (explicitamente fora de escopo — são superfícies faltando no
+App, não divergência de vocabulário/cor): status de Contrato
+(`contractStatus`/`CONTRACT_STATUS_LABELS`, anexar/gerar contrato),
+Payment due derivado (`paymentDueState`/`PAYMENT_DUE_LABELS` —
+a_vencer/vencido/em_cobrança) e status de Disputa
+(`DisputeStatus`/`DISPUTE_LABELS`) só existem hoje em
+`src/app/dashboard/bookings/[id]/booking-detail-shared.ts` (Web); o
+App não tem UI nenhuma pra nenhum dos três. Registrado como item de
+roadmap explícito no `PROGRESS.md` (§89) — não esquecer em blocos
+futuros de paridade Professional App.
+
+**Limites respeitados**: nenhum valor real de status alterado no
+banco (`bookings.status`, `disputes.status` etc. inalterados — só
+leitura/apresentação); nenhuma migration, RPC ou RLS tocada; nenhuma
+regra comercial alterada; a lógica já-alinhada de Conversation State
+(`deriveConversationState()`) não foi tocada, só sua apresentação onde
+D6 permite; Booker Legacy (`bookings-list.tsx` `BookingRow`/
+`BookingsPreview`, `contract-section.tsx`, `TrabalhosList`) não
+recebeu nenhuma mudança.
