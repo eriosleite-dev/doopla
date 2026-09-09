@@ -9812,6 +9812,119 @@ query de notificações (hoje ilimitada), cache compartilhado entre os
 permanece `[IMPLEMENTED / VISUAL QA PENDING]`, congelado, não tocado
 nesta rodada.
 
+## 86. Bloco 7, P1 (item 1/N) — re-skin Web de Booking Detail + Conversa pro Professional Product UI — `[DELIVERED]`
+
+Primeiro item do P1 da auditoria do bloco 85: Booking Detail
+(`/dashboard/bookings/[id]`) e a tela de Conversa associada
+(compartilhada por 4 rotas: página normal, página standalone
+`/dashboard/conversas/[id]`, e as 2 variantes `@modal` intercepting)
+ainda estavam 100% no tema legado `--ink`/`--paper`, mesmo já sendo
+acessadas normalmente a partir das listas novas (Bookings, Decisões,
+Home). Escopo estritamente visual — zero mudança em dados, estados,
+ações, permissões, navegação ou mensagens, salvo um bug real corrigido
+durante a extração (abaixo). Home pública, App, Professional Profile,
+Agency Profile, Privacy, Agenda e Notificações não foram tocados
+nesta rodada.
+
+**Arquitetura**: `bookings/[id]/page.tsx` foi reduzido a só buscar
+dados (idêntico ao original) e escolher a view por role — mesmo padrão
+já usado em `trabalhos/`, `agenda/`, `dinheiro/`, `perfil/`
+(`role === 'booker'` → `LegacyBookingDetailView`, tema antigo
+intocado; `artista`/`agencia` → `ProBookingDetailView`, tema `--pro-*`
+novo). As duas views agora são componentes puramente apresentacionais
+(recebem props já resolvidas, nenhuma leitura própria). Lógica de
+negócio pura que as duas views precisam (política de pagamento, estado
+de vencimento, rótulos de disputa, estágios de fatura) foi extraída
+verbatim pra `booking-detail-shared.ts`, usada por ambas — evita que
+Legacy e Pro divirjam silenciosamente no futuro (mesma lição do bug
+17≠20 corrigido no bloco 85). Seis componentes de formulário puxados
+pro tema Pro (`ProCancelBookingForm`, `ProCounterForm`,
+`ProInvoiceTermForm`, `ProRescheduleForm`, `ProContractSection` +
+`ProGenerateContractForm`, `ProReviewPanel`), cada um espelhando
+exatamente as mesmas Server Actions, nomes de campo e validação do
+original — só classe/token visual muda.
+
+`ConversaView`/`ReplyForm` foram re-estilizados diretamente (sem fork
+Legacy/Pro) porque essa tela só é alcançável por quem a Doopla
+representa — `getConversationOperationalFacts` é RLS-scoped ao
+profissional dono, nunca ao booker (comentário já existente no código
+original confirma: "'Ver conversa' só existe pra quem a Doopla
+representa"). Fundo escuro arredondado passou a viver dentro do
+próprio `ConversaView` (não nos 4 wrappers de rota), pra funcionar
+igual dentro do `ProfileModal` (que tem fundo claro próprio, fora de
+escopo — usado também por Professional/Agency Profile) e das 2 páginas
+normais, sem duplicar estilo em cada `page.tsx`.
+
+**Bug real encontrado e corrigido**: durante a extração do Legacy
+view, o cálculo de `isProposer` passado pro `RescheduleForm` estava
+confundindo dois conceitos diferentes — o `isProposer` da proposta do
+booking (prop já existente) com "quem propôs o reagendamento"
+(`booking.reschedule_proposed_by`), que o código original calculava
+separadamente como `user.id === booking.reschedule_proposed_by`.
+Corrigido adicionando `userId` como prop e usando
+`userId === booking.reschedule_proposed_by` nos 3 pontos de uso
+(Legacy e nos 2 status onde o Pro view também renderiza
+`RescheduleForm`/`ProRescheduleForm`) — comportamento agora idêntico
+ao original em todos os branches.
+
+**Estados de conversa**: os 4 estados canônicos (`needs_you`/
+`waiting_client`/`in_progress`/`closed`) continuam usando o mesmo mapa
+`CONVERSATION_STATE_LABELS` (`ui.ts`) sem nenhuma cópia nova — só a
+pilula que os exibe ganhou tom por estado (vermelho/âmbar/neutro) nos
+dois lugares onde aparecem (card de conversa dentro do Booking Detail,
+header da própria tela de Conversa). Nenhum uso novo do termo "Precisa
+de você" foi introduzido.
+
+**Fora de escopo, deliberado**: a rota `bookings/[id]/avaliar/` (fluxo
+de avaliação pós-booking) não é literalmente Booking Detail nem
+Conversa — não foi tocada. O botão "X" branco e redondo do
+`ProfileModal` nas 2 rotas `@modal` de Conversa permanece claro (alto
+contraste de qualquer forma, mas fora do tema `--pro-*`) — mudar isso
+exigiria tocar `ProfileModal`, componente compartilhado com
+Professional/Agency Profile, explicitamente fora de escopo.
+`ProCard` ganhou uma prop opcional `id?: string` (aditiva,
+retrocompatível) só pra preservar a âncora `id="avaliacao"` que o
+Legacy já tinha.
+
+**QA**: `tsc --noEmit`, `eslint` e `next build` limpos (os 44
+problemas que o eslint aponta no repo inteiro são 100% pré-existentes
+em `mobile/` — fora de escopo deste bloco — e um warning de fonte em
+`src/app/layout.tsx` não tocado por este diff; confirmado por
+`git status` que nenhum arquivo com finding pertence a este diff).
+Verificação visual via rota `/dev/booking-detail-preview` — efêmera,
+dev-only, deletada antes do commit — que renderizava
+`ProBookingDetailView`/`LegacyBookingDetailView` direto com props de
+fixture (sem Supabase real, ambiente sandboxed sem projeto live: as
+duas views são puramente apresentacionais, então isso cobre o re-skin
+inteiro), screenshotada em desktop (1440px), tablet (834px) e mobile
+(390px) cobrindo 4 status de booking diferentes (aceita c/
+checkpoints+contrato, proposta_enviada recipient, aguardando_pagamento
+c/ vencimento, cancelada) lado a lado com o Legacy inalterado. Tema
+`--pro-*` aplicado sem vazamento de classe legada, hierarquia/
+composição consistente com o resto do produto atual, checkpoints/
+pilulas/botões responsivos e sem quebra em nenhuma largura, formulários
+empilham corretamente em mobile. `ConversaView`/`ReplyForm` NÃO foram
+verificados por render ao vivo — são Server Components que buscam os
+próprios dados via Supabase autenticado (diferente do Booking Detail,
+que virou puramente apresentacional), e montar um mock completo de
+Supabase Auth+REST só pra isso foi julgado desproporcional pro escopo
+desta rodada (tentativa abandonada). Verificados por revisão de código
++ reuso literal dos mesmos tokens/classes já confirmados nos
+screenshots do Booking Detail (`proStatusPillClass`, `proInputClass`,
+`proPrimaryButtonClass`/`proGhostButtonClass`, mesmo padrão de foco
+`outline-none`+`focus:border-*` já usado em todo o sistema Pro
+existente, não introduzido por este bloco). Fluxos de entrada
+verificados por rastreamento de código (não click-through ao vivo,
+mesma limitação de ambiente): `bookings-list.tsx` linka pra
+`/dashboard/bookings/${booking.id}` (mesma rota, branch por role
+intocado); `professional-home-view.tsx` e `decisoes/format-cards.ts`
+usam a mesma `conversationHref()` compartilhada, que já roteava pras 2
+rotas re-estilizadas antes desta mudança — nenhuma lógica de
+navegação foi alterada, só o visual do destino. Migrations: nenhuma.
+
+**Não avançar pro resto do P1 sem aprovação explícita** — próximo item
+da lista priorizada do bloco 85 fica pendente de instrução.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

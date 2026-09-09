@@ -1425,3 +1425,49 @@ divergência de fidelidade genuína — sem tensão com nenhuma decisão
 prévia — e corrigidos diretamente, sem necessidade de nova aprovação
 prévia por já se enquadrarem em "adaptar com fidelidade ao mockup",
 não em "nova direção visual".
+
+## Bloco 7, P1 — re-skin de Booking Detail + Conversa: separação dado/apresentação, não-fork da Conversa, e limite real de QA sem Supabase live — 09/09/2026
+
+Booking Detail (`bookings/[id]/page.tsx`) tinha ~650 linhas
+misturando busca de dados e JSX de apresentação num único Server
+Component — impossível fazer o Pro conviver com o Legacy sem duplicar
+a lógica de negócio (política de pagamento, vencimento, disputa,
+estágios de fatura) e arriscar os dois divergirem silenciosamente,
+igual ao bug 17≠20 já corrigido no bloco 85. Decisão: extrair a busca
+de dados pro `page.tsx` (inalterada) e a lógica de negócio pura pra um
+módulo compartilhado (`booking-detail-shared.ts`), deixando
+`LegacyBookingDetailView`/`ProBookingDetailView` como componentes
+puramente apresentacionais recebendo props já resolvidas. Isso também
+foi o que destravou a estratégia de QA visual (abaixo).
+
+`ConversaView`/`ReplyForm` deliberadamente NÃO seguiram o mesmo padrão
+Legacy/Pro fork do Booking Detail — ficaram só re-estilizados in-place,
+sem branch de role. Motivo: essa tela só é alcançável por quem a
+Doopla representa (o comentário já existente no código confirma que
+`represented_professional_id` é sempre o artista, nunca o booker) —
+`getConversationOperationalFacts` é RLS-scoped a esse profissional e
+nunca devolve dado real pra um booker (cai em `notFound()`). Criar um
+`LegacyConversaView` pra um caminho que nenhum booker jamais alcança
+seria complexidade morta. Fundo escuro arredondado passou a viver
+dentro do próprio `ConversaView`, não nos 4 wrappers de rota que o
+renderizam (2 páginas normais + 2 `@modal`), pra funcionar igual dentro
+do `ProfileModal` compartilhado (fundo claro próprio, usado também por
+Professional/Agency Profile, fora de escopo tocar) sem duplicar estilo
+em cada `page.tsx`.
+
+QA visual ao vivo com Supabase real foi tentada e abandonada: o
+ambiente sandboxed não tem projeto Supabase live, e reproduzir o
+formato de cookie de auth do `@supabase/ssr` (PKCE, `base64url`,
+`storageKey` derivado, cookies chunked) só pra montar uma sessão falsa
+foi julgado esforço desproporcional pra uma tarefa de re-skin visual.
+Como `LegacyBookingDetailView`/`ProBookingDetailView` já eram puramente
+apresentacionais (decisão acima), a alternativa virou uma rota
+`/dev/booking-detail-preview` efêmera renderizando essas views direto
+com props de fixture — zero rede/auth necessário, cobrindo 4 status de
+booking em 3 larguras. Essa mesma saída não existia pra
+`ConversaView`/`ReplyForm` (Server Components que buscam os próprios
+dados via `getSessionProfile()`+Supabase, por decisão do parágrafo
+acima) — verificados só por revisão de código e reuso literal dos
+tokens/classes já confirmados visualmente no Booking Detail, registrado
+como limite explícito de QA nesta rodada, não como verificação
+equivalente.
