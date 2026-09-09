@@ -10,24 +10,46 @@ import {
 } from '@/lib/conversations/data';
 
 import { getSessionProfile } from '../../../../session';
-import {
-  avatarClass,
-  cardClass,
-  CONVERSATION_STATE_LABELS,
-  conversationStatePillClasses,
-  eyebrowClass,
-  initialsFromName,
-} from '../../../../ui';
+import { CONVERSATION_STATE_LABELS } from '../../../../ui';
 import { ReplyForm } from './reply-form';
 
+const CONVERSATION_STATE_TONE: Record<string, string> = {
+  needs_you: 'bg-[rgba(226,41,28,.18)] text-[#ff8b80]',
+  waiting_client: 'bg-[rgba(245,166,35,.18)] text-[var(--pro-amber)]',
+  in_progress: 'border border-[var(--pro-line)] text-[var(--pro-tx-50)]',
+  closed: 'bg-white/[0.06] text-[var(--pro-tx-30)]',
+};
+
+function conversationStatePill(state: string): string {
+  const tone = CONVERSATION_STATE_TONE[state] ?? CONVERSATION_STATE_TONE.in_progress;
+  return `font-pro-sub inline-block whitespace-nowrap rounded-full px-2.5 py-1 text-[10.5px] font-bold ${tone}`;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 // Conversas Bloco 2 — conteúdo real da tela de conversa, compartilhado
-// entre a rota normal (bookings/[id]/conversa/[conversationId]/page.tsx)
-// e a rota interceptadora (@modal/.../conversa/[conversationId]/page.tsx),
-// mesmo padrão já usado por avaliar-view.tsx. Nenhuma lógica de
-// posse/RLS nova: getSessionProfile() já entrega um client autenticado
-// como cookie, e src/lib/conversations/data.ts só lê o que RLS já
-// deixa (ou devolve null/vazio — nunca um erro que vazasse existência
-// de conversa de outro profissional).
+// entre a rota normal (bookings/[id]/conversa/[conversationId]/page.tsx),
+// a rota standalone (conversas/[conversationId]/page.tsx) e as duas
+// rotas @modal correspondentes — mesmo padrão já usado por
+// avaliar-view.tsx. Nenhuma lógica de posse/RLS nova: getSessionProfile()
+// já entrega um client autenticado como cookie, e src/lib/conversations/
+// data.ts só lê o que RLS já deixa (ou devolve null/vazio — nunca um
+// erro que vazasse existência de conversa de outro profissional).
+//
+// Re-skin --pro-* (Bloco 7, P1, 08/09/2026): esta tela só é alcançável
+// por quem a Doopla representa (sempre o artista — RLS de
+// getConversationOperationalFacts nunca devolve dado real pra um
+// booker), então, diferente de Booking Detail, nunca precisou de
+// branch por role — sempre o tema atual, sem view legada paralela.
+// Fundo/cantos arredondados agora vivem AQUI (não nos 4 wrappers que
+// renderizam este componente), pra funcionar igual dentro do
+// ProfileModal (fundo claro, fora de escopo desta rodada) e das rotas
+// normais sem duplicar estilo em cada page.tsx.
 export async function ConversaView({ conversationId }: { conversationId: string }) {
   const { supabase } = await getSessionProfile();
 
@@ -44,21 +66,23 @@ export async function ConversaView({ conversationId }: { conversationId: string 
   const conversationClosed = facts.status === 'closed' || facts.status === 'archived';
 
   return (
-    <div className="flex flex-col gap-6 p-7">
+    <div className="flex flex-col gap-6 rounded-[24px] bg-[var(--pro-panel-solid)] p-7 sm:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className={avatarClass}>{initialsFromName(title)}</span>
+          <span className="font-pro-sub flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-[var(--pro-off)]">
+            {initials(title)}
+          </span>
           <div>
-            <p className={eyebrowClass}>Conversa</p>
-            <p className="text-[15px] font-semibold">{title}</p>
+            <p className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Conversa</p>
+            <p className="text-[15px] font-semibold text-[var(--pro-off)]">{title}</p>
           </div>
         </div>
-        <span className={conversationStatePillClasses[facts.state]}>{CONVERSATION_STATE_LABELS[facts.state]}</span>
+        <span className={conversationStatePill(facts.state)}>{CONVERSATION_STATE_LABELS[facts.state]}</span>
       </header>
 
-      <section className={`${cardClass} flex max-h-[440px] flex-col gap-3 overflow-y-auto`}>
+      <section className="flex max-h-[440px] flex-col gap-3 overflow-y-auto rounded-[18px] border border-[var(--pro-line)] bg-white/[0.02] p-5 backdrop-blur-xl">
         {messages.length === 0 ? (
-          <p className="text-sm text-[var(--ink)]/55">Nenhuma mensagem ainda.</p>
+          <p className="text-sm text-[var(--pro-tx-50)]">Nenhuma mensagem ainda.</p>
         ) : (
           messages.map((message) => <MessageBubble key={message.id} message={message} />)
         )}
@@ -79,15 +103,15 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
   const isFromClient = message.authorType === 'external_participant';
   const align = isFromProfessional ? 'items-end text-right' : 'items-start text-left';
   const bubbleTone = isFromClient
-    ? 'bg-[var(--paper-dim)] text-[var(--ink)]'
+    ? 'bg-white/[0.06] text-[var(--pro-off)]'
     : isFromProfessional
-      ? 'bg-[var(--ink)] text-[var(--paper)]'
-      : 'bg-[var(--accent)]/20 text-[var(--ink)]';
+      ? 'bg-[var(--pro-red)] text-[var(--pro-off)]'
+      : 'bg-[var(--pro-amber)]/20 text-[var(--pro-off)]';
   const label = isFromClient ? 'Cliente' : isFromProfessional ? 'Você' : 'Doopla';
 
   return (
     <div className={`flex flex-col gap-1 ${align}`}>
-      <p className="font-doopla-mono text-[10px] uppercase tracking-[.06em] text-[var(--ink)]/45">
+      <p className="font-doopla-mono text-[10px] uppercase tracking-[.06em] text-[var(--pro-tx-45)]">
         {label} · {formatRelativeDate(message.createdAt)}
         {message.preparedResponseOutcome === 'sent' && ' · Você respondeu'}
         {message.preparedResponseOutcome === 'edited' && ' · Você editou o rascunho antes de enviar'}

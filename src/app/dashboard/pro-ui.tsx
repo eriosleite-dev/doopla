@@ -120,9 +120,9 @@ export function ProPageHeader({
 // Card escuro em glassmorphism — mesmo tratamento visual de todo card
 // da Home (ProHero/StatCard/ProAccordion), pra nenhuma rota nova
 // inventar seu próprio card branco/opaco.
-export function ProCard({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function ProCard({ children, className = '', id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <div className={`rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-5 backdrop-blur-xl sm:p-6 ${className}`}>
+    <div id={id} className={`rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-5 backdrop-blur-xl sm:p-6 ${className}`}>
       {children}
     </div>
   );
