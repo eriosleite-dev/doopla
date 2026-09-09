@@ -1471,3 +1471,49 @@ acima) — verificados só por revisão de código e reuso literal dos
 tokens/classes já confirmados visualmente no Booking Detail, registrado
 como limite explícito de QA nesta rodada, não como verificação
 equivalente.
+
+## Bloco 7, P1 — re-skin de Agency Profile + Professional Profile: agencia ganha branch próprio (não migra pro padrão hub do artista), e um bug de containing block por `backdrop-filter` — 09/09/2026
+
+`agencia` recebeu um branch dedicado em `perfil/page.tsx`
+(`ProAgenciaPerfilView`) preservando a MESMA estrutura de página única
+que ela já tinha (Conta, Foto, dados da agência, "Respostas do
+cadastro") — deliberadamente NÃO migrada pro padrão hub multi-subpágina
+que `artista` usa (`ProConfiguracoesView` + rotas `perfil/conta`,
+`perfil/preferencias` etc.). Migrar pro hub seria reorganizar fluxo/
+navegação, fora do escopo explícito desta rodada ("não reorganizar
+campos", "não mudar fluxo") — mesmo sendo tecnicamente mais consistente
+com o resto do Settings V2, essa é uma decisão de produto (vale a pena
+dar a `agencia` o mesmo hub que `artista` tem?) que não foi pedida e
+não deveria ser tomada de forma silenciosa dentro de um bloco de
+re-skin. Fica registrado como candidato a decisão de produto futura,
+não implementado.
+
+A duplicação de "Respostas do cadastro" (os mesmos 4 campos da agência
+aparecem duas vezes na página — uma vez dentro de "Perfil público",
+outra vez numa seção própria) já existia no legado antes desta rodada
+e foi preservada exatamente como estava, só reestilizada — não é um
+bug introduzido aqui, e corrigi-la seria "aproveitar o re-skin pra
+melhorar regra existente sem necessidade", explicitamente vetado pelo
+escopo aprovado.
+
+Achado técnico real durante o QA visual (não estava na auditoria
+original, encontrado só ao efetivamente abrir o modal "Editar
+preferências" depois do re-skin): envolver `ArtistProfileForm` num
+`ProCard` (`backdrop-blur-xl`, o card padrão de todo o sistema Pro)
+quebra o modal interno `position: fixed` do formulário — `backdrop-
+filter` cria containing block pra descendentes fixed no Chromium
+(mesma regra que `filter`/`transform`/`perspective` já documentada),
+então o overlay de tela cheia ficava preso dentro dos limites do
+próprio card. Isso é uma classe de bug que qualquer form futuro com
+modal `position: fixed` vai reproduzir se for envolvido num `ProCard`
+— vale como alerta geral pro sistema Pro, não só pra este componente.
+Corrigido com `createPortal` pro `document.body`, o que por sua vez
+exigiu associação explícita via atributo `form="id"` em todos os
+campos portados (select/checkbox/botão) pra continuarem submetendo
+com o formulário original, já que portais React não preservam
+associação de formulário nativa via nesting DOM. Optou-se por
+`useSyncExternalStore` (não `useEffect`+`setState`) pro gate de
+montagem client-only do portal, porque a régua de lint deste projeto
+(`react-hooks/set-state-in-effect`) proíbe setState síncrono dentro de
+efeito — mesmo sendo o padrão "isMounted" mais comum em React, esse
+projeto especificamente exige a variante sem state-in-effect.

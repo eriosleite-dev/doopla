@@ -9925,6 +9925,102 @@ navegação foi alterada, só o visual do destino. Migrations: nenhuma.
 **Não avançar pro resto do P1 sem aprovação explícita** — próximo item
 da lista priorizada do bloco 85 fica pendente de instrução.
 
+## 87. Bloco 7, P1 (item 2/N) — re-skin Web de Agency Profile + Professional Profile pro Professional Product UI — `[DELIVERED]`
+
+Segundo item do P1 do bloco 85 — os dois itens que a rodada anterior
+tinha reservado explicitamente ("Não mexer neste bloco em: ...
+Professional Profile; Agency Profile"). Escopo estritamente visual —
+zero mudança em dados, campos, validação, permissões, uploads,
+redirects ou fluxo, salvo um bug real de CSS encontrado e corrigido
+durante o próprio re-skin (abaixo). Booker não foi tocado.
+
+**Agency Profile — `perfil/page.tsx` ganhou branch próprio pra
+`agencia`.** O shell escuro (`layout.tsx`, `role !== 'booker'`) já
+valia pra agencia, mas ela caía no mesmo JSX legado (`cardClass`,
+card branco) do Booker por baixo — clash confirmado antes de codar
+(shell escuro + card claro). Corrigido dando a `agencia` uma saída
+antecipada própria, no mesmo padrão que `artista` já tinha
+(`ProConfiguracoesView`): novo componente `ProAgenciaPerfilView`
+recebendo `fullName`/`email`/`avatarUrl`/`details` já resolvidos —
+mesma estrutura de sempre (Conta, Foto, dados da agência, "Respostas
+do cadastro"), incluindo a duplicação pré-existente dessas mesmas
+respostas nas duas seções (achado registrado, não corrigido por não
+ser bug funcional nem ter sido pedido — só reestilizado igual estava).
+O branch do Booker em `perfil/page.tsx` não foi alterado, só deixou de
+ser alcançável por `agencia` (early return antes dele).
+
+**Professional Profile — `perfil/editar/` inteiro (5 arquivos)
+reestilizado.** Rota artista-only (guard/redirect intocado), até aqui
+100% legada mesmo já sendo linkada por páginas do Settings V2 que já
+estavam no tema Pro (`perfil/preferencias`, `perfil/privacidade`,
+Home) — um clash de navegação escuro→claro real. Componentes: novos
+forks Pro `pro-artist-profile-form.tsx`, `pro-avatar-uploader.tsx`,
+`pro-chip-checkbox-group.tsx`, `pro-matching-summary.tsx` (mesma
+lógica/campos/validação/Server Actions dos originais, preservando o
+anchor `id="preferencias-matching"` que `perfil/preferencias` já
+linka via `#preferencias-matching`); `public-profile-card.tsx` e
+`link-routing-card.tsx` editados no próprio lugar (únicos consumidores
+são artista-only, sem contraparte Booker a preservar — mesma lógica
+do bloco 86 pra `ConversaView`/`ReplyForm`). Um novo fork
+`pro-link-routing-form.tsx` (dashboard raiz) foi necessário porque o
+componente interno `LinkRoutingForm` é compartilhado com
+`orcamento-link-card.tsx`, que serve a Home do Booker — o original
+continua intocado lá.
+
+**Bug de CSS real, encontrado e corrigido durante o QA visual (não
+estava na auditoria original)**: o modal "Editar preferências de
+matching" de `ArtistProfileForm` usa `position: fixed` pra cobrir a
+tela inteira. Ao envolver o formulário num `ProCard` (que usa
+`backdrop-blur-xl`, igual a todo card do sistema Pro), o modal parou
+de cobrir a viewport — `backdrop-filter` cria containing block pra
+descendentes `fixed` no Chromium (mesma regra de `filter`/`transform`/
+`perspective`), então o overlay ficava preso dentro dos limites do
+`ProCard` em vez de cobrir a tela. O legado nunca teve esse problema
+porque `cardClass` (`bg-white`, sem `backdrop-filter`) não cria esse
+containing block. Corrigido com `createPortal` pro `document.body`
+(gate de montagem via `useSyncExternalStore`, não `useEffect`+
+`setState`, que a régua de lint do projeto proíbe) — e, como
+consequência direta de mover o conteúdo pra fora da árvore DOM do
+`<form>`, os campos portados (5 `ProChipCheckboxGroup`, 3 `<select>`,
+botão "Salvar preferências") precisaram de associação explícita via
+atributo `form` (HTML nativo: um controle de formulário associado por
+`form="id"` funciona independente de nesting no DOM) pra continuarem
+submetendo com o formulário certo — sem isso, esses campos parariam
+de ser enviados silenciosamente. `ProChipCheckboxGroup` ganhou uma
+prop opcional `form?: string` pra isso.
+
+**QA**: `tsc --noEmit`, `eslint` e `next build` limpos (mesma
+confirmação de sempre: os 44 problemas do eslint no repo inteiro são
+100% pré-existentes em `mobile/`, fora de escopo). Visual via rota
+`/dev/perfil-preview` efêmera (deletada antes do commit) — os
+componentes deste bloco já nasceram puramente apresentacionais
+(`ProAgenciaPerfilView`, e as peças de `perfil/editar/` não têm fetch
+próprio), então cobriu o re-skin inteiro sem mock de Supabase:
+screenshotado em desktop (1440px), tablet (834px) e mobile (390px),
+cobrindo Agency Profile com dados/sem dados/com avatar, e Professional
+Profile com avatar/sem avatar, perfil público ativo/desativado,
+com/sem bookers conectados. O modal de preferências foi verificado
+aberto (clique real via Playwright) antes e depois da correção do
+bug de `backdrop-filter`, confirmando a cobertura de tela inteira
+depois do portal. Estados de avatar (sem avatar → iniciais; com
+avatar; upload/crop) e mensagens de erro/validação do formulário
+preservados verbatim do original, só o tema. Navegação Settings V2 →
+Professional Profile → voltar verificada por rastreamento de código:
+`perfil/preferencias/page.tsx` e `perfil/privacidade/page.tsx` linkam
+pra `/dashboard/perfil/editar` (agora Pro dos dois lados, sem clash),
+e o link de volta "← Preferências da Doopla" continua apontando pro
+mesmo destino (`/dashboard/perfil/preferencias`), só restilizado.
+Confirmado por grep que `pro-shell.tsx`/`professional-home-view.tsx`
+linkam pra `/dashboard/perfil` sem nenhuma mudança de rota — só o
+conteúdo do destino mudou pra `agencia`. Booker: confirmado por
+leitura do diff de `perfil/page.tsx` que seu branch (JSX, `RoleDetails`,
+`BookerProfileForm`, `getRoleDetails`) não foi alterado em nenhuma
+linha, só deixou de ser alcançável por `agencia`/`artista` (que já
+retornavam cedo antes desta rodada, no caso do artista). Migrations:
+nenhuma.
+
+**Não avançar pro resto do P1 sem aprovação explícita.**
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
