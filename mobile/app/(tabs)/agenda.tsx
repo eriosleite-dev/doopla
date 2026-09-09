@@ -17,6 +17,22 @@ import type { AgendaEntry, AgendaEntryType, AgendaEvent } from '@/types/agenda';
 
 type Phase = 'loading' | 'ready' | 'error';
 
+// Cor do ponto por tipo de evento — espelha AGENDA_DOT_COLOR do painel
+// web (src/app/dashboard/ui.ts): disponivel/indisponivel são opostos
+// semânticos (âmbar/vermelho) e não podiam colapsar na mesma cor
+// (correção 09/09/2026, P1 item "App Agenda perdendo o estado
+// indisponível" — a lista de eventos do dia usava só 2 cores,
+// confirmado=verde e QUALQUER agenda_entry=âmbar, então indisponível
+// ficava visualmente idêntico a disponível). Mesmo significado/regra
+// do backend — só a cor do marcador muda por kind, nada de dado.
+const EVENT_DOT_COLOR: Record<AgendaEvent['kind'], string> = {
+  confirmado: colors.green,
+  disponivel: colors.amber,
+  indisponivel: colors.red,
+  viagem: colors.tx30,
+  outro: colors.tx30,
+};
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -152,7 +168,7 @@ export default function AgendaScreen() {
                 style={[styles.eventRow, i > 0 && styles.eventBordered]}
                 onPress={() => handleEventPress(event)}
               >
-                <View style={[styles.eventDot, event.kind === 'confirmado' ? styles.dotConfirmado : styles.dotEntry]} />
+                <View style={[styles.eventDot, { backgroundColor: EVENT_DOT_COLOR[event.kind] }]} />
                 <View style={styles.eventTextWrap}>
                   <Text style={styles.eventTitle}>{event.title}</Text>
                   {event.sub && <Text style={styles.eventSub}>{event.sub}</Text>}
@@ -265,12 +281,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     marginTop: 4,
-  },
-  dotConfirmado: {
-    backgroundColor: colors.green,
-  },
-  dotEntry: {
-    backgroundColor: colors.amber,
   },
   eventTextWrap: {
     flex: 1,

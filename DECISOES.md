@@ -1730,3 +1730,29 @@ regra comercial alterada; a lógica já-alinhada de Conversation State
 D6 permite; Booker Legacy (`bookings-list.tsx` `BookingRow`/
 `BookingsPreview`, `contract-section.tsx`, `TrabalhosList`) não
 recebeu nenhuma mudança.
+
+## App Agenda "perdendo indisponível" era cor, não dado — 09/09/2026
+
+Item (e) da lista priorizada do bloco 85. A causa raiz não era perda
+de estado em lugar nenhum do fluxo de dados (`AgendaEntryType` espelha
+`entry_type` de `agenda_entries`, migration 0030, 1:1 nos dois lados,
+sem filtro por tipo em nenhuma query) — era puramente visual: a lista
+de eventos do dia em `mobile/app/(tabs)/agenda.tsx` só tinha 2 cores
+de marcador (`confirmado` = verde, QUALQUER `agenda_entry` = âmbar),
+então `disponivel` e `indisponivel` — opostos semânticos no modelo já
+estabelecido no bloco 89 (âmbar = atenção sem caráter negativo,
+vermelho = evento negativo/ação urgente) — ficavam visualmente
+idênticos. Corrigido com `EVENT_DOT_COLOR`, mapa de 5 entradas
+espelhando `AGENDA_DOT_COLOR` do Web (`src/app/dashboard/ui.ts`)
+token a token — mesmo `AgendaEntryType`, mesmo backend, só a cor do
+ponto passou a variar por `kind`.
+
+Achado relacionado, registrado e explicitamente NÃO corrigido:
+`MonthCalendar.tsx` (grade mensal do App) usa um único marcador
+genérico "tem atividade" por dia, sem diferenciar nenhum `kind`
+(nem `confirmado`) — não é a mesma classe de bug (não confunde
+`disponivel` com `indisponivel` especificamente, porque não distingue
+nada), é uma simplificação de densidade de calendário compacto
+(células de 40×40) já existente antes deste bloco. Mudar isso seria
+decisão de design, não correção de paridade — fora do escopo deste
+item.

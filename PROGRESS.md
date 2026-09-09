@@ -10248,6 +10248,92 @@ App sem simulador neste ambiente (mesma limitação já documentada nos
 blocos anteriores) — validado por `tsc`/`eslint` limpos + paridade
 linha a linha com as funções Web equivalentes.
 
+## 90. Bloco 7, P1 — App Agenda perdendo o estado "indisponível" — `[DELIVERED]`
+
+Item (e) da lista priorizada do bloco 85, próximo da fila após o
+checkpoint solicitado pelo usuário. Investigação objetiva confirmada:
+o estado `indisponivel` (`AgendaEntryType`, `entry_type` em
+`agenda_entries`, migration 0030 — `check (entry_type in
+('disponivel', 'indisponivel', 'viagem', 'outro'))`) nunca foi perdido
+em criação, edição, exclusão ou leitura no App — só na **cor do
+marcador** da lista de eventos do dia. Causa raiz: em
+`mobile/app/(tabs)/agenda.tsx`, o ponto colorido de cada evento usava
+só 2 cores (`event.kind === 'confirmado' ? styles.dotConfirmado :
+styles.dotEntry`) — `disponivel`, `indisponivel`, `viagem` e `outro`
+caíam TODOS no mesmo âmbar (`dotEntry`). Como `disponivel` e
+`indisponivel` são opostos semânticos (mesmo modelo do bloco 89:
+âmbar = atenção sem caráter negativo, vermelho = evento
+negativo/ação), o profissional não conseguia distinguir visualmente
+"estou disponível" de "estou indisponível" olhando só a cor — só lendo
+o texto do título do evento. Web nunca teve esse bug:
+`AGENDA_DOT_COLOR`/`AGENDA_TAG_COLOR` (`src/app/dashboard/ui.ts`)
+sempre tiveram uma entrada própria pros 5 kinds (`confirmado`/
+`disponivel`/`indisponivel`/`viagem`/`outro`).
+
+**Rastreamento completo confirmou que o resto do App está correto**:
+tipo (`mobile/src/types/agenda.ts`, `AgendaEntryType` espelha o CHECK
+do banco 1:1), fetch (`fetchArtistAgendaEntries`, sem filtro por
+tipo), criação (`AddAgendaEntrySheet.tsx` — os 4 tipos como chips
+selecionáveis, `indisponivel` inclusive é o valor default do form),
+exclusão (`deleteAgendaEntry`, sem tipo envolvido), transformação
+(`buildAgendaEvents`/`expandAgendaEntry` em
+`mobile/src/lib/data/agenda.ts` preservam `entry_type` como `kind` em
+cada `AgendaEvent`, sem descartar nenhum), e o label de texto no
+BottomSheet de detalhe do evento (`AGENDA_ENTRY_TYPE_LABELS[entry.
+entry_type]`, sempre correto). `MonthCalendar.tsx` (a grade mensal
+pequena) usa um único marcador genérico "tem atividade nesse dia" pra
+QUALQUER kind (incluindo `confirmado`) — não foi tocado: é uma
+simplificação de densidade já existente que trata todos os tipos
+igualmente, não uma perda específica de `indisponivel`, e mudar isso
+seria uma decisão de design de calendário compacto, fora do escopo de
+um bug de paridade.
+
+**Correção**: novo mapa `EVENT_DOT_COLOR` em `agenda.tsx`, espelhando
+`AGENDA_DOT_COLOR` do Web (`confirmado`=verde, `disponivel`=âmbar,
+`indisponivel`=vermelho, `viagem`/`outro`=neutro/`colors.tx30`) —
+mesmo significado/regra do backend, só a cor do marcador muda por
+`kind`. `styles.dotConfirmado`/`styles.dotEntry` removidos (mortos
+depois da mudança).
+
+**Antes**: lista de eventos do dia mostrava um ponto âmbar idêntico
+pra `disponivel`, `indisponivel`, `viagem` e `outro` — só o texto do
+título diferenciava. **Depois**: ponto vermelho pra `indisponivel`,
+âmbar pra `disponivel`, cinza neutro pra `viagem`/`outro`, verde pra
+`confirmado` — mesma paleta semântica do Web, mesma regra/backend,
+nenhum dado alterado.
+
+**Sem gate acionado**: nenhuma decisão de produto, mudança de modelo
+de Agenda, schema/RPC/RLS foi necessária — Web e App já compartilham
+exatamente o mesmo conceito (`AgendaEntryType`/`entry_type`), a
+correção foi só de apresentação. Booker Legacy (`agenda/page.tsx`,
+branch `role === 'booker'`, `agenda-entry-form.tsx`) não foi tocado.
+
+**QA**: `tsc --noEmit` limpo (Web e App). `eslint` no arquivo alterado
+sem erros novos — o único erro reportado
+(`react-hooks/set-state-in-effect` em `load()` dentro do `useEffect`,
+linha 69) é pré-existente, confirmado por `git show HEAD:...` que a
+linha não faz parte deste diff. Visual: sem simulador/device neste
+ambiente (mesma limitação documentada em blocos anteriores) — a
+mudança é uma constante de 5 entradas mapeando 1:1 pros mesmos tokens
+de cor (`colors.red`/`colors.amber`/`colors.green`/`colors.tx30`) já
+usados e visualmente confirmados no bloco 89 (`StatusPill`/
+`bookingStatusTone`), então o risco de regressão visual é mínimo;
+confirmado por leitura de código que a lógica de renderização (dot →
+cor por `kind`) é a única mudança, sem tocar layout/tamanho/posição.
+Migrations: nenhuma.
+
+**Achado registrado, não implementado (fora deste P1)**: `MonthCalendar.tsx`
+não diferencia visualmente os tipos de evento no grid mensal (um só
+marcador genérico por dia, independente do `kind`) — diferente do Web,
+que colore os pontinhos do calendário por tipo. Isso não é a mesma
+classe de bug (não confunde `disponivel` com `indisponivel`, porque
+não distingue NENHUM tipo, incluindo `confirmado`) — é uma
+simplificação de densidade de UI mobile já existente. Se algum dia
+vier a ser corrigido, é uma decisão de design de calendário compacto
+(quantos pontos cabem numa célula de 40×40), não um bug de paridade
+Web×App — registrado aqui só pra não ser confundido com o item que
+este bloco resolveu.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
