@@ -8,6 +8,49 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Onboarding: "emite nota fiscal?" sai do cadastro porque a superfície de edição prometida já existia — 09/09/2026
+
+O fechamento do onboarding pedia explicitamente: se a pergunta "Você
+emite nota fiscal?" sair da Etapa 3, ela "poderá ser tratada
+posteriormente em uma superfície editável apropriada de contexto
+comercial/Treinar sua Doopla" — com instrução de não criar essa
+superfície agora, já que "Treinar sua Doopla" segue `[FUTURE]`.
+
+Achado que resolveu a dependência sozinho: essa superfície **já
+existe**, desde 08/09/2026 (Settings V2) — `/dashboard/perfil/editar`
+já lê e grava `issues_invoice` (`artist-profile-form.tsx`/
+`pro-artist-profile-form.tsx`, ação em `dashboard/actions.ts:1324`,
+comentário no próprio código já registrando essa decisão como
+"deixa de ser write-once do onboarding"). Não foi preciso inventar
+nada — só confirmar, e a remoção da pergunta do onboarding ficou 100%
+seguro sem nenhum trabalho adicional de "criar superfície".
+
+Decisão de implementação: `savePrepareAction` (Fluxo 1 do cadastro)
+simplesmente parou de ler/escrever `issuesInvoice` do FormData — a
+coluna continua existindo, nullable, sem CHECK, lida normalmente pelo
+Runtime (`get-professional-business-context.ts`). Nunca uma migration,
+nunca um "apagar coluna".
+
+## Onboarding: o wizard antigo (Fluxo 2) fica de fora desta rodada, mesmo tendo um caminho residual pra perguntas pesadas — 09/09/2026
+
+Durante o levantamento pro fechamento do onboarding, confirmado que
+`ARTISTA_CARREIRA_STEPS` (`signup-form.tsx`, o wizard antigo) ainda
+contém a bateria completa de perguntas comerciais (estágio de
+carreira, faixa de cachê, tipos de trabalho/cliente, regiões etc.) —
+exatamente a lista de "não perguntar no cadastro" desta rodada. Esse
+caminho é alcançável hoje só residualmente (chegar como booker sem
+convite, `?tipo=booker`, e trocar pra "Artista" dentro do próprio
+wizard via `showRolePicker`), já registrado como achado técnico numa
+auditoria anterior (Bloco 4, 08/09/2026).
+
+Decisão: **não tocado nesta rodada.** Dois motivos: (1) já existe
+decisão registrada explicitamente proibindo reescrever o wizard antigo
+sem antes mapear as dependências de convite/booker; (2) o pedido desta
+rodada foi explícito — fechar o Fluxo 1 (onde "Preparar sua Doopla"/
+"Como você trabalha" literalmente vivem), não abrir uma nova rodada de
+redesign do produto inteiro. Fica registrado como achado futuro, não
+como pendência silenciosamente ignorada.
+
 ## Nova Home V2: o logo é a implementação real do produto, o mockup só posiciona — "o logo olha, os mascotes piscam" — 09/09/2026
 
 Depois de duas idas e vindas (primeiro pedido um PNG oficial que nunca

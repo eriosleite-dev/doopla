@@ -10849,6 +10849,97 @@ Segue `[VISUAL QA PENDING]` — aguardando validação visual final do
 usuário contra o mockup aprovado, mesmo critério de fechamento já
 usado no bloco 84.
 
+## 95. Onboarding/cadastro — fechamento: remove "Você emite nota fiscal?" da Etapa 3, mantém resto do Fluxo 1 já minimalista — `[DELIVERED]`
+
+Fechamento pontual do onboarding (Fluxo 1 — `CreateAccountForm` →
+`PrepareForm`/Etapas 2-5 → `PlanForm`/Etapa 6, o caminho padrão hoje
+pra artista sem convite, tanto standalone quanto no modal da Home).
+Auditoria já feita em sessão anterior (Bloco 4, 08/09/2026); esta
+rodada implementa direto, sem repetir a auditoria.
+
+**Fluxo final, etapa por etapa** (inalterado em número/ordem — só a
+Etapa 3 perdeu um campo):
+1. Criar conta — nome, e-mail, WhatsApp, senha (obrigatórios). Já era
+   mínimo antes desta rodada — nenhuma mudança.
+2. Preparar sua Doopla — nome profissional, o que você faz, cidade-base,
+   bio (todos obrigatórios, validados no servidor); link profissional
+   (opcional). Já era exatamente o "contexto mínimo" pedido — nenhuma
+   mudança.
+3. Como você trabalha — **"Você emite nota fiscal?" removida.** Só
+   resta "Tem algo que sua Doopla sempre deve saber antes de negociar
+   por você?", já opcional (nunca bloqueava o avanço, `canAdvance()`
+   já não checava esse sub-passo) — só ganhou "(opcional)" explícito no
+   label, que antes não deixava isso claro pra quem via a tela.
+4. Como sua Doopla fala com você — WhatsApp/Painel/Ambos, obrigatório.
+   Mapeia pra `attention_channel` (arquitetura de identidade/WhatsApp
+   já existente) — não tocado, fora do escopo desta rodada.
+5. Conclusão — tela de resumo, sem campos.
+6. Escolha de plano — `PlanPicker`, preço via `market.pricing`
+   (`TRIAL_DAYS` idem), sem Stripe/checkout real — já era assim, não
+   tocado.
+
+**O que foi removido/movido**: só a pergunta "Você emite nota fiscal?"
+saiu da tela — a coluna (`artist_profiles.issues_invoice`, migration
+0037) não foi tocada, `savePrepareAction` simplesmente parou de
+ler/escrever nela (nunca mais sobrescreve pra `null` um valor que já
+exista). **Achado que já resolvia a "superfície apropriada" pedida
+pela tarefa**: essa informação já é editável desde 08/09/2026 em
+`/dashboard/perfil/editar` (Settings V2 — `artist-profile-form.tsx`/
+`pro-artist-profile-form.tsx`, ver comentário em `dashboard/actions.ts:
+1324`) — não foi preciso criar nada novo, a superfície já existia.
+
+**Dependências preservadas, confirmadas por grep antes da remoção**:
+`issues_invoice` continua lido por
+`get-professional-business-context.ts` (tool do Runtime) e exposto em
+`context-builder/sections.ts` — nenhum dos dois foi tocado, só deixa de
+receber um valor novo vindo do cadastro (continua podendo receber via
+`/dashboard/perfil/editar`). `negotiation_notes`/`attention_channel`
+continuam coletados normalmente na Etapa 3/4 — também lidos pela mesma
+tool, sem nenhuma mudança de contrato.
+
+**Preservado, nada alterado**: autenticação (`createAccountAction`,
+`auth/actions.ts`), `attention_channel`/identidade de WhatsApp,
+`market.pricing`/`TRIAL_DAYS` como fonte de preço, RPC
+`select_artist_plan` (sem Stripe, sem checkout falso), dados de
+recebimento (continuam fora do onboarding, já era assim), RLS/RPCs/
+schema (nenhuma migration), Mandate/Policy/Approval Gate (nenhuma
+mudança de autonomia), `/dashboard/perfil/editar`.
+
+**Web + App**: o App mobile não tem nenhuma superfície de
+cadastro/onboarding própria (confirmado por auditoria anterior, Bloco
+4 — só `signInWithPassword`, contas nascem 100% no Web) — não há
+"dois modelos de onboarding" pra reconciliar; item 9 da especificação
+já estava trivialmente satisfeito.
+
+**Fora de escopo desta rodada, registrado como achado, não
+implementado**: o Fluxo 2 (`signup-form.tsx`, wizard de booker/artista
+convidado por agência) tem um caminho residual onde um booker sem
+convite pode trocar pra "Artista" dentro do próprio wizard e cair em
+`ARTISTA_CARREIRA_STEPS` — uma sequência bem mais longa, com perguntas
+de estágio de carreira, faixa de cachê, tipos de trabalho/cliente,
+regiões etc. (exatamente a lista de coisas que esta rodada pede pra
+não pedir no cadastro). Não foi tocado: reescrever o wizard antigo
+contraria a decisão já registrada ("wizard antigo não é removido nem
+reescrito agora") e o próprio pedido desta rodada de não abrir uma
+nova rodada de redesign. Fica registrado pra quando for a vez desse
+bloco.
+
+**QA**: `tsc --noEmit`, `eslint` (4 arquivos tocados) e `next build`
+limpos. Etapa 1 (`/cadastro`, não exige sessão) verificada visualmente
+via Playwright contra `next start` — inalterada, indicador de 6 etapas
+intacto. Etapas 2-6 exigem sessão Supabase real (`requireArtist()`
+redireciona pra `/login` sem uma) — mesma limitação de sandbox já
+documentada em blocos anteriores; validado por revisão de código que
+`PrepareForm`/`preparar/page.tsx`/`CreateAccountModal.tsx`/
+`cadastro/actions.ts` ficaram mutuamente consistentes (nenhuma
+referência solta a `initialIssuesInvoice`/`issuesInvoice` restante,
+confirmado por grep).
+
+**Arquivos alterados**: `src/app/cadastro/preparar/PrepareForm.tsx`,
+`src/app/cadastro/preparar/page.tsx`, `src/app/cadastro/actions.ts`,
+`src/app/_home/CreateAccountModal.tsx` (mesmo formulário usado no modal
+de cadastro da Home). **Migrations**: nenhuma.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
