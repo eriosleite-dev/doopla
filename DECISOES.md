@@ -1549,3 +1549,51 @@ enviados silenciosamente (nenhum erro visível, só dado que nunca
 chega no submit). O legado (`cardClass`, sem `backdrop-filter`) nunca
 teve esse problema — só surge em componentes novos que adotam o
 sistema Pro.
+
+## Privacidade na Comunidade — feature nova, não re-skin: ativação escopada por ação, availableForReferrals nunca exposto — 09/09/2026
+
+Diferente dos blocos 86/87 (re-skin puro), este foi o primeiro item do
+P1 que exigiu construir algo que nunca existiu — os 7 controles de
+visibilidade de `community_profiles` (migration 0059) tinham
+schema/RLS/RPC/data-layer prontos nas duas plataformas, mas zero UI em
+qualquer lugar. Decisão de produto explícita do usuário: construir a
+superfície faltante com paridade Web+App, não só corrigir a copy que
+prometia algo inexistente.
+
+**Ativação da Comunidade escopada por ação, não por tela**: o resto do
+produto já estabelece que "entrar na Comunidade"
+(`activate_community_profile`) é invisível — qualquer superfície de
+Comunidade ativa a participação sem passo explícito. A dúvida real
+aqui era ONDE aplicar isso: no hub geral `/dashboard/perfil/privacidade`
+(que qualquer profissional visita por motivos não relacionados à
+Comunidade) ou só na subpágina dedicada? Decisão: só na subpágina
+(Web) / só ao abrir o BottomSheet específico (App). Visitar
+"Privacidade e dados" não deveria silenciosamente inscrever alguém na
+Comunidade; clicar especificamente em "Privacidade na Comunidade" já é
+uma ação relacionada a ela, então ativar ali é consistente com o
+princípio existente, não uma exceção. Isso também resolve por
+construção o estado "usuário sem `community_profile` inicial" pedido
+no QA — depois de `ensureCommunityProfileActivated`, o form nunca
+renderiza sem uma linha existente.
+
+**`available_for_referrals` nunca vira toggle, mas seu valor atual
+atravessa cada save**: a RPC `update_community_profile` recebe os 8
+campos de `community_profiles` juntos, sem update parcial. O 8º campo
+(`available_for_referrals`, "disponível pra indicações") é conceito
+diferente dos 7 pedidos e também não tem UI em lugar nenhum — mas não
+foi incluído nesta tela (fora do escopo explícito: "não criar novas
+preferências"). Para não resetá-lo silenciosamente a cada save dos 7
+toggles reais, seu valor é lido do snapshot atual e reenviado sem
+alteração em toda chamada de update, nas duas plataformas — tratado
+como um "hidden field" técnico (Web: `<input type="hidden">` de
+verdade; App: campo do state que nunca vira `Switch`). Registrado como
+achado separado, candidato a rodada futura, não implementado aqui.
+
+**Verificação de segurança pedida explicitamente antes de qualquer
+mudança de semântica**: releu a migration 0059 inteira (schema, RLS,
+as duas RPCs, a view `community_profiles_public`) antes de escrever
+qualquer linha de UI — cada um dos 7 campos só é exposto pela view
+quando `visibility_status = 'active' AND show_x = true`, sem
+divergência entre o nome da coluna e o que a view realmente faz. Nada
+de schema/RPC/RLS/semântica foi alterado nesta rodada — só consumo via
+UI do que já existia.

@@ -10021,6 +10021,119 @@ nenhuma.
 
 **Não avançar pro resto do P1 sem aprovação explícita.**
 
+## 88. Privacidade na Comunidade — feature nova (Web + App), não re-skin — `[DELIVERED/CLOSED]`
+
+Terceiro item da lista priorizada do bloco 85, mas o primeiro que não
+é re-skin: a auditoria tinha achado "promessa de tela de privacidade
+da Comunidade que não existe em código nenhum" —
+`perfil/privacidade/page.tsx` dizia "sua privacidade dentro da
+Comunidade... tem uma tela própria" e linkava por engano pro editor
+de perfil profissional geral (`perfil/editar`). Investigação
+confirmou: os 7 campos `show_*` de `community_profiles` (migration
+0059) e a RPC `update_community_profile` já existiam prontos desde
+sempre, e a camada de dados (`getMyCommunityProfile`/
+`updateCommunityProfile`/`ensureCommunityProfileActivated`) já existia
+tanto em `src/lib/community/data.ts` (Web) quanto em
+`mobile/src/lib/data/community.ts` (App) — só nenhuma tela em nenhuma
+plataforma jamais os chamava. Decisão de produto do usuário: construir
+a superfície faltante (não só corrigir a copy), com paridade Web+App,
+reaproveitando banco/RPC/RLS/data layer existentes sem alteração.
+
+**Web**: nova subpágina `/dashboard/perfil/privacidade/comunidade`
+(`page.tsx` + `community-privacy-form.tsx`), Server Action dedicada
+(`community-privacy-actions.ts`, mesmo padrão de arquivo isolado já
+usado por `account-closure-actions.ts`). Artista-only — mesmo escopo
+do resto da Comunidade V1 (`activate_community_profile` recusa
+`role != 'artista'` internamente) — redirect silencioso pro hub de
+privacidade pra quem não é artista, sem link morto. Ativação invisível
+ao entrar na subpágina (`ensureCommunityProfileActivated`, mesma
+convenção já usada em toda superfície de Comunidade — nenhum passo
+explícito de "entrar"), o que torna o estado "usuário sem
+community_profile inicial" não-alcançável por design nesta tela
+(sempre existe uma linha antes do form renderizar). O hub
+(`perfil/privacidade/page.tsx`) ganhou um novo grupo "Comunidade" com
+`ProSettingsRow` linkando pra subpágina, com resumo (`"N de 7
+visíveis"`/`"Nada visível ainda"`, omitido se nunca ativado — nunca um
+placeholder), visível só pra `role === 'artista'`; a frase que
+prometia "uma tela própria" foi reescrita e o botão errado
+("Editar perfil público" → `perfil/editar`) removido do card "Seus
+dados", que agora só fala de exportação de dados.
+
+**App**: nova linha "Privacidade na Comunidade" em
+`mobile/app/(tabs)/mais/configuracoes.tsx`, abrindo um `BottomSheet`
+novo (`CommunityPrivacySheet`) com os mesmos 7 `Switch`, reaproveitando
+`mobile/src/lib/data/community.ts` já existente (zero data layer
+nova). Busca (`ensureCommunityProfileActivated` +
+`fetchMyCommunityProfile`) só acontece quando o sheet abre, não no
+`load()` da tela toda — abrir Configurações não deve ativar
+silenciosamente a participação na Comunidade; só entrar neste sheet
+especificamente é uma ação relacionada a ela. Refaz a busca toda vez
+que reabre (nunca mostra valor desatualizado depois de
+fechar/reabrir). Sem role check no App (confirmado por auditoria: o
+App inteiro não tem branch de role nenhum, é artista-only por
+construção).
+
+**UX**: rótulos em linguagem comum nas duas plataformas, idênticos
+palavra por palavra ("Mostrar minha cidade", "Mostrar minha foto",
+"Mostrar minha bio", "Mostrar minhas especialidades", "Mostrar tipos
+de trabalho", "Mostrar meu Instagram", "Mostrar meu portfólio") — nunca
+o nome da coluna. Subtítulo deixa explícito que afeta só o perfil
+público da Comunidade, não o Perfil profissional geral. Edição de
+conteúdo (Instagram/bio/portfólio em si) continua só em `perfil/editar`
+— aqui é exclusivamente visibilidade.
+
+**`available_for_referrals` — achado relacionado, fora de escopo,
+preservado**: a RPC `update_community_profile` exige os 8 parâmetros
+juntos (sem update parcial) — o 8º campo, `available_for_referrals`
+("disponível pra indicações"), é um sinal de produto diferente dos 7
+pedidos e também está sem UI em qualquer lugar (mesmo achado que os 7,
+mas fora do escopo desta rodada — não é um dos campos listados). Nunca
+exposto como toggle nesta tela; nas duas plataformas, o valor atual é
+lido junto com o resto do snapshot e reenviado sem alteração a cada
+save, pra nunca ser resetado silenciosamente. Candidato a rodada
+futura, registrado, não implementado.
+
+**Verificação de segurança/integridade solicitada**: revisão completa
+da migration 0059 (schema, RLS, as duas RPCs, a view
+`community_profiles_public`) não encontrou nenhuma divergência entre a
+view e os 7 toggles — cada campo opcional só é exposto quando
+`visibility_status = 'active' AND show_x = true`, exatamente como os
+nomes prometem. Nenhuma mudança de schema/RPC/RLS/semântica nesta
+rodada.
+
+**QA**: `tsc --noEmit`/`eslint`/`next build` limpos nas duas
+plataformas. Visual via rota `/dev/community-privacy-preview` efêmera
+(deletada antes do commit) — `CommunityPrivacyForm` é puramente
+apresentacional (só invoca a Server Action real no submit), cobriu
+todos-falso/todos-verdadeiro/misto em desktop/tablet/mobile, e o novo
+grupo do hub isolado com 3 variações de summary. Interação real via
+Playwright: toggle individual de um checkbox confirmado (estado
+`false→true`); submit clicado sem sessão Supabase real (limite deste
+ambiente sandboxed, mesmo já documentado nos blocos 86/87) —
+confirmado que a Server Action falha seguro (`redirect('/login?...')`
+via `if (!user)`), nunca um crash ou comportamento indefinido. Estados
+não verificáveis ao vivo neste ambiente (round-trip real de
+persistência, refletir em `community_profiles_public` pra outro
+usuário, App num simulador) confirmados por revisão de código: (1)
+"usuário sem community_profile inicial" — não-alcançável por design
+via `ensureCommunityProfileActivated`, explicado acima; (2) "perfil
+público refletindo cada opção" — lógica da view auditada e confirmada
+correta, não alterada por este bloco; (3) App — sem simulador/device
+neste ambiente, validado por `tsc`/`eslint` limpos + paridade de
+lógica linha a linha com o Web (mesmos nomes de campo, mesma
+sequência de chamadas `ensure→fetch→update`, mesmo tratamento de erro
+try/catch). Nenhuma regressão em Professional Profile — confirmado
+por `git status`: nenhum arquivo de `perfil/editar/`,
+`artist-profile-form.tsx` ou correlatos aparece no diff deste bloco.
+Nenhuma divergência de nomenclatura Web↔App — os 7 rótulos são texto
+idêntico nas duas plataformas (comparação direta dos arrays
+`TOGGLES`/`COMMUNITY_TOGGLES`). Migrations: nenhuma (reaproveita
+0059 integralmente).
+
+**Fechado como feature própria** — não é mais parte da lista de
+re-skin do P1; o item #6 (divergência de cores/vocabulário de status
+Web↔App) fica como o próximo, aguardando instrução.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
