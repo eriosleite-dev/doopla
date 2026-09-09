@@ -8,6 +8,38 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Nova Home V2: os "olhos da Home anterior" não são o sistema .mascot — são o GSAP dos "pulinhos", recuperado do git — 09/09/2026
+
+A primeira tentativa de reaproveitar "os olhos grandes da Home
+anterior" (bloco 94) usou `.mascot`/`.mascot-eye`/`.mascot-pupil` — o
+sistema de tracking-por-cursor da Nova Home V1 (08/09/2026). Estava
+errado: existiam DOIS sistemas de olhos diferentes na história deste
+projeto, não um só. O que o usuário queria era o mais antigo — a
+implementação com "pulinhos" (jump/hop, sombra, squash-and-stretch),
+GSAP-based, da era anterior à própria Nova Home V1 (a seção "Mais que
+automação. Representação.", `.manda-eyes`), que NUNCA fazia
+tracking de cursor.
+
+Recuperado via `git log -S/--oneline` + `git show
+ad897c0:src/app/_home/home.{css,html,js}` (último commit antes do
+GSAP ser removido do projeto). Decisão de implementação: **não
+reintroduzir GSAP** como dependência — foi removido em 08/09/2026 por
+um bug real (`ScrollTrigger` deixando o hero preso em `opacity:0`),
+documentado no topo de `home.js`; trazer a lib de volta só pra uma
+seção reabriria esse risco pro projeto inteiro. Em vez disso, a
+coreografia exata (`makeEyesMotion()`: `entrance()`/`settledLoop()`,
+mesmas durações/valores-alvo/pausas) foi portada pra Web Animations
+API vanilla — a única perda real é a curva de easing exata do GSAP
+(`power1`/`power2`/`elastic`, sem equivalente nativo no browser),
+aproximada com `cubic-bezier`. A sequência/timing/comportamento visual
+são os mesmos; a matemática exata da aceleração, não.
+
+Lição registrada pra não repetir: quando o usuário disser "os olhos da
+Home anterior", "Mais que automação" ou "pulinhos", é este sistema —
+nunca o `.mascot` da Nova Home V1. Os dois nomes soam parecidos
+("olhos grandes que já existem") mas são implementações totalmente
+diferentes de eras diferentes do produto.
+
 ## Onboarding: "emite nota fiscal?" sai do cadastro porque a superfície de edição prometida já existia — 09/09/2026
 
 O fechamento do onboarding pedia explicitamente: se a pergunta "Você

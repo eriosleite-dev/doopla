@@ -10940,6 +10940,119 @@ confirmado por grep).
 `src/app/_home/CreateAccountModal.tsx` (mesmo formulário usado no modal
 de cadastro da Home). **Migrations**: nenhuma.
 
+## 96. Nova Home V2 — ajuste exato da seção "sempre com você": olhos grandes REAIS recuperados do histórico + correções de cor/CTA — `[DELIVERED]`
+
+Correção de um erro real do bloco 94: a primeira tentativa de
+reaproveitar "os olhos da Home anterior" usou o sistema errado
+(`.mascot`/`.mascot-eye` de 56px, tracking por cursor) — não a
+implementação que o usuário pedia, que é a dos "pulinhos" (jump/hop
+com sombra, GSAP) da era "Mais que automação. Representação.". Esta
+rodada localizou a implementação real no histórico do git e portou
+sem aproximação.
+
+**1. De qual commit/arquivo histórico recuperou os olhos**: commit
+`ad897c0` ("fix(home): reconecta GSAP/ScrollTrigger ao remontar a Home
+— header sumindo"), a última versão de `src/app/_home/home.css`/
+`home.html`/`home.js` antes do GSAP ser removido do projeto
+(08/09/2026). Seção `.manda` (`id="o-que-sua-doopla-faz"`), texto
+`"Mais que automação. Representação."`, classes `.manda-eyes`/
+`.eyes-stage`/`.eyes-col`/`.eyes-eye`/`.eyes-pupil`/`.eyes-shadow`.
+
+**2. Qual código de animação foi reutilizado**: a função
+`makeEyesMotion()` de `git show ad897c0:src/app/_home/home.js`,
+instância `mandaEyes` (a que roda nos olhos da seção, não a do hero).
+GSAP não foi reintroduzido como dependência (removido deliberadamente
+em 08/09/2026 por um bug real de `ScrollTrigger`, documentado no topo
+de `home.js` — reintroduzir a lib só pra esta seção reabriria esse
+risco). Portado pra Web Animations API vanilla em `initLegacyEyesMotion()`
+(novo, `home.js`): mesma sequência (`entrance()` com 3 pulos
+convergindo pro descanso, `settledLoop()` com looks/hops/blink e pausa
+de 0.7s entre repetições, hover reinicia a entrada), mesmas durações e
+valores-alvo (spans, `MAX = eyeSize*0.24`, offsets de look em frações
+de `MAX`, durações de cada fase do pulo). Única aproximação real: as
+curvas de easing nomeadas do GSAP (`power1/power2/elastic`) não existem
+na Web Animations API — usei equivalentes `cubic-bezier`/`ease-in-out`
+mais próximos (documentado no código); a coreografia (o que se vê) é
+idêntica, a curva exata de aceleração é uma aproximação, não uma
+reprodução bit a bit — impossível sem a biblioteca em si.
+
+**3. Onde estão definidos os pulinhos**: função `jumpTo()` dentro de
+`initLegacyEyesMotion()` (`home.js`) — replica exatamente as 4 fases do
+original (antecipação/agachar, subida com sombra encolhendo, descida
+com sombra voltando, pouso com pequeno overshoot elástico), usadas
+tanto por `entrance()` (pulos com deslocamento lateral) quanto por
+`hopSelfInPlace()` (pulo sem deslocamento, usado no loop assentado).
+
+**4. Qual CSS histórico da legenda foi reutilizado**: a classe `.mono`
+de `git show ad897c0:src/app/_home/home.css` (`font-family:'IBM Plex
+Mono', monospace; letter-spacing:.14em; text-transform:uppercase;
+font-size:.72rem`), recriada como `.legacy-eyes-caption` (não dá pra
+reaproveitar `.mono` direto — a Nova Home V2 já usa esse nome de classe
+pra outra coisa, com outros valores). Cor preta (`var(--black)`),
+igual ao original (`.manda-eyes .mono{color:var(--black)}`). Texto
+trocado de "Mais que automação. Representação." pra "Sua Doopla sempre
+com você." — único lugar onde essa frase aparece agora.
+
+**5. Confirmação de tamanho/proporção**: `.legacy-eyes-eye` 160×160px
+desktop (idêntico ao original), 110×110px em ≤760px (idêntico ao
+breakpoint original em ≤820px, ajustado pro breakpoint de 760px já
+usado nesta Home). Pupila 52px/36px, também idênticos. Confirmado via
+Playwright (`getBoundingClientRect()`): 160.08×159.95px reais em
+desktop. Sombra (`.legacy-eyes-shadow`, ausente na tentativa anterior)
+recuperada com os mesmos valores (`rgba(0,0,0,.22)`, blur 2px).
+
+**6. Confirmação de que a legenda não usa mais a tipografia errada**: a
+tentativa anterior usava `font-family:'Inter'; font-weight:700` (a
+mesma fonte bold/sans do resto da Home nova) — substituída por
+`'IBM Plex Mono'` uppercase/letter-spacing, confirmado via
+`getComputedStyle` no QA.
+
+**7. Confirmação de que o lado esquerdo não sofreu alteração de
+conteúdo/layout**: `.with-you-copy` (eyebrow/h2/p.lead/CTA) não teve
+nenhuma linha de HTML alterada — só a cor do texto mudou de
+`var(--off)`/`rgba(251,249,242,.86)` pra `var(--black)` (confirmado via
+`getComputedStyle`: `rgb(18, 17, 16)` nos três elementos). Nenhuma
+mudança de tipografia, quebra de linha, largura ou espaçamento.
+
+**8. Confirmação do CTA**: `.always .btn-primary` — fundo preto
+(`var(--black)`), texto/seta em off-white (`var(--off)`), glow escuro
+suave (`box-shadow:0 10px 34px rgba(0,0,0,.32)`, confirmado via
+`getComputedStyle`: `rgb(18,17,16)` / `rgb(251,249,242)` / sombra
+presente) — nunca a inversão off-white/preto usada nos outros CTAs
+desta Home.
+
+**Correção adicional, fora da seção "sempre com você"**: label do CTA
+no header voltou de "Começar agora" pra "Criar conta" (pedido explícito
+à parte) — único CTA da Home com esse texto; os demais continuam
+"Começar agora" (bloco 94).
+
+**QA**: `tsc --noEmit`/`eslint`/`next build` limpos. Validação via
+Playwright contra `next start`: tamanho real dos olhos confirmado
+(160px), sombra visível, legenda com texto/cor/tipografia corretos,
+cores do lado esquerdo e CTA confirmadas via `getComputedStyle`,
+header com "Criar conta". Amostragem de `transform` ao longo de ~8s
+confirmou o loop rodando de verdade (pulos, olhares, piscada — não
+uma animação travada/estática). `prefers-reduced-motion` testado
+via `reducedMotion:'reduce'` do Playwright: posição fica parada,
+zero timer registrado. Único erro de console em qualquer captura:
+`net::ERR_CONNECTION_RESET` do Google Fonts, limitação de proxy já
+documentada, não relacionada a este código.
+
+**Achado registrado, não "corrigido"**: durante a fase de entrada
+(`entrance()`, ~1.8s, uma vez por carregamento da página), os dois
+olhos podem se aproximar/sobrepor brevemente e, em viewports estreitos
+(mobile), a excursão lateral pode momentaneamente tocar a borda do
+container — comportamento herdado diretamente da mesma fórmula do
+original (`span` proporcional à largura do stage, capado por
+`eyeSize*1.375`), não uma regressão introduzida na porta. Não ajustado
+por not ser pedido — ajustar a amplitude seria desviar dos valores
+originais, o oposto do que essa tarefa pediu.
+
+**Preservado, nada alterado**: `EyeLogo.tsx` e o sistema de tracking
+do logo (header/footer), os 3 mascotes com blink (hero/CTA final,
+bloco 94), Menu overlay, FAQ, planos, footer, rotas reais, `SiteHeader`/
+`SiteFooter`/páginas institucionais.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
