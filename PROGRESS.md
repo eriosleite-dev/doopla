@@ -11101,6 +11101,167 @@ combinado: fechamento documental (este bloco) seguido de checkpoint
 audit-only de Cadastro/Onboarding (ver bloco 98) antes de Settings V2
 — sequência não reorganizada, só executada na ordem já definida.
 
+## 98. Checkpoint audit-only — Cadastro/Onboarding, antes de Settings V2 — `[AUDIT ONLY / NO CODE CHANGE]`
+
+Auditoria read-only pedida explicitamente pela fundadora entre o
+fechamento da Home (bloco 97) e o início de Settings V2. **Nenhuma
+linha de código foi alterada nesta auditoria** — só leitura/mapeamento.
+Não é reabertura do Fluxo 1 (já simplificado no bloco 95), não é
+implementação de Booker/multi-role/role-switching, não cria migration
+nem arquitetura nova.
+
+Classificação usada: CURRENT (em produção, é o caminho real hoje) /
+DELIVERED (entregue e fechado em bloco anterior) / LEGACY (código
+antigo ainda presente e alcançável, fora do funil padrão) / DEFERRED
+(achado registrado, não corrigido agora) / FUTURE (decisão que
+pertence a um bloco futuro) / CONFLICT (acharia contradição entre
+decisões — nenhuma encontrada nesta auditoria).
+
+**(1) Fluxo E2E real hoje (artista padrão, sem convite) — CURRENT.**
+`/cadastro` (sem `tipo=booker`/`invite`) → Etapa 1 "Criar conta"
+(`CreateAccountForm.tsx`, cria a conta imediatamente via
+`createAccountAction`) → Etapa 2-5 "Prepare sua Doopla"
+(`PrepareForm.tsx`, 4 sub-etapas: nome/profissão/cidade/bio/link →
+"tem algo que sua Doopla deve saber (opcional)" → canal de contato →
+tela de conclusão) → Etapa 6 "Escolher plano" (`PlanForm.tsx`,
+`market.pricing`/`TRIAL_DAYS`) → `/dashboard`.
+
+**(2) Telas/etapas realmente ativas — CURRENT.** 6 etapas numeradas
+("Etapa N de 6") no Fluxo 1: Criar conta, 3 sub-etapas de
+"Prepare sua Doopla" com pergunta, 1 sub-etapa de conclusão sem
+pergunta, Escolher plano. Todas alcançáveis pelo funil público padrão
+(Home, Menu, páginas institucionais, `/login`, links de referral).
+
+**(3) Arquivos que implementam o fluxo — CURRENT.**
+`src/app/cadastro/page.tsx` (roteador — decide Fluxo 1 vs Fluxo 2),
+`CreateAccountForm.tsx`, `OnboardingShell.tsx`,
+`preparar/PrepareForm.tsx` + `preparar/page.tsx`,
+`plano/PlanForm.tsx` + `plano/page.tsx`, `PlanPicker.tsx`,
+`actions.ts` (`savePrepareAction`/`savePlanAction`),
+`src/app/auth/actions.ts` (`createAccountAction`). No lado Home:
+`src/app/_home/HomeCreateAccountModal.tsx` +
+`src/app/_home/CreateAccountModal.tsx` (versão em modal, reusa os
+mesmos componentes/actions em "modalMode").
+
+**(4) Mais de um caminho público de cadastro? Sim — CURRENT.** 7
+entradas distintas mapeadas, todas convergindo pro mesmo roteador:
+modal da Home, link "Começar agora" do Menu overlay (nav real, não
+modal), links diretos nas páginas institucionais/login, links de
+referral (`?ref=`), página de convite `/convite/[token]`
+(`?tipo=...&invite=...`), links manuais `?tipo=booker`/`?role=booker`,
+e `?role=agencia` legado (normalizado de volta pra `artista`). Todas
+exceto convite/booker-manual resolvem pro Fluxo 1.
+
+**(5) Situação real de `signup-form.tsx` — CURRENT (não é código
+morto), LEGACY (fluxo não simplificado por decisão explícita).**
+Único importador: `src/app/cadastro/page.tsx`. Continua ativo sempre
+que há `tipo=booker`/`role=booker` (sem convite) ou qualquer token de
+convite — ou seja, é o fluxo de booker E o fluxo de artista convidado.
+Contém `showRolePicker` (troca booker↔artista no meio do wizard,
+`handleRoleChange` limpa o estado por completo na troca — não há
+vazamento de perguntas comerciais pro lado artista). O funil de booker
+dentro dele (`BOOKER_REMAINING_STEPS`) ainda tem um questionário
+comercial/matching substancial (mercados, categorias, faixa de cachê,
+comissão, idiomas, capacidade) — isso é esperado e está fora do escopo
+desta auditoria (Booker é bloco futuro, per instrução explícita da
+fundadora).
+
+**(6) Resíduo do fluxo antigo Booker→Artist? Não encontrado —
+CONFLICT: nenhum.** `handleRoleChange` reseta 100% do estado do
+wizard na troca de role; não existe componente separado de "bateria de
+perguntas antigas"; as perguntas de cachê/negociação já foram removidas
+do lado artista de `signup-form.tsx` antes desta sessão (comentário no
+próprio arquivo). Nenhuma contradição encontrada com decisões já
+tomadas.
+
+**(7) "Você emite nota fiscal?" voltou? Não — DELIVERED (confirmado,
+achado do bloco 95 continua válido).** Busca exaustiva por
+`issues_invoice`/`issuesInvoice`/"nota fiscal" em todo `src/` e
+`mobile/src/`: zero ocorrências em qualquer fluxo de cadastro (Fluxo 1
+ou 2). As únicas ocorrências restantes são: leitura read-only pelo
+Runtime (`get-professional-business-context.ts`,
+`context-builder/sections.ts`) e a superfície de edição pós-onboarding
+já existente, `/dashboard/perfil/editar` (`dashboard/actions.ts`,
+`artist-profile-form.tsx`, `pro-artist-profile-form.tsx`) — exatamente
+como o bloco 95 previu.
+
+**(8) Redirect final por fluxo — CURRENT.** Fluxo 1 (rota real):
+`createAccountAction` → `/cadastro/preparar` (ou
+`/cadastro/confirme-seu-email` se precisar confirmar e-mail) →
+`savePrepareAction` → `/cadastro/plano` → `savePlanAction` →
+`redirect('/dashboard')`. Fluxo 1 (modal da Home): mesmo destino final
+via `router.push('/dashboard')` client-side. Fluxo 2:
+`signupAction` sempre redireciona pra `/cadastro/confirme-seu-email`
+(diferença real e proposital: não pula a confirmação de e-mail mesmo
+com sessão ativa, ao contrário do Fluxo 1).
+
+**(9) Plano/trial — CURRENT.** `market.pricing`/`TRIAL_DAYS` (7 dias)
+é a única fonte usada em toda a UI de planos (Fluxo 1 e 2). Intenção
+de plano vinda da Home (clique num card de preço específico) carrega
+via query param → metadata do signUp → `handle_new_user` grava em
+`subscriptions.artist_plan` → a Etapa 6 lê o valor já persistido no
+banco (não é estado de cliente) mas **continua livre pra ser trocada**
+antes de confirmar — nunca é travada antes da etapa final. Achado
+menor sem impacto funcional: o campo de voucher (`founderVoucherCode`)
+aparece na UI do `PlanPicker` também no Fluxo 1, mas `savePlanAction`
+nunca lê esse campo — é descartado silenciosamente. Registrado como
+DEFERRED (não corrigido nesta auditoria; não foi pedido).
+
+**(10) Web vs App — CURRENT (App não tem cadastro próprio).** O app
+mobile não tem nenhuma tela de cadastro/login própria além de restaurar
+sessão existente (`useAuth.tsx` só implementa `signInWithPassword`/
+`signOut`, sem `signUp`). Depende inteiramente do fluxo web pra criação
+de conta — consistente com o estágio atual do produto mobile
+(comentário no próprio código: "nenhuma tela real depende disso ainda
+nesta fase").
+
+**(11) Findings/deferred registrados nesta auditoria (não corrigidos):**
+- Campo de voucher exposto mas não lido no Fluxo 1 (`PlanPicker`
+  `showVoucherField=true` sem uso downstream) — DEFERRED.
+- Fluxo de booker dentro de `signup-form.tsx` continua com questionário
+  comercial substancial — LEGACY, intocado por decisão explícita
+  (pertence ao bloco futuro de Booker).
+
+**(12) Conflitos com decisões já tomadas — nenhum encontrado.** Todos
+os pontos auditados são consistentes com as decisões registradas nos
+blocos 95 (fechamento do onboarding) e no `DECISOES.md`
+(`market.pricing`, RPC `select_artist_plan` como único caminho de
+escrita de plano, `handle_new_user` como único criador de linha em
+`subscriptions`/`artist_profiles`).
+
+**(13) Confirmação: nenhuma mudança funcional foi feita durante esta
+auditoria.** Apenas leitura de código (`Explore` agent, read-only) —
+zero arquivos de código editados. Os únicos arquivos tocados nesta
+sessão para os blocos 97/98/99 são `PROGRESS.md` e `DECISOES.md`.
+
+**Roadmap mestre**: `AUDITORIA CADASTRO/ONBOARDING` → `[AUDIT ONLY —
+DELIVERED]`. Por instrução explícita, a implementação de Settings V2
+**não começa** neste bloco — aguarda revisão da fundadora sobre este
+relatório antes de prosseguir.
+
+## 99. Settings V2 — achado registrado (não corrigido agora): "Preferências de matching" é conteúdo legado — `[DEFERRED — reconciliar em Settings V2]`
+
+A fundadora encontrou, durante a revisão desta sessão, um achado visual
+no painel de Configurações atual (não no fluxo de cadastro — achado
+separado, registrado aqui porque foi levantado na mesma mensagem que
+pediu a auditoria acima). **Não foi corrigido agora** — só registrado,
+por instrução explícita, para ser tratado quando o bloco Settings V2
+começar.
+
+**O achado**: a tela atual de Configurações ainda expõe conteúdo de
+"Preferências de matching" — copy sobre "encontrar pessoas e
+oportunidades", "buscas e recomendações", informação de viagem/outras
+cidades atrelada a esse bloco — misturado com Perfil Público, links
+profissionais, link de orçamento, e lógica relacionada a quem recebe
+pedidos (Booker). Declaração explícita da fundadora: **"Matching NÃO
+pertence mais à arquitetura atual da Doopla."**
+
+**Quando corrigir**: no bloco Settings V2, usando como fonte da
+verdade a arquitetura já definida — **CONFIGURAÇÕES → DETALHE → AÇÃO**
+(progressive disclosure) — e não a tela legada atual. Este achado deve
+ser reconciliado contra essa arquitetura, não corrigido isoladamente
+dentro da tela existente.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
