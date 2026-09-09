@@ -94,6 +94,60 @@ function initMascotEyes() {
   resetIdle();
 }
 
+// Piscada dos mascotes (09/09/2026, redesign a partir do
+// doopla-home-mockup.html) — grade de animação explícita: "o logo olha,
+// os mascotes piscam". Alvo é só `.mascot .eyes-row .mascot-eye`: os
+// dois mascotes novos (hero + CTA final) têm essa estrutura; os olhos
+// grandes reaproveitados da Home anterior na seção "sempre com você"
+// (.mascot-eyes-only) NUNCA usam .eyes-row, então ficam de fora por
+// construção — preservam só o tracking existente, nunca ganham blink.
+// Cada mascote tem seu próprio relógio (setTimeout independente, delay
+// inicial e intervalo sorteados) de propósito — nunca sincronizados.
+// scaleY no próprio .mascot-eye (nunca na pupila) evita qualquer
+// deformação/layout shift: só a "pálpebra" fecha, o olho não muda de
+// posição nem de tamanho de caixa.
+function initMascotBlink() {
+  if (window.__homeMarketingBlinkTimers) {
+    window.__homeMarketingBlinkTimers.forEach(function (t) { clearTimeout(t); });
+  }
+  window.__homeMarketingBlinkTimers = [];
+
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+
+  var roots = Array.prototype.slice
+    .call(document.querySelectorAll('#home-marketing .mascot .eyes-row'))
+    .map(function (row) { return row.parentElement; })
+    .filter(Boolean);
+
+  roots.forEach(function (root) {
+    var eyes = Array.prototype.slice.call(root.querySelectorAll('.mascot-eye'));
+    if (eyes.length === 0) return;
+
+    function blinkOnce() {
+      eyes.forEach(function (eye) { eye.classList.add('blink'); });
+      setTimeout(function () {
+        eyes.forEach(function (eye) { eye.classList.remove('blink'); });
+      }, 110);
+    }
+    function scheduleNext() {
+      var delay = 2400 + Math.random() * 3600; // 2.4s–6s, irregular de propósito
+      var t = setTimeout(function () {
+        blinkOnce();
+        scheduleNext();
+      }, delay);
+      window.__homeMarketingBlinkTimers.push(t);
+    }
+    // desfasa o primeiro blink de cada mascote pra nunca nascerem em
+    // sincronia (mesmo objetivo do delay inicial aleatório)
+    var t0 = setTimeout(function () {
+      blinkOnce();
+      scheduleNext();
+    }, 900 + Math.random() * 3000);
+    window.__homeMarketingBlinkTimers.push(t0);
+  });
+}
+
 // Reveal genérico de cada seção (exceto o hero — sempre visível de
 // imediato, mesmo precedente do código antigo: conteúdo acima da
 // dobra nunca depende de JS pra aparecer) ao entrar na viewport — puro
@@ -138,5 +192,6 @@ function initSectionReveal() {
 
 window.__bootHomeMarketing = function boot() {
   initMascotEyes();
+  initMascotBlink();
   initSectionReveal();
 };
