@@ -9,7 +9,7 @@
         Menu
       </button>
       <a href="/login" id="home-login-trigger" class="btn btn-ghost">Entrar</a>
-      <a href="/cadastro" class="btn btn-primary">Começar agora</a>
+      <a href="/cadastro" class="btn btn-primary">Criar conta</a>
     </div>
   </div>
 </header>
@@ -138,8 +138,9 @@
   </div>
 </section>
 
-<!-- SEMPRE COM VOCE (secao WhatsApp) — fundo vermelho, olhos grandes da
-     Home anterior reaproveitados (ver home.css .mascot-eyes-only) -->
+<!-- SEMPRE COM VOCE (secao WhatsApp) — fundo vermelho, olhos grandes reais
+     da Home anterior reaproveitados (ver home.css/home.js .legacy-eyes-*,
+     portados de git show ad897c0) -->
 <section class="block always">
   <div class="with-you">
     <div class="with-you-copy">
@@ -151,11 +152,17 @@
       </a>
     </div>
     <div class="with-you-visual">
-      <div class="mascot mascot-eyes-only with-you-eyes" aria-hidden="true">
-        <span class="mascot-eye"><span class="mascot-pupil"></span></span>
-        <span class="mascot-eye"><span class="mascot-pupil"></span></span>
+      <div class="legacy-eyes-stage" id="legacyEyesStage" aria-hidden="true">
+        <div class="legacy-eyes-col a" id="legacyEyesColA">
+          <div class="legacy-eyes-eye" id="legacyEyeA"><div class="legacy-eyes-pupil" id="legacyPupilA"></div></div>
+          <div class="legacy-eyes-shadow"></div>
+        </div>
+        <div class="legacy-eyes-col b" id="legacyEyesColB">
+          <div class="legacy-eyes-eye" id="legacyEyeB"><div class="legacy-eyes-pupil" id="legacyPupilB"></div></div>
+          <div class="legacy-eyes-shadow"></div>
+        </div>
       </div>
-      <p class="with-you-caption">Sua Doopla sempre com você.</p>
+      <span class="legacy-eyes-caption">Sua Doopla sempre com você.</span>
     </div>
   </div>
 </section>

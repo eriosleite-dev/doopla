@@ -17,20 +17,27 @@
      footer. Mesmo desenho, mesmas classes de sempre (.eye-slot/
      .mascot-pupil) — só texto+CSS, nunca PNG.
 
-     Seção "Sempre com você" (a seção que fala de WhatsApp): o
-     card/mascote do mockup foi substituído pelos dois olhos GRANDES já
-     existentes na Home anterior (.mascot com só os olhos visíveis, sem
-     corpo/pernas — ver .mascot-eyes-only abaixo), fundo vermelho Doopla
-     sólido (--red), exatamente como pedido. Não é mascote novo, é o
-     mesmo .mascot/.mascot-eye/.mascot-pupil de sempre, só sem a bola
-     vermelha do corpo (que seria invisível sobre fundo vermelho de
-     qualquer forma).
+     Seção "Sempre com você" (a seção que fala de WhatsApp): fundo
+     vermelho sólido (--red), texto do lado esquerdo em preto (mesma
+     combinação já usada na Home anterior pra "manda"/"Mais que
+     automação", nunca branco sobre vermelho). Lado direito: os olhos
+     GRANDES reais da Home anterior (.legacy-eyes-*), recuperados de
+     `git show ad897c0:src/app/_home/home.css`/`home.js` — a
+     implementação com pulinhos/GSAP que existia na seção que dizia
+     "Mais que automação. Representação.", NÃO o sistema .mascot de
+     tracking por cursor (essa foi uma tentativa anterior errada nesta
+     mesma rodada, substituída). Portado pra Web Animations API vanilla
+     (sem reintroduzir GSAP, removido deliberadamente em 08/09/2026 por
+     um bug real de ScrollTrigger) preservando a sequência/durações/
+     valores-alvo originais — só a curva de easing exata do GSAP é
+     aproximada com easings CSS equivalentes (detalhado em home.js).
 
-     3 mascotes novos (hero + CTA final — o da seção "sempre com você"
-     foi substituído, ver acima): desenho vem do mockup (corpo redondo,
-     olhos, sorriso, mãos), cores/glow usando os mesmos tokens de marca.
-     Ganham blink (piscar), tracking de cursor NÃO — grade de animação
-     explícita do usuário: "o logo olha, os mascotes piscam". */
+     3 mascotes novos (hero + CTA final — nunca a seção "sempre com
+     você", que usa os olhos legados acima): desenho vem do mockup
+     (corpo redondo, olhos, sorriso, mãos), cores/glow usando os mesmos
+     tokens de marca. Ganham blink (piscar), tracking de cursor NÃO —
+     grade de animação explícita do usuário: "o logo olha, os mascotes
+     piscam". */
   body{ overflow-x:hidden; }
   #home-marketing{
     --red:#e2291c; --red-deep:#c21f14; --red-glow:rgba(226,41,28,.5);
@@ -106,14 +113,34 @@
   #home-marketing .mascot-eye{ transition:transform 90ms ease-in-out; transform-origin:center; }
   #home-marketing .mascot-eye.blink{ transform:scaleY(.08); }
 
-  /* olhos grandes reaproveitados da Home anterior, na seção "sempre com
-     você" — mesmo .mascot/.mascot-eye/.mascot-pupil, só sem o corpo
-     vermelho/pernas (invisíveis sobre fundo vermelho de qualquer jeito,
-     e o usuário pediu explicitamente "não transformar os olhos em
-     mascote"). */
-  #home-marketing .mascot.mascot-eyes-only{ background:none; box-shadow:none; gap:14%; }
-  #home-marketing .mascot.mascot-eyes-only::before,
-  #home-marketing .mascot.mascot-eyes-only::after{ display:none; }
+  /* ===== OLHOS GRANDES DA HOME ANTERIOR (seção "sempre com você") =====
+     Portados de git show ad897c0:src/app/_home/home.css — as classes
+     .manda-eyes/.eyes-stage/.eyes-col/.eyes-eye/.eyes-pupil/.eyes-shadow
+     da era "Mais que automação. Representação.", renomeadas .legacy-*
+     pra não colidir com o sistema .mascot (que é outra coisa: os 3
+     mascotes com corpo/blink desta rodada). Tamanhos, cores e sombra
+     idênticos ao original (160px olho/52px pupila desktop, 110px/36px
+     mobile) — a implementação atual estava errada por ser pequena
+     demais (56px) e não ter sombra; esta é a recuperação real. */
+  #home-marketing .legacy-eyes-stage{ position:relative; width:100%; max-width:400px; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; gap:clamp(26px,5vw,60px); cursor:pointer; }
+  #home-marketing .legacy-eyes-col{ display:flex; flex-direction:column; align-items:center; }
+  #home-marketing .legacy-eyes-eye{ width:160px; height:160px; border-radius:50%; background:var(--black); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  #home-marketing .legacy-eyes-shadow{ position:absolute; bottom:-18px; left:50%; width:100px; height:13px; background:rgba(0,0,0,.22); border-radius:50%; transform:translateX(-50%) scale(1); opacity:.25; filter:blur(2px); }
+  #home-marketing .legacy-eyes-pupil{ width:52px; height:52px; border-radius:50%; background:var(--off); position:absolute; top:50%; left:50%; margin:-26px 0 0 -26px; }
+  #home-marketing .legacy-eyes-caption{
+    font-family:'IBM Plex Mono', monospace; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem;
+    color:var(--black); text-align:center;
+  }
+  @media (max-width:760px){
+    #home-marketing .legacy-eyes-eye{ width:110px; height:110px; }
+    #home-marketing .legacy-eyes-pupil{ width:36px; height:36px; margin:-18px 0 0 -18px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #home-marketing .legacy-eyes-col{ transform:none !important; }
+    #home-marketing .legacy-eyes-eye{ transform:none !important; }
+    #home-marketing .legacy-eyes-pupil{ transform:none !important; }
+    #home-marketing .legacy-eyes-shadow{ transform:translateX(-50%) scale(1) !important; opacity:.25 !important; }
+  }
 
   /* ===== HERO ===== */
   #home-marketing .hero{ padding:64px 44px 60px; overflow:hidden; }
@@ -224,16 +251,19 @@
   /* sempre com você (WhatsApp) — fundo vermelho sólido, olhos grandes
      reaproveitados à direita */
   #home-marketing .always{ background:var(--red); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-  #home-marketing .always .eyebrow{ color:var(--black); }
-  #home-marketing .always h2{ color:var(--off); }
-  #home-marketing .always p.lead{ color:rgba(251,249,242,.86); }
-  #home-marketing .always .btn-primary{ background:var(--off); color:var(--black); box-shadow:none; }
+  /* Lado esquerdo preto sobre vermelho — mesma combinação já usada na
+     seção "manda"/"Mais que automação" da Home anterior (ver
+     git show ad897c0:src/app/_home/home.css, .manda{color:var(--black)}):
+     texto branco sobre vermelho não é usado de propósito. */
+  #home-marketing .always .eyebrow,
+  #home-marketing .always h2,
+  #home-marketing .always p.lead{ color:var(--black); }
+  /* CTA sobre fundo vermelho: botão preto, texto claro, glow suave e
+     escuro só pra separar do fundo (nunca neon) — pedido explícito,
+     nunca a inversão off-white/preto usada em outros CTAs desta seção. */
+  #home-marketing .always .btn-primary{ background:var(--black); color:var(--off); box-shadow:0 10px 34px rgba(0,0,0,.32); }
   #home-marketing .with-you{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center; }
-  #home-marketing .with-you-visual{ display:flex; flex-direction:column; align-items:center; gap:22px; }
-  #home-marketing .with-you-eyes{ display:flex; gap:0; }
-  #home-marketing .with-you-eyes .mascot-eye{ width:56px; height:56px; }
-  #home-marketing .with-you-eyes .mascot-pupil{ width:24px; height:24px; }
-  #home-marketing .with-you-caption{ font-family:'Inter',sans-serif; font-weight:700; font-size:1rem; color:var(--off); text-align:center; }
+  #home-marketing .with-you-visual{ display:flex; flex-direction:column; align-items:center; gap:48px; }
 
   /* ===== COMO FUNCIONA ===== */
   #home-marketing .steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin-top:44px; }

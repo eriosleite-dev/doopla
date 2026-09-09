@@ -94,6 +94,203 @@ function initMascotEyes() {
   resetIdle();
 }
 
+// Olhos grandes da Home anterior, reaproveitados na seção "sempre com
+// você" (09/09/2026) — recuperados de
+// `git show ad897c0:src/app/_home/home.js` (função `makeEyesMotion`,
+// instância `mandaEyes`), a última versão antes do GSAP ter sido
+// removido do projeto (08/09/2026, decisão técnica documentada no topo
+// deste arquivo — bug real de ScrollTrigger, não capricho). Portado pra
+// Web Animations API vanilla: MESMA sequência, MESMAS durações, MESMOS
+// valores-alvo do timeline original (jumpTo/hopSelfInPlace/look/blink,
+// entrance() com pulos convergindo pro descanso, settledLoop() com
+// pausa de 0.7s entre repetições, hover reinicia a entrada). A única
+// aproximação real é a curva de easing: WAAPI não tem os eases
+// nomeados do GSAP (power1/power2/elastic), então usa equivalentes
+// cubic-bezier — impossível reproduzir bit a bit sem a biblioteca em
+// si, mas a coreografia (o que importa visualmente) é idêntica.
+function initLegacyEyesMotion() {
+  var stage = document.getElementById('legacyEyesStage');
+  if (!stage) return;
+
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return; // fica na posição de repouso do CSS, sem nenhum timer/animação
+
+  var colA = document.getElementById('legacyEyesColA');
+  var colB = document.getElementById('legacyEyesColB');
+  var eyeA = document.getElementById('legacyEyeA');
+  var eyeB = document.getElementById('legacyEyeB');
+  var pupilA = document.getElementById('legacyPupilA');
+  var pupilB = document.getElementById('legacyPupilB');
+  var shadowA = colA.querySelector('.legacy-eyes-shadow');
+  var shadowB = colB.querySelector('.legacy-eyes-shadow');
+  if (!colA || !colB || !eyeA || !eyeB || !pupilA || !pupilB) return;
+
+  var EASE = {
+    outQuad: 'cubic-bezier(.25,1,.5,1)',
+    inQuad: 'cubic-bezier(.5,0,.75,0)',
+    inOut: 'ease-in-out',
+    out: 'ease-out',
+    in: 'ease-in',
+    spring: 'cubic-bezier(.34,1.56,.64,1)' // aproximação de elastic.out(1,.55) — WAAPI não tem eases elásticos nativos
+  };
+
+  var eyeSize = eyeA.getBoundingClientRect().width || 160;
+  var MAX = eyeSize * 0.24; // alcance do olhar — mesmo fator do original (eyeSize*0.24)
+  function jumpSpan() {
+    var base = stage.clientWidth * 0.5;
+    return Math.min(base, eyeSize * 1.375);
+  }
+
+  // estado por elemento — WAAPI não acumula como o GSAP, cada tween
+  // precisa saber de onde partiu.
+  var state = new WeakMap();
+  function getState(el, init) {
+    var s = state.get(el);
+    if (!s) { s = Object.assign({}, init); state.set(el, s); }
+    return s;
+  }
+  function run(el, keyframes, duration, easing) {
+    if (duration <= 0) return Promise.resolve();
+    var anim = el.animate(keyframes, { duration: duration * 1000, easing: easing, fill: 'forwards' });
+    return anim.finished.catch(function () {});
+  }
+
+  function tweenCol(col, x, duration, ease1, ease2) {
+    // x sobe (arco até -30px) enquanto desloca lateralmente até `x` —
+    // mesma composição do original (Y com ease de subida/descida
+    // própria, X contínuo por cima), aproximada num único keyframe.
+    var s = getState(col, { x: 0 });
+    var x0 = s.x;
+    s.x = x;
+    return run(col, [
+      { transform: 'translate(' + x0 + 'px,0px)', offset: 0 },
+      { transform: 'translate(' + (x0 + (x - x0) * 0.55) + 'px,-30px)', offset: 0.53, easing: ease1 || EASE.outQuad },
+      { transform: 'translate(' + x + 'px,0px)', offset: 1, easing: ease2 || EASE.inQuad }
+    ], duration, 'linear');
+  }
+  function tweenEyeSquash(eye, sequence, totalDuration) {
+    // sequence: [[scaleX,scaleY,offset,easing], ...] começando de 1,1
+    var kf = [{ transform: 'scale(1,1)', offset: 0 }];
+    sequence.forEach(function (step) {
+      kf.push({ transform: 'scale(' + step[0] + ',' + step[1] + ')', offset: step[2], easing: step[3] });
+    });
+    return run(eye, kf, totalDuration, 'linear');
+  }
+  function tweenShadow(shadow, sequence, totalDuration) {
+    if (!shadow) return Promise.resolve();
+    var kf = [{ transform: 'translateX(-50%) scale(1)', opacity: 0.25, offset: 0 }];
+    sequence.forEach(function (step) {
+      kf.push({ transform: 'translateX(-50%) scale(' + step[0] + ')', opacity: step[1], offset: step[2], easing: step[3] });
+    });
+    return run(shadow, kf, totalDuration, 'linear');
+  }
+  function look(pupil, x, y, duration, easing) {
+    x = Math.max(-MAX, Math.min(MAX, x));
+    y = Math.max(-MAX, Math.min(MAX, y));
+    var s = getState(pupil, { x: 0, y: 0 });
+    var from = 'translate(' + s.x + 'px,' + s.y + 'px)';
+    s.x = x; s.y = y;
+    var to = 'translate(' + x + 'px,' + y + 'px)';
+    return run(pupil, [{ transform: from }, { transform: to }], duration || 0.4, easing || EASE.outQuad);
+  }
+  function blink(eye, duration) {
+    duration = duration || 0.09;
+    return run(eye, [
+      { transform: 'scale(1,1)', offset: 0 },
+      { transform: 'scale(1,.1)', offset: 0.5, easing: EASE.in },
+      { transform: 'scale(1,1)', offset: 1, easing: EASE.in }
+    ], duration * 2, 'linear');
+  }
+
+  // pulo completo: antecipação (agacha) -> sobe+desloca -> desce -> pouso com pequeno overshoot elástico
+  function jumpTo(col, eye, shadow, x, duration) {
+    duration = duration || 0.34;
+    var anticip = duration * 0.14;
+    var rise = duration * 0.36;
+    var fall = duration * 0.32;
+    var land = duration * 0.18;
+
+    return Promise.all([
+      tweenEyeSquash(eye, [[1.1, .86, 1, EASE.out]], anticip),
+      tweenShadow(shadow, [[.9, .12, 1, EASE.out]], anticip)
+    ]).then(function () {
+      return Promise.all([
+        tweenCol(col, x, rise + fall, EASE.outQuad, EASE.inQuad),
+        tweenEyeSquash(eye, [
+          [1.16, .9, rise / (rise + fall), EASE.out],
+          [1, 1, 1, EASE.in]
+        ], rise + fall),
+        tweenShadow(shadow, [
+          [.55, .12, rise / (rise + fall), EASE.out],
+          [1, .25, 1, EASE.in]
+        ], rise + fall)
+      ]);
+    }).then(function () {
+      return tweenEyeSquash(eye, [
+        [1.14, .84, .35, EASE.out],
+        [1, 1, 1, EASE.spring]
+      ], land);
+    });
+  }
+  function hopSelfInPlace(col, eye, shadow, duration) {
+    return jumpTo(col, eye, shadow, getState(col, { x: 0 }).x, duration || 0.42);
+  }
+
+  var activeToken = 0;
+
+  function entrance() {
+    var myToken = ++activeToken;
+    var span = jumpSpan();
+    var jumpsL = [-span, span * 0.4, 0];
+    var jumpsR = [span, -span * 0.4, 0];
+    var p = Promise.all([
+      jumpTo(colA, eyeA, shadowA, jumpsL[0], 0.6),
+      jumpTo(colB, eyeB, shadowB, jumpsR[0], 0.6)
+    ])
+      .then(function () { if (myToken !== activeToken) return; return Promise.all([jumpTo(colA, eyeA, shadowA, jumpsL[1], 0.6), jumpTo(colB, eyeB, shadowB, jumpsR[1], 0.6)]); })
+      .then(function () { if (myToken !== activeToken) return; return Promise.all([jumpTo(colA, eyeA, shadowA, jumpsL[2], 0.6), jumpTo(colB, eyeB, shadowB, jumpsR[2], 0.6)]); })
+      .then(function () { if (myToken === activeToken) settledLoop(myToken); });
+    return p;
+  }
+
+  function wait(seconds) {
+    return new Promise(function (resolve) { setTimeout(resolve, seconds * 1000); });
+  }
+
+  function settledLoop(myToken) {
+    Promise.resolve()
+      .then(function () { return Promise.all([look(pupilA, MAX * -0.632, MAX * 0.342), look(pupilB, MAX * 0.632, MAX * -0.395)]); })
+      .then(function () { return wait(0.8); })
+      .then(function () { return Promise.all([look(pupilA, MAX * 0.737, 0, 0.3), hopSelfInPlace(colA, eyeA, shadowA)]); })
+      .then(function () { return wait(0.15); })
+      .then(function () { return Promise.all([look(pupilB, MAX * -0.737, 0, 0.3), hopSelfInPlace(colB, eyeB, shadowB)]); })
+      .then(function () { return wait(0.2); })
+      .then(function () { return hopSelfInPlace(colA, eyeA, shadowA); })
+      .then(function () { return wait(0.1); })
+      .then(function () { return hopSelfInPlace(colB, eyeB, shadowB); })
+      .then(function () { return wait(0.1); })
+      .then(function () { return Promise.all([hopSelfInPlace(colA, eyeA, shadowA), hopSelfInPlace(colB, eyeB, shadowB)]); })
+      .then(function () { return Promise.all([hopSelfInPlace(colA, eyeA, shadowA), hopSelfInPlace(colB, eyeB, shadowB)]); })
+      .then(function () { return Promise.all([look(pupilA, MAX * 0.842, 0, 0.35), look(pupilB, MAX * -0.842, 0, 0.35)]); })
+      .then(function () { return wait(0.55); })
+      .then(function () { return Promise.all([blink(eyeA), blink(eyeB)]); })
+      .then(function () { return wait(1.2); })
+      .then(function () {
+        if (myToken !== activeToken) return;
+        return wait(0.7).then(function () { if (myToken === activeToken) settledLoop(myToken); });
+      });
+  }
+
+  // hover: reinicia a entrada na hora, do mesmo jeito que o carregamento
+  // inicial, mesmo que o loop esteja no meio de uma pausa.
+  stage.addEventListener('mouseenter', function () {
+    activeToken++; // invalida qualquer cadeia de promises em andamento
+    entrance();
+  });
+
+  entrance();
+}
+
 // Piscada dos mascotes (09/09/2026, redesign a partir do
 // doopla-home-mockup.html) — grade de animação explícita: "o logo olha,
 // os mascotes piscam". Alvo é só `.mascot .eyes-row .mascot-eye`: os
@@ -193,5 +390,6 @@ function initSectionReveal() {
 window.__bootHomeMarketing = function boot() {
   initMascotEyes();
   initMascotBlink();
+  initLegacyEyesMotion();
   initSectionReveal();
 };
