@@ -12,13 +12,27 @@ import { markCommunityNotificationReadAction, type CommunityNotificationCard } f
 // pro-shell.tsx é outro sistema, outras tabelas, nunca misturados
 // aqui). Estado local seedado uma vez do Server Component (page.tsx) —
 // sem polling/realtime, mesmo padrão já aceito no resto da Comunidade.
-export function CommunityNotificationsBell({ initialNotifications }: { initialNotifications: CommunityNotificationCard[] }) {
+export function CommunityNotificationsBell({
+  initialNotifications,
+  initialUnreadCount,
+}: {
+  initialNotifications: CommunityNotificationCard[];
+  // Contagem exata separada da lista (que é só um preview das últimas
+  // 20, correção 09/09/2026 — ver src/lib/community/data.ts) — nunca
+  // derivada de notifications.filter() aqui, senão uma não lida mais
+  // antiga que o preview subcontaria o badge.
+  initialUnreadCount: number;
+}) {
   const [notifications, setNotifications] = useState(initialNotifications);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [open, setOpen] = useState(false);
-  const unreadCount = notifications.filter((n) => !n.readAt).length;
 
   function handleOpenNotification(id: string) {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: n.readAt ?? new Date().toISOString() } : n)));
+    setNotifications((prev) => {
+      const clicked = prev.find((n) => n.id === id);
+      if (clicked && !clicked.readAt) setUnreadCount((c) => Math.max(0, c - 1));
+      return prev.map((n) => (n.id === id ? { ...n, readAt: n.readAt ?? new Date().toISOString() } : n));
+    });
     // Fire-and-forget — otimista, mesmo padrão de SaveTopicButton/DeleteMenu
     // no resto da Comunidade. Falha de rede não desfaz o estado local: o
     // pior caso é a notificação continuar contando como não lida no

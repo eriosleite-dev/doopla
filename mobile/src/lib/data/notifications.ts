@@ -1,4 +1,4 @@
-import { fetchCommunityAuthors, fetchCommunityNotifications, fetchCommunityTopicsByIds, markCommunityNotificationRead } from './community';
+import { countUnreadCommunityNotifications, fetchCommunityAuthors, fetchCommunityNotifications, fetchCommunityTopicsByIds, markCommunityNotificationRead } from './community';
 
 export { markCommunityNotificationRead };
 
@@ -17,6 +17,15 @@ export type NotificationCard = {
   topicId: string;
 };
 
+// unreadCount SEMPRE vem de countUnreadCommunityNotifications — nunca
+// derivado de items.filter() aqui nem no client. items é só um preview
+// (últimas 20, ver COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT em
+// @/lib/data/community); uma não lida mais antiga que as 20 mais
+// recentes existir sem aparecer no preview NÃO pode fazer o badge
+// subcontar (correção 09/09/2026, P1 "paginação/limite real na query
+// de notificações").
+export type NotificationCardsResult = { items: NotificationCard[]; unreadCount: number };
+
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60000);
@@ -33,9 +42,9 @@ function notificationMessage(type: string, actorName: string, topicTitle: string
   return `${actorName} respondeu seu tópico "${topicTitle}"`;
 }
 
-export async function fetchNotificationCards(): Promise<NotificationCard[]> {
-  const notifications = await fetchCommunityNotifications();
-  if (notifications.length === 0) return [];
+export async function fetchNotificationCards(): Promise<NotificationCardsResult> {
+  const [notifications, unreadCount] = await Promise.all([fetchCommunityNotifications(), countUnreadCommunityNotifications()]);
+  if (notifications.length === 0) return { items: [], unreadCount };
 
   const [authorsById, topics] = await Promise.all([
     fetchCommunityAuthors([...new Set(notifications.map((n) => n.actorProfileId))]),
@@ -43,7 +52,7 @@ export async function fetchNotificationCards(): Promise<NotificationCard[]> {
   ]);
   const topicById = new Map(topics.map((t) => [t.id, t]));
 
-  return notifications.map((n) => {
+  const items = notifications.map((n) => {
     const actorName = authorsById.get(n.actorProfileId)?.displayName ?? 'Um profissional Doopla';
     const topicTitle = topicById.get(n.topicId)?.title ?? 'um tópico';
     return {
@@ -54,4 +63,5 @@ export async function fetchNotificationCards(): Promise<NotificationCard[]> {
       topicId: n.topicId,
     };
   });
+  return { items, unreadCount };
 }

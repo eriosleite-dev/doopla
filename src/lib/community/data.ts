@@ -443,10 +443,43 @@ function mapNotification(row: CommunityNotification): CommunityNotificationItem 
   };
 }
 
+// Correção do crescimento ilimitado (09/09/2026, P1 item "paginação/
+// limite real na query de notificações") — os dois sinos do Web
+// (NotificationBell/CommunityNotificationsBell) são preview em popover
+// (max-height com scroll, sem "carregar mais"), nunca uma superfície
+// de histórico completo — nenhuma tela Web hoje promete isso (não há
+// "/dashboard/notificacoes"). Mesmo limite já convencionado no resto
+// do produto pra "uma página/preview razoável" (Decisões, Comunidade —
+// PAGE_SIZE=20). O App tem uma tela dedicada "Ver todas"
+// (mobile/app/forum/notificacoes.tsx) — só ela precisa de paginação
+// real; o Web não tem superfície equivalente pra manter paridade
+// (implementar uma agora seria funcionalidade nova, fora deste item).
+const COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT = 20;
+
 export async function listCommunityNotifications(supabase: AnySupabaseClient): Promise<CommunityNotificationItem[]> {
-  const { data, error } = await supabase.from('community_notifications').select('*').order('created_at', { ascending: false });
+  const { data, error } = await supabase
+    .from('community_notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT);
   if (error) throw error;
   return ((data ?? []) as CommunityNotification[]).map(mapNotification);
+}
+
+// Contagem separada da lista (nunca derivada do preview limitado
+// acima) — um profissional pode ter uma notificação não lida mais
+// antiga que as N mais recentes (ex.: ignorou uma antiga enquanto N
+// novas chegaram e foram lidas), e o preview de 20 nunca deveria fazer
+// o badge subcontar. `head: true` não transfere linha nenhuma, só o
+// agregado — mesmo padrão já usado em `layout.tsx`/`data.ts` pra
+// contadores de badge.
+export async function countUnreadCommunityNotifications(supabase: AnySupabaseClient): Promise<number> {
+  const { count, error } = await supabase
+    .from('community_notifications')
+    .select('id', { count: 'exact', head: true })
+    .is('read_at', null);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 export async function markCommunityNotificationRead(supabase: AnySupabaseClient, notificationId: string): Promise<void> {

@@ -10,11 +10,11 @@ import { LoadingState, ErrorState, EmptyState } from '@/components/shared/Screen
 import { formatRelativeDate } from '@/lib/format';
 import { useAuth } from '@/hooks/useAuth';
 import {
+  countUnreadCommunityNotifications,
   ensureCommunityProfileActivated,
   fetchCommunityAuthors,
   fetchCommunityCategories,
   fetchCommunityForYouTopics,
-  fetchCommunityNotifications,
   fetchCommunityTopics,
   fetchCommunityTopicsByIds,
   fetchCommunityTrendingTopics,
@@ -78,16 +78,19 @@ export default function ForumTopicListScreen() {
   const loadBase = useCallback(async () => {
     try {
       await ensureCommunityProfileActivated();
-      const [cats, saved, notifications, forYou, trending] = await Promise.all([
+      const [cats, saved, unreadCount, forYou, trending] = await Promise.all([
         fetchCommunityCategories(),
         fetchSavedTopicIds(),
-        fetchCommunityNotifications(),
+        // Contagem exata (nunca derivada de fetchCommunityNotifications,
+        // que hoje é só um preview das últimas 20 — correção 09/09/2026,
+        // P1 "paginação/limite real na query de notificações").
+        countUnreadCommunityNotifications(),
         fetchCommunityForYouTopics(6),
         fetchCommunityTrendingTopics(6),
       ]);
       setCategories(cats);
       setSavedIds(new Set(saved));
-      setUnreadNotifications(notifications.filter((n) => !n.readAt).length);
+      setUnreadNotifications(unreadCount);
       setForYouTopics(forYou);
       setTrendingTopics(trending);
 

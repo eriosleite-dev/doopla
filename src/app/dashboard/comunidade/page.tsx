@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import {
+  countUnreadCommunityNotifications,
   ensureCommunityProfileActivated,
   getCommunityAuthors,
   listCommunityCategories,
@@ -49,10 +50,11 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   await ensureCommunityProfileActivated(supabase);
 
-  const [recentTopics, savedTopicIds, notifications, categories, forYouTopics, trendingTopics] = await Promise.all([
+  const [recentTopics, savedTopicIds, notifications, notificationsUnreadCount, categories, forYouTopics, trendingTopics] = await Promise.all([
     listCommunityTopics(supabase, { limit: 20 }),
     listSavedTopicIds(supabase),
     listCommunityNotifications(supabase),
+    countUnreadCommunityNotifications(supabase),
     listCommunityCategories(supabase),
     listCommunityForYouTopics(supabase, 6),
     listCommunityTrendingTopics(supabase, 6),
@@ -115,6 +117,7 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
         initialQuery={q ?? ''}
         currentProfileId={profile.id}
         notifications={notificationCards}
+        notificationsUnreadCount={notificationsUnreadCount}
         categories={categories}
       />
     </main>

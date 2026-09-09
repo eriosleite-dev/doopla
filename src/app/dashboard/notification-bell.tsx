@@ -15,13 +15,19 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('loading');
   const [items, setItems] = useState<NotificationCard[]>([]);
+  // Nunca derivado de items.filter() — items é só um preview (últimas
+  // 20), unreadCount vem de uma contagem exata separada no servidor
+  // (ver notifications-actions.ts). Só decrementado localmente quando
+  // o item marcado como lido estava, de fato, no preview e não lido.
+  const [unreadCount, setUnreadCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     setPhase('loading');
     listNotificationsAction()
-      .then((data) => {
+      .then(({ items: data, unreadCount: count }) => {
         setItems(data);
+        setUnreadCount(count);
         setPhase('ready');
       })
       .catch(() => setPhase('error'));
@@ -50,10 +56,12 @@ export function NotificationBell() {
     };
   }, [open]);
 
-  const unreadCount = items.filter((i) => i.unread).length;
-
   function handleItemClick(id: string) {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, unread: false } : i)));
+    setItems((prev) => {
+      const clicked = prev.find((i) => i.id === id);
+      if (clicked?.unread) setUnreadCount((c) => Math.max(0, c - 1));
+      return prev.map((i) => (i.id === id ? { ...i, unread: false } : i));
+    });
     markNotificationReadAction(id).catch(() => {});
     setOpen(false);
   }

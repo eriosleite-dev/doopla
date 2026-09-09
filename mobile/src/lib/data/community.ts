@@ -379,10 +379,37 @@ function mapNotification(row: CommunityNotification): CommunityNotificationItem 
   };
 }
 
-export async function fetchCommunityNotifications(): Promise<CommunityNotificationItem[]> {
-  const { data, error } = await supabase.from('community_notifications').select('*').order('created_at', { ascending: false });
+// Correção do crescimento ilimitado (09/09/2026, P1 item "paginação/
+// limite real na query de notificações") — espelha
+// src/lib/community/data.ts (painel web): mesmo limite de preview
+// (20, convenção já usada em Decisões/Comunidade). Aceita
+// {limit, offset} pra a tela dedicada "Ver todas"
+// (mobile/app/forum/notificacoes.tsx, único lugar do produto — Web ou
+// App — que promete histórico completo) paginar de verdade; o preview
+// do sino da Home (fetchNotificationCards) chama sem args e usa o
+// default.
+export const COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT = 20;
+
+export async function fetchCommunityNotifications(opts: { limit?: number; offset?: number } = {}): Promise<CommunityNotificationItem[]> {
+  const { limit = COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT, offset = 0 } = opts;
+  const { data, error } = await supabase
+    .from('community_notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
   if (error) throw error;
   return ((data ?? []) as CommunityNotification[]).map(mapNotification);
+}
+
+// Contagem separada da lista (nunca derivada do preview limitado
+// acima) — mesma correção/racional do painel web
+// (countUnreadCommunityNotifications, src/lib/community/data.ts):
+// uma notificação não lida mais antiga que as N mais recentes nunca
+// pode fazer o badge subcontar.
+export async function countUnreadCommunityNotifications(): Promise<number> {
+  const { count, error } = await supabase.from('community_notifications').select('id', { count: 'exact', head: true }).is('read_at', null);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 export async function markCommunityNotificationRead(notificationId: string): Promise<void> {

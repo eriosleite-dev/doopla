@@ -42,14 +42,21 @@ export default function HomeScreen() {
   const [decisions, setDecisions] = useState<DecisionItem[]>([]);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null | undefined>(undefined);
   const [notifications, setNotifications] = useState<NotificationCard[]>([]);
+  // Nunca derivado de notifications.filter() — notifications é só um
+  // preview (últimas 20), unreadNotificationsCount vem de uma contagem
+  // exata separada (ver fetchNotificationCards). Só decrementado
+  // localmente quando o item marcado como lido estava, de fato, no
+  // preview e não lido.
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [notificationsPhase, setNotificationsPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const loadNotifications = useCallback(() => {
     setNotificationsPhase('loading');
     fetchNotificationCards()
-      .then((data) => {
-        setNotifications(data);
+      .then(({ items, unreadCount }) => {
+        setNotifications(items);
+        setUnreadNotificationsCount(unreadCount);
         setNotificationsPhase('ready');
       })
       .catch(() => setNotificationsPhase('error'));
@@ -82,9 +89,8 @@ export default function HomeScreen() {
     return () => clearTimeout(timer);
   }, [loadNotifications]);
 
-  const unreadNotificationsCount = notifications.filter((n) => n.unread).length;
-
   function handleNotificationPress(item: NotificationCard) {
+    if (item.unread) setUnreadNotificationsCount((c) => Math.max(0, c - 1));
     setNotifications((prev) => prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n)));
     markCommunityNotificationRead(item.id).catch(() => {});
     setNotificationsOpen(false);

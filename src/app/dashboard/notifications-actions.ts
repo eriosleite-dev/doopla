@@ -1,6 +1,6 @@
 'use server';
 
-import { getCommunityAuthors, listCommunityNotifications, listCommunityTopicsByIds, markCommunityNotificationRead } from '@/lib/community/data';
+import { countUnreadCommunityNotifications, getCommunityAuthors, listCommunityNotifications, listCommunityTopicsByIds, markCommunityNotificationRead } from '@/lib/community/data';
 
 import { formatRelativeTime } from './pro-format';
 import { getSessionProfile } from './session';
@@ -29,18 +29,30 @@ export type NotificationCard = {
   href: string;
 };
 
+// unreadCount SEMPRE vem de countUnreadCommunityNotifications — nunca
+// derivado de items.filter() aqui nem no client. items é só um preview
+// (últimas 20, ver COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT em
+// src/lib/community/data.ts); uma não lida mais antiga que as 20 mais
+// recentes existir sem aparecer no preview NÃO pode fazer o badge
+// subcontar (correção 09/09/2026, P1 "paginação/limite real na query
+// de notificações").
+export type NotificationsResult = { items: NotificationCard[]; unreadCount: number };
+
 function notificationMessage(type: string, actorName: string, topicTitle: string): string {
   if (type === 'mention') return `${actorName} mencionou você em "${topicTitle}"`;
   if (type === 'reply_to_post') return `${actorName} respondeu sua mensagem em "${topicTitle}"`;
   return `${actorName} respondeu seu tópico "${topicTitle}"`;
 }
 
-export async function listNotificationsAction(): Promise<NotificationCard[]> {
+export async function listNotificationsAction(): Promise<NotificationsResult> {
   const { supabase, profile } = await getSessionProfile();
-  if (profile.role === 'booker') return [];
+  if (profile.role === 'booker') return { items: [], unreadCount: 0 };
 
-  const notifications = await listCommunityNotifications(supabase);
-  if (notifications.length === 0) return [];
+  const [notifications, unreadCount] = await Promise.all([
+    listCommunityNotifications(supabase),
+    countUnreadCommunityNotifications(supabase),
+  ]);
+  if (notifications.length === 0) return { items: [], unreadCount };
 
   const [authorsById, topics] = await Promise.all([
     getCommunityAuthors(supabase, [...new Set(notifications.map((n) => n.actorProfileId))]),
@@ -48,7 +60,7 @@ export async function listNotificationsAction(): Promise<NotificationCard[]> {
   ]);
   const topicById = new Map(topics.map((t) => [t.id, t]));
 
-  return notifications.map((n) => {
+  const items = notifications.map((n) => {
     const actorName = authorsById.get(n.actorProfileId)?.displayName ?? 'Um profissional Doopla';
     const topicTitle = topicById.get(n.topicId)?.title ?? 'um tópico';
     return {
@@ -59,6 +71,7 @@ export async function listNotificationsAction(): Promise<NotificationCard[]> {
       href: `/dashboard/comunidade/${n.topicId}`,
     };
   });
+  return { items, unreadCount };
 }
 
 export async function markNotificationReadAction(notificationId: string): Promise<{ ok: boolean }> {
