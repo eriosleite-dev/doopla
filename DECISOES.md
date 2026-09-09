@@ -1756,3 +1756,59 @@ nada), é uma simplificação de densidade de calendário compacto
 (células de 40×40) já existente antes deste bloco. Mudar isso seria
 decisão de design, não correção de paridade — fora do escopo deste
 item.
+
+## Notificações da Comunidade: preview limitado ≠ "Ver todas" — dois tratamentos, uma causa raiz — 09/09/2026
+
+Item (g) da lista priorizada do bloco 85. A investigação de fluxo
+completo (pedida explicitamente antes de codar) revelou que a query
+sem `.limit()` alimentava consumidores de naturezas diferentes — um
+`.limit(N)` cego teria sido correto pros previews mas teria truncado
+silenciosamente a única tela do produto (Web ou App) que promete
+histórico completo (`mobile/app/forum/notificacoes.tsx`). A decisão
+de tratar os dois casos separadamente, em vez de um limite único pra
+tudo, é o cerne deste item — registrado aqui pra nunca ser revertido
+sem essa distinção em mente.
+
+**"Preview" nunca == "histórico completo"**: `NotificationBell`/
+`CommunityNotificationsBell` (Web) e o `NotificationsSheet` da Home
+(App) são popovers/bottom sheets com scroll interno, sem "carregar
+mais", sem link "ver todas" — nunca prometeram ser exaustivos. Um
+`.limit(20)` neles é invisível pro usuário (ninguém rola um popover de
+320px até o item 21). Já `forum/notificacoes.tsx` é alcançado por um
+botão dedicado do header do Fórum especificamente pra ver o histórico
+— cortar em 20 ali seria perder notificações antigas de verdade, sem
+nenhuma indicação de que existe mais. Web não tem superfície
+equivalente (nenhuma "/dashboard/notificacoes" existe) — criar uma
+agora seria funcionalidade nova, fora de escopo; a ausência dela no
+Web não é uma divergência a corrigir aqui.
+
+**Badge de não lidas nunca mais derivado da lista limitada**: assim
+que a lista virou preview, contar "não lidas" a partir dela ficaria
+sujeito a subcontagem (uma notificação não lida mais antiga que as 20
+mais recentes existe e é um cenário real — usuário ignora uma antiga
+enquanto notificações mais novas chegam e são lidas). Toda contagem de
+badge (5 superfícies: 2 sinos Web, sino da Home do App, badge do
+header do Fórum, e a lista interna que os alimenta) passou a vir de
+`countUnreadCommunityNotifications` — `select('id', {count:'exact',
+head:true}).is('read_at', null)`, mesmo padrão de contador de badge já
+usado em `layout.tsx`/`data.ts`/`pipeline.ts` no resto do produto, sem
+RPC nova, coberto pelo índice `community_notifications_recipient_unread_idx`
+que já existe desde a migration 0059.
+
+**Paginação real sem RPC nova**: `forum/notificacoes.tsx` ganhou
+`.range(offset, offset+limit-1)` (recurso puro do query builder do
+Supabase sobre a mesma tabela/RLS já existentes) + "Carregar mais" com
+heurística padrão de "acabou" (página menor que o tamanho da página) —
+nunca precisou de contagem total nem de RPC dedicada, porque essa tela
+nunca mostrou um "N total" pro usuário (diferente de Decisões, que
+mostra `list_actionable_decisions_page` com `total_count` explícito —
+esse nível de sofisticação não existia antes aqui e não foi
+adicionado, só corrigido o corte silencioso).
+
+**Achado confirmado, não resolvido aqui**: os "2 sinos" do Web
+(`NotificationBell` no `pro-shell.tsx`, global; `CommunityNotificationsBell`
+só em `/dashboard/comunidade`) são dois componentes totalmente
+independentes — cada um busca a mesma tabela por conta própria, sem
+nenhum cache/estado compartilhado. Isso é exatamente o item (h) já
+registrado como pendente no checkpoint anterior; permanece pendente,
+agora com a causa raiz mapeada em código pra quando chegar a vez dele.

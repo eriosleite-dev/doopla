@@ -10334,6 +10334,155 @@ vier a ser corrigido, é uma decisão de design de calendário compacto
 Web×App — registrado aqui só pra não ser confundido com o item que
 este bloco resolveu.
 
+## 91. Bloco 7, P1 — paginação/limite real na query de notificações da Comunidade — `[DELIVERED]`
+
+Item (g) da lista priorizada do bloco 85. O checkpoint já tinha
+confirmado que Web e App consultavam `community_notifications` com
+`select('*').order(...)` sem `.limit()`/`.range()` — crescimento
+ilimitado de payload por request. Antes de corrigir, mapeou-se o fluxo
+completo (pedido explícito do usuário): resultado teve mais
+consumidores e uma superfície real de histórico completo do que o
+checkpoint sozinho sugeria — a correção não podia ser um `.limit(N)`
+cego na função compartilhada sem quebrar essa superfície.
+
+**Consumidores mapeados (Web)**: dois sinos independentes, os dois
+popovers/preview (max-height com scroll, sem "carregar mais", sem
+rota "Ver todas" — nenhuma existe hoje no Web): `NotificationBell`
+(`src/app/dashboard/notification-bell.tsx`, no `pro-shell.tsx`,
+visível em toda página do painel Pro) e `CommunityNotificationsBell`
+(`src/app/dashboard/comunidade/community-notifications-bell.tsx`,
+só dentro de `/dashboard/comunidade`) — **este é exatamente o achado
+"2 sinos" já registrado no checkpoint anterior como item (h) pendente,
+agora confirmado em código**: dois componentes de sino totalmente
+independentes, cada um fazendo sua própria busca da mesma tabela, sem
+nenhum cache compartilhado entre eles. (h) continua fora de escopo
+deste item — não implementamos cache compartilhado aqui, só limitamos
+cada consulta.
+
+**Consumidores mapeados (App)**: três leituras de
+`fetchCommunityNotifications` — o preview do sino da Home
+(`fetchNotificationCards`, `NotificationsSheet`, bottom sheet
+max-height 360, mesmo padrão preview do Web), o badge de não lidas do
+header do Fórum (`mobile/app/forum/index.tsx`), e **uma tela dedicada
+"Ver todas" que o Web não tem equivalente**:
+`mobile/app/forum/notificacoes.tsx` (`ForumNotificacoesScreen`,
+alcançada pelo botão de notificações do Fórum) — só ali o produto
+promete histórico completo. Um `.limit(N)` cego na função
+compartilhada teria truncado essa tela silenciosamente, exatamente o
+risco que o usuário pediu pra evitar.
+
+**Estratégia adotada — dois tratamentos diferentes pra dois problemas
+diferentes, sem RPC/schema/RLS novos**:
+1. **Previews/popovers (2 sinos do Web + sino da Home do App)**:
+   `.limit(20)` direto na query compartilhada (mesma convenção já
+   usada em Decisões/Comunidade pra "uma página razoável" — nenhum
+   número novo inventado). Nenhuma dessas superfícies jamais prometeu
+   histórico completo (scroll dentro de uma caixa pequena, sem "ver
+   mais"), então isso é comportamento equivalente ao que sempre existiu
+   na prática — nunca visível pro usuário como corte.
+2. **Tela dedicada "Ver todas" do App**: paginação real via
+   `.range(offset, offset+limit-1)` (recurso puro do query builder do
+   Supabase — mesma tabela, mesma RLS `recipient_profile_id =
+   auth.uid()` já existente desde a migration 0059, zero mudança de
+   backend) + botão "Carregar mais" (heurística padrão: some quando uma
+   página vem menor que o tamanho da página — sem contagem total, sem
+   RPC nova, mesmo espírito simples já usado noutros "carregar mais"
+   do produto). A tela também ganhou `ScrollView` (antes era uma `View`
+   fixa sem rolagem — bug pré-existente e independente, mas que
+   precisava ser corrigido pra "Carregar mais" fazer sentido:
+   sem scroll, itens adicionais simplesmente ficariam fora da tela).
+3. **Badge de não lidas (as 5 superfícies que mostram contador — 2
+   sinos Web, sino da Home do App, badge do header do Fórum)**: nunca
+   mais derivado de `items.filter(n => unread)` sobre a lista agora
+   limitada — um profissional pode ter uma notificação não lida mais
+   antiga que as 20 mais recentes (ex.: ignorou uma antiga enquanto N
+   novas chegaram e foram lidas), e o preview de 20 nunca deveria fazer
+   o badge subcontar. Nova função `countUnreadCommunityNotifications`
+   (Web: `src/lib/community/data.ts`; App:
+   `mobile/src/lib/data/community.ts`) — `select('id', {count:'exact',
+   head:true}).is('read_at', null)`, mesmo padrão já usado no resto do
+   produto pra contadores de badge (`layout.tsx`, `data.ts`,
+   `pipeline.ts`), index `community_notifications_recipient_unread_idx`
+   já existente desde a migration 0059 cobre a query. Cada consumidor
+   com badge agora busca a contagem exata em paralelo com a lista
+   limitada, e decrementa localmente (nunca recomputa do zero) quando
+   o próprio usuário marca um item do preview como lido.
+
+**Arquivos alterados**:
+- Web: `src/lib/community/data.ts` (`listCommunityNotifications` +
+  `.limit(20)`, nova `countUnreadCommunityNotifications`),
+  `src/app/dashboard/notifications-actions.ts` (`listNotificationsAction`
+  agora devolve `{items, unreadCount}`),
+  `src/app/dashboard/notification-bell.tsx` (consome o novo formato,
+  unreadCount em state próprio, decremento local),
+  `src/app/dashboard/comunidade/page.tsx` (busca
+  `countUnreadCommunityNotifications` em paralelo, novo prop),
+  `src/app/dashboard/comunidade/pro-comunidade-home-view.tsx` (repassa
+  `notificationsUnreadCount`), `src/app/dashboard/comunidade/community-notifications-bell.tsx`
+  (mesmo tratamento do NotificationBell).
+- App: `mobile/src/lib/data/community.ts`
+  (`COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT`, `fetchCommunityNotifications`
+  agora aceita `{limit, offset}` via `.range()`, nova
+  `countUnreadCommunityNotifications`), `mobile/src/lib/data/notifications.ts`
+  (`fetchNotificationCards` agora devolve `{items, unreadCount}`),
+  `mobile/app/(tabs)/index.tsx` (consome o novo formato, unreadCount em
+  state próprio, decremento local), `mobile/app/forum/index.tsx` (badge
+  do header via `countUnreadCommunityNotifications`, nunca mais
+  derivado da lista), `mobile/app/forum/notificacoes.tsx`
+  (paginação real com "Carregar mais" + `ScrollView` adicionado).
+
+**Antes**: as duas plataformas buscavam a tabela inteira
+(`select('*')` sem limite) em toda leitura — sino, badge e a tela "Ver
+todas" do App, todos crescendo o payload de request pra sempre
+conforme o histórico de notificações de cada profissional aumentava.
+**Depois**: previews limitados a 20 (nunca visível como corte pro
+usuário, mesmas superfícies pequenas de sempre); tela "Ver todas" do
+App pagina de verdade (nunca trunca histórico, "Carregar mais"
+visível quando há mais); todo badge de não lidas usa contagem exata
+via `count:'exact', head:true` (nunca subconta uma não lida fora do
+preview).
+
+**Limites respeitados**: nenhuma migration/RPC/RLS nova — `.limit()`/
+`.range()`/`count:'exact'` são recursos do query builder do Supabase já
+usados extensivamente no resto do produto, sobre a mesma tabela e a
+mesma policy "select own" existente desde a migration 0059; nenhum
+"Notification Center" genérico foi criado (o escopo Comunidade-only
+continua o mesmo, decisão já registrada); nenhuma "Ver todas" nova foi
+criada pro Web (aumentaria escopo pra funcionalidade nova — Web nunca
+prometeu isso, então não há superfície a "consertar" lá); nenhuma
+mudança de RLS/schema.
+
+**QA**: `tsc --noEmit` limpo (Web e App). `eslint` em todos os 10
+arquivos tocados (Web + App) sem erros novos. `next build` (Web) verde.
+Visual: sem simulador/device neste ambiente pro App (mesma limitação
+documentada nos blocos anteriores) — validado por `tsc`/`eslint`
+limpos + rastreamento completo de tipo/consumo. Web: `next start` local
++ `curl` em `/dashboard` e `/dashboard/comunidade` confirmou 307
+(redirect de auth esperado, nunca 500/crash) nas rotas que tocam os
+componentes alterados — sem sessão Supabase real neste ambiente
+sandboxed (mesma limitação já documentada em blocos anteriores) pra
+click-through completo dos popovers/badge.
+
+**Findings novos, registrados sem alterar prioridade**:
+- **(h) confirmado em código**: os "2 sinos" do Web
+  (`NotificationBell`/`CommunityNotificationsBell`) são de fato dois
+  componentes totalmente independentes, sem cache compartilhado —
+  cada um faz sua própria busca. Este item permanece pendente na fila
+  original, agora com a causa raiz já mapeada (útil pra quando for a
+  vez dele).
+- **Bug de scroll pré-existente e independente, corrigido como
+  pré-requisito**: `mobile/app/forum/notificacoes.tsx` não tinha
+  `ScrollView` — a lista inteira vivia numa `View` fixa. Historicamente
+  pouco visível (histórico curto), mas se tornaria um bug real e
+  óbvio assim que a paginação real trouxesse mais itens. Corrigido
+  junto por ser pré-requisito funcional da própria correção deste
+  item, não escopo novo.
+
+**Restam pendentes da lista original do bloco 85**: (h) cache
+compartilhado entre os 2 sinos do Web (achado confirmado acima) e
+"outros itens menores" (nunca enumerados) — (e) e (g) já entregues
+(blocos 90 e 91).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
