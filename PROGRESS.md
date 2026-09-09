@@ -10682,6 +10682,173 @@ estado atual do repositório (pós-bloco 92) só pra confirmar que a
 árvore segue limpa antes do fechamento — sem diffs de código neste
 bloco, então nada novo a validar além disso.
 
+## 94. Bloco 6 — Nova Home pública V2, redesign a partir do doopla-home-mockup.html — `[IMPLEMENTED / VISUAL QA PENDING]`
+
+Substitui a Home V1 (§84) por completo: auditoria pré-implementação
+(bloco anterior, sem número próprio — mapa do site institucional) foi
+aprovada e um novo mockup (`doopla-home-mockup.html`, anexado pelo
+usuário) virou a nova fonte de verdade visual, junto de uma
+especificação de implementação extensa (logo oficial, olhos
+interativos, piscada dos mascotes, reaproveitamento da seção
+"sempre com você"/WhatsApp da Home anterior, label de CTA, Menu em
+overlay). `src/app/page.tsx` continua lendo `home.html`/`home.css`/
+`home.js` do disco sem nenhuma mudança de arquitetura.
+
+**Logo (header/footer)**: a fonte de verdade não é nenhum PNG — depois
+de duas rodadas de esclarecimento, o usuário confirmou que a
+implementação real já existente no produto (`EyeLogo.tsx`: "d" + dois
+olhos + "pla", fonte `Familjen Grotesk`) é a identidade oficial, e o
+logo desenhado dentro do mockup deve ser ignorado como desenho (só
+posição/proporção como referência). `EyeLogo.tsx` em si **não foi
+alterado** — continua idêntico, usado sem mudança em `SiteHeader`/
+`SiteFooter`/`SiteMenuOverlay`/`LoginModal`/`CreateAccountModal`/
+`/login`. Pra Home (`home.html`, HTML cru, não pode montar um
+componente React inline no meio do fluxo do header/footer), o mesmo
+desenho foi reproduzido em marcação estática com as classes já
+existentes (`nav-logo`/`foot-logo`/`eye-slot`/`mascot-pupil`) —
+byte-idêntico em estrutura ao que `EyeLogo.tsx` renderiza. Tracking de
+cursor nas pupilas do logo reaproveita `initMascotEyes()` de
+`home.js` **sem nenhuma mudança de código**: a função já escaneia
+`.nav-logo`/`.foot-logo`/`.mascot-pupil` desde a Home V1 — bastou usar
+essas classes na marcação nova.
+
+**Seção "Sempre com você" (a seção que fala de WhatsApp)**: por
+instrução explícita, o card/mascote do mockup nessa seção foi
+substituído pelos dois "olhos grandes" já existentes e aprovados na
+Home anterior — mesma implementação (`.mascot`/`.mascot-eye`/
+`.mascot-pupil`, mesmo tracking + "pulinhos" de `initMascotEyes()`,
+zero reinterpretação), só sem o corpo vermelho/pernas do mascote
+(classe nova `.mascot-eyes-only`, que zera `background`/`box-shadow`/
+`::before`/`::after` do `.mascot` — **não são olhos novos**, é o
+mesmo elemento com um modificador CSS). Fundo da seção trocado pro
+vermelho Doopla sólido (`--red:#e2291c`, token já existente); legenda
+trocada de "Mais que automação. Representação." (Home antiga) para
+"Sua Doopla sempre com você." (única ocorrência dessa frase agora).
+Conteúdo do lado esquerdo é o do mockup, sem reescrita.
+
+**3 mascotes novos (hero + CTA final)**: desenho vem do mockup (corpo
+redondo, olhos, sorriso, "mãos"), usando os tokens de cor já
+existentes (nunca a paleta aproximada do mockup, `#ff2b34` etc.).
+Ganham **piscada** (`initMascotBlink()`, novo em `home.js`) — nunca
+tracking de cursor, grade de animação explícita do usuário ("o logo
+olha, os mascotes piscam"). Cada mascote tem seu próprio
+`setTimeout` (delay inicial + intervalo 2.4–6s, ambos aleatórios) —
+nunca sincronizados entre si. `scaleY` só no `.mascot-eye` (nunca na
+pupila), squash rápido (~110ms), sem alterar layout/dimensões.
+Respeita `prefers-reduced-motion` (desliga tracking E piscada). O
+mascote da seção "sempre com você" **não pisca** — só tem os olhos
+grandes reaproveitados, tracking apenas, por instrução explícita
+("não adicionar piscada se ela não existir atualmente").
+
+**Menu em overlay de tela cheia**: `HomeMenuOverlay.tsx` reescrito —
+deixou de delegar pro `SiteMenuOverlay` compartilhado (usado por
+Sobre/Segurança/Termos/Privacidade/Contato, explicitamente fora de
+escopo desta rodada: "não re-skinar... páginas institucionais
+compartilhadas"). Passou a renderizar seu próprio overlay escuro,
+exclusivo da Home, reaproveitando o MESMO padrão de interação (trigger
+nativo `#home-menu-trigger`, Escape fecha, scroll trava, foco volta
+pro trigger) sem tocar em `SiteMenuOverlay.tsx`/`site-chrome.css`. 6
+itens conforme pedido: Como funciona (`#como-funciona`), O que a
+Doopla faz (`#o-que-a-doopla-faz`, id novo na seção "Você cuida do seu
+trabalho"), Planos (`#planos`), Segurança (`/seguranca`, rota real),
+FAQ (`#faq`), Sobre (`/sobre`, rota real) — sem repetir "Entrar".
+Rodapé do overlay: "Quero minha Doopla" como copy de apoio (nunca
+label do botão) + CTA "Começar agora" → `/cadastro`.
+
+**CTA de aquisição padronizado como "Começar agora"** — header, hero,
+seção WhatsApp, 2 cards de plano, CTA final, overlay do menu. "Criar
+conta" preservado só onde descreve literalmente a ação dentro do
+fluxo de cadastro (não tocado). Todos os CTAs continuam apontando pro
+mesmo destino real de sempre (`/cadastro`, interceptado por
+`HomeCreateAccountModal` dentro de `#home-marketing`, exatamente como
+antes — nenhuma lógica de aquisição nova).
+
+**Achados/decisões registrados durante a implementação** (conflitos
+entre mockup e instruções, resolvidos e documentados, não decididos
+em silêncio):
+- **FAQ**: o novo mockup não tem seção de perguntas, mas a
+  especificação de Menu pede um item "FAQ" com destino. Mantida a
+  seção da Home anterior (8 perguntas, cópia idêntica), restilizada
+  pro novo sistema de cor — sem essa seção o item do menu não teria
+  pra onde apontar.
+- **Bullets de features dos planos**: o mockup mostra só nome/preço/
+  nota/CTA, sem lista. A Home anterior tinha bullets reais (Bookings
+  ilimitados, Booker/Minha equipe etc. — informação funcional sobre
+  diferença de entitlement, não só estética). Mantidos, restilizados.
+- **Header do mockup**: mostra links inline (Como funciona/Recursos/
+  Planos/Segurança/Sobre) sem nenhum botão "Menu" nem navegação
+  alternativa no mobile (nav simplesmente some abaixo de 760px, sem
+  substituto). A especificação escrita pede explicitamente um botão
+  "Menu" persistente abrindo overlay, com checklist de QA dedicado.
+  Resolvido a favor da especificação escrita (mais detalhada,
+  intencional, com critério de aceite próprio) — header final é
+  logo + Menu + Entrar + Começar agora, nunca os 5 links soltos do
+  mockup.
+- **Cor**: o mockup usa `--red:#ff2b34` (aproximação); a especificação
+  do logo/seção WhatsApp usa `#e2291c` — o mesmo valor que já era
+  `--red` no `home.css` desde a Home V1. Resolvido usando o token já
+  existente (`#e2291c`) em toda a Home, nunca a cor aproximada do
+  mockup.
+- **Parágrafo "Tem coisa que pede uma pessoa..."** (escalonamento
+  humano, presente na Home anterior dentro de "Como funciona"): não
+  existe no novo mockup e não tem nenhuma dependência funcional
+  (diferente da FAQ, que tem destino de menu) — removido, seguindo o
+  mockup à risca.
+
+**Achado técnico real, corrigido durante o QA** (bug de CSS Grid, não
+um achado de produto): `.hero-grid`/`.two-col`/`.with-you` usavam
+`grid-template-columns:1fr` no breakpoint mobile, mas sem
+`min-width:0` nos itens de grid o track nunca encolhe abaixo do
+min-content do conteúdo (badges/telefone/texto) — causava overflow
+horizontal real em 390px (texto do hero cortado saindo da tela,
+confirmado visualmente e via `getBoundingClientRect`). Corrigido
+adicionando `min-width:0` nos itens desses 3 grids — clássico "grid
+blowout bug", não estava previsto no mockup estático porque mockups
+não expõem esse tipo de bug sem teste real de viewport.
+
+**QA**: `tsc --noEmit` e `eslint` limpos nos 5 arquivos tocados. `next
+build` verde (`/` prerenderizada como estática). QA funcional real via
+Playwright contra `next start` (rota pública, sem limitação de sessão
+Supabase deste sandbox): screenshots completos em desktop (1440),
+tablet (834) e mobile (390) — sem overflow horizontal após a correção
+do grid; preço dinâmico confirmado renderizando `R$29,90`/`R$69,90`
+via `market.pricing` (não hardcoded); Menu overlay abre/fecha por
+clique e por Escape, navegação real pra `/seguranca` confirmada; modal
+de login abre pelo `#home-login-trigger`; piscada dos mascotes
+observada programaticamente (classe `.blink` aplicada dentro da janela
+esperada); olhos grandes reaproveitados da seção WhatsApp renderizando
+corretamente (2 círculos pretos + pupilas off-white sobre fundo
+vermelho) em desktop e mobile. Único erro de console em todas as
+capturas: `net::ERR_CONNECTION_RESET` do Google Fonts — limitação de
+proxy deste sandbox já documentada em blocos anteriores, não
+relacionada ao código.
+
+**Preservado, nada alterado**: autenticação, fluxo de aquisição/
+cadastro (`HomeCreateAccountModal`/`CreateAccountModal`), login
+(`HomeLoginModal`/`LoginModal`), `market.pricing` como única fonte de
+preço, rotas reais (`/sobre`, `/seguranca`, `/termos`, `/privacidade`,
+`/contato`, `/cadastro`, `/login`), dados legais/CNPJ no footer,
+`SiteHeader`/`SiteFooter`/`PageShell`/`SiteMenuOverlay`/páginas
+institucionais (zero alteração), `legal-page.tsx`/`legal.css`
+(continuam órfãos, não removidos nem reativados), débito
+`/seguranca#pagamento`/`#verified` (não tocado, fora de escopo por
+instrução explícita), `EyeLogo.tsx` e todas as suas outras aparições
+no produto (Professional Web, App, Booker — nenhuma tocada, escopo
+desta rodada é só header/footer da Home).
+
+**Arquivos alterados**: `src/app/_home/home.html` (reescrito),
+`src/app/_home/home.css` (reescrito), `src/app/_home/home.js`
+(`initMascotBlink()` novo + chamada no `boot()`, resto intocado),
+`src/app/_home/HomeMenuOverlay.tsx` (reescrito, próprio overlay em vez
+de delegar pro `SiteMenuOverlay`), `src/app/layout.tsx` (pesos de
+fonte `Inter 800`/`IBM Plex Mono 700` adicionados ao `<link>` do
+Google Fonts já existente — necessários pros headings/eyebrows do
+novo desenho, nenhum link novo).
+
+Segue `[VISUAL QA PENDING]` — aguardando validação visual final do
+usuário contra o mockup aprovado, mesmo critério de fechamento já
+usado no bloco 84.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

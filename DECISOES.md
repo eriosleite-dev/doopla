@@ -8,6 +8,102 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Nova Home V2: o logo é a implementação real do produto, o mockup só posiciona — "o logo olha, os mascotes piscam" — 09/09/2026
+
+Depois de duas idas e vindas (primeiro pedido um PNG oficial que nunca
+chegou ao ambiente, depois confirmação explícita de que não haveria
+PNG nenhum), a decisão final do usuário foi clara: a fonte de verdade
+do logo Doopla é `EyeLogo.tsx`, já usado em `SiteHeader`/`SiteFooter`/
+`SiteMenuOverlay`/`LoginModal`/`CreateAccountModal`/`/login` — nunca o
+desenho aproximado dentro do `doopla-home-mockup.html` (que só serve
+de referência de posição/tamanho/proporção). Reproduzi o MESMO
+desenho (mesma marcação — "d" + dois olhos + "pla", mesma fonte
+`Familjen Grotesk`) em HTML cru dentro de `home.html` (não dá pra
+montar um componente React inline no meio do fluxo do header/footer
+de uma Home que é injetada via `dangerouslySetInnerHTML`) — nunca
+recriei a fonte, nunca inventei um SVG novo. `EyeLogo.tsx` em si não
+foi tocado — zero risco pras outras 6+ superfícies que já o usam.
+
+Tracking de cursor nas pupilas do logo (só header/footer da Home,
+escopo explícito) reaproveita `initMascotEyes()` de `home.js` sem
+nenhuma mudança de código — a função já escaneava `.nav-logo`/
+`.foot-logo`/`.mascot-pupil` desde a Home V1 (08/09/2026); só precisei
+usar essas classes na marcação nova do logo.
+
+Grade de animação explícita do usuário, repetida em várias mensagens:
+**"o logo olha, os mascotes piscam"** — nunca o contrário. Os 3
+mascotes do mockup (corpo redondo + olhos + sorriso) ganharam piscada
+(`initMascotBlink()`, timers independentes por instância, nunca
+sincronizados), nunca tracking de cursor. O logo ganhou tracking,
+nunca piscada.
+
+## Nova Home V2: olhos grandes da seção WhatsApp são o MESMO elemento da Home anterior, só sem o corpo — 09/09/2026
+
+Instrução explícita e repetida: o card/mascote do mockup na seção
+"Sempre com você" (a que fala de WhatsApp) deveria ser substituído
+pelos "dois olhos grandes" já existentes e aprovados na Home anterior
+— preservando exatamente desenho, pupilas, tracking, "pulinhos",
+timing, easing, amplitude. Proibição explícita: não recriar os olhos,
+não transformá-los em mascote.
+
+Implementação: reaproveitado o `.mascot`/`.mascot-eye`/`.mascot-pupil`
+já existente (mesmo elemento que também vira os mascotes com
+piscada), com um modificador CSS novo (`.mascot-eyes-only`) que só
+zera o `background`/`box-shadow`/`::before`/`::after` (corpo vermelho
+e pernas) — nunca um componente separado, nunca um recorte visual
+novo. `initMascotEyes()` (tracking) continua pegando esses olhos
+automaticamente, sem mudança de código; `initMascotBlink()` (piscada)
+não pega, porque só escaneia `.mascot .eyes-row .mascot-eye`, e esses
+olhos não têm `.eyes-row` — por construção, nunca por exceção
+hardcoded. Fundo da seção virou vermelho Doopla sólido (`--red`,
+mesmo token de sempre); legenda "Mais que automação. Representação."
+(única onde existia) virou "Sua Doopla sempre com você." (única
+ocorrência agora).
+
+## Nova Home V2: Menu vira overlay próprio da Home, nunca reskin do SiteMenuOverlay compartilhado — 09/09/2026
+
+O usuário aprovou explicitamente, na rodada anterior (auditoria
+pré-implementação), a decisão de não re-skinar `SiteHeader`/
+`SiteFooter`/`PageShell`/páginas institucionais compartilhadas nesta
+rodada. O novo mockup, porém, especifica um "Menu" que abre uma
+navegação em overlay de tela cheia — o mesmo padrão de interação que
+`SiteMenuOverlay.tsx` já implementa, mas com tema claro (institucional)
+incompatível com o novo visual dark da Home.
+
+Decisão: `HomeMenuOverlay.tsx` deixou de delegar pro `SiteMenuOverlay`
+compartilhado e passou a renderizar seu próprio overlay escuro,
+exclusivo da Home — reaproveitando o PADRÃO de interação (trigger
+nativo, Escape fecha, scroll trava, foco volta pro trigger ao fechar),
+nunca o componente/CSS compartilhado em si. `SiteMenuOverlay.tsx` e
+`site-chrome.css` continuam 100% intocados — as páginas institucionais
+não sofrem nenhum efeito colateral desta rodada.
+
+## Nova Home V2: conflitos entre o mockup estático e a especificação escrita, resolvidos e registrados — 09/09/2026
+
+Regra geral combinada: em conflito, mockup vale pra visual/composição,
+especificação escrita vale pra rotas/dados/lógica/comportamento, e
+nenhum conflito relevante deveria ser resolvido em silêncio. Dois
+conflitos reais apareceram durante a implementação:
+
+- **Header do mockup vs. especificação do Menu**: o arquivo
+  `doopla-home-mockup.html` mostra 5 links soltos no header (nunca um
+  botão "Menu"), e o nav simplesmente desaparece no mobile sem
+  nenhuma navegação substituta. A especificação escrita pede,
+  explicitamente e com checklist de QA próprio, um botão "Menu"
+  persistente (desktop e mobile) abrindo overlay de tela cheia.
+  Resolvido a favor da especificação escrita — o mockup aqui era
+  claramente uma composição estática incompleta pro estado interativo
+  mobile, não uma instrução deliberada de remover navegação.
+- **FAQ ausente do mockup vs. item "FAQ" pedido no Menu**: o novo
+  mockup não tem seção de perguntas nenhuma, mas a especificação do
+  Menu lista "FAQ" como um dos 6 destinos. Resolvido mantendo a seção
+  FAQ da Home anterior (8 perguntas, cópia idêntica, só restilizada) —
+  sem ela, o item do menu não teria pra onde apontar.
+
+Nenhum dos dois foi decidido soterrando a instrução original: ambos
+favorecem a leitura mais explícita/detalhada quando as duas fontes
+divergem, nunca uma reinterpretação de gosto próprio.
+
 ## Bloco 85/P1 fechado: item (i) "outros itens menores" nunca teve conteúdo recuperável — não é dívida pendente — 09/09/2026
 
 O bloco 85 (auditoria de fechamento do Professional Product UI, 5
