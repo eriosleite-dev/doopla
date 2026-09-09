@@ -10483,6 +10483,133 @@ compartilhado entre os 2 sinos do Web (achado confirmado acima) e
 "outros itens menores" (nunca enumerados) — (e) e (g) já entregues
 (blocos 90 e 91).
 
+## 92. Bloco 7, P1 — fonte compartilhada entre os 2 sinos de notificações do Web — `[DELIVERED]`
+
+Item (h) da lista priorizada do bloco 85, confirmado em código no
+bloco 91. Investigação (pedida explicitamente antes de codar) mapeou
+`NotificationBell` (topbar global, `pro-shell.tsx`, visível em toda
+página não-booker) e `CommunityNotificationsBell` (só dentro de
+`/dashboard/comunidade`) — os dois ficam **visíveis ao mesmo tempo**
+na tela quando o usuário está em `/dashboard/comunidade` (topbar
+global + header da própria página). Confirmado: mesma fonte canônica
+(`community_notifications`, mesma RLS, mesmos `listCommunityNotifications`/
+`countUnreadCommunityNotifications` do bloco 91 — nenhuma diferença
+semântica real), mesmo mecanismo de mark-as-read (mesma RPC
+`mark_community_notification_read`, só por dois Server Actions finos
+diferentes até este bloco), mesmo limite de 20/mesma contagem exata —
+a única diferença real era arquitetural: cada um buscava e guardava
+seu próprio estado React, sem nenhuma sincronização entre eles.
+Diferenças legítimas de apresentação preservadas: `NotificationBell`
+inclui o título do tópico na mensagem e nunca usa âncora de post;
+`CommunityNotificationsBell` omite o título e usa `#msg-{postId}`
+quando a notificação aponta pra uma mensagem específica — texto/link
+diferentes por design, nunca por bug.
+
+**Causa raiz**: `NotificationBell` buscava via `listNotificationsAction()`
+num `useEffect` próprio (fetch client-side ao montar, estado local
+`items`/`unreadCount`). `CommunityNotificationsBell` recebia dados já
+resolvidos via SSR (`comunidade/page.tsx` chamando
+`listCommunityNotifications`/`countUnreadCommunityNotifications`
+direto, passados como props `initialNotifications`/`initialUnreadCount`).
+Marcar uma notificação como lida num sino só atualizava o estado
+LOCAL daquele componente — o outro, com seu próprio estado
+independente, continuava mostrando a mesma notificação como não lida
+(e a contagem desatualizada) até a página inteira recarregar. Em
+`/dashboard/comunidade`, isso era visível ao vivo: os dois sinos na
+tela podiam mostrar números diferentes pro mesmo conjunto de dados.
+
+**Arquitetura antes**: 2 componentes → 2 buscas independentes → 2
+estados React independentes → nenhuma sincronização.
+**Arquitetura depois**: 1 fonte (`NotificationsProvider`, novo
+`src/app/dashboard/notifications-context.tsx`, mesmo padrão já
+estabelecido no projeto — `ProModalProvider`/`ReferralModalProvider`
+em `layout.tsx`, Context do React, sem lib nova — confirmado que este
+projeto não usa SWR/React Query) → estado único (`items`/`unreadCount`/
+`phase`) → mutação única (`markRead`) → os dois sinos são só
+consumidores (`useNotifications()`) que formatam sua própria
+apresentação em cima do mesmo dado. `listNotificationsAction` (em
+`notifications-actions.ts`) passou a devolver dados CRUS enriquecidos
+(`NotificationEntry`: actorName/topicTitle/postId já resolvidos, sem
+mensagem/link formatados) — cada sino monta sua própria mensagem/link
+com uma função pura local, preservando exatamente o texto/link que já
+tinha antes.
+
+**Montagem do provider**: dentro de `ProfessionalShellGate`
+(`layout.tsx`), envolvendo `<ProfessionalShell>` — escopado à árvore
+não-booker (Booker não tem sino nenhum, evita busca desperdiçada),
+cobre os dois pontos de consumo (`NotificationBell`, dentro do próprio
+`ProfessionalShell`; `CommunityNotificationsBell`, dentro de
+`{children}` quando a rota é `/dashboard/comunidade`).
+
+**Comportamento de sincronização entre os dois sinos**: garantido
+pela semântica do React Context — os dois componentes leem do MESMO
+objeto de estado (`useContext` no mesmo Provider), então qualquer
+`setState` dentro do provider (via `markRead`/`refresh`) causa
+re-render de AMBOS os consumidores na mesma atualização, nunca em
+momentos diferentes. Marcar como lida em qualquer um dos dois sinos
+agora atualiza o outro instantaneamente — não é uma garantia de
+convenção/disciplina de código, é uma garantia do próprio mecanismo do
+React (a mesma classe de bug não pode reaparecer por um sino
+"esquecer" de notificar o outro, porque não existem mais dois estados
+pra ficarem dessincronizados).
+
+**Freshness preservada como comportamento intencional**:
+`CommunityNotificationsBell` chama `refresh()` no próprio mount (`useEffect`
+vazio) — como esse componente é remontado a cada visita a
+`/dashboard/comunidade` (conteúdo de `page.tsx`, diferente do layout
+persistente), isso preserva o comportamento de sempre desta tela
+(dado fresco a cada visita) e, por ser a MESMA fonte compartilhada,
+deixa `NotificationBell` já atualizado depois, sem ele precisar buscar
+nada. `NotificationBell` continua com a mesma cadência de sempre (uma
+busca ao montar o provider, sem refetch por navegação — mesmo
+comportamento que já tinha antes deste bloco).
+
+**Arquivos alterados**:
+- Novo: `src/app/dashboard/notifications-context.tsx`
+  (`NotificationsProvider`/`useNotifications`).
+- `src/app/dashboard/notifications-actions.ts` (`listNotificationsAction`
+  devolve `NotificationEntry[]` cru em vez de mensagem/link formatados).
+- `src/app/dashboard/notification-bell.tsx` (consome `useNotifications()`,
+  formata sua própria mensagem/link, sem busca/estado próprio).
+- `src/app/dashboard/comunidade/community-notifications-bell.tsx`
+  (idem, sem props — `refresh()` no mount preserva freshness por
+  visita).
+- `src/app/dashboard/comunidade/page.tsx` (removida toda busca/
+  enriquecimento de notificações — `CommunityNotificationsBell` não
+  recebe mais props; autores buscados só pros tópicos, não mais pros
+  atores de notificação).
+- `src/app/dashboard/comunidade/pro-comunidade-home-view.tsx`
+  (removidos os props `notifications`/`notificationsUnreadCount`).
+- `src/app/dashboard/comunidade/actions.ts` (removidos
+  `CommunityNotificationCard`/`markCommunityNotificationReadAction`,
+  agora mortos — a mutação passou a ser só `markNotificationReadAction`,
+  compartilhada via o provider).
+- `src/app/dashboard/layout.tsx` (`NotificationsProvider` montado
+  dentro de `ProfessionalShellGate`, envolvendo `ProfessionalShell`).
+
+**Preservado, nada alterado**: limite de 20/`countUnreadCommunityNotifications`
+do bloco 91 (reaproveitados sem mudança — a fonte compartilhada É a
+mesma função, só chamada uma vez agora); mark-as-read (mesma RPC
+`mark_community_notification_read`, mesmo comportamento otimista);
+comportamento visual/textual de cada sino (mensagem/link
+inalterados); RLS/backend (nenhuma migration, nenhuma RPC, nenhuma
+policy tocada); a App do App não foi tocada (este item é
+explicitamente Web-only, os 2 sinos são um achado só do Web).
+
+**QA**: `tsc --noEmit` limpo. `eslint` nos 8 arquivos tocados (7
+alterados + 1 novo) sem erros novos. `next build` verde. Visual: rota
+efêmera `/dev/notifications-sync-preview` (deletada antes do commit)
+montou os dois sinos dentro do mesmo `NotificationsProvider` (igual
+`layout.tsx` real) — sem sessão Supabase real neste ambiente, o
+`fetch` inicial cai no fail-safe já estabelecido em blocos anteriores
+(`redirect('/login')` dentro de `getSessionProfile()`, confirmado
+visualmente pela navegação real pra tela de login, nunca um crash) —
+mesma limitação de sempre pra testar click-through autenticado neste
+sandbox. A garantia de sincronização em si não depende de teste
+visual: os dois componentes leem do mesmo objeto React Context, então
+divergência de estado entre eles deixa de ser possível por construção
+(garantia do próprio React), não por disciplina de código.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

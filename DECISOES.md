@@ -1812,3 +1812,68 @@ independentes — cada um busca a mesma tabela por conta própria, sem
 nenhum cache/estado compartilhado. Isso é exatamente o item (h) já
 registrado como pendente no checkpoint anterior; permanece pendente,
 agora com a causa raiz mapeada em código pra quando chegar a vez dele.
+
+## "2 sinos" do Web: mesma fonte, apresentação própria — Context, não redesign — 09/09/2026
+
+Item (h) da lista priorizada do bloco 85. A pergunta central da
+investigação era se `NotificationBell` e `CommunityNotificationsBell`
+tinham alguma diferença semântica real que justificasse continuarem
+independentes — a resposta foi não: mesma tabela
+(`community_notifications`), mesma RLS, mesmo limite de preview e
+mesma contagem exata (bloco 91), mesma RPC de mark-as-read. A única
+diferença real (mensagem com/sem título do tópico, link com/sem âncora
+de post) é apresentação, não dado — exatamente o tipo de divergência
+que o usuário disse explicitamente que podia continuar existindo
+("Web pode manter superfícies/apresentações diferentes quando houver
+motivo"). Isso descartou o hard gate ("se os dois sinos tiverem
+semânticas realmente diferentes... pare") logo na investigação — a
+correção podia prosseguir.
+
+**Por que Context, e não um redesign visual**: o pedido era eliminar
+fetch/cache/estado concorrente, nunca fundir os dois sinos numa única
+UI — eles continuam dois componentes visualmente distintos, em dois
+lugares diferentes da tela, com textos diferentes. O que mudou foi
+onde vive o DADO: antes, cada componente possuía seu próprio
+`useState`/fetch; agora os dois são consumidores puros de um estado
+React Context compartilhado (`NotificationsProvider`). Reaproveitado o
+padrão arquitetural já estabelecido neste código — `ProModalProvider`/
+`ReferralModalProvider` em `layout.tsx` já resolvem exatamente este
+tipo de problema (estado compartilhado entre componentes client
+espalhados pela árvore da Pro Shell) com Context puro, sem biblioteca
+externa (confirmado por `package.json`: sem SWR/React Query no
+projeto) — criar uma infraestrutura de cache nova/paralela teria sido
+o oposto do pedido explícito de "reutilizar a arquitetura já
+existente antes de criar um sistema paralelo".
+
+**Por que a garantia de sincronização não é "por convenção"**: os dois
+componentes chamam `useContext` no MESMO objeto `NotificationsContext`
+— um único `setState` dentro do provider (via `markRead`) dispara
+re-render de todo consumidor que lê aquele contexto, na mesma
+atualização. Isso é uma garantia da API do React, não uma disciplina
+de código que poderia ser esquecida de novo no futuro (a causa raiz
+original — "cada sino tinha seu próprio estado" — deixou de ser
+estruturalmente possível, porque não existem mais dois estados).
+
+**Freshness da Comunidade preservada com uma escolha deliberada**:
+antes, `CommunityNotificationsBell` recebia dado fresco via SSR toda
+vez que `/dashboard/comunidade` era visitado (page.tsx buscava de
+novo a cada render). Migrar pra Context puro faria esse componente
+herdar a cadência do `NotificationBell` (busca só uma vez, quando o
+provider monta) — perdendo esse "sempre fresco ao entrar na
+Comunidade" que fazia sentido pra essa tela específica. Resolvido com
+`CommunityNotificationsBell` chamando `refresh()` no próprio mount
+(ele remonta a cada visita à rota, diferente do provider/layout, que
+persiste) — preserva a UX de sempre SEM reabrir a divergência: como é
+a mesma fonte compartilhada, esse `refresh()` também deixa o
+`NotificationBell` (em qualquer outra página aberta ao mesmo tempo, ou
+depois de navegar) com o dado atualizado, sem ele precisar buscar
+nada.
+
+**Formatação continua por sino, dado é compartilhado**: `listNotificationsAction`
+passou a devolver `NotificationEntry[]` cru (actorName/topicTitle/postId
+já resolvidos do lado do servidor, mas sem mensagem/link prontos) —
+cada componente (`notification-bell.tsx`/`community-notifications-bell.tsx`)
+monta sua própria string de mensagem e seu próprio href com uma função
+pura local, preservando exatamente o texto/link que cada um já tinha.
+Isso é o contrato explícito do pedido: fonte/estado compartilhados,
+apresentação livre por superfície.
