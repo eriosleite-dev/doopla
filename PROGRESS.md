@@ -49,12 +49,19 @@ nem lacuna no código em si):
   verificar (fora daqui) é comportamento em runtime — rodar
   `npm run dev` com essas variáveis, ou testar cadastro/login direto
   no app.
-- ❓ **Em aberto**: se existe um projeto Supabase separado pra
-  Produção (`doopla` "de verdade", sem ser o `doopla-qa-staging`) —
-  não apareceu nada aqui que confirme isso. Vale checar no seletor de
-  projetos da Supabase (canto superior esquerdo do painel) se há um
-  segundo projeto, pra garantir que a Vercel nunca aponta o
-  Environment de Production do app pro `doopla-qa-staging` por engano.
+- ✅ **Confirmado pelo usuário**: existe um segundo projeto Supabase,
+  `doopla` — é o de Produção, o mesmo que vínhamos usando neste
+  histórico todo até agora. `doopla-qa-staging` é um projeto à parte,
+  criado especificamente pra isolar QA/Staging de dados reais. Risco
+  de mistura de dados afastado.
+- ❓ **Novo item em aberto, decorrente do anterior**: `doopla-qa-staging`
+  é um projeto novo/separado — precisa ter recebido as mesmas
+  migrations de `supabase/migrations/` (até `0044`, ver seção Bloco 4
+  mais abaixo) que já rodaram no `doopla`, senão o schema de
+  QA/Staging não bate com o de Produção e os testes lá não
+  representam o app real. Não dá pra checar isso daqui (mesma rede
+  bloqueada) — confirmar rodando as migrations pendentes no SQL
+  Editor do `doopla-qa-staging`, ou comparando schema pelo painel.
 - ⚠️ `SUPABASE_SERVICE_ROLE_KEY` está no ambiente mas nenhum arquivo em
   `src/` a referencia — nada quebrado por isso (é só reservada pra
   scripts admin/server-side futuros), mas registrando pra não parecer
