@@ -51,18 +51,68 @@ impede o trabalho da Categoria B contra esse projeto começar agora.
 Só precisa estar resolvido antes de qualquer deploy real de Production
 depender dessa separação.
 
-- ❓ Em aberto, não bloqueia: `doopla-qa-staging` é projeto novo —
-  precisa ter recebido as mesmas migrations de `supabase/migrations/`
-  (até `0044`) que já rodaram no `doopla`, senão o schema diverge do
-  de produção. Confirmar rodando as pendentes no SQL Editor do
-  `doopla-qa-staging`.
 - ⚠️ `SUPABASE_SERVICE_ROLE_KEY` está no ambiente mas nenhum arquivo em
   `src/` a referencia ainda — reservada pra uso futuro, registrando
   pra não parecer que sumiu.
 
-**Escopo combinado pra Categoria B a partir daqui**: trabalhar só
-contra `doopla-qa-staging`, nunca tocar em Production, e **não
-corrigir achados encontrados durante o QA** (só reportar/registrar —
+### Conjunto canônico de migrations — conferido em 14/09/2026
+
+`supabase/migrations/` é a ÚNICA fonte de schema deste repo (busca por
+`*.sql` fora dessa pasta: zero resultados — não existe seed.sql nem
+SQL solto em outro lugar). Contagem real do diretório nesta sessão:
+
+- **44 arquivos**, `0001_init_auth_profiles.sql` até
+  `0044_orchestrator_runs_planner.sql`, sequência **sem nenhum buraco**
+  (`0001`–`0044` todos presentes, checado um a um). **`0044` é a mais
+  recente** — não há `0079` nem nada além de `0044` neste repo/branch
+  agora. (Correção: eu não tinha dito "79 migrations"/`0079` antes
+  nesta conversa — só tinha citado "até `0044`", que é exatamente o
+  que a contagem real confirma agora. Registrando pra não deixar a
+  discrepância sem resposta.)
+
+**Estado real do schema em `doopla-qa-staging`: não verificável nesta
+sessão** (mesma rede bloqueada pra `*.supabase.co`) — não assumido
+como completo nem como vazio. Por ser projeto novo, a hipótese de
+trabalho é "incompleto até prova em contrário", conforme instruído.
+
+**Procedimento seguro pra confirmar e, se preciso, completar**
+(a ser executado por você ou por uma sessão com rede liberada pro
+painel Supabase — não por mim aqui):
+
+1. No painel Supabase, **confirme no seletor de projeto (canto
+   superior esquerdo) que está em `doopla-qa-staging`** antes de
+   colar qualquer SQL — nunca em `doopla`.
+2. SQL Editor → rode:
+   ```sql
+   select table_name from information_schema.tables
+   where table_schema = 'public' order by table_name;
+   ```
+   - **Nenhuma linha** → projeto vazio, sem trava adicional: aplicar
+     os 44 arquivos **em ordem numérica**, um a um
+     (`0001_init_auth_profiles.sql` → ... →
+     `0044_orchestrator_runs_planner.sql`), conferindo que cada um
+     roda sem erro antes de colar o próximo (migrations posteriores
+     dependem de objetos criados nas anteriores — rodar fora de ordem
+     tende a falhar alto, o que é uma proteção, não um risco).
+   - **Já existem tabelas** → NÃO aplicar os 44 de novo cegamente
+     (não são idempotentes, vão dar erro de objeto já existente na
+     melhor hipótese). Antes, listar as tabelas retornadas e me
+     mandar a lista — eu comparo com o que cada migration cria pra
+     dizer exatamente qual é a primeira migration ainda não aplicada
+     e a partir de onde continuar.
+3. Depois de aplicar tudo, validar pelo menos os pontos que a
+   auditoria de segurança (Bloco 4.5, `0018`/`0019`/`0021`) e o Bloco
+   4 (`0042`–`0044`) trataram como críticos — ex.: RLS ativo nas
+   tabelas sensíveis, o CHECK `requires_professional_review_before_send
+   = true` em `orchestrator_runs` existe e rejeita `UPDATE` pra
+   `false` (mencionado na auditoria do Bloco 4 mais abaixo neste
+   arquivo). Não é suficiente só "a tabela existe" — as migrations de
+   segurança fazem mais que criar tabela.
+
+**Categoria B continua sem iniciar testes** até esse schema estar
+confirmado completo. Escopo, quando iniciar: só contra
+`doopla-qa-staging`, nunca tocar Production, e **não corrigir achados
+de produto encontrados durante o QA** (só reportar/registrar —
 correção é decisão separada da fundadora).
 
 ## Revisão UX — Visão Geral do Artista (nomenclatura + hierarquia)
