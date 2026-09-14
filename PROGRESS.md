@@ -51,8 +51,37 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 
 ### P0 — Autenticação e jornada base
 
-- ⏳ Cadastro real de artista
-- ⏳ Criação correta de `profiles`/`artist_profiles`/subscription-trial
+- ✅ **PASS** — Cadastro real de artista (`QA Categoria B — Artista 01`,
+  `eriosleite+qab-artista01@gmail.com`, confirmado em 14/09/2026).
+  Etapa 1 cria a conta de verdade (Supabase Auth), manda e-mail de
+  confirmação real, `email_confirmed_at` preenchido após clicar no
+  link. Fluxo é por design: só 1 etapa antes de confirmar e-mail, as
+  outras 6 continuam depois de autenticado (comentário no próprio
+  código, `src/app/cadastro/page.tsx`) — não é bug.
+- ✅ **PASS, com 1 achado** — `profiles`/`artist_profiles`/subscription
+  criados corretamente (`role='artista'`, `full_name` certo,
+  `artist_profiles` com `stage_name` = fallback do nome, subscription
+  `status='trialing'`, `trial_ends_at` = +7 dias, `price_rule=
+  'standard_launch'`). **Achado**: `subscriptions.artist_plan` veio
+  `null` em vez de `'doopla'` (default esperado). Causa raiz
+  confirmada no código: `handle_new_user` (última definição, migration
+  `0072_multi_role_foundation.sql:179-182`) faz
+  `chosen_plan := meta ->> 'artistPlan'; if chosen_plan not in
+  ('doopla', 'pro') then chosen_plan := 'doopla'; end if;` —
+  quando `artistPlan` não é enviado (caso normal da Etapa 1, plano só
+  é escolhido depois em `/cadastro/plano`), `chosen_plan` é `NULL`, e
+  `NULL NOT IN (...)` avalia pra `NULL` em SQL (não `TRUE`) — o
+  PL/pgSQL trata `IF NULL THEN` como falso, então o fallback pra
+  `'doopla'` nunca dispara. **Impacto real, hoje**: nenhum —
+  auditado todo consumo de `artist_plan` no código
+  (`src/lib/subscription.ts`, `PlanPicker`, `cadastro/plano/page.tsx`,
+  `CreateAccountModal.tsx`) e todos tratam como
+  `=== 'pro' ? 'pro' : 'doopla'`, nunca comparam direto com
+  `'doopla'` nem exibem o valor cru — `null` e `'doopla'` se
+  comportam de forma idêntica em todo lugar hoje. Frágil pra código
+  futuro que compare direto (`= 'doopla'`) ou exiba o valor bruto
+  (ex.: painel admin, métrica de distribuição de planos).
+  Classificação: **FAIL NON-BLOCKER**.
 - ⏳ Login/logout
 - ⏳ Persistência de sessão
 - ⏳ Redirect correto pro dashboard
