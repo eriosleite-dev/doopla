@@ -88,6 +88,45 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 
 ### Achados consolidados (preenchido conforme os testes avançam)
 
+- 🔴 **P0-A1 travado por rate limit de e-mail do Supabase (built-in,
+  não-configurável)** — 14/09/2026. `POST /auth/v1/signup` devolveu
+  `429` na 3ª tentativa de cadastro (log confirmado no painel:
+  `429 | .../auth/v1/signup?redirect_to=...`). O painel mostra "30
+  e-mails/hora" em Authentication → Rate Limits, mas esse número só
+  vale com SMTP próprio configurado — usando o e-mail
+  embutido/compartilhado do Supabase (o padrão, sem nada configurado),
+  existe um teto muito mais baixo e não-ajustável por ali, pra evitar
+  abuso do serviço compartilhado. Bateu com só 2-3 cadastros em poucos
+  minutos. Classificação: **BLOCKED ENVIRONMENT (temporário)** — não é
+  bug de produto. Duas saídas: esperar o limite liberar (pode levar
+  até ~1h) ou configurar um provedor de e-mail próprio (SMTP) pro
+  `doopla-qa-staging` — decisão/setup à parte, fora do escopo de agora.
+  **Mudança de estratégia daqui pra frente**: evitar cadastro novo à
+  toa — reaproveitar a primeira conta que conseguir confirmar pro
+  resto dos testes de P0 que não exigem conta nova, só criando outra
+  quando o teste especificamente pedir (ex.: isolamento entre contas).
+- ✅ **Corrigido de passagem, achado de config do Supabase Auth**: o
+  link de confirmação de e-mail caía em `localhost:3000` (página
+  inexistente) em vez do domínio de Preview real, porque a URL de
+  Preview não estava na allowlist de "Redirect URLs" do Supabase Auth
+  (`doopla-qa-staging` — Authentication → URL Configuration). O
+  código (`emailRedirectTo` em `src/app/auth/actions.ts`) já calculava
+  a URL certa a partir do host da requisição; o Supabase só rejeitava
+  silenciosamente por não bater com a allowlist, caindo no `Site URL`
+  padrão (`localhost:3000`). Corrigido adicionando
+  `https://doopla-zr9p-*-doopla.vercel.app/**` (cobre tanto a URL fixa
+  do branch quanto a URL específica de cada deploy individual) na
+  allowlist. Classificação: **trava de ambiente, não bug de produto**
+  — mesma categoria do achado da Vercel, resolvida na hora.
+- ⚠️ **Mensagem de erro genérica esconde causa real**: `createAccountAction`
+  (`src/app/auth/actions.ts:142-147`) só trata especificamente o erro
+  "already registered" — qualquer outro erro do Supabase (incluindo
+  `429` de rate limit) vira "Não foi possível criar a conta. Tente
+  novamente.", indistinguível de um problema de fato transitório vs.
+  algo que precisa de ação diferente do usuário. Não é o que travou o
+  P0-A1 (a causa real só foi visível pelos Logs do Supabase, não pela
+  UI) — mas dificulta qualquer diagnóstico futuro, inclusive pra
+  usuário real em produção. Classificação: **FAIL NON-BLOCKER**.
 - `artist_link_routing` INSERT RLS — **FAIL NON-BLOCKER / MUST FIX
   BEFORE BETA CLOSE** (herdado da Categoria A, não retestado aqui
   ainda).
