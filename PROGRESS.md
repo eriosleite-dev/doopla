@@ -24,6 +24,60 @@ não é prioridade agora.
 
 ---
 
+## Auditoria de resíduo de legado (marketplace/matching) no produto atual — `[AUDIT ONLY / NO CODE CHANGE]` — 14/09/2026
+
+Pedida pela fundadora no meio da Categoria B, ao questionar se o
+"Perfil público" (`/[slug]`) testado como P0 é produto atual ou
+resíduo da Doopla antiga (marketplace onde cliente descobre/escolhe
+entre profissionais) — o pivô documentado é "AI-first": a Doopla
+representa o profissional, não opera um marketplace de descoberta.
+
+**Método**: mapeamento factual completo do código (rotas, componentes,
+consumo real) via busca dedicada, cruzado com `DECISOES.md`/ROADMAP
+MESTRE (§101-103, mais abaixo neste arquivo). Nenhum código alterado. Regra de classificação usada, conforme a própria fundadora
+definiu: campo/dado que alimenta a IA de representação = pode ficar,
+mesmo que se chame "categoria"/"mercado"; **finalidade/estrutura de
+marketplace** (cliente final ou outro usuário descobre/busca/compara/
+escolhe entre vários profissionais) = o que precisa sair.
+
+### Tabela ATUAL / LEGADO-MATCHING / DÚVIDA
+
+| # | Item | Classificação | Evidência |
+|---|---|---|---|
+| 1 | `src/app/[slug]/page.tsx` — perfil público (rota real, sem auth, mostra avatar/nome/categoria/rating/bio/mercados/instagram/portfólio) | **DÚVIDA** | Comentário no próprio código confirma "é o que o CLIENTE vê". Porém `DECISOES.md` (04/09, "'Perfil profissional' descontinuado como NAVEGAÇÃO") lista explicitamente "página pública de orçamento" como consumidor **intencionalmente preservado**, não removido. As duas fontes se contradizem — decisão da fundadora necessária, não inferida aqui. |
+| 2 | Toggle "Ativar/desativar perfil público" (`/dashboard/perfil/publico`, `public-profile-card.tsx`, `enablePublicProfileAction`/`disablePublicProfileAction`) | **DÚVIDA** | Acoplado ao item 1 — mesma decisão, não separável tecnicamente sem redesenhar. |
+| 3 | `/orcamento/[slug]` — formulário público (sem login) que cria `opportunity` real via RPC `submit_orcamento_request` | **DÚVIDA** | Mesmo padrão do item 1: função do banco comenta "único caminho público de criação de oportunidade a partir do link". `DECISOES.md` também documenta "Seu link de orçamento"/"Quem recebe seus pedidos" como feature deliberadamente mantida (movida pra Canais e conexões, comportamento preservado). Tensão idêntica à do item 1. |
+| 4 | `/dashboard/artistas` + `discover-artists.tsx` + `artist-row.tsx` + `/artistas/[id]` — booker **descobre/busca/compara** artistas, com "combina com você", favoritos | **LEGADO-MATCHING** | Sem ressalva em `DECISOES.md`. O espelho exato do lado Booker (`/dashboard/bookers`) teve isso **removido por completo**, com comentário explícito no código: *"Removido por completo: favoritos, busca/descoberta de novos bookers, ranking... tudo isso era marketplace de outro produto."* (commit `c712fb6`, 06/09). O lado Artista→Booker nunca recebeu a mesma limpeza — assimetria, não decisão. |
+| 5 | `/dashboard/oportunidades` (booker) "Descobrir trabalhos" + `discover-work-deck.tsx` — swipe/busca de oportunidades com "combina com seu perfil" | **LEGADO-MATCHING** | Mesma família do item 4 — vocabulário e mecânica de descoberta/matching, sem revisão equivalente à que o lado artista (`pro-work-context-form.tsx`) recebeu. |
+| 6 | Seção "Bookers para você" dentro de `booker-home-view.tsx` (ramo `role === 'artista'`) | **LEGADO-MATCHING (+ código morto)** | Além de ser conteúdo de descoberta, é **logicamente inalcançável hoje** — o roteamento em `dashboard/page.tsx` nunca chama esse componente pra role `artista`. Código presente, nunca executado. Candidato a deletar independente da decisão dos itens 1-3. |
+| 7 | `booker-profile-form.tsx` — seção `id="preferencias-matching"`, título "Preferências de matching", copy "usamos essas informações pra encontrar pessoas e oportunidades mais compatíveis com você" + `matching-summary.tsx` | **LEGADO-MATCHING** | Já registrado como BACKLOG no ROADMAP MESTRE (§100/§101, "achado, copy legada"). Contraste direto: o formulário equivalente do artista (`pro-work-context-form.tsx`) **já foi revisado** com comentário explícito removendo a moldura de "matching" — o do booker nunca recebeu a mesma passada. |
+| 8 | `category` (`artist_profiles`) | **ATUAL** | Consumido de fato pelo Intelligence Context/Runtime (`get-professional-profile.ts`, `context-builder/sections.ts`) — alimenta a representação por IA, não só exibição. |
+| 9 | `work_types`/`client_types`/`regions`/`languages`/`help_areas`/`career_stage`/`fee_range` (em "Como você trabalha", `pro-work-context-form.tsx`) | **ATUAL** | Comentário no próprio código já documenta a revisão: substituiu o modal antigo "Preferências de matching", dados existem só "pra ajudar sua Doopla a entender como o profissional trabalha... nunca pra 'encontrar' o profissional em algum lugar." Já é o resultado de uma limpeza, não o resíduo. |
+| 10 | `mercados`/`subcategory` (`artist_profiles`, campo texto livre em `/dashboard/perfil/dados`) | **DÚVIDA** | Não encontrado nenhum consumo pelo Intelligence/Runtime — só aparece em exibição (perfil público, vitrines internas, o próprio formulário). Contingente da decisão dos itens 1/3/4: se as superfícies públicas/vitrine saem, esses campos ficam vestigiais. |
+| 11 | `instagram_url`/`portfolio_url` (`artist_profiles`) | **DÚVIDA** | Mesma situação do item 10 — só usado em exibição pública/vitrine, sem consumo por IA. |
+| 12 | Tabela `favorites` + `FavoriteButton` (usado em `discover-artists`, `artist-profile-view`, `booker-profile-view`, `discover-work-deck`) | **LEGADO-MATCHING nas telas de descoberta (itens 4/5/6); DÚVIDA no uso isolado dentro de `/dashboard/bookers/[id]`/`artistas/[id]`** | Migration comenta "sem nenhuma regra de negócio por trás". Faz sentido como recurso pessoal ("marquei esse booker que já trabalho") independente de marketplace, mas hoje está entrelaçado com as telas de descoberta que são candidatas a sair. |
+| 13 | `/dashboard/artistas/[id]` (`artist-profile-view.tsx`) e `/dashboard/bookers/[id]` (`booker-profile-view.tsx`) — perfis "de vitrine" internos (booker↔artista logados, com rating/reviews/bio completo) | **DÚVIDA** | Servem dois propósitos hoje: (a) alcançados a partir das telas de descoberta (itens 4/5 — leitura de vitrine-pra-escolher), e (b) alcançados a partir de "Meus Bookers"/relação já existente (leitura de "ver quem é essa pessoa que já trabalho com"). Mesmo componente, dois usos — decisão de produto sobre se isso se divide ou sai junto com a descoberta. |
+| 14 | Marketing pages (`/login`, `/sobre`, `/cadastro`, `/seguranca`) com copy do modelo antigo de Booker/marketplace | **LEGADO-MATCHING (já conhecido)** | Já registrado como BACKLOG no ROADMAP MESTRE e como `[SUPERSEDED]` em `DECISOES.md` (04/09) — "só continua vivo nas páginas públicas de marketing ainda não revisadas, gap já conhecido". Não é achado novo desta auditoria, só reconfirmado. |
+
+### Achados adicionais, fora da tabela original mas relevantes
+
+- **Órfão técnico**: link `/dashboard/bookers#descubra` (gerado por `discover-work-deck.tsx` e `oportunidades/[id]/page.tsx`) aponta pra uma âncora que não existe mais em `/dashboard/bookers` (foi removida no `c712fb6`). Bug de navegação morta, independente da decisão de classificação.
+- **Coluna de banco morta**: `specialties` (texto livre) em `artist_profiles`, substituída por `specialty_areas`, mantida no schema mas não mais escrita pelo cadastro/Perfil (`src/lib/supabase/types.ts`, comentário confirma).
+
+### Não decidido aqui, por instrução explícita
+
+Nenhuma implementação feita. Itens `LEGADO-MATCHING` de alta confiança
+(4, 5, 6, 7, 14) têm evidência forte o bastante pra virar remoção
+direta quando autorizado. Itens `DÚVIDA` (1, 2, 3, 10, 11, 12, 13)
+dependem de uma decisão de produto da fundadora sobre se
+"perfil público compartilhável + link de orçamento próprio" é
+modelo atual (personal booking link, análogo a um Calendly do
+profissional) ou resquício de marketplace (vitrine pra desconhecidos
+descobrirem) — as duas leituras têm apoio documental, e a Categoria B
+fica pausada quanto a essas superfícies até isso ser resolvido.
+
+---
+
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`
 
 Plano definido pela fundadora, complementa a Categoria A já executada
