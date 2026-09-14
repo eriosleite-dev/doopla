@@ -1127,7 +1127,51 @@ backend real**.
 
 ### P0 — Core Professional com backend real
 
-- ⏳ Oportunidade/booking com dado real
+- ❌ **FAIL BLOCKER — Pedido pelo link de orçamento chega sem nenhum
+  caminho de navegação até ele** (14/09/2026). Teste: enviado um pedido
+  de teste via `/orcamento/qa-categoria-b-artista-02` (dados fictícios,
+  cliente "eduarda"). **Confirmado por query direta no banco que a
+  criação funciona 100%**: linha real em `opportunities`
+  (`source='artist_link'`, `status='aberta'`, `assigned_to='artist'`,
+  `client_name`/`client_contact` corretos). O problema é inteiramente
+  de navegação/visibilidade, não de dado ou lógica de criação:
+  - Não aparece em "Bookings" (`/dashboard/trabalhos`) — tabela/conceito
+    diferente (`bookings` só tem trabalhos já confirmados, não
+    "pedidos" ainda abertos).
+  - Não aparece na contagem "Precisa de você" da Home nova
+    (`professional-home-view.tsx`): `attentionCount` só soma
+    `bookingsNeedingResponse` + `conversationSummary.needsYouCount`
+    (o sistema novo de Decisões/conversas) — nunca lê a tabela
+    `opportunities` crua.
+  - A página que de fato mostra isso (`/dashboard/oportunidades`,
+    seção "Pedidos recebidos", branch `role === 'artista'`) **existe e
+    funciona perfeitamente** — confirmado por print da fundadora,
+    mostra a solicitação certinha, com os dados certos. Só que **não
+    tem nenhum link pra ela em lugar nenhum da navegação nova**
+    (sidebar do shell escuro não tem essa entrada).
+  Resultado prático: hoje, um profissional só descobre que chegou um
+  pedido pelo próprio link de booking se souber digitar a URL de
+  cabeça. Pra um canal que a fundadora confirmou como produto atual
+  a preservar, isso é um bloqueador real de uso.
+  **Correção da fundadora ao meu diagnóstico**: essa mesma página
+  (`/dashboard/oportunidades`) também tem uma seção "O que você
+  publicou" / "Publicar agora" (publicar um trabalho pro mural, pra
+  booker descobrir) — **isso é modelo de mural/marketplace antigo,
+  mesma família já classificada LEGADO-MATCHING na auditoria** (item 5,
+  ver seção de auditoria de legado). A correção futura não pode ser só
+  "adicionar link pra essa página" — precisa separar "Pedidos
+  recebidos" (atual, precisa de entrada na navegação) de "Publicar um
+  trabalho"/mural (legado, não deve ganhar visibilidade nova). Fica
+  registrado pra decisão de implementação futura, não corrigido agora
+  (regra da Categoria B: achado entra na lista, correção é decisão
+  separada — esse aqui mexe em navegação/Home, não é ajuste pontual).
+  **Requisito adicional da fundadora pra correção futura**: pedido novo
+  precisa aparecer também na **Início** (não só numa página própria à
+  parte) — muito provavelmente dentro do "Precisa de você", junto do
+  que já soma bookings aguardando resposta e decisões de conversa.
+  **Achado secundário, cosmético**: `/dashboard/oportunidades` ainda
+  está com o visual antigo (cards brancos/claros), destoando do resto
+  do shell escuro novo — nunca foi re-skinada.
 - ⏳ Decisões / "Precisa de você"
 - ⏳ Aprovação/rejeição com sessão autenticada (onde automatizável)
 - ⏳ Persistência e isolamento cross-tenant
