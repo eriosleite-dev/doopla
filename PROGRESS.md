@@ -186,8 +186,15 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - ✅ `/dashboard/perfil/dados` — PASS, persiste após recarregar.
 - ✅ Salvar `/trabalho` NÃO zera/altera `/dados` — PASS (as duas
   persistiram de forma independente nos testes acima).
-- ⏳ `/dashboard/perfil/publico`: editar/ativar → `/[slug]` mostra certo
-- ⏳ `website_url`/`other_links` não aparecem publicamente
+- ✅ `/dashboard/perfil/publico` → `/[slug]` — PASS. Página pública
+  (`/qa-categoria-b-artista-02`) mostra nome, categoria, mensagem
+  padrão pra artista novo, link de portfólio, rodapé doopla.
+- ✅ `website_url`/`other_links` não aparecem publicamente — PASS.
+  Campos ficam em `/dashboard/perfil/dados` (não `/canais` — correção
+  de percurso: são "Site"/"Outros links" dentro de
+  `pro-artist-identity-form.tsx`, renderizado em `/dados`, não em
+  `/canais`, que é sobre WhatsApp/roteamento). Preenchidos, salvos,
+  confirmado que não aparecem na página pública.
 - ⏳ `/dashboard/perfil/canais`: validar o que der sem transporte Meta real
 
 ### P0 — Core Professional com backend real
