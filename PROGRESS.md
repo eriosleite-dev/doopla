@@ -168,10 +168,14 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - ✅ `/dashboard/perfil/trabalho` — PASS. Editado (idiomas, tipos de
   cliente, preferências, WhatsApp), salvo, confirmado persistindo
   depois de relogar. Botão muda pra "Salvo." ao concluir.
-- ⚠️ **Achado de UX, pedido pela fundadora**: feedback de "salvou" é só
-  o texto do botão mudar pra "Salvo." — pouco visível, ela quer algo
-  mais chamativo (toast/mensagem). **FAIL NON-BLOCKER**, achado de
-  produto pra backlog, não corrigido agora.
+- ⚠️ **Achado de UX, pedido pela fundadora, refinado em `/dados`**:
+  feedback de "salvou" é **inconsistente entre sub-páginas de
+  Settings** — em algumas aparece o botão virando "Salvo.", em outras
+  (`/dados`, confirmado) não aparece nada, mesmo o dado salvando
+  corretamente nas duas. Não é só "pouco visível" — é inconsistente.
+  Fundadora quer algo mais chamativo (toast/mensagem) e uniforme entre
+  todas as sub-páginas. **FAIL NON-BLOCKER**, achado de produto pra
+  backlog, não corrigido agora.
 - 📝 **Observação, não bloqueante**: na primeira tentativa de salvar
   (antes do achado acima), a sessão devolveu pro `/login` no meio do
   clique em Salvar — mas o dado **persistiu mesmo assim** (confirmado
@@ -179,8 +183,9 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
   ("Salvo." apareceu). Não investigado a fundo — sessão longa de QA
   (várias horas de testes seguidos) é hipótese mais provável (token
   expirando) do que bug novo; sinalizando caso se repita.
-- ⏳ `/dashboard/perfil/dados`: editar → salvar → recarregar → persiste
-- ⏳ Salvar `/trabalho` NÃO zera/altera `/dados`
+- ✅ `/dashboard/perfil/dados` — PASS, persiste após recarregar.
+- ✅ Salvar `/trabalho` NÃO zera/altera `/dados` — PASS (as duas
+  persistiram de forma independente nos testes acima).
 - ⏳ `/dashboard/perfil/publico`: editar/ativar → `/[slug]` mostra certo
 - ⏳ `website_url`/`other_links` não aparecem publicamente
 - ⏳ `/dashboard/perfil/canais`: validar o que der sem transporte Meta real
