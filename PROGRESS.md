@@ -157,8 +157,11 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - ✅ Persistência de sessão / redirect pro dashboard — confirmado
   junto com o teste de login acima (login levou direto ao painel
   renderizado).
-- ⏳ Logout (ainda não testado)
-- ⏳ Isolamento entre contas/RLS real
+- ✅ Logout — PASS, redireciona corretamente (destino mudou de `/login`
+  pra `/` nesta mesma rodada, decisão registrada em `DECISOES.md`).
+- ✅ Isolamento entre contas — PASS. Login com `artista02` mostra
+  "QA Categoria B — Artista 02" no painel, sem nenhum vestígio da
+  conta `artista01` anterior.
 
 ### P0 — Settings V2 / persistência
 
