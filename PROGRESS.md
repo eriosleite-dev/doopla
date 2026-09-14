@@ -11753,6 +11753,28 @@ produto, e re-executados até dar resultado real.
 severidade registrado (não corrigido). Categoria A considerada
 completa — Beta Readiness definitivo ainda depende de B/C/D.
 
+## 105. Beta Readiness — Categoria A aprovada pela fundadora, classificação formal — `[CATEGORIA A: PASS]` — 14/09/2026
+
+Fundadora revisou o relatório do bloco 104 e aprovou. Classificação
+formal registrada (sem mudança de conteúdo, só o carimbo oficial):
+
+- **Categoria A** → `PASS`, com 1 `FAIL NON-BLOCKER`.
+- **P0 — núcleo de representação** (inbound → contexto → conversa →
+  oportunidade → decisão → aprovação/policy → continuação → booking)
+  → `PASS`.
+- **`artist_link_routing`, gap de RLS no INSERT** → finding formal de
+  Beta Readiness, `FAIL NON-BLOCKER`, **pendente de correção antes do
+  fechamento final do beta** (não antes — ver bloco 104, não corrigido
+  de propósito, consolidação de findings vem antes da rodada de
+  correções).
+- **Golden suites** → `BLOCKED ENVIRONMENT` nesta etapa; retomar na
+  Categoria B, quando houver Auth/LLM reais disponíveis.
+
+Próximo passo combinado: Categoria B (Supabase Preview/Staging real).
+Antes de executar qualquer coisa, setup solicitado e entregue nesta
+mesma rodada (ver resposta desta sessão) — sem execução, sem alteração
+de código.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
