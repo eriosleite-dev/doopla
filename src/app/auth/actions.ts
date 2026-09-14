@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
@@ -42,6 +43,11 @@ export async function loginAction(
     return { error: 'E-mail ou senha inválidos.' };
   }
 
+  // Sem isso, a rota protegida pra onde vamos redirecionar pode
+  // reaproveitar cache do Router (Next.js) de antes do login — padrão
+  // oficial do Supabase pra Server Actions de auth: revalida antes de
+  // redirecionar, nunca depois.
+  revalidatePath('/', 'layout');
   redirect(next.startsWith('/') ? next : '/dashboard');
 }
 
@@ -226,5 +232,6 @@ export async function signupAction(
 export async function logoutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  revalidatePath('/', 'layout');
   redirect('/login');
 }
