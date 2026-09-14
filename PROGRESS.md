@@ -11775,6 +11775,20 @@ Antes de executar qualquer coisa, setup solicitado e entregue nesta
 mesma rodada (ver resposta desta sessão) — sem execução, sem alteração
 de código.
 
+### OPEN FINDINGS — BETA READINESS (registro persistente, consultar sempre antes de declarar BETA READY)
+
+Esta lista é a fonte única de findings abertos de Beta Readiness.
+Nunca depende de alguém lembrar de mencionar de novo — antes de
+qualquer declaração de `BETA READY`, ou antes de qualquer rodada
+consolidada de correções do Beta Readiness, esta lista inteira precisa
+ser recuperada e cada item resolvido ou explicitamente re-adiado por
+decisão nova da fundadora. Novos findings de blocos futuros (B/C/D)
+devem ser adicionados aqui, nunca substituir esta lista.
+
+| # | Finding | Classificação | Origem | Status |
+|---|---|---|---|---|
+| 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
