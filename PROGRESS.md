@@ -9,9 +9,53 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-18.
+Última atualização: 2026-09-14.
 
 ---
+
+## Categoria B — variáveis de ambiente do Supabase QA/Staging
+
+Auditoria do que já existe (nenhuma mudança de código — não havia bug
+nem lacuna no código em si):
+
+- ✅ `src/lib/supabase/env.ts` só lê `NEXT_PUBLIC_SUPABASE_URL` e
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` via `requireEnv` (falha rápido, erro
+  em PT-BR apontando pra `.env.local.example`) — nomes genéricos, sem
+  nada hardcoded de um projeto específico. Funciona igual pra
+  dev/QA/staging/produção; qual projeto Supabase cada ambiente aponta
+  é decidido por **quais valores** cada ambiente da Vercel injeta
+  nessas mesmas variáveis (Production/Preview/Development têm
+  configuração própria no painel), não por código neste repo.
+- ✅ `.env.local.example` documenta as 2 variáveis obrigatórias +
+  `NEXT_PUBLIC_SITE_URL`/`OPENAI_API_KEY` opcionais. `.gitignore` reflete
+  `.env*` com exceção só do `.example` — confirmado que não existe
+  `.env.local` real no working tree nem nada de env commitado no
+  histórico além do example.
+- 🔒 **Verificação de conectividade real travada**: esta sessão tem
+  `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
+  `SUPABASE_SERVICE_ROLE_KEY` injetadas no ambiente (formato válido —
+  URL `https://<ref>.supabase.co`, chaves no formato novo
+  `sb_publishable_...`/`sb_secret_...`), mas a política de rede desta
+  sessão bloqueia egress pra `*.supabase.co` (proxy responde 403 —
+  bloqueio de política, não erro transitório). Não dá pra confirmar
+  daqui que essas credenciais autenticam de fato contra um projeto
+  Supabase real, nem se apontam pro projeto de QA ou de Staging
+  (indistinguíveis só pelo formato). Precisa ser conferido por você —
+  no painel do Supabase (Project Settings > API, confirmar qual
+  projeto é esse `ref`) ou rodando `npm run dev` localmente com essas
+  variáveis, num ambiente com rede liberada.
+- ⚠️ `SUPABASE_SERVICE_ROLE_KEY` está no ambiente mas nenhum arquivo em
+  `src/` a referencia — nada quebrado por isso (é só reservada pra
+  scripts admin/server-side futuros), mas registrando pra não parecer
+  que sumiu.
+- **QA vs. Staging como projetos Supabase separados** não é (e não
+  deveria ser) resolvido em código: é configuração de painel — na
+  Vercel, cada Environment (ou dois projetos Vercel distintos, se for
+  esse o modelo) recebe os valores do projeto Supabase correspondente
+  em `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`. Nada
+  a fazer aqui até haver um pedido concreto de mudança de
+  comportamento (ex.: código que precise saber em qual ambiente está
+  rodando).
 
 ## Revisão UX — Visão Geral do Artista (nomenclatura + hierarquia)
 
