@@ -288,8 +288,26 @@ schema completo — não só das tabelas, do conteúdo de segurança junto
 (Bloco 4.5, Bloco 4) também, já que faz parte do mesmo script que deu
 `Success`.
 
-**Schema do `doopla-qa-staging` = equivalente ao `doopla` na revisão
-`0044`. Categoria B liberada pra começar os testes de fato.**
+~~**Schema do `doopla-qa-staging` = equivalente ao `doopla` na revisão
+`0044`. Categoria B liberada pra começar os testes de fato.**~~
+
+**❌ CORRIGIDO em 14/09/2026 — esta conclusão estava errada, não por
+erro de execução, mas porque a branch em que eu estava rodando toda
+essa auditoria (`claude/categoria-b-supabase-env-qsbdq9`) tinha sido
+criada de um ponto anterior ao trabalho real mais recente, que seguiu
+em paralelo em `claude/new-session-3hdkui` (Nova Home V2, Settings
+V2, Runtime/WhatsApp/Beta Instrumentation, Comunidade, app mobile —
+e as migrations `0045` a `0079`, 35 a mais do que eu enxergava). A
+fundadora tinha razão ao mencionar "79 migrations" antes — eu que só
+via a branch errada.** Reconciliação feita: branches mescladas
+(commit `62293f6`), delta `0045`-`0079` aplicado ao `doopla-qa-staging`
+em 3 partes (uma delas — `0069` — precisou ser dividida por causa de
+um `ALTER TYPE ... ADD VALUE` que não pode ser usado na mesma
+transação em que é criado; achado registrado abaixo), reconferido: 68
+tabelas + 1 view (`community_profiles_public`) batendo exatamente com
+o esperado de `0001` a `0079`. **Estado real e definitivo, agora
+sim**: `doopla-qa-staging` equivalente ao canônico completo (`0079`).
+Ver seção "Reconciliação de branch" logo abaixo pra detalhe completo.
 
 **Escopo da Categoria B, reafirmado**: trabalhar só contra
 `doopla-qa-staging`, nunca tocar em `doopla`/Production, e **não
@@ -303,6 +321,50 @@ instrução abre dizendo em qual projeto (`doopla` ou
 `doopla-qa-staging`) tem que estar selecionado antes de colar/rodar —
 motivo explícito: risco real de confundir os dois. Vale pra qualquer
 sessão futura, não só pra esta.
+
+### Reconciliação de branch — `claude/categoria-b-supabase-env-qsbdq9` estava defasada — 14/09/2026
+
+Durante o teste manual do P0-A1 (cadastro de artista), a fundadora
+notou que a Home/cadastro exibidos na branch estavam com identidade
+visual desatualizada mesmo depois de já ter sido "atualizada" — sinal
+de que a branch em si estava atrasada, não só uma questão de re-skin.
+Investigação confirmou: `claude/categoria-b-supabase-env-qsbdq9` tinha
+sido criada de um commit anterior ao trabalho mais recente, que seguiu
+em paralelo em `claude/new-session-3hdkui` — 203 commits à frente,
+incluindo Nova Home V2, Settings V2 consolidado, Runtime/WhatsApp/Beta
+Instrumentation, Comunidade, Approval Engine/Policy Gate, app mobile
+novo, o **ROADMAP MESTRE** (v1 e v2), a execução real da **Categoria A**
+(Beta Readiness QA/E2E) e o registro persistente de **OPEN FINDINGS —
+Beta Readiness** — e as migrations `0045` a `0079`.
+
+**Ação**: merge de `origin/claude/new-session-3hdkui` pra dentro desta
+branch (commit `62293f6`). Conflito só em `PROGRESS.md`/`DECISOES.md`
+(os dois markdown de registro, editados independentemente nas duas
+branches) — resolvido preservando o conteúdo das duas, nada perdido;
+reorganização cronológica completa do arquivo fica pra depois, não é
+prioridade agora. Todo o código/migrations trouxe sem conflito.
+
+**Achado técnico durante a aplicação do delta (`0045`-`0079`)**: a
+migration `0069_invite_regression_hotfix.sql` faz `alter type
+invite_status add value 'expirada'` e usa esse valor novo (dentro de
+uma function) no mesmo arquivo. Colado inteiro de uma vez (mesmo
+padrão que funcionou para `0001`-`0044`), deu erro `55P04: unsafe use
+of new value... New enum values must be committed before they can be
+used` — regra do Postgres, não bug da migration: um valor de enum
+recém-criado só pode ser usado depois de committar, e o SQL Editor
+roda o texto colado inteiro como uma transação só. **Rollback
+completo confirmado** (reconferido antes de prosseguir — 0 efeito
+colateral). Contornado dividindo a aplicação em 3 partes (`0045`-
+`0068` | só a linha do `ADD VALUE` | resto de `0069` + `0070`-`0079`),
+sem alterar o conteúdo de nenhuma migration. **Não é um achado de
+produto pra classificar PASS/FAIL** — é uma característica conhecida
+do Postgres sobre `ALTER TYPE ADD VALUE`; só documentando pra próxima
+vez que alguém aplicar essas migrations do zero via SQL Editor saber
+que precisa desse mesmo split.
+
+**Resultado final confirmado**: `doopla-qa-staging` com as 68 tabelas
++ 1 view esperadas de `0001` a `0079`, batendo exatamente (checado
+programaticamente, não por amostragem).
 
 ## Revisão UX — Visão Geral do Artista (nomenclatura + hierarquia)
 
