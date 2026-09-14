@@ -1,35 +1,61 @@
+import Link from 'next/link';
+import type { ReactNode } from 'react';
+
 import { logoutAction } from '@/app/auth/actions';
-import type { Subscription } from '@/lib/supabase/types';
+import { SUPPORT_EMAIL } from '@/lib/support';
+import type { LinkRoutingMode, Subscription } from '@/lib/supabase/types';
 
-import { ProPageHeader } from '../pro-ui';
-import { ProSettingsGroup, ProSettingsRow } from './settings-ui';
+import type { BookerOption } from '../link-routing-form';
+import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
+import { ProLinkRoutingForm } from '../pro-link-routing-form';
+import { CommunityPrivacyInline } from './community-privacy-inline';
+import { DeleteAccountModal } from './delete-account-modal';
+import { AttentionChannelForm } from './preferencias/attention-channel-form';
+import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
+import { ProSettingsRow } from './settings-ui';
 
-// Settings V2 (08/09/2026), consolidado (09/09/2026) — a raiz de
-// Configurações responde rápido a "o que posso gerenciar?" e "qual é o
-// estado atual?", nunca um formulário inteiro na própria raiz. Cada
-// linha é uma rota própria (Configurações → detalhe → ação); o resumo
-// ao lado de cada linha só aparece quando há dado real útil pra
-// mostrar — nunca um placeholder decorativo. Server Component puro:
-// nenhuma interação vive aqui, só navegação — as ações reais (upgrade,
-// trocar senha, excluir conta) vivem nas subpáginas correspondentes.
+// Settings V2 (08/09/2026), consolidado (09/09/2026), reestruturado em
+// acordeão pro Beta (14/09/2026) — decisão da fundadora: Configurações
+// vira uma lista de seções (acordeão, chevron claro, mesmo componente
+// ProAccordion já usado na Home), não mais uma lista de linhas que só
+// navegam. Só 3 seções continuam abrindo página própria por linha
+// (Assinatura e cobrança, Sua conta, Perfil e trabalho) — fluxos
+// genuinamente complexos (Stripe, reautenticação, formulários grandes)
+// onde uma página dedicada com "← Configurações" ainda é a escolha
+// certa. As outras 5 seções (Sua Doopla, Notificações, Canais da sua
+// Doopla, Privacidade e dados, Ajuda e suporte) são pequenas o
+// suficiente pra caber inline, dentro do próprio acordeão, sem
+// navegação nenhuma — exatamente o pedido da fundadora de "menos
+// perguntas, menos páginas, mais naturalidade".
 //
-// Grupo "Perfil e trabalho" (consolidação, 09/09/2026): decompõe o
-// antigo /dashboard/perfil/editar (uma página só, misturando 4
-// conceitos) em 3 linhas de escopo estreito. Isso NÃO ressuscita
-// "Perfil profissional" como item de navegação único — não existe mais
-// um item assim, existem 3 rotas específicas. Ver DECISOES.md.
+// "Perfil público" saiu por completo (achado da auditoria de legado:
+// vitrine pública não é produto atual) — a linha, a rota
+// /dashboard/perfil/publico e o toggle Ativar/desativar não aparecem
+// mais aqui. A rota em si não foi apagada (regra da fundadora: nunca
+// apagar infraestrutura só pra esta tarefa de beta), só ficou
+// inalcançável pela navegação normal.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
   whatsappStatus,
+  whatsappVerifiedNumber,
   paymentConfigured,
-  publicProfileEnabled,
+  attentionChannel,
+  bookers,
+  linkRoutingMode,
+  linkRoutingBookerId,
+  orcamentoUrl,
 }: {
   hasPro: boolean;
   subscription: Subscription | null;
   whatsappStatus: string | null;
+  whatsappVerifiedNumber: string | null;
   paymentConfigured: boolean;
-  publicProfileEnabled: boolean;
+  attentionChannel: 'whatsapp' | 'painel' | 'ambos' | null;
+  bookers: BookerOption[];
+  linkRoutingMode: LinkRoutingMode;
+  linkRoutingBookerId: string | null;
+  orcamentoUrl: string | null;
 }) {
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
@@ -49,47 +75,138 @@ export function ProConfiguracoesView({
     <main>
       <ProPageHeader title="Configurações" subtitle="Gerencie sua conta, assinatura e preferências da Doopla." />
 
-      <div className="flex flex-col gap-6">
-        <ProSettingsGroup title="Assinatura e cobrança">
-          <ProSettingsRow href="/dashboard/perfil/assinatura" label="Plano e assinatura" summary={planSummary} />
-          <ProSettingsRow
-            href="/dashboard/perfil/recebimento"
-            label="Dados de recebimento"
-            summary={paymentConfigured ? 'Configurados ✓' : 'Ainda não configurados'}
-          />
-        </ProSettingsGroup>
+      <div className="flex flex-col">
+        <ProAccordion title="Assinatura e cobrança" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{planSummary}</span>}>
+          <RowList>
+            <ProSettingsRow href="/dashboard/perfil/assinatura" label="Plano e assinatura" summary={planSummary} />
+            <ProSettingsRow
+              href="/dashboard/perfil/recebimento"
+              label="Dados de recebimento"
+              summary={paymentConfigured ? 'Configurados ✓' : 'Ainda não configurados'}
+            />
+          </RowList>
+        </ProAccordion>
 
-        <ProSettingsGroup title="Sua conta">
-          <ProSettingsRow href="/dashboard/perfil/conta" label="Informações da conta" />
-          <ProSettingsRow href="/dashboard/perfil/seguranca" label="Segurança e acesso" />
-        </ProSettingsGroup>
+        <ProAccordion title="Sua conta">
+          <RowList>
+            <ProSettingsRow href="/dashboard/perfil/conta" label="Informações da conta" />
+            <ProSettingsRow href="/dashboard/perfil/seguranca" label="Segurança e acesso" />
+          </RowList>
+        </ProAccordion>
 
-        <ProSettingsGroup title="Perfil e trabalho">
-          <ProSettingsRow href="/dashboard/perfil/dados" label="Dados profissionais" />
-          <ProSettingsRow href="/dashboard/perfil/trabalho" label="Como você trabalha" />
-          <ProSettingsRow
-            href="/dashboard/perfil/publico"
-            label="Perfil público"
-            summary={publicProfileEnabled ? 'Ativo' : 'Desativado'}
-          />
-        </ProSettingsGroup>
+        <ProAccordion title="Perfil e trabalho">
+          <RowList>
+            <ProSettingsRow href="/dashboard/perfil/dados" label="Dados profissionais" />
+            <ProSettingsRow href="/dashboard/perfil/trabalho" label="Como você trabalha" />
+          </RowList>
+        </ProAccordion>
 
-        <ProSettingsGroup title="Doopla">
-          <ProSettingsRow href="/dashboard/perfil/preferencias" label="Preferências da Doopla" />
-          <ProSettingsRow href="/dashboard/perfil/notificacoes" label="Notificações" />
-          <ProSettingsRow href="/dashboard/perfil/canais" label="Canais e conexões" summary={whatsappSummary} />
-        </ProSettingsGroup>
+        <ProAccordion title="Sua Doopla">
+          <div className="flex flex-col gap-2">
+            <p className="text-[12.5px] text-[var(--pro-tx-50)]">Como sua Doopla fala com você quando precisar de você.</p>
+            <AttentionChannelForm initialChannel={attentionChannel} />
+          </div>
+        </ProAccordion>
 
-        <ProSettingsGroup title="Privacidade e suporte">
-          <ProSettingsRow href="/dashboard/perfil/privacidade" label="Privacidade e dados" />
-          <ProSettingsRow href="/dashboard/perfil/suporte" label="Ajuda e suporte" />
-        </ProSettingsGroup>
+        <ProAccordion title="Notificações">
+          <div className="flex flex-col gap-2">
+            <p className="text-[12.5px] text-[var(--pro-tx-50)]">
+              Você recebe notificações de respostas e menções na Comunidade pelo sino, dentro do painel. Preferências de
+              canal (e-mail, WhatsApp) ainda não existem — em breve.
+            </p>
+            <Link href="/dashboard/comunidade" className="text-[12.5px] font-semibold text-[var(--pro-red)] hover:underline">
+              Ver Comunidade
+            </Link>
+          </div>
+        </ProAccordion>
 
-        <form action={logoutAction} className="px-1">
+        <ProAccordion title="Canais da sua Doopla" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{whatsappSummary}</span>}>
+          <div className="flex flex-col gap-3.5">
+            <p className="text-[12.5px] text-[var(--pro-tx-50)]">
+              A porta de entrada pro cliente iniciar um booking com você — não é um perfil público.
+            </p>
+            <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappVerifiedNumber} />
+            <OrcamentoLinkCard orcamentoUrl={orcamentoUrl} />
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">Quem recebe seus pedidos de orçamento</p>
+              <div className="mt-3">
+                <ProLinkRoutingForm bookers={bookers} currentMode={linkRoutingMode} currentBookerId={linkRoutingBookerId} />
+              </div>
+            </div>
+          </div>
+        </ProAccordion>
+
+        <ProAccordion title="Privacidade e dados">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Link href="/privacidade" className="text-[12.5px] font-semibold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]">
+                Política de privacidade
+              </Link>
+              <span className="text-[var(--pro-tx-30)]">·</span>
+              <Link href="/termos" className="text-[12.5px] font-semibold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]">
+                Termos de uso
+              </Link>
+            </div>
+
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">Seus dados</p>
+              <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">Exportação de dados ainda não está disponível — em breve.</p>
+            </div>
+
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">Privacidade na Comunidade</p>
+              <div className="mt-2">
+                <CommunityPrivacyInline />
+              </div>
+            </div>
+
+            <div className="border-t border-[var(--pro-line)] pt-4">
+              <DeleteAccountModal />
+            </div>
+          </div>
+        </ProAccordion>
+
+        <ProAccordion title="Ajuda e suporte">
+          <div className="flex flex-col gap-2">
+            <p className="text-[12.5px] text-[var(--pro-tx-50)]">
+              Problema com sua conta, assinatura ou o painel? Isso é diferente de &ldquo;Falar com minha Doopla&rdquo;
+              (sua representante, na Home) — aqui é sobre o produto em si.
+            </p>
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="self-start rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12.5px] font-semibold text-white"
+            >
+              Enviar e-mail para o suporte
+            </a>
+          </div>
+        </ProAccordion>
+
+        <form action={logoutAction} className="mt-2 px-1">
           <LogoutRow />
         </form>
       </div>
     </main>
+  );
+}
+
+function RowList({ children }: { children: ReactNode }) {
+  return (
+    <div className="divide-y divide-[var(--pro-line)] rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02]">
+      {children}
+    </div>
+  );
+}
+
+function OrcamentoLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
+  if (!orcamentoUrl) return null;
+  return (
+    <div>
+      <p className="font-pro-sub text-[13.5px] font-bold">Seu link de orçamento</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+        <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{orcamentoUrl}</span>
+        <ProCopyButton value={orcamentoUrl} label="Copiar link" />
+      </div>
+    </div>
   );
 }
 

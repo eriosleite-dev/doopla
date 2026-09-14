@@ -14,10 +14,8 @@ export const metadata: Metadata = {
 type ArtistIdentity = {
   stage_name: string | null;
   category: string | null;
-  subcategory: string | null;
   bio: string | null;
   genres: string[];
-  mercados: string | null;
   website_url: string | null;
   other_links: string | null;
 };
@@ -25,16 +23,19 @@ type ArtistIdentity = {
 // Settings V2 consolidado (09/09/2026) — "Dados profissionais", uma das
 // 3 rotas que substituem o antigo /dashboard/perfil/editar (página
 // única). Identidade/apresentação do profissional: foto, nome
-// artístico, categoria, bio, gêneros, mercados, site, outros links.
+// artístico, categoria, bio, gêneros, site, outros links.
 // `website_url`/`other_links` confirmados (src/app/[slug]/page.tsx) como
 // NÃO exibidos na página pública — ficam aqui, não em "Perfil público".
+// Subcategoria/Mercados saíram da UI do beta (14/09/2026, sem
+// consumidor confirmado) — colunas preservadas, só não selecionadas
+// aqui.
 export default async function DadosProfissionaisPage() {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard/perfil');
 
   const { data: artist } = await supabase
     .from('artist_profiles')
-    .select('stage_name, category, subcategory, bio, genres, mercados, website_url, other_links')
+    .select('stage_name, category, bio, genres, website_url, other_links')
     .eq('profile_id', user.id)
     .single<ArtistIdentity>();
 
@@ -57,10 +58,8 @@ export default async function DadosProfissionaisPage() {
           <ProArtistIdentityForm
             stageName={artist?.stage_name ?? null}
             category={artist?.category ?? null}
-            subcategory={artist?.subcategory ?? null}
             bio={artist?.bio ?? null}
             genres={artist?.genres ?? []}
-            mercados={artist?.mercados ?? null}
             websiteUrl={artist?.website_url ?? null}
             otherLinks={artist?.other_links ?? null}
           />

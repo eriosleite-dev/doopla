@@ -1319,10 +1319,8 @@ export async function updateArtistProfileAction(
 
   const stageName = String(formData.get('stageName') ?? '').trim();
   const category = String(formData.get('category') ?? '').trim();
-  const subcategory = String(formData.get('subcategory') ?? '').trim();
   const bio = String(formData.get('bio') ?? '').trim();
   const genresRaw = String(formData.get('genres') ?? '').trim();
-  const mercados = String(formData.get('mercados') ?? '').trim();
   const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
   const otherLinks = String(formData.get('otherLinks') ?? '').trim();
 
@@ -1330,15 +1328,18 @@ export async function updateArtistProfileAction(
     ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
     : [];
 
+  // Subcategoria e Mercados saem da UI do beta (Settings V2,
+  // 14/09/2026, achado: sem consumidor confirmado pro Intelligence
+  // Context) — por isso não aparecem mais no FormData. Omitidos do
+  // payload de propósito: um UPDATE que os incluísse como null
+  // apagaria dado de quem já preencheu antes. Coluna preservada.
   await supabase
     .from('artist_profiles')
     .update({
       stage_name: stageName || null,
       category: category || null,
-      subcategory: subcategory || null,
       bio: bio || null,
       genres,
-      mercados: mercados || null,
       website_url: websiteUrl || null,
       other_links: otherLinks || null,
     })
@@ -1356,6 +1357,20 @@ export async function updateArtistProfileAction(
 // matching" da mesma action de identidade; esse conceito de produto
 // não existe mais (matching/busca/recomendação não são promessa do
 // produto) — o nome e a copy mudaram, os campos e a coluna não.
+//
+// Simplificação de beta (Settings V2, 14/09/2026): os 5 grupos de
+// chips (work_types/client_types/regions/languages/help_areas),
+// career_stage e os 3 booleans de disponibilidade pra viagem
+// (travels/serves_other_locations/accepts_out_of_city_work) saíram da
+// UI — auditoria confirmou que nenhum tem consumidor funcional além do
+// mesmo texto narrativo simples que o Intelligence Context recebe
+// (nunca filtro/ranking/lógica de agenda), e os booleans de viagem
+// duplicariam a mesma pergunta já coberta por "Onde você atende?".
+// Dois campos de texto livre (whatYouDo/whereYouServe, migration 0080)
+// entregam a mesma informação com menos fricção. Colunas antigas
+// preservadas, só não fazem mais parte do FormData — por isso omitidas
+// do payload abaixo (incluí-las como null/false apagaria dado de quem
+// já preencheu antes de hoje).
 export async function updateArtistWorkContextAction(
   _prevState: { error?: string },
   formData: FormData
@@ -1365,17 +1380,10 @@ export async function updateArtistWorkContextAction(
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return { error: 'Só artistas têm esse perfil.' };
 
+  const whatYouDo = String(formData.get('whatYouDo') ?? '').trim();
+  const whereYouServe = String(formData.get('whereYouServe') ?? '').trim();
   const otherPreferences = String(formData.get('otherPreferences') ?? '').trim();
-  const travels = formData.get('travels') === 'on';
-  const servesOtherLocations = formData.get('servesOtherLocations') === 'on';
-  const acceptsOutOfCityWork = formData.get('acceptsOutOfCityWork') === 'on';
-  const careerStage = String(formData.get('careerStage') ?? '').trim();
   const feeRange = String(formData.get('feeRange') ?? '').trim();
-  const workTypes = formData.getAll('workTypes').map(String).filter(Boolean);
-  const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
-  const regions = formData.getAll('regions').map(String).filter(Boolean);
-  const languages = formData.getAll('languages').map(String).filter(Boolean);
-  const helpAreas = formData.getAll('helpAreas').map(String).filter(Boolean);
   // "Emite nota fiscal?" (Settings V2, 08/09/2026) — deixa de ser
   // write-once do onboarding (achado da auditoria do Bloco 4): mesma
   // coluna (artist_profiles.issues_invoice, migration 0037), agora
@@ -1388,17 +1396,10 @@ export async function updateArtistWorkContextAction(
   await supabase
     .from('artist_profiles')
     .update({
+      what_you_do: whatYouDo || null,
+      where_you_serve: whereYouServe || null,
       other_preferences: otherPreferences || null,
-      travels,
-      serves_other_locations: servesOtherLocations,
-      accepts_out_of_city_work: acceptsOutOfCityWork,
-      career_stage: careerStage || null,
       fee_range: feeRange || null,
-      work_types: workTypes,
-      client_types: clientTypes,
-      regions,
-      languages,
-      help_areas: helpAreas,
       issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
     })
     .eq('profile_id', user.id);

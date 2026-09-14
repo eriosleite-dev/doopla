@@ -18,7 +18,11 @@ import { closeAccount, updateArtistProfileFields, updateProfileFields } from '@/
 import type { ArtistProfile, ArtistSubscription } from '@/types/artistProfile';
 
 type Phase = 'loading' | 'ready' | 'error';
-type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'publico' | 'comunidade' | 'ajuda' | 'excluir' | null;
+// "Perfil público" saiu do beta (Settings V2, 14/09/2026) — vitrine
+// pública é legado do modelo antigo de marketplace, não produto atual
+// (mesma decisão já aplicada no painel Web). Sheet e formulário
+// removidos daqui; a coluna/toggle no banco não foram apagados.
+type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'comunidade' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
 
@@ -68,7 +72,6 @@ export default function ConfiguracoesScreen() {
             <SettingsRow label="Conta e perfil" sub={profile?.full_name ?? undefined} onPress={() => setOpenSheet('perfil')} />
             <SettingsRow label="Plano" sub={subscription?.artist_plan ? PLAN_LABELS[subscription.artist_plan] : undefined} onPress={() => setOpenSheet('plano')} />
             <SettingsRow label="WhatsApp" sub={profile?.phone ?? 'Não cadastrado'} onPress={() => setOpenSheet('whatsapp')} />
-            <SettingsRow label="Perfil público" sub={artistProfile?.public_enabled ? 'Ativo' : 'Desativado'} onPress={() => setOpenSheet('publico')} />
             <SettingsRow label="Privacidade na Comunidade" onPress={() => setOpenSheet('comunidade')} />
             <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} />
             <SettingsRow label="Excluir minha conta" onPress={() => setOpenSheet('excluir')} last />
@@ -117,19 +120,6 @@ export default function ConfiguracoesScreen() {
             sem selo de &ldquo;verificado&rdquo;.
           </Text>
         </View>
-      </BottomSheet>
-
-      <BottomSheet visible={openSheet === 'publico'} onClose={() => setOpenSheet(null)}>
-        {user && artistProfile && (
-          <PublicProfileForm
-            profileId={user.id}
-            artistProfile={artistProfile}
-            onSaved={() => {
-              setOpenSheet(null);
-              load();
-            }}
-          />
-        )}
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'comunidade'} onClose={() => setOpenSheet(null)}>
@@ -205,52 +195,6 @@ function ProfileForm({
       <TextInput style={styles.input} value={cityValue} onChangeText={setCityValue} placeholderTextColor={colors.tx50} />
       <Text style={styles.label}>Bio</Text>
       <TextInput style={[styles.input, styles.multiline]} value={bioValue} onChangeText={setBioValue} multiline placeholderTextColor={colors.tx50} />
-      <Pressable style={[styles.submit, submitting && styles.submitDisabled]} disabled={submitting} onPress={submit}>
-        <Text style={styles.submitText}>{submitting ? 'Salvando…' : 'Salvar'}</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function PublicProfileForm({
-  profileId,
-  artistProfile,
-  onSaved,
-}: {
-  profileId: string;
-  artistProfile: ArtistProfile;
-  onSaved: () => void;
-}) {
-  const [enabled, setEnabled] = useState(artistProfile.public_enabled);
-  const [instagram, setInstagram] = useState(artistProfile.instagram_url ?? '');
-  const [portfolio, setPortfolio] = useState(artistProfile.portfolio_url ?? '');
-  const [submitting, setSubmitting] = useState(false);
-
-  function submit() {
-    setSubmitting(true);
-    updateArtistProfileFields(profileId, {
-      public_enabled: enabled,
-      instagram_url: instagram.trim() || null,
-      portfolio_url: portfolio.trim() || null,
-    })
-      .then(() => {
-        setSubmitting(false);
-        onSaved();
-      })
-      .catch(() => setSubmitting(false));
-  }
-
-  return (
-    <View>
-      <Text style={styles.sheetTitle}>Perfil público</Text>
-      <View style={styles.toggleRow}>
-        <Text style={styles.label}>Perfil público ativo</Text>
-        <Switch value={enabled} onValueChange={setEnabled} trackColor={{ true: colors.red }} />
-      </View>
-      <Text style={styles.label}>Instagram</Text>
-      <TextInput style={styles.input} value={instagram} onChangeText={setInstagram} placeholder="https://instagram.com/…" placeholderTextColor={colors.tx50} />
-      <Text style={styles.label}>Portfólio</Text>
-      <TextInput style={styles.input} value={portfolio} onChangeText={setPortfolio} placeholder="https://…" placeholderTextColor={colors.tx50} />
       <Pressable style={[styles.submit, submitting && styles.submitDisabled]} disabled={submitting} onPress={submit}>
         <Text style={styles.submitText}>{submitting ? 'Salvando…' : 'Salvar'}</Text>
       </Pressable>

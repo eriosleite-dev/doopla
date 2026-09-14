@@ -481,6 +481,76 @@ sem perder nenhuma informação que a IA de fato usa hoje.
 exato de campos, texto das perguntas, destino de Idiomas) antes de
 fechar "Perfil e trabalho" e então executar o pacote inteiro aprovado.
 
+### Decisão final da fundadora e implementação — `[IMPLEMENTADO]` — 14/09/2026
+
+Fechado: **2 campos de texto livre**, não 3 — "Em quais atividades
+precisa de ajuda" (`help_areas`) também sai da UI (sem alterar
+Mandate/Policy Gate/comportamento da representação), Idiomas também
+sai. Placeholders exatos definidos pela fundadora: "Ex.: Sou DJ e
+trabalho com eventos de marcas, casamentos e festas privadas." e "Ex.:
+São Paulo e outras cidades. Também viajo para trabalhos em outros
+estados e países." — nunca pré-preenchidos nem salvos automaticamente.
+Pacote inteiro aprovado (ver seções acima) implementado nesta mesma
+sessão. Ver `DECISOES.md`, "Configurações do Professional/Artista viram
+acordeão; legado de matching sai da UI do beta" pro detalhamento
+completo. Resumo do que mudou:
+
+- **Migration `0080_work_context_freeform.sql`**: `artist_profiles`
+  ganha `what_you_do`/`where_you_serve` (texto livre). Nenhuma coluna
+  antiga removida.
+- **`updateArtistProfileAction`**: Subcategoria/Mercados saem do
+  FormData; omitidos do UPDATE (não zeram dado existente).
+- **`updateArtistWorkContextAction`**: os 5 arrays + `career_stage` +
+  os 3 booleans de viagem saem do FormData (mesma técnica de omitir do
+  UPDATE); `what_you_do`/`where_you_serve` passam a ser gravados.
+- **`pro-artist-identity-form.tsx`/`dados/page.tsx`**: campos
+  Subcategoria/Mercados removidos da UI.
+- **`pro-work-context-form.tsx`/`trabalho/page.tsx`**: reescritos —
+  2 textareas livres + "Preferências comerciais" (faixa de cachê, nota
+  fiscal) + "Outras preferências". Sem chips.
+- **`get-professional-business-context.ts` + `context-builder/
+  sections.ts`**: ganharam `whatYouDo`/`whereYouServe` como fatos de
+  texto simples (mesmo tratamento de `pricingNotes`); os campos antigos
+  continuam sendo lidos e expostos exatamente como antes — nenhuma
+  mudança de comportamento da representação.
+- **`pro-configuracoes-view.tsx`**: reescrito como acordeão (8 seções);
+  "Perfil público" removido; "Sua Doopla"/"Notificações"/"Canais da sua
+  Doopla"/"Privacidade e dados"/"Ajuda e suporte" viraram conteúdo
+  inline; "Excluir minha conta" virou modal
+  (`delete-account-modal.tsx`); Comunidade (7 toggles) virou painel
+  inline com carregamento sob demanda (`community-privacy-inline.tsx` +
+  nova action `loadCommunityPrivacyAction`, pra não ativar participação
+  na Comunidade só por abrir Configurações).
+- **`perfil/page.tsx`** (raiz): busca os dados extras que o acordeão
+  precisa (canal de atenção, WhatsApp, roteamento do link de orçamento)
+  de uma vez, mesmo padrão de antes.
+- **Mobile**: "Perfil público" removido de
+  `mobile/app/(tabs)/mais/configuracoes.tsx` (linha + sheet +
+  formulário) — mesma decisão do Web. As demais seções novas do Web
+  (Sua Doopla/Notificações/Canais/Ajuda e suporte inline) **não têm
+  equivalente no App ainda** — o App nunca teve essas telas (só tinha
+  Conta e perfil/Plano/WhatsApp/Perfil público/Comunidade/Ajuda/
+  Excluir). Ficou fora desta rodada por ser construção nova, não
+  remoção de legado — sinalizado pra decisão futura, não implementado
+  sem pedido explícito.
+- **Rotas antigas preservadas, só deslinkadas**: `/dashboard/perfil/
+  publico`, `/preferencias`, `/notificacoes`, `/canais`,
+  `/privacidade`, `/privacidade/comunidade`, `/privacidade/excluir`
+  continuam existindo no código, só não são mais alcançáveis pela
+  navegação normal do beta.
+- **Verificado**: `npx tsc --noEmit` sem novos erros (os 3 erros
+  pré-existentes de `PageProps`/`LayoutProps` são de tipos gerados pelo
+  `next build`, não relacionados a esta mudança) e `eslint` limpo em
+  todos os arquivos tocados.
+- **Booker**: nenhuma UI alterada, achados de matching registrados como
+  FUTURO (ver seção "Classificação do painel/Configurações pro Beta").
+
+**Pendência aberta pra decisão futura da fundadora**: telas
+Notificações/Sua Doopla/Canais da sua Doopla/Ajuda e suporte inline
+ainda não existem no App — perguntar se entram num próximo bloco ou
+ficam como estão (o App já tem "Ajuda / Sobre a Doopla" e WhatsApp
+básico, só não no formato de acordeão do Web).
+
 ---
 
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`

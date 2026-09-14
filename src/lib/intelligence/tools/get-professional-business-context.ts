@@ -26,6 +26,8 @@ const outputSchema = z.discriminatedUnion('found', [
       pricingNotes: z.string().nullable(),
       negotiationNotes: z.string().nullable(),
       typicalJobDuration: z.string().nullable(),
+      whatYouDo: z.string().nullable(),
+      whereYouServe: z.string().nullable(),
       workTypes: z.array(z.string()),
       clientTypes: z.array(z.string()),
       regions: z.array(z.string()),
@@ -47,7 +49,7 @@ async function execute(_input: Input, ctx: ToolContext): Promise<ToolExecutionOu
   const { data: artistProfile, error } = await supabase
     .from('artist_profiles')
     .select(
-      'fee_range, fee_varies_by_job_type, pricing_notes, negotiation_notes, typical_job_duration, work_types, client_types, regions, travels, accepts_out_of_city_work, attention_channel, help_areas, career_stage, issues_invoice'
+      'fee_range, fee_varies_by_job_type, pricing_notes, negotiation_notes, typical_job_duration, what_you_do, where_you_serve, work_types, client_types, regions, travels, accepts_out_of_city_work, attention_channel, help_areas, career_stage, issues_invoice'
     )
     .eq('profile_id', ctx.representedProfessionalId)
     .maybeSingle<
@@ -58,6 +60,8 @@ async function execute(_input: Input, ctx: ToolContext): Promise<ToolExecutionOu
         | 'pricing_notes'
         | 'negotiation_notes'
         | 'typical_job_duration'
+        | 'what_you_do'
+        | 'where_you_serve'
         | 'work_types'
         | 'client_types'
         | 'regions'
@@ -92,6 +96,8 @@ async function execute(_input: Input, ctx: ToolContext): Promise<ToolExecutionOu
         pricingNotes: artistProfile.pricing_notes,
         negotiationNotes: artistProfile.negotiation_notes,
         typicalJobDuration: artistProfile.typical_job_duration,
+        whatYouDo: artistProfile.what_you_do,
+        whereYouServe: artistProfile.where_you_serve,
         workTypes: artistProfile.work_types,
         clientTypes: artistProfile.client_types,
         regions: artistProfile.regions,

@@ -2,134 +2,68 @@
 
 import { useActionState } from 'react';
 
-import {
-  buildRegionOptions,
-  CAREER_STAGE_OPTIONS,
-  CLIENT_TYPE_OPTIONS,
-  FEE_RANGE_OPTIONS,
-  HELP_AREA_OPTIONS,
-  LANGUAGE_OPTIONS,
-  WORK_TYPE_OPTIONS,
-} from '@/lib/matching-options';
+import { FEE_RANGE_OPTIONS } from '@/lib/matching-options';
 
 import { updateArtistWorkContextAction } from '../actions';
 import { proGhostButtonClass, proInputClass, proLabelClass } from '../pro-format';
-import { ProChipCheckboxGroup } from './pro-chip-checkbox-group';
-import { summarizeChips } from './matching-summary';
 
 const labelClass = 'flex flex-col gap-1.5';
 
 // Settings V2 consolidado (09/09/2026) — "Como você trabalha", um dos 3
 // conceitos em que o antigo /dashboard/perfil/editar foi decomposto.
-// Substitui o antigo modal "Preferências de matching" — mesmos campos,
-// mesma coluna (artist_profiles), mesma action (updateArtistWorkContextAction,
-// escopada só a estes campos em actions.ts), mas o conceito de produto
-// "matching" (buscas/recomendações/compatibilidade entre pessoas) não
-// existe mais. Estes dados servem só pra ajudar sua Doopla a entender
-// como o profissional trabalha e representá-lo melhor nas conversas —
-// nunca pra "encontrar" o profissional em algum lugar. Agora é uma
-// página normal (detalhe → ação), nunca mais um modal escondido atrás
-// de um botão "Editar preferências".
+// Substitui o antigo modal "Preferências de matching" — mesma coluna
+// (artist_profiles), mesma action (updateArtistWorkContextAction), mas
+// o conceito de produto "matching" (buscas/recomendações/
+// compatibilidade entre pessoas) não existe mais. Estes dados servem só
+// pra ajudar sua Doopla a entender como o profissional trabalha e
+// representá-lo melhor nas conversas — nunca pra "encontrar" o
+// profissional em algum lugar.
+//
+// Simplificação de beta (14/09/2026) — os 5 grupos de chips
+// (work_types/client_types/regions/languages/help_areas), career_stage
+// e os 3 booleans de disponibilidade pra viagem saíram: auditoria
+// confirmou que o Intelligence Context só consumia esses arrays como
+// texto narrativo simples (nunca filtro/ranking), então dois campos de
+// texto livre entregam a mesma informação sem parecer um formulário de
+// matching. Colunas antigas preservadas no banco, só não editáveis
+// aqui — ver updateArtistWorkContextAction.
 export function ProWorkContextForm({
-  local,
+  whatYouDo,
+  whereYouServe,
   otherPreferences,
-  travels,
-  servesOtherLocations,
-  acceptsOutOfCityWork,
-  careerStage,
   feeRange,
-  workTypes,
-  clientTypes,
-  regions,
-  languages,
-  helpAreas,
   issuesInvoice,
 }: {
-  local: string | null;
+  whatYouDo: string | null;
+  whereYouServe: string | null;
   otherPreferences: string | null;
-  travels: boolean;
-  servesOtherLocations: boolean;
-  acceptsOutOfCityWork: boolean;
-  careerStage: string | null;
   feeRange: string | null;
-  workTypes: string[];
-  clientTypes: string[];
-  regions: string[];
-  languages: string[];
-  helpAreas: string[];
   issuesInvoice: boolean | null;
 }) {
   const [state, formAction, pending] = useActionState(updateArtistWorkContextAction, {});
 
-  const summaryLines = [
-    workTypes.length > 0 && { label: 'Tipos de trabalho', value: summarizeChips(workTypes) },
-    clientTypes.length > 0 && { label: 'Tipos de cliente/evento', value: summarizeChips(clientTypes) },
-    regions.length > 0 && { label: 'Área de atuação', value: summarizeChips(regions) },
-    languages.length > 0 && { label: 'Idiomas', value: summarizeChips(languages) },
-    helpAreas.length > 0 && { label: 'Precisa de ajuda com', value: summarizeChips(helpAreas) },
-    careerStage && { label: 'Estágio de carreira', value: careerStage },
-    feeRange && { label: 'Faixa de cachê', value: feeRange },
-  ].filter((l): l is { label: string; value: string } => Boolean(l));
-
   return (
     <form action={formAction} className="flex flex-col gap-5">
-      {summaryLines.length === 0 ? (
-        <p className="text-[13px] text-[var(--pro-tx-50)]">
-          Nada preenchido ainda. Quanto mais contexto sua Doopla tiver sobre o seu trabalho, melhor
-          ela consegue te representar.
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3.5 border-b border-[var(--pro-line)] pb-5 sm:grid-cols-2">
-          {summaryLines.map((line) => (
-            <div key={line.label} className="flex flex-col gap-0.5">
-              <span className={proLabelClass}>{line.label}</span>
-              <span className="text-[13px] text-[var(--pro-off)]">{line.value}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <ProChipCheckboxGroup
-        name="workTypes"
-        label="Tipos de trabalho que você costuma fazer"
-        options={WORK_TYPE_OPTIONS}
-        defaultValues={workTypes}
-      />
-      <ProChipCheckboxGroup
-        name="clientTypes"
-        label="Tipos de cliente ou evento que você atende"
-        options={CLIENT_TYPE_OPTIONS}
-        defaultValues={clientTypes}
-      />
-      <ProChipCheckboxGroup
-        name="regions"
-        label="Regiões onde você atua"
-        options={buildRegionOptions(local)}
-        defaultValues={regions}
-      />
-      <ProChipCheckboxGroup
-        name="languages"
-        label="Idiomas"
-        options={LANGUAGE_OPTIONS}
-        defaultValues={languages}
-      />
-      <ProChipCheckboxGroup
-        name="helpAreas"
-        label="Em quais atividades você precisa de ajuda"
-        options={HELP_AREA_OPTIONS}
-        defaultValues={helpAreas}
-      />
+      <label className={labelClass}>
+        <span className={proLabelClass}>O que você faz e para quem?</span>
+        <textarea
+          name="whatYouDo"
+          rows={2}
+          defaultValue={whatYouDo ?? ''}
+          placeholder="Ex.: Sou DJ e trabalho com eventos de marcas, casamentos e festas privadas."
+          className={proInputClass}
+        />
+      </label>
 
       <label className={labelClass}>
-        <span className={proLabelClass}>Estágio de carreira / volume de trabalhos</span>
-        <select name="careerStage" defaultValue={careerStage ?? ''} className={proInputClass}>
-          <option value="">Prefiro não dizer</option>
-          {CAREER_STAGE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.value}
-            </option>
-          ))}
-        </select>
+        <span className={proLabelClass}>Onde você atende?</span>
+        <textarea
+          name="whereYouServe"
+          rows={2}
+          defaultValue={whereYouServe ?? ''}
+          placeholder="Ex.: São Paulo e outras cidades. Também viajo para trabalhos em outros estados e países."
+          className={proInputClass}
+        />
       </label>
 
       <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--pro-line)] bg-white/[0.03] p-4">
@@ -156,31 +90,6 @@ export function ProWorkContextForm({
             <option value="true">Sim</option>
             <option value="false">Não</option>
           </select>
-        </label>
-      </div>
-
-      <div className="flex flex-col gap-2.5 rounded-[14px] border border-[var(--pro-line)] bg-white/[0.03] p-4">
-        <label className="flex items-center gap-2.5 text-[13px] text-[var(--pro-tx-70)]">
-          <input type="checkbox" name="travels" defaultChecked={travels} className="h-4 w-4" />
-          Viajo para trabalhar
-        </label>
-        <label className="flex items-center gap-2.5 text-[13px] text-[var(--pro-tx-70)]">
-          <input
-            type="checkbox"
-            name="servesOtherLocations"
-            defaultChecked={servesOtherLocations}
-            className="h-4 w-4"
-          />
-          Atendo clientes de outras cidades
-        </label>
-        <label className="flex items-center gap-2.5 text-[13px] text-[var(--pro-tx-70)]">
-          <input
-            type="checkbox"
-            name="acceptsOutOfCityWork"
-            defaultChecked={acceptsOutOfCityWork}
-            className="h-4 w-4"
-          />
-          Aceito trabalho fora da minha cidade
         </label>
       </div>
 

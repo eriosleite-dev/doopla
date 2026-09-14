@@ -8,6 +8,72 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Configurações do Professional/Artista viram acordeão; legado de matching sai da UI do beta — 14/09/2026
+
+Fecha a rodada iniciada pela pergunta da fundadora sobre o "Perfil
+público" ser produto atual ou resíduo do modelo antigo de marketplace
+(ver PROGRESS.md, "Auditoria de resíduo de legado" e "Classificação do
+painel/Configurações pro Beta"). Implementado só pro **Professional/
+Artista, Web + App** — Booker fica de fora deste bloco (achados de
+matching do Booker registrados como FUTURO, nenhuma UI dele foi
+tocada).
+
+**Regra geral aplicada**: nenhuma tabela, migration, rota ou
+infraestrutura antiga foi apagada só por causa desta tarefa — só o que
+é alcançável pela navegação normal do beta mudou. Toda coluna
+substituída continua existindo no banco com o dado antigo intacto.
+
+- **Perfil público saiu por completo** da navegação do beta: a linha
+  em Configurações, o toggle Ativar/desativar e a rota
+  `/dashboard/perfil/publico` não são mais alcançáveis (rota e código
+  preservados, só ficaram órfãos de propósito). Mesma remoção feita no
+  App (`mobile/app/(tabs)/mais/configuracoes.tsx`).
+- **"Como você trabalha" simplificado**: os 5 grupos de chips
+  (`work_types`/`client_types`/`regions`/`languages`/`help_areas`),
+  `career_stage` e os 3 booleans de disponibilidade pra viagem saíram
+  da UI — auditoria de código confirmou que nenhum tem consumidor
+  estruturado (filtro/ranking/gate), só viravam texto narrativo simples
+  pro Intelligence Context. Substituídos por 2 campos de texto livre
+  novos, **"O que você faz e para quem?"** e **"Onde você atende?"**
+  (colunas `artist_profiles.what_you_do`/`where_you_serve`, migration
+  `0080_work_context_freeform.sql`), com placeholder curto orientativo
+  (nunca pré-preenchido/salvo automaticamente). Colunas antigas
+  preservadas; `get-professional-business-context.ts` e
+  `context-builder/sections.ts` continuam lendo e expondo os arrays
+  antigos exatamente como antes (nenhuma mudança de comportamento da
+  representação) — só ganharam os 2 fatos novos ao lado.
+- **Subcategoria e Mercados** saíram da UI de "Dados profissionais"
+  (`pro-artist-identity-form.tsx`) — sem consumidor confirmado no
+  Intelligence Context, confirmado com a fundadora antes de remover.
+  Colunas preservadas.
+- **Configurações vira acordeão** (`ProConfiguracoesView`, reusando o
+  componente `ProAccordion` já existente na Home): "Assinatura e
+  cobrança", "Sua conta" e "Perfil e trabalho" continuam abrindo página
+  própria por linha (Stripe, reautenticação e formulários grandes
+  justificam isso); "Sua Doopla", "Notificações", "Canais da sua
+  Doopla", "Privacidade e dados" e "Ajuda e suporte" ficaram **inline**,
+  dentro do próprio acordeão, sem navegação — as antigas subpáginas
+  (`preferencias/`, `notificacoes/`, `canais/`, `privacidade/`,
+  `suporte/`) continuam existindo no código, só deixaram de ser
+  linkadas pela raiz de Configurações.
+- **"Canais da sua Doopla" avaliado e mantido inline** (não virou
+  exceção de página própria): o fluxo de verificação de WhatsApp já é
+  estado local do próprio componente (`pro-whatsapp-identity-card.tsx`,
+  visualizar → telefone → código), funciona igual dentro de um painel
+  de acordeão — nenhuma necessidade técnica real de navegação.
+- **Privacidade na Comunidade** (7 toggles) virou painel inline dentro
+  de "Privacidade e dados", mas com carregamento sob demanda (nova
+  action `loadCommunityPrivacyAction`, chamada só quando o profissional
+  clica pra abrir o painel) — abrir Configurações não pode ativar
+  silenciosamente a participação na Comunidade (`ensureCommunityProfileActivated`
+  só roda nesse clique específico, nunca no carregamento da página raiz;
+  mesma regra que o App já seguia em `CommunityPrivacySheet`).
+- **Excluir minha conta virou modal** (`delete-account-modal.tsx`), não
+  mais página própria — ação pontual/destrutiva não precisa tirar o
+  profissional de Configurações; mesma copy/confirmação (senha +
+  checkbox) de antes, mesmo padrão de overlay do `ProUpgradeModal`. O
+  App já fazia isso via bottom sheet — nenhuma mudança lá.
+
 ## Logout na web volta pra Home, não pra /login — mobile fica como já estava — 14/09/2026
 
 Durante o teste de logout na Categoria B, a fundadora questionou o

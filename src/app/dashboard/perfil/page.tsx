@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { siteOrigin } from '@/lib/site-url';
 import { hasDooplaPro } from '@/lib/subscription';
+import type { LinkRoutingMode } from '@/lib/supabase/types';
 import { PlanCard } from '../booker-pro/plan-card';
-import { getActivePaymentDetails, getSubscription } from '../data';
+import { getActivePaymentDetails, getArtistBookers, getArtistLinkRouting, getSubscription } from '../data';
 import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
@@ -39,23 +41,31 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, artistPublic] = await Promise.all([
+    const [subscription, homeFacts, paymentDetails, attentionData, bookers, routing, origin] = await Promise.all([
       getSubscription(user.id, supabase),
       getCachedProfessionalHomeFacts(supabase),
       getActivePaymentDetails(user.id, supabase),
       supabase
         .from('artist_profiles')
-        .select('public_enabled')
+        .select('attention_channel')
         .eq('profile_id', user.id)
-        .maybeSingle<{ public_enabled: boolean }>(),
+        .maybeSingle<{ attention_channel: 'whatsapp' | 'painel' | 'ambos' | null }>(),
+      getArtistBookers(user.id, supabase),
+      getArtistLinkRouting(user.id, supabase),
+      siteOrigin(),
     ]);
     return (
       <ProConfiguracoesView
         hasPro={hasDooplaPro(subscription)}
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
+        whatsappVerifiedNumber={homeFacts?.whatsappVerifiedNumber ?? null}
         paymentConfigured={paymentDetails !== null}
-        publicProfileEnabled={artistPublic.data?.public_enabled ?? false}
+        attentionChannel={attentionData.data?.attention_channel ?? null}
+        bookers={bookers.map((b) => ({ profileId: b.profileId, fullName: b.fullName }))}
+        linkRoutingMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
+        linkRoutingBookerId={routing?.booker_id ?? null}
+        orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
       />
     );
   }

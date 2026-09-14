@@ -10,26 +10,27 @@ const labelClass = 'flex flex-col gap-1.5';
 // Settings V2 consolidado (09/09/2026) — "Dados profissionais", um dos
 // 3 conceitos em que o antigo /dashboard/perfil/editar (uma página só)
 // foi decomposto. Só identidade/apresentação (nome artístico,
-// categoria, bio, gêneros, mercados, site, outros links) — contexto de
+// categoria, bio, gêneros, site, outros links) — contexto de
 // trabalho/representação virou rota própria ("Como você trabalha",
 // pro-work-context-form.tsx) com sua própria action, pra um salvar não
 // zerar os campos do outro.
+//
+// Subcategoria/Mercados saíram da UI do beta (Settings V2, 14/09/2026)
+// — achado da auditoria: nenhum consumidor confirmado no Intelligence
+// Context, único uso real era a vitrine pública ("Perfil público"),
+// que também saiu do beta. Colunas preservadas no banco.
 export function ProArtistIdentityForm({
   stageName,
   category,
-  subcategory,
   bio,
   genres,
-  mercados,
   websiteUrl,
   otherLinks,
 }: {
   stageName: string | null;
   category: string | null;
-  subcategory: string | null;
   bio: string | null;
   genres: string[];
-  mercados: string | null;
   websiteUrl: string | null;
   otherLinks: string | null;
 }) {
@@ -45,14 +46,6 @@ export function ProArtistIdentityForm({
         <label className={labelClass}>
           <span className={proLabelClass}>Categoria</span>
           <input type="text" name="category" defaultValue={category ?? ''} className={proInputClass} />
-        </label>
-        <label className={labelClass}>
-          <span className={proLabelClass}>Subcategoria</span>
-          <input type="text" name="subcategory" defaultValue={subcategory ?? ''} className={proInputClass} />
-        </label>
-        <label className={labelClass}>
-          <span className={proLabelClass}>Mercados</span>
-          <input type="text" name="mercados" defaultValue={mercados ?? ''} className={proInputClass} />
         </label>
       </div>
 

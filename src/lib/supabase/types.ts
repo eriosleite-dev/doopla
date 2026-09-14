@@ -73,6 +73,11 @@ export type ArtistProfile = {
   // trabalho" em vez de um valor fixo. Diferente de bio e de
   // negotiation_notes — nunca concatenar.
   pricing_notes: string | null;
+  // Beta "Como você trabalha" simplificado (migration 0080, 14/09/2026)
+  // — texto livre, substitui work_types/client_types/regions na UI do
+  // beta. Ver get-professional-business-context.ts.
+  what_you_do: string | null;
+  where_you_serve: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -174,6 +174,8 @@ export async function buildProfessionalBusinessContextSection(toolCtx: ToolConte
           pricingNotes: string | null;
           negotiationNotes: string | null;
           typicalJobDuration: string | null;
+          whatYouDo: string | null;
+          whereYouServe: string | null;
           workTypes: string[];
           clientTypes: string[];
           regions: string[];
@@ -210,6 +212,18 @@ export async function buildProfessionalBusinessContextSection(toolCtx: ToolConte
     pushFact(facts, 'professional_business_context', sourceId, 'negotiationNotes', t.value, loadedAt, t.truncated);
   }
   pushFact(facts, 'professional_business_context', sourceId, 'typicalJobDuration', businessContext.typicalJobDuration, loadedAt);
+  // Beta "Como você trabalha" simplificado (14/09/2026) — texto livre
+  // que substitui workTypes/clientTypes/regions na UI; os arrays
+  // abaixo continuam lidos como estavam (dado antigo preservado, não
+  // reescrito), sem nenhuma mudança de comportamento da representação.
+  if (businessContext.whatYouDo) {
+    const t = truncateText(businessContext.whatYouDo, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
+    pushFact(facts, 'professional_business_context', sourceId, 'whatYouDo', t.value, loadedAt, t.truncated);
+  }
+  if (businessContext.whereYouServe) {
+    const t = truncateText(businessContext.whereYouServe, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
+    pushFact(facts, 'professional_business_context', sourceId, 'whereYouServe', t.value, loadedAt, t.truncated);
+  }
   pushJoinedListFact(facts, sourceId, 'workTypes', businessContext.workTypes, loadedAt);
   pushJoinedListFact(facts, sourceId, 'clientTypes', businessContext.clientTypes, loadedAt);
   pushJoinedListFact(facts, sourceId, 'regions', businessContext.regions, loadedAt);
