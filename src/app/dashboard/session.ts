@@ -11,7 +11,19 @@ export const getSessionProfile = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
+    error: getUserError,
   } = await supabase.auth.getUser();
+
+  // DEBUG TEMPORÁRIO (achado da Categoria B, remover depois de
+  // diagnosticar) — getUser() aqui não está achando a mesma sessão que
+  // o proxy.ts encontra, mesmo logo após login bem-sucedido.
+  console.log('[DEBUG getSessionProfile]', {
+    hasUser: !!user,
+    userId: user?.id,
+    errorMessage: getUserError?.message,
+    errorStatus: getUserError?.status,
+    errorCode: getUserError?.code,
+  });
 
   if (!user) {
     redirect('/login?next=/dashboard');

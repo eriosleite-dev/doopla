@@ -29,11 +29,25 @@ export async function updateSession(request: NextRequest) {
   // apenas ler o cookie, então não dá para trocar por getSession() aqui.
   const {
     data: { user },
+    error: getUserError,
   } = await supabase.auth.getUser();
 
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     request.nextUrl.pathname.startsWith(prefix)
   );
+
+  // DEBUG TEMPORÁRIO (achado da Categoria B, remover depois de
+  // diagnosticar) — comparar com o getUser() de session.ts no mesmo
+  // request, pra ver se um acha sessão e o outro não.
+  if (isProtected) {
+    console.log('[DEBUG proxy.updateSession]', {
+      pathname: request.nextUrl.pathname,
+      hasUser: !!user,
+      userId: user?.id,
+      errorMessage: getUserError?.message,
+      cookieNames: request.cookies.getAll().map((c) => c.name),
+    });
+  }
 
   if (isProtected && !user) {
     const redirectUrl = new URL('/login', request.url);
