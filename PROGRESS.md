@@ -109,11 +109,49 @@ painel Supabase — não por mim aqui):
    arquivo). Não é suficiente só "a tabela existe" — as migrations de
    segurança fazem mais que criar tabela.
 
-**Categoria B continua sem iniciar testes** até esse schema estar
-confirmado completo. Escopo, quando iniciar: só contra
-`doopla-qa-staging`, nunca tocar Production, e **não corrigir achados
-de produto encontrados durante o QA** (só reportar/registrar —
-correção é decisão separada da fundadora).
+### ✅ Schema do `doopla-qa-staging` aplicado e confirmado — 14/09/2026
+
+Execução real (conduzida pela fundadora, projeto vazio confirmado
+antes de começar): os 44 arquivos concatenados em ordem num único
+script, colado no SQL Editor do `doopla-qa-staging` — `Success` de
+ponta a ponta (script com statements sequenciais/dependentes; uma
+falha no meio teria travado ali, então "Success" no final cobre as 44
+migrations inteiras, não só a última).
+
+Conferência pós-execução: rodei a query de checagem de novo e recebi
+34 tabelas em `public`. Comparei contra o conjunto extraído
+diretamente de todo `create table` em `supabase/migrations/*.sql`
+(mais checagem de `drop table`/`rename to` — só um `alter type ...
+rename to`, nenhuma tabela dropada ou renomeada no meio do caminho) —
+**as 34 batem exatamente, nenhuma faltando, nenhuma extra**:
+`agency_profiles`, `agenda_entries`, `ai_usage_events`,
+`artist_availability`, `artist_link_routing`, `artist_profiles`,
+`booker_profiles`, `booking_contracts`, `booking_events`, `bookings`,
+`conversation_mandate_events`, `conversation_messages`,
+`conversation_state_events`, `conversations`,
+`external_participant_channel_identities`, `external_participants`,
+`favorites`, `founder_vouchers`, `invites`, `opportunities`,
+`opportunity_dismissals`, `opportunity_events`,
+`opportunity_interests`, `opportunity_invitations`,
+`opportunity_tags`, `orchestrator_runs`, `payout_requests`,
+`profession_job_types`, `professions`, `profiles`, `referrals`,
+`representation_requests`, `representations`, `reviews`,
+`subscriptions`.
+
+Como o script inteiro (tabelas + RLS + policies + triggers + CHECK
+constraints + functions, tudo no mesmo arquivo de cada migration)
+rodou sem erro nenhum, considero isso confirmação suficiente do
+schema completo — não só das tabelas, do conteúdo de segurança junto
+(Bloco 4.5, Bloco 4) também, já que faz parte do mesmo script que deu
+`Success`.
+
+**Schema do `doopla-qa-staging` = equivalente ao `doopla` na revisão
+`0044`. Categoria B liberada pra começar os testes de fato.**
+
+**Escopo da Categoria B, reafirmado**: trabalhar só contra
+`doopla-qa-staging`, nunca tocar em `doopla`/Production, e **não
+corrigir achados de produto encontrados durante o QA** (só
+reportar/registrar — correção é decisão separada da fundadora).
 
 **Prática fixa, pedida pela fundadora em 14/09/2026**: toda vez que
 eu te passar um passo que envolve rodar algo no painel do Supabase
