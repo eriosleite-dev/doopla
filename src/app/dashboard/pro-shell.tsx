@@ -15,6 +15,7 @@ export function ProfessionalShell({
   hasDooplaPro,
   bookingsAwaitingCount,
   decisionsCount,
+  pedidosAbertosCount,
   referralEligible,
   children,
 }: {
@@ -28,12 +29,21 @@ export function ProfessionalShell({
   hasDooplaPro: boolean;
   bookingsAwaitingCount: number;
   decisionsCount: number;
+  // FAIL BLOCKER corrigido (14/09/2026, achado da Categoria B): pedidos
+  // recebidos pelo link individual de orçamento (source='artist_link',
+  // status='aberta') não tinham NENHUM caminho de navegação — a página
+  // que já mostrava isso certo (/dashboard/oportunidades) não estava
+  // linkada em lugar nenhum do shell novo. Nunca a página inteira
+  // ("O que você publicou"/mural é legado-matching, não ganha
+  // visibilidade nova) — só a seção "Pedidos recebidos".
+  pedidosAbertosCount: number;
   referralEligible: boolean;
   children: ReactNode;
 }) {
   const primaryLinks: ProNavLink[] = [
     { href: '/dashboard', label: 'Início', icon: proNavIcons.inicio },
     { href: '/dashboard/trabalhos', label: 'Bookings', icon: proNavIcons.bookings, badge: bookingsAwaitingCount },
+    { href: '/dashboard/oportunidades', label: 'Pedidos', icon: proNavIcons.pedidos, badge: pedidosAbertosCount },
     { href: '/dashboard/agenda', label: 'Agenda', icon: proNavIcons.agenda },
     {
       href: '/dashboard/decisoes',

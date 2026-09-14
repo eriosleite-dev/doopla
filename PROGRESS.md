@@ -1127,8 +1127,9 @@ backend real**.
 
 ### P0 — Core Professional com backend real
 
-- ❌ **FAIL BLOCKER — Pedido pelo link de orçamento chega sem nenhum
-  caminho de navegação até ele** (14/09/2026). Teste: enviado um pedido
+- ✅ **CORRIGIDO — Pedido pelo link de orçamento chega sem nenhum
+  caminho de navegação até ele** (14/09/2026, aguardando reteste da
+  fundadora). Teste: enviado um pedido
   de teste via `/orcamento/qa-categoria-b-artista-02` (dados fictícios,
   cliente "eduarda"). **Confirmado por query direta no banco que a
   criação funciona 100%**: linha real em `opportunities`
@@ -1172,6 +1173,40 @@ backend real**.
   **Achado secundário, cosmético**: `/dashboard/oportunidades` ainda
   está com o visual antigo (cards brancos/claros), destoando do resto
   do shell escuro novo — nunca foi re-skinada.
+
+  **Correção implementada (14/09/2026)** — 5 arquivos, sem migration,
+  sem tocar em `bookings`/`opportunities`/RLS:
+  1. **Nova entrada de navegação**: item **"Pedidos"** na sidebar do
+     shell novo (`pro-shell.tsx`), entre Bookings e Agenda, com badge
+     numérico (`pedidosAbertosCount`) — mesmo padrão visual dos outros
+     itens (Bookings/Decisões já tinham badge). Ícone novo adicionado
+     em `pro-sidebar-nav.tsx` (`proNavIcons.pedidos`).
+  2. **Contagem do badge**: nova função `getPedidosAbertosCount` em
+     `layout.tsx` (conta `opportunities` com
+     `artist_profile_id=userId AND source='artist_link' AND
+     status='aberta'`), passada por `ProfessionalShellGate` →
+     `ProfessionalShell`. Mesmo padrão já usado por
+     `getOpportunitiesBadgeCount` (booker), nenhuma lógica nova.
+  3. **`/dashboard/oportunidades` (branch artista) reescrita**: seção
+     "O que você publicou"/"Publicar agora" (mural/marketplace antigo)
+     **removida** da tela, exatamente como a fundadora pediu — rota
+     `/dashboard/publicar-trabalho` preservada (não apagada, só sem
+     link daqui). Só "Pedidos recebidos" continua, agora com o visual
+     `--pro-*` do shell novo (`ProPageHeader`/`ProCard`/`ProEmptyState`
+     em vez dos cards brancos antigos) — resolve também o achado
+     cosmético. `generateMetadata` passa a decidir o título por role
+     (Booker continua vendo "Descobrir trabalhos", nada mudou pra ele).
+  4. **"Precisa de você" na Home** (`professional-home-view.tsx`):
+     `attentionCount` agora soma também `pedidosRecebidosAbertos.length`
+     (`opportunities` com `source='artist_link' AND status='aberta'`,
+     via `getMyOpportunities`, já existente). Cards de pedido aparecem
+     dentro do accordion (mesmo estilo dos cards de booking aguardando
+     resposta), com link "Ver pedidos recebidos →" quando há algum.
+     `source !== 'artist_link'` (mural) nunca entra nessa contagem nem
+     nesses cards — mantém a separação pedida.
+  **Booker intocado**: `getOpportunitiesBadgeCount`/branch booker de
+  `/dashboard/oportunidades`/`DiscoverWorkDeck` — nenhuma linha
+  alterada. `tsc --noEmit` e `eslint` limpos (repo inteiro).
 - ⏳ Decisões / "Precisa de você"
 - ⏳ Aprovação/rejeição com sessão autenticada (onde automatizável)
 - ⏳ Persistência e isolamento cross-tenant

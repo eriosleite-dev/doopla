@@ -10,7 +10,7 @@ import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/dec
 
 import { classifyBookingAttention } from './booking-attention';
 import { conversationHref } from './decisoes/format-cards';
-import { getActivePaymentDetails, getArtistMatchingCompletion, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
+import { getActivePaymentDetails, getArtistMatchingCompletion, getMyOpportunities, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
 import { bookingStatusTone, capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass } from './pro-format';
@@ -30,12 +30,21 @@ export async function ProfessionalHomeView({
   profile: Profile;
   supabase: AnySupabaseClient;
 }) {
-  const [homeFacts, decisions, conversationSummary, bookings] = await Promise.all([
+  const [homeFacts, decisions, conversationSummary, bookings, opportunities] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
     getCachedActionableDecisions(supabase),
     getCachedConversationStateSummary(supabase),
     getUserBookings(userId, profile.role, supabase),
+    getMyOpportunities(userId, supabase),
   ]);
+
+  // FAIL BLOCKER corrigido (14/09/2026, achado da Categoria B): pedido
+  // recebido pelo link individual de orçamento (source='artist_link')
+  // não entrava em "Precisa de você" — só ficava visível pra quem
+  // soubesse a URL de `/dashboard/oportunidades` de cabeça. Nunca inclui
+  // `source !== 'artist_link'` (mural/"Publicar um trabalho" — legado
+  // de marketplace, não ganha visibilidade nova).
+  const pedidosRecebidosAbertos = opportunities.filter((o) => o.source === 'artist_link' && o.status === 'aberta');
 
   // Item 3/15 da revisão Professional Web Dashboard (06/09/2026): a
   // contagem exibida (card, accordion, badge do sidebar) é SEMPRE
@@ -65,7 +74,7 @@ export async function ProfessionalHomeView({
   // a ser escrito ligando uma conversa à proposta que ela mesma gerou,
   // esta soma precisa ser revisada antes de continuar ingênua.
   const bookingsNeedingResponse = bookings.filter((b) => classifyBookingAttention(b, userId) === 'precisa_de_voce');
-  const attentionCount = bookingsNeedingResponse.length + conversationSummary.needsYouCount;
+  const attentionCount = bookingsNeedingResponse.length + conversationSummary.needsYouCount + pedidosRecebidosAbertos.length;
 
   const [recentActivity, orcamentoInfo, referralSummary, activePaymentDetails, matchingCompletion] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
@@ -162,6 +171,25 @@ export async function ProfessionalHomeView({
               </p>
             ) : (
               <>
+                {pedidosRecebidosAbertos.length > 0 && (
+                  <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {pedidosRecebidosAbertos.map((o) => (
+                      <Link
+                        key={o.id}
+                        href={`/dashboard/oportunidades/${o.id}`}
+                        className="block rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4"
+                      >
+                        <p className="font-pro-sub text-[14.5px] font-bold">{o.client_name || 'Novo pedido'}</p>
+                        <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
+                          Pedido novo pelo seu link de booking.
+                        </p>
+                        <span className="mt-3 inline-block rounded-full border border-[var(--pro-line)] px-2.5 py-1 text-[11px] font-semibold text-[var(--pro-off)]">
+                          Aberta
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
                 {bookingsNeedingResponse.length > 0 && (
                   <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {bookingsNeedingResponse.map((b) => (
@@ -228,6 +256,14 @@ export async function ProfessionalHomeView({
                       className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
                     >
                       Ver bookings aguardando resposta →
+                    </Link>
+                  )}
+                  {pedidosRecebidosAbertos.length > 0 && (
+                    <Link
+                      href="/dashboard/oportunidades"
+                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
+                    >
+                      Ver pedidos recebidos →
                     </Link>
                   )}
                 </div>

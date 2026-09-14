@@ -18,6 +18,24 @@ import { ReferralModal } from './referral-modal';
 import { ReferralModalProvider } from './referral-modal-context';
 import { getSessionProfile } from './session';
 
+// FAIL BLOCKER corrigido (14/09/2026): pedido recebido pelo link
+// individual de orçamento (opportunities.source='artist_link',
+// status='aberta') não tinha nenhum sinal na sidebar nem na Home —
+// mesma tabela/filtro já usado em getMyOpportunities/
+// professional-home-view.tsx, só como contagem leve pro badge.
+async function getPedidosAbertosCount(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<number> {
+  const { count } = await supabase
+    .from('opportunities')
+    .select('id', { count: 'exact', head: true })
+    .eq('artist_profile_id', userId)
+    .eq('source', 'artist_link')
+    .eq('status', 'aberta');
+  return count ?? 0;
+}
+
 async function getOpportunitiesBadgeCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -88,6 +106,7 @@ export default async function DashboardLayout({
         {profile.role !== 'booker' ? (
           <ProfessionalShellGate
             supabase={supabase}
+            userId={user.id}
             fullName={profile.full_name}
             email={user.email ?? ''}
             avatarUrl={profile.avatar_url}
@@ -127,6 +146,7 @@ export default async function DashboardLayout({
 
 async function ProfessionalShellGate({
   supabase,
+  userId,
   fullName,
   email,
   avatarUrl,
@@ -134,15 +154,17 @@ async function ProfessionalShellGate({
   children,
 }: {
   supabase: AnySupabaseClient;
+  userId: string;
   fullName: string;
   email: string;
   avatarUrl: string | null;
   referralEligible: boolean;
   children: React.ReactNode;
 }) {
-  const [homeFacts, conversationSummary] = await Promise.all([
+  const [homeFacts, conversationSummary, pedidosAbertosCount] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
     getCachedConversationStateSummary(supabase),
+    getPedidosAbertosCount(supabase, userId),
   ]);
   return (
     // NotificationsProvider aqui (não em DashboardLayout) — Booker não
@@ -160,6 +182,7 @@ async function ProfessionalShellGate({
         hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
         bookingsAwaitingCount={homeFacts?.bookingsAwaitingResponseCount ?? 0}
         decisionsCount={conversationSummary.needsYouCount}
+        pedidosAbertosCount={pedidosAbertosCount}
         referralEligible={referralEligible}
       >
         {children}

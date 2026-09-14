@@ -72,6 +72,12 @@ export const proNavIcons = {
       <path d="M3 17l6-6 4 4 8-8" />
     </svg>
   ),
+  pedidos: (
+    <svg {...iconProps}>
+      <path d="M4 12l2-7a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1l2 7" />
+      <path d="M4 12h4l2 3h4l2-3h4M4 12v6a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-6" />
+    </svg>
+  ),
 };
 
 function ProNavItem({ link }: { link: ProNavLink }) {

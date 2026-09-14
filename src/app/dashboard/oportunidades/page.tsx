@@ -9,14 +9,16 @@ import {
   getMyOpportunities,
   getOpenOpportunities,
 } from '../data';
+import { ProCard, ProEmptyState, ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
-import { cardClass, eyebrowClass } from '../ui';
+import { eyebrowClass } from '../ui';
 import { DiscoverWorkDeck } from './discover-work-deck';
 import { MarkOpportunitiesSeen } from './mark-seen';
 
-export const metadata: Metadata = {
-  title: 'Descobrir trabalhos | Doopla',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { profile } = await getSessionProfile();
+  return { title: profile.role === 'artista' ? 'Pedidos | Doopla' : 'Descobrir trabalhos | Doopla' };
+}
 
 const STATUS_LABEL: Record<string, string> = {
   aberta: 'Aberta',
@@ -29,83 +31,67 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function OportunidadesPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
+  // FAIL BLOCKER corrigido (14/09/2026) — esta seção ("Pedidos
+  // recebidos", pelo link individual de orçamento) já existia e
+  // funcionava certo, só não tinha nenhum link de navegação até aqui
+  // no shell novo. Re-skinada pro tema --pro-* nesta correção (achado
+  // secundário registrado no PROGRESS.md: página ainda estava com o
+  // visual antigo).
+  //
+  // A seção "O que você publicou" (mural — artista publica um trabalho
+  // pra booker descobrir) foi REMOVIDA daqui de propósito: é o mesmo
+  // modelo de marketplace já classificado LEGADO-MATCHING na auditoria
+  // (achado da fundadora, 14/09/2026) — nunca deve ganhar visibilidade
+  // nova. `getMyOpportunities` continua trazendo os dois tipos
+  // (source='artist_link' e outros), mas só filtramos e mostramos o
+  // primeiro aqui. A rota `/dashboard/publicar-trabalho` (destino do
+  // antigo "Publicar agora") não foi apagada — só deixou de ser
+  // referenciada por esta tela.
   if (profile.role === 'artista') {
     const allOpportunities = await getMyOpportunities(user.id, supabase);
     const pedidosRecebidos = allOpportunities.filter((o) => o.source === 'artist_link');
-    const publicados = allOpportunities.filter((o) => o.source !== 'artist_link');
-
-    const renderCard = (o: (typeof allOpportunities)[number]) => (
-      <li key={o.id}>
-        <Link href={`/dashboard/oportunidades/${o.id}`} className={`${cardClass} block`}>
-          <p className="text-sm text-[var(--ink)]/75">{o.description}</p>
-          {o.client_name && (
-            <p className="mt-1 text-[12.5px] text-[var(--ink)]/55">Cliente: {o.client_name}</p>
-          )}
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-[var(--ink)]/55">
-            <span className="font-doopla-mono uppercase tracking-[.03em]">
-              {STATUS_LABEL[o.status] ?? o.status}
-            </span>
-            <span>
-              {o.cache_amount_cents != null
-                ? formatCentsAsBRL(o.cache_amount_cents)
-                : o.client_offered_cents != null
-                  ? `Cliente ofereceu ${formatCentsAsBRL(o.client_offered_cents)}`
-                  : 'Cachê ainda não fechado'}
-            </span>
-            <span>
-              {o.commission_percent != null
-                ? `${formatPercent(o.commission_percent)} de comissão`
-                : 'Comissão ainda não negociada'}
-            </span>
-            <span>{formatRelativeDate(o.created_at)}</span>
-          </div>
-        </Link>
-      </li>
-    );
 
     return (
-      <main className="flex flex-col gap-10">
-        <header>
-          <p className={eyebrowClass}>Pedidos recebidos</p>
-          <h1 className="font-doopla-display mt-1 text-3xl font-semibold">
-            O que chegou e o que você publicou
-          </h1>
-        </header>
+      <main>
+        <ProPageHeader
+          title="Pedidos"
+          subtitle="Solicitações que clientes enviaram pelo seu link de booking/orçamento."
+        />
 
-        <section className="flex flex-col gap-3">
-          <div>
-            <p className={eyebrowClass}>Pedidos recebidos</p>
-            <p className="mt-1 text-[12.5px] text-[var(--ink)]/55">
-              Solicitações que clientes enviaram pelo seu link de orçamento.
-            </p>
+        {pedidosRecebidos.length === 0 ? (
+          <ProEmptyState message="Nenhum pedido recebido ainda pelo seu link de booking." />
+        ) : (
+          <div className="flex flex-col gap-3.5">
+            {pedidosRecebidos.map((o) => (
+              <Link key={o.id} href={`/dashboard/oportunidades/${o.id}`} className="block">
+                <ProCard className="transition-colors hover:bg-white/[0.04]">
+                  <p className="font-pro-sub text-[14px] font-bold">{o.description}</p>
+                  {o.client_name && (
+                    <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">Cliente: {o.client_name}</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-[var(--pro-tx-50)]">
+                    <span className="font-doopla-mono uppercase tracking-[.03em] text-[var(--pro-tx-30)]">
+                      {STATUS_LABEL[o.status] ?? o.status}
+                    </span>
+                    <span>
+                      {o.cache_amount_cents != null
+                        ? formatCentsAsBRL(o.cache_amount_cents)
+                        : o.client_offered_cents != null
+                          ? `Cliente ofereceu ${formatCentsAsBRL(o.client_offered_cents)}`
+                          : 'Cachê ainda não fechado'}
+                    </span>
+                    <span>
+                      {o.commission_percent != null
+                        ? `${formatPercent(o.commission_percent)} de comissão`
+                        : 'Comissão ainda não negociada'}
+                    </span>
+                    <span>{formatRelativeDate(o.created_at)}</span>
+                  </div>
+                </ProCard>
+              </Link>
+            ))}
           </div>
-          {pedidosRecebidos.length === 0 ? (
-            <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/60">
-              Nenhum pedido recebido ainda pelo seu link de orçamento.{' '}
-              <Link href="/dashboard/perfil" className="underline">
-                Ver seu link
-              </Link>
-              .
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-4">{pedidosRecebidos.map(renderCard)}</ul>
-          )}
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <p className={eyebrowClass}>O que você publicou</p>
-          {publicados.length === 0 ? (
-            <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/60">
-              Você ainda não publicou nenhum trabalho.{' '}
-              <Link href="/dashboard/publicar-trabalho" className="underline">
-                Publicar agora
-              </Link>
-              .
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-4">{publicados.map(renderCard)}</ul>
-          )}
-        </section>
+        )}
       </main>
     );
   }
