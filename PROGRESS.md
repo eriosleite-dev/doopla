@@ -1114,8 +1114,16 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
     o BottomSheet com `DeleteAccountSheet` (senha + checkbox, intocado)
     abre.
   `tsc --noEmit` limpo em Web e App.
-- ⏳ "Notificações"/"Ajuda e suporte" inline — conteúdo aparece, sem
-  navegação.
+- ✅ **PASS — "Notificações" e "Ajuda e suporte" inline**, confirmado
+  pela fundadora (14/09/2026): os dois aparecem direto dentro do
+  acordeão, sem navegação; "Ver Comunidade" e "Enviar e-mail para o
+  suporte" funcionam.
+
+**Fecha aqui a re-validação completa do acordeão de Configurações
+(Settings V2 reestruturado, 14/09/2026)** — todas as 8 seções + Perfil
+público ausente + Excluir conta protegida, confirmadas pela fundadora.
+Categoria B segue pro próximo bloco: **P0 — Core Professional com
+backend real**.
 
 ### P0 — Core Professional com backend real
 
