@@ -11575,6 +11575,43 @@ jornadas E2E por papel, critérios de saída pra declarar Beta Readiness,
 achados conhecidos que a validação deve reconfirmar (pendência de QA
 já registrada em §100).
 
+### Refinamento pedido pela fundadora (mesmo dia) — plano V2
+
+Ajustes, ainda `[SCOPING ONLY]`, zero implementação/execução real:
+
+1. **Matriz separada por quem executa**: (A) o que esta sessão
+   consegue rodar sozinha; (B) o que exige Supabase Preview/Staging
+   real; (C) o que exige ação humana/dispositivo real; (D) o que
+   depende de serviço externo indisponível (Meta/WhatsApp).
+2. **Booker não é requisito de Beta Readiness** — validam-se só os
+   pontos de integração que já existem e que poderiam quebrar o
+   Professional (`representations`, `artist_link_routing`, branch de
+   role compartilhado em `perfil/page.tsx`/`canais/page.tsx`), nunca a
+   superfície legada do Booker inteira.
+3. **Jornada P0/crítica adicionada**: o núcleo de representação
+   (inbound → Doopla identifica contexto → conduz conversa →
+   cria/atualiza oportunidade → gera decisão quando necessário →
+   profissional aprova/rejeita → conversa continua → booking
+   criado/atualizado). Se quebrado, Beta Readiness = NÃO. Transporte
+   real via WhatsApp/Meta (quando indisponível) marcado à parte como
+   `BLOCKED EXTERNAL`, nunca como aprovado — o pipeline interno é
+   validado via fixture/inbound controlado, sem depender do transporte
+   real.
+4. **Classificação de saída por item**: `PASS` / `FAIL BLOCKER` /
+   `FAIL NON-BLOCKER` / `BLOCKED EXTERNAL` / `NOT APPLICABLE / FUTURE`.
+5. **Preview/Staging preferido a Production** pra qualquer teste
+   destrutivo.
+
+**Achado de ambiente relevante pra categoria (A)**: este container tem
+PostgreSQL 16 instalado (`postgresql-16`, hoje parado) mas **não tem
+Docker daemon ativo** (`docker` CLI presente, socket ausente) — ou
+seja, dá pra subir um Postgres local (mesmo padrão histórico do
+`doopla_rls_test` usado em blocos anteriores) pra validar RLS/RPCs/
+lógica pura do pipeline via fixture, mas **não** dá pra rodar
+`supabase start` (stack completa com GoTrue/PostgREST/Storage) nem
+qualquer E2E de navegador que dependa de autenticação real — isso
+empurra qualquer fluxo que exija login/sessão real pra categoria (B).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
