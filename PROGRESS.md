@@ -787,25 +787,39 @@ estava. Nenhum dado apagado.
   nesta sessão pra rodar de verdade — mesma limitação de rede de
   sempre).
 
-### Status — 🔒 AGUARDANDO VALIDAÇÃO MANUAL — 14/09/2026
+### Status — corrigido em 14/09/2026: App não bloqueia a retomada da Categoria B
 
-Código aprovado pela fundadora pra teste. Ela vai validar num
-App/simulador real (esta sessão não tem esse acesso):
-1. Verificação de WhatsApp.
+Correção da fundadora: ela ainda não tem uma build do App disponível
+pra testar — a validação manual dos 4 pontos abaixo **não bloqueia o
+andamento do beta/QA**. Status final deste bloco:
+
+- **Web/Configurações**: ✅ **CONCLUÍDO**, conforme validações já
+  realizadas (typecheck/lint, revisão de código, decisões todas
+  fechadas com a fundadora).
+- **App — 3 gaps bloqueantes** (Verificação de WhatsApp, Link de
+  booking/orçamento, Dados de recebimento): 🔧 **implementação técnica
+  concluída, `tsc --noEmit` PASS** (exit 0), **VALIDAÇÃO MANUAL
+  PENDENTE** — só quando houver build/simulador/aparelho disponível,
+  sem prazo.
+
+**Checklist obrigatório pra primeira validação real do App**
+(permanece registrado aqui até ser executado — não descartar):
+1. Verificação de WhatsApp — telefone → código → confirmar → status
+   muda pra "Verificado".
 2. Link de booking/orçamento — visualizar, copiar, compartilhar,
-   roteamento.
-3. "Seu link" da Home apontando pra `/orcamento/{slug}` corretamente.
-4. Smoke test de Dados de recebimento (já existia — só confirmar que
-   nada quebrou).
+   roteamento (eu / meu booker / eu e meu booker).
+3. "Seu link" na Home apontando corretamente pra
+   `.../orcamento/{slug}` (era o bug corrigido nesta rodada).
+4. Smoke test de Dados de recebimento (já existia antes desta rodada —
+   só confirmar que nada quebrou).
 
-Regra combinada: se os 4 passarem, o bloco fecha como concluído e a
-Categoria B retoma do ponto correto. Se algum falhar, registro só o
-finding específico e corrijo, **sem reabrir a arquitetura de
-Configurações** (acordeão/inline/modal já aprovados e implementados —
-não voltam à mesa por causa de um bug pontual).
+Regra combinada continua valendo pra quando o teste acontecer: se os 4
+passarem, fecha como concluído; se algum falhar, registra só o finding
+específico e corrige, sem reabrir a arquitetura de Configurações
+(acordeão/inline/modal já aprovados e implementados).
 
-Nenhuma mudança de código enquanto este status estiver ativo — só
-volto a mexer se a fundadora reportar uma falha específica.
+**Categoria B retoma agora no Web**, ignorando Perfil Público e demais
+superfícies legadas já retiradas do escopo do beta (ver seção abaixo).
 
 ---
 
@@ -968,28 +982,57 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
   ("Salvo." apareceu). Não investigado a fundo — sessão longa de QA
   (várias horas de testes seguidos) é hipótese mais provável (token
   expirando) do que bug novo; sinalizando caso se repita.
-- ✅ `/dashboard/perfil/dados` — PASS, persiste após recarregar.
+- ✅ `/dashboard/perfil/dados` — PASS, persiste após recarregar
+  **(PASS válido pra versão anterior do formulário — ver item de
+  RE-VALIDAÇÃO abaixo, o formulário mudou desde então)**.
 - ✅ Salvar `/trabalho` NÃO zera/altera `/dados` — PASS (as duas
-  persistiram de forma independente nos testes acima).
+  persistiram de forma independente nos testes acima) **(mesma
+  ressalva de versão anterior)**.
 - ❌ **RETIRADO em 14/09/2026 — não vale como PASS de produto atual.**
-  A fundadora identificou que `/dashboard/perfil/publico` e a rota
-  pública `/[slug]` são **candidatos a legado da Doopla
-  antiga/marketplace** (matching cliente-encontra-profissional), não
-  necessariamente parte do produto atual (AI-first, representação).
-  Os dois itens abaixo foram tecnicamente exercitados e o
-  comportamento observado continua registrado como fato (útil se a
-  feature for mesmo legado e for removida, ou se for confirmada como
-  atual) — **mas sem valor de PASS/FAIL de Categoria B até a
-  auditoria de legado (abaixo) classificar isso**:
+  A fundadora confirmou que "Perfil Público" (`/dashboard/perfil/
+  publico` + rota pública `/[slug]`) é **legado da Doopla antiga/
+  marketplace** (matching cliente-encontra-profissional), não faz
+  parte do produto atual (AI-first, representação) — **decisão fechada,
+  não é mais dúvida**. Os itens abaixo continuam registrados como fato
+  histórico, sem valor de PASS/FAIL:
   - `/dashboard/perfil/publico` → `/[slug]` renderiza (nome, categoria,
     mensagem, portfólio, CTA "Pedir orçamento").
   - `website_url`/`other_links` (campos "Site"/"Outros links" em
-    `/dashboard/perfil/dados`, componente
-    `pro-artist-identity-form.tsx`) não aparecem na página pública.
-  **Categoria B pausada neste ponto** — próximo passo é a auditoria de
-  resíduo de legado pedida pela fundadora, ver seção dedicada abaixo,
-  antes de continuar testando qualquer coisa do painel.
-- ⏳ `/dashboard/perfil/canais`: validar o que der sem transporte Meta real
+    `/dashboard/perfil/dados`) não aparecem na página pública.
+- ❌ **SUPERSEDIDO em 14/09/2026** — `/dashboard/perfil/canais` não é
+  mais rota alcançável pela navegação normal do beta (conteúdo virou
+  "Canais da sua Doopla", inline no acordeão de `/dashboard/perfil`).
+  O item "validar sem transporte Meta real" vira o novo item abaixo.
+
+**Categoria B RETOMA aqui em 14/09/2026**, a partir do produto canônico
+correto (auditoria de legado + reestruturação de Configurações
+concluídas e aprovadas). Pendências desta seção, todas ⏳ NOVO (código
+nunca teve teste manual ao vivo — só `tsc`/`eslint`/revisão de código
+nesta sessão, sem acesso a `doopla-qa-staging`):
+
+- ⏳ **Estrutura do acordeão em `/dashboard/perfil`** — abre, cada seção
+  expande/recolhe (chevron), "Perfil Público" não aparece em nenhum
+  lugar da navegação.
+- ⏳ **RE-VALIDAÇÃO `/dashboard/perfil/dados`** (formulário mudou —
+  Subcategoria/Mercados saíram) — salvar Nome artístico/Categoria/Bio/
+  Gêneros/Site/Outros links, persiste ao recarregar.
+- ⏳ **RE-VALIDAÇÃO "Como você trabalha"** (reescrito por completo — era
+  5 grupos de chips, agora 2 campos de texto livre) — salvar "O que
+  você faz e para quem?"/"Onde você atende?"/faixa de
+  cachê/nota fiscal/outras preferências, persiste ao recarregar.
+- ⏳ **"Sua Doopla" inline** — trocar canal de atenção
+  (WhatsApp/Painel/Ambos), confirma sem sair da página.
+- ⏳ **"Canais da sua Doopla" inline** — WhatsApp (ver status), link de
+  orçamento (copiar), roteamento (trocar modo/booker) — tudo sem sair
+  da página, sem transporte Meta real disponível (mesma limitação de
+  sempre pra envio real do código por WhatsApp).
+- ⏳ **"Privacidade e dados" inline** — abrir "Ver privacidade na
+  Comunidade" e confirmar que só ATIVA a participação na Comunidade
+  nesse clique específico, nunca só por abrir Configurações.
+- ⏳ **"Excluir minha conta" por modal** — abre modal (não navega pra
+  outra página), fecha com "Cancelar" sem excluir nada.
+- ⏳ "Notificações"/"Ajuda e suporte" inline — conteúdo aparece, sem
+  navegação.
 
 ### P0 — Core Professional com backend real
 
