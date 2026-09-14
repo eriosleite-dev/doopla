@@ -11262,6 +11262,124 @@ verdade a arquitetura já definida — **CONFIGURAÇÕES → DETALHE → AÇÃO*
 ser reconciliado contra essa arquitetura, não corrigido isoladamente
 dentro da tela existente.
 
+## 100. Settings V2 consolidado — decompõe /dashboard/perfil/editar, remove "matching" da UX, move roteamento pra Canais — `[DELIVERED]`
+
+Implementação da arquitetura V2 aprovada pela fundadora após a
+reconciliação do bloco 98/99 (audit-only) + duas rodadas de revisão
+(V1 rejeitada por reviver "Perfil profissional" como conceito de
+navegação; V2 aprovada com ajustes finais — grupo "Perfil e trabalho",
+nome final "Como você trabalha", roteamento/link de orçamento em
+"Canais e conexões", achados registrados sem correção).
+
+**O que mudou.** O antigo `/dashboard/perfil/editar` — uma página só
+misturando identidade profissional, contexto de trabalho (ex-"matching"),
+perfil público e roteamento de pedidos — foi decomposto em 3 rotas
+novas dentro de um grupo novo do hub ("Perfil e trabalho") + 1 rota
+existente que ganhou conteúdo:
+
+- **`/dashboard/perfil/dados`** ("Dados profissionais") — foto, nome
+  artístico, categoria, subcategoria, bio, gêneros, mercados, site,
+  outros links. `website_url`/`other_links` confirmados (leitura de
+  `src/app/[slug]/page.tsx`) como NÃO exibidos na página pública —
+  ficam aqui, não em "Perfil público", conforme pedido explícito de
+  checagem antes de posicionar.
+- **`/dashboard/perfil/trabalho`** ("Como você trabalha") — ex-modal
+  "Preferências de matching": tipos de trabalho/cliente, regiões,
+  idiomas, áreas de ajuda, estágio de carreira, faixa de cachê, emite
+  nota fiscal, viaja/atende outras cidades/aceita fora da cidade,
+  outras preferências. Deixou de ser modal (removido o `createPortal`/
+  `useSyncExternalStore`/containing-block workaround do bloco 87 — não
+  precisa mais, a página inteira já é o "detalhe") e virou uma página
+  normal com resumo + campos diretos. Copy de "matching"/buscas/
+  recomendações/compatibilidade removida por completo desta superfície;
+  microcopy aprovada usada literalmente ("Informações que ajudam sua
+  Doopla a entender como você trabalha e te representar melhor nas
+  conversas.", estado vazio "Nada preenchido ainda...").
+- **`/dashboard/perfil/publico`** ("Perfil público") — mesmo
+  `PublicProfileCard` de sempre (Instagram, portfólio, ativar/
+  desativar, link público), só rota própria.
+- **`/dashboard/perfil/canais`** ("Canais e conexões") — ganhou
+  `LinkRoutingCard` ("Seu link de orçamento"/"Quem recebe seus
+  pedidos", os 3 modos eu/meu booker/eu e meu booker preservados
+  intocados) ao lado do `ProWhatsappIdentityCard` já existente.
+  Corrige uma inconsistência real com a decisão de 06/09/2026 ("Canais
+  de booking nunca vira porta de volta pro Perfil profissional") — o
+  roteamento estava do lado errado dessa regra, dentro do editor de
+  perfil, não dentro de Canais.
+
+**Split de Server Action (correção técnica necessária, não pedida
+explicitamente mas obrigatória pra decompor com segurança).**
+`updateArtistProfileAction` (`actions.ts`) fazia um único UPDATE com
+TODOS os campos (identidade + contexto de trabalho) — mantê-la assim
+faria a página "Dados profissionais" sozinha zerar
+`travels`/`career_stage`/`work_types`/etc. toda vez que alguém
+salvasse só o nome artístico (campo ausente do FormData de uma página
+vira `null`/`false` na outra). Dividida em duas: `updateArtistProfileAction`
+(escopada a identidade) e `updateArtistWorkContextAction` (nova,
+escopada a contexto de trabalho) — mesma tabela, mesma validação, dois
+UPDATEs independentes em vez de um. Nenhuma migration, nenhuma coluna
+nova — só a fronteira de escrita foi dividida.
+
+**"Perfil profissional" não foi ressuscitado como navegação.** A
+decisão de 06/09/2026 (removido como item único de navegação em
+Configurações) continua respeitada — não existe nenhuma linha
+"Perfil profissional" no hub. O grupo novo "Perfil e trabalho" tem 3
+linhas de escopo estreito (Dados profissionais / Como você trabalha /
+Perfil público), decisão nova e explícita da fundadora, não uma
+reversão silenciosa.
+
+**Dados preservados, nenhum removido.** Todos os campos lidos por
+`get-professional-business-context.ts` (Runtime) continuam existindo e
+editáveis: `fee_range`, `career_stage`, `work_types`, `client_types`,
+`regions`, `travels`, `accepts_out_of_city_work`, `attention_channel`
+(inalterado, continua em "Preferências da Doopla"), `help_areas`,
+`issues_invoice`. Zero coluna apagada, zero migration, zero mudança de
+RLS/schema.
+
+**Findings registrados, não corrigidos (fora de escopo por instrução
+explícita — superfícies de Booker):**
+- `booker-profile-form.tsx` (perfil legado do Booker, `role==='booker'`)
+  ainda tem sua própria seção "Preferências de matching" (preferências
+  de trabalho do BOOKER, `booker_profiles.regions`/`fee_range`, tabela
+  diferente do artista) — intocado, é superfície de Booker.
+- `CompletePreferencesCard` (`src/app/dashboard/complete-preferences-card.tsx`,
+  renderizado só em `booker-home-view.tsx`, fluxo legado Booker
+  gerenciando artista) ainda diz "Complete seu perfil para melhorar
+  seu matching" e linka pra `/dashboard/perfil#preferencias-matching`
+  — um link que **já estava quebrado antes desta rodada** (o anchor
+  real sempre viveu em `/perfil/editar#preferencias-matching`, nunca em
+  `/perfil` puro). Não corrigido — é superfície de Booker (Home do
+  Booker gerenciando artista), fora do escopo explícito desta rodada.
+- `languages` (idioma) continua coletado em "Como você trabalha" mas
+  sem consumidor confirmado no Runtime hoje (não lido por
+  `get-professional-business-context.ts`) — achado já registrado na
+  reconciliação, mantido como está, não removido nem "corrigido".
+- `negotiation_notes`/`pricing_notes`/`fee_varies_by_job_type`/
+  `typical_job_duration` continuam sem superfície de edição em lugar
+  nenhum (lidos pelo Runtime, só `negotiation_notes` é escrito uma vez
+  no cadastro) — gap pré-existente, não introduzido por esta rodada,
+  não corrigido (fora de escopo).
+
+**Web only, App intocado por instrução explícita.** `git status
+mobile/` confirma zero arquivo do App tocado nesta rodada — paridade
+de "Como você trabalha"/"Minha equipe" no App permanece `FUTURE`,
+tratada no bloco correspondente quando chegar a vez.
+
+**Validado**: `next build` limpo (61 rotas geradas, `/dashboard/perfil/editar`
+ausente da listagem, as 4 rotas afetadas presentes: `dados`, `trabalho`,
+`publico`, `canais`), `tsc --noEmit` limpo, `eslint` limpo nos arquivos
+tocados. QA funcional limitada a smoke test via `curl` contra
+`next start` real (todas as rotas novas respondem, nenhum crash de
+servidor) — sem acesso a um Supabase real neste ambiente
+(`.env.local` é o template, mesmo gap já documentado em rodadas
+anteriores), não foi possível autenticar e confirmar visualmente
+salvamento/leitura ponta a ponta; a correção do split de action acima
+foi validada por leitura de código (cada action só grava as próprias
+colunas), não por teste E2E autenticado.
+
+**Roadmap mestre**: `SETTINGS V2` → `[DELIVERED]`, aguardando revisão
+final da fundadora antes de considerar o bloco fechado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

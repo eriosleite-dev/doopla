@@ -8,9 +8,11 @@ import { proGhostButtonClass } from '../pro-format';
 import { ProCard } from '../pro-ui';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
 
-// Pro re-skin (Bloco 7, P1) — único consumidor é perfil/editar/
-// (artista-only). O formulário interno (ProLinkRoutingForm) é o fork
-// Pro de LinkRoutingForm — o original continua servindo o Booker via
+// Pro re-skin (Bloco 7, P1) — único consumidor é perfil/canais/
+// (artista-only) desde o Settings V2 consolidado (09/09/2026, antes
+// vivia em perfil/editar/, o antigo editor de perfil monolítico). O
+// formulário interno (ProLinkRoutingForm) é o fork Pro de
+// LinkRoutingForm — o original continua servindo o Booker via
 // orcamento-link-card.tsx, intocado.
 export function LinkRoutingCard({
   bookers,

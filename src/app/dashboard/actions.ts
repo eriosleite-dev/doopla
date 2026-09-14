@@ -1212,12 +1212,12 @@ export async function uploadAvatarAction(
   await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
 
   // Compartilhada por Booker/Agência (AvatarUploader em
-  // /dashboard/perfil, intocado) e Artista (AvatarUploader movido pra
-  // /dashboard/perfil/editar na rodada de correção/consistência,
-  // 06/09/2026 — "Perfil profissional" saiu da navegação, mas o
-  // formulário real continua existindo e ativo naquela rota).
+  // /dashboard/perfil, intocado) e Artista (ProAvatarUploader vive em
+  // /dashboard/perfil/dados desde o Settings V2 consolidado, 09/09/2026
+  // — "Dados profissionais" é uma das 3 rotas que substituíram o antigo
+  // /dashboard/perfil/editar monolítico).
   revalidatePath('/dashboard/perfil');
-  revalidatePath('/dashboard/perfil/editar');
+  revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
   return {};
 }
@@ -1246,11 +1246,13 @@ export async function enablePublicProfileAction() {
     .update({ public_enabled: true })
     .eq('profile_id', user.id);
 
-  // PublicProfileCard vive em /dashboard/perfil/editar (Artista) —
-  // nunca mais em /dashboard/perfil (essa rota agora é Configurações,
-  // sem esse form). /dashboard revalida a Home (orçamentoUrl depende
-  // de public_enabled).
-  revalidatePath('/dashboard/perfil/editar');
+  // PublicProfileCard vive em /dashboard/perfil/publico (Artista) desde
+  // o Settings V2 consolidado (09/09/2026) — nunca em /dashboard/perfil
+  // (essa rota é Configurações, sem esse form). /dashboard revalida a
+  // Home (orçamentoUrl depende de public_enabled), /dashboard/perfil
+  // revalida o resumo "Ativo/Desativado" na linha do hub.
+  revalidatePath('/dashboard/perfil/publico');
+  revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
 }
 
@@ -1265,7 +1267,8 @@ export async function disablePublicProfileAction() {
     .update({ public_enabled: false })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil/editar');
+  revalidatePath('/dashboard/perfil/publico');
+  revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
 }
 
@@ -1289,10 +1292,22 @@ export async function updatePublicLinksAction(
     })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil/editar');
+  revalidatePath('/dashboard/perfil/publico');
   return {};
 }
 
+// Settings V2 consolidado (09/09/2026) — decomposição de "Perfil
+// profissional" (antigo /dashboard/perfil/editar, uma página só) em
+// rotas por conceito ("Dados profissionais" / "Como você trabalha" /
+// "Perfil público"). Por isso esta action foi ESCOPADA só aos campos
+// de identidade — ela era originalmente uma única action pra tudo
+// (identidade + contexto de trabalho); mantê-la assim faria a página
+// "Dados profissionais" sozinha zerar travels/careerStage/workTypes/etc.
+// toda vez que alguém salvasse só o nome artístico, já que campos
+// ausentes do FormData de uma página só viram null/false na outra.
+// O contexto de trabalho ganhou a própria action (updateArtistWorkContextAction,
+// abaixo) — mesma tabela, mesma validação, só o campo de escrita
+// dividido em dois UPDATEs independentes.
 export async function updateArtistProfileAction(
   _prevState: { error?: string },
   formData: FormData
@@ -1310,25 +1325,6 @@ export async function updateArtistProfileAction(
   const mercados = String(formData.get('mercados') ?? '').trim();
   const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
   const otherLinks = String(formData.get('otherLinks') ?? '').trim();
-  const otherPreferences = String(formData.get('otherPreferences') ?? '').trim();
-  const travels = formData.get('travels') === 'on';
-  const servesOtherLocations = formData.get('servesOtherLocations') === 'on';
-  const acceptsOutOfCityWork = formData.get('acceptsOutOfCityWork') === 'on';
-  const careerStage = String(formData.get('careerStage') ?? '').trim();
-  const feeRange = String(formData.get('feeRange') ?? '').trim();
-  const workTypes = formData.getAll('workTypes').map(String).filter(Boolean);
-  const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
-  const regions = formData.getAll('regions').map(String).filter(Boolean);
-  const languages = formData.getAll('languages').map(String).filter(Boolean);
-  const helpAreas = formData.getAll('helpAreas').map(String).filter(Boolean);
-  // "Emite nota fiscal?" (Settings V2, 08/09/2026) — deixa de ser
-  // write-once do onboarding (achado da auditoria do Bloco 4): mesma
-  // coluna (artist_profiles.issues_invoice, migration 0037), agora
-  // editável aqui — a superfície de contexto profissional/comercial,
-  // nunca em Conta. Checkbox ausente no FormData (nunca marcado) não
-  // distingue "não emite" de "não respondido" — por isso um <select>
-  // com 3 estados no form, não um checkbox.
-  const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
 
   const genres = genresRaw
     ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
@@ -1345,6 +1341,53 @@ export async function updateArtistProfileAction(
       mercados: mercados || null,
       website_url: websiteUrl || null,
       other_links: otherLinks || null,
+    })
+    .eq('profile_id', user.id);
+
+  revalidatePath('/dashboard/perfil/dados');
+  revalidatePath('/dashboard');
+  return {};
+}
+
+// Contexto de trabalho ("Como você trabalha") — os campos que o
+// Runtime lê como conhecimento declarado pra representar o
+// profissional (get-professional-business-context.ts), nunca
+// autorização. Antes viviam dentro do modal "Preferências de
+// matching" da mesma action de identidade; esse conceito de produto
+// não existe mais (matching/busca/recomendação não são promessa do
+// produto) — o nome e a copy mudaram, os campos e a coluna não.
+export async function updateArtistWorkContextAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Só artistas têm esse perfil.' };
+
+  const otherPreferences = String(formData.get('otherPreferences') ?? '').trim();
+  const travels = formData.get('travels') === 'on';
+  const servesOtherLocations = formData.get('servesOtherLocations') === 'on';
+  const acceptsOutOfCityWork = formData.get('acceptsOutOfCityWork') === 'on';
+  const careerStage = String(formData.get('careerStage') ?? '').trim();
+  const feeRange = String(formData.get('feeRange') ?? '').trim();
+  const workTypes = formData.getAll('workTypes').map(String).filter(Boolean);
+  const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
+  const regions = formData.getAll('regions').map(String).filter(Boolean);
+  const languages = formData.getAll('languages').map(String).filter(Boolean);
+  const helpAreas = formData.getAll('helpAreas').map(String).filter(Boolean);
+  // "Emite nota fiscal?" (Settings V2, 08/09/2026) — deixa de ser
+  // write-once do onboarding (achado da auditoria do Bloco 4): mesma
+  // coluna (artist_profiles.issues_invoice, migration 0037), agora
+  // editável aqui — a superfície de contexto de trabalho, nunca em
+  // Conta. Checkbox ausente no FormData (nunca marcado) não distingue
+  // "não emite" de "não respondido" — por isso um <select> com 3
+  // estados no form, não um checkbox.
+  const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
+
+  await supabase
+    .from('artist_profiles')
+    .update({
       other_preferences: otherPreferences || null,
       travels,
       serves_other_locations: servesOtherLocations,
@@ -1360,7 +1403,7 @@ export async function updateArtistProfileAction(
     })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil/editar');
+  revalidatePath('/dashboard/perfil/trabalho');
   revalidatePath('/dashboard');
   return {};
 }
@@ -1451,7 +1494,10 @@ export async function updateLinkRoutingAction(
   );
   if (error) return { error: 'Não foi possível salvar o roteamento.' };
 
-  revalidatePath('/dashboard/perfil/editar');
+  // Roteamento/link de orçamento vive em /dashboard/perfil/canais
+  // ("Canais e conexões") desde o Settings V2 consolidado (09/09/2026)
+  // — junto do WhatsApp, nunca mais dentro do antigo editor de perfil.
+  revalidatePath('/dashboard/perfil/canais');
   revalidatePath('/dashboard');
   return { success: true };
 }

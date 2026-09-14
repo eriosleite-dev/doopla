@@ -10,9 +10,11 @@ import {
 import { proInputClass, proLabelClass, proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
 import { ProCard } from '../pro-ui';
 
-// Pro re-skin (Bloco 7, P1) — único consumidor é perfil/editar/
-// (artista-only), sem contraparte Booker a preservar, então editado no
-// lugar (mesma lógica do bloco 1, ConversaView/ReplyForm).
+// Pro re-skin (Bloco 7, P1) — único consumidor é perfil/publico/
+// (artista-only) desde o Settings V2 consolidado (09/09/2026, antes
+// vivia em perfil/editar/, o antigo editor de perfil monolítico), sem
+// contraparte Booker a preservar, então editado no lugar (mesma lógica
+// do bloco 1, ConversaView/ReplyForm).
 export function PublicProfileCard({
   slug,
   publicEnabled,

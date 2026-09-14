@@ -11,9 +11,10 @@ const OUTPUT = 480;
 
 // Pro re-skin (Bloco 7, P1) de AvatarUploader — mesma action/lógica de
 // crop (drag/scale/canvas), só o tema --pro-*. Usado por Agency Profile
-// (perfil/page.tsx) e Professional Profile (perfil/editar/) — os dois
-// únicos consumidores fora do Booker, que continua no AvatarUploader
-// original intocado.
+// (perfil/page.tsx) e por "Dados profissionais" (perfil/dados/, desde
+// o Settings V2 consolidado, 09/09/2026 — antes vivia em perfil/editar/)
+// — os dois únicos consumidores fora do Booker, que continua no
+// AvatarUploader original intocado.
 export function ProAvatarUploader({
   currentUrl,
   fallbackName,

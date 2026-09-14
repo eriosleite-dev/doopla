@@ -2,13 +2,12 @@ import { proLabelClass } from '../pro-format';
 
 // Pro re-skin (Bloco 7, P1) de ChipCheckboxGroup — mesmo checkbox
 // nativo + rótulo em chip, sem JS de estado (formData.getAll(name)
-// puro no submit), só o tema --pro-*. `form` é opcional: só é
-// necessário quando este grupo é renderizado via portal fora da árvore
-// DOM do <form> (caso de ProArtistProfileForm, cujo modal de
-// preferências precisa escapar do containing block criado pelo
-// ProCard ancestral — ver comentário em pro-artist-profile-form.tsx) —
-// associação explícita por atributo `form` funciona independente de
-// nesting DOM.
+// puro no submit), só o tema --pro-*. `form` é opcional: associação
+// explícita por atributo `form` funciona independente de nesting DOM,
+// útil se este grupo algum dia for renderizado fora da árvore de um
+// <form> (ex.: portal). Hoje (Settings V2 consolidado, 09/09/2026) o
+// único consumidor, pro-work-context-form.tsx, renderiza direto dentro
+// do próprio <form> — nenhum caller passa essa prop.
 export function ProChipCheckboxGroup({
   name,
   label,

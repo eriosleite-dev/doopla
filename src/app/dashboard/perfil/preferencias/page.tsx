@@ -13,15 +13,15 @@ export const metadata: Metadata = {
 
 type ArtistAttention = { attention_channel: 'whatsapp' | 'painel' | 'ambos' | null };
 
-// Settings V2 (08/09/2026) — "como a Doopla trabalha com o
-// profissional", nunca configuração genérica de conta. Conhecimento
-// declarado aqui é sempre contexto, nunca autorização — Mandate/
-// Approval Gate/Policy Gate continuam sendo a autoridade real sobre o
-// que a Doopla pode fazer sozinha, sem nenhuma mudança aqui. O
+// Settings V2 (08/09/2026), consolidado (09/09/2026) — "como a Doopla
+// trabalha com o profissional", nunca configuração genérica de conta.
+// Conhecimento declarado aqui é sempre contexto, nunca autorização —
+// Mandate/Approval Gate/Policy Gate continuam sendo a autoridade real
+// sobre o que a Doopla pode fazer sozinha, sem nenhuma mudança aqui. O
 // enriquecimento mais amplo (regiões, estágio de carreira, tipos de
-// trabalho, contexto comercial) mora em "Perfil profissional" —
-// superfície separada, já existente, só linkada daqui (nunca duplicada
-// dentro de Configurações).
+// trabalho) mora em "Como você trabalha" (/dashboard/perfil/trabalho)
+// — rota própria dentro do grupo "Perfil e trabalho", só linkada daqui
+// (nunca duplicada dentro de Configurações).
 export default async function PreferenciasPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
@@ -51,13 +51,13 @@ export default async function PreferenciasPage() {
         )}
 
         <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Contexto profissional e comercial</p>
+          <p className="font-pro-sub text-[13.5px] font-bold">Como você trabalha</p>
           <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">
             Estágio de carreira, tipos de trabalho, regiões de atuação, faixa de cachê e se você emite nota fiscal — o que
             sua Doopla usa como conhecimento declarado, nunca como autorização.
           </p>
-          <Link href="/dashboard/perfil/editar#preferencias-matching" className={`${proGhostButtonClass} mt-3 inline-block`}>
-            Editar perfil profissional
+          <Link href="/dashboard/perfil/trabalho" className={`${proGhostButtonClass} mt-3 inline-block`}>
+            Editar
           </Link>
         </ProCard>
       </div>

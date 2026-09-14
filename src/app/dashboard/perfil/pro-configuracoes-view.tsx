@@ -4,24 +4,32 @@ import type { Subscription } from '@/lib/supabase/types';
 import { ProPageHeader } from '../pro-ui';
 import { ProSettingsGroup, ProSettingsRow } from './settings-ui';
 
-// Settings V2 (08/09/2026) — a raiz de Configurações responde rápido a
-// "o que posso gerenciar?" e "qual é o estado atual?", nunca um
-// formulário inteiro na própria raiz. Cada linha é uma rota própria
-// (Configurações → detalhe → ação); o resumo ao lado de cada linha só
-// aparece quando há dado real útil pra mostrar — nunca um placeholder
-// decorativo. Server Component puro: nenhuma interação vive aqui, só
-// navegação — as ações reais (upgrade, trocar senha, excluir conta)
-// vivem nas subpáginas correspondentes.
+// Settings V2 (08/09/2026), consolidado (09/09/2026) — a raiz de
+// Configurações responde rápido a "o que posso gerenciar?" e "qual é o
+// estado atual?", nunca um formulário inteiro na própria raiz. Cada
+// linha é uma rota própria (Configurações → detalhe → ação); o resumo
+// ao lado de cada linha só aparece quando há dado real útil pra
+// mostrar — nunca um placeholder decorativo. Server Component puro:
+// nenhuma interação vive aqui, só navegação — as ações reais (upgrade,
+// trocar senha, excluir conta) vivem nas subpáginas correspondentes.
+//
+// Grupo "Perfil e trabalho" (consolidação, 09/09/2026): decompõe o
+// antigo /dashboard/perfil/editar (uma página só, misturando 4
+// conceitos) em 3 linhas de escopo estreito. Isso NÃO ressuscita
+// "Perfil profissional" como item de navegação único — não existe mais
+// um item assim, existem 3 rotas específicas. Ver DECISOES.md.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
   whatsappStatus,
   paymentConfigured,
+  publicProfileEnabled,
 }: {
   hasPro: boolean;
   subscription: Subscription | null;
   whatsappStatus: string | null;
   paymentConfigured: boolean;
+  publicProfileEnabled: boolean;
 }) {
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
@@ -54,6 +62,16 @@ export function ProConfiguracoesView({
         <ProSettingsGroup title="Sua conta">
           <ProSettingsRow href="/dashboard/perfil/conta" label="Informações da conta" />
           <ProSettingsRow href="/dashboard/perfil/seguranca" label="Segurança e acesso" />
+        </ProSettingsGroup>
+
+        <ProSettingsGroup title="Perfil e trabalho">
+          <ProSettingsRow href="/dashboard/perfil/dados" label="Dados profissionais" />
+          <ProSettingsRow href="/dashboard/perfil/trabalho" label="Como você trabalha" />
+          <ProSettingsRow
+            href="/dashboard/perfil/publico"
+            label="Perfil público"
+            summary={publicProfileEnabled ? 'Ativo' : 'Desativado'}
+          />
         </ProSettingsGroup>
 
         <ProSettingsGroup title="Doopla">

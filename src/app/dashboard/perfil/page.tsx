@@ -39,10 +39,15 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails] = await Promise.all([
+    const [subscription, homeFacts, paymentDetails, artistPublic] = await Promise.all([
       getSubscription(user.id, supabase),
       getCachedProfessionalHomeFacts(supabase),
       getActivePaymentDetails(user.id, supabase),
+      supabase
+        .from('artist_profiles')
+        .select('public_enabled')
+        .eq('profile_id', user.id)
+        .maybeSingle<{ public_enabled: boolean }>(),
     ]);
     return (
       <ProConfiguracoesView
@@ -50,6 +55,7 @@ export default async function PerfilPage() {
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         paymentConfigured={paymentDetails !== null}
+        publicProfileEnabled={artistPublic.data?.public_enabled ?? false}
       />
     );
   }

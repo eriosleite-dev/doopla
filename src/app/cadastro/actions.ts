@@ -50,9 +50,10 @@ async function requireArtist() {
 // do onboarding): removida da Etapa 3 — coluna issues_invoice
 // (artist_profiles, migration 0037) continua existindo, nullable,
 // lida pelo Runtime (get-professional-business-context.ts) e já
-// editável em /dashboard/perfil/editar (Settings V2, 08/09/2026) —
-// esta action simplesmente para de escrever nela; nunca sobrescreve
-// pra null um valor que já tenha sido preenchido depois, no perfil.
+// editável em /dashboard/perfil/trabalho ("Como você trabalha",
+// Settings V2 consolidado, 09/09/2026) — esta action simplesmente para
+// de escrever nela; nunca sobrescreve pra null um valor que já tenha
+// sido preenchido depois, no perfil.
 export async function savePrepareAction(
   _prevState: OnboardingFormState,
   formData: FormData

@@ -8,6 +8,70 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Settings V2 consolidado: "matching" sai da UX, "Perfil profissional" não volta como navegação — decompor ≠ reverter — 09/09/2026
+
+Depois da auditoria audit-only (blocos 98/99), a fundadora pediu a
+implementação de Settings V2 com uma régua explícita: corrigir a
+mistura de conceitos dentro do antigo `/dashboard/perfil/editar` (uma
+página só) sem reabrir a decisão de 06/09/2026 que tinha removido
+"Perfil profissional" como item de navegação em Configurações.
+
+Uma primeira proposta de arquitetura (V1) foi rejeitada por reviver
+esse item ("Dados profissionais"/"Perfil público" agrupados sob um
+único rótulo "Perfil profissional"). A V2 aprovada decompõe o mesmo
+conteúdo em 3 linhas de escopo estreito dentro de um grupo novo
+("Perfil e trabalho"): Dados profissionais / Como você trabalha /
+Perfil público — cada uma com detalhe próprio. Decisão registrada
+explicitamente pela fundadora: isso NÃO é reverter a decisão de
+06/09 — não existe mais um item de navegação único chamado "Perfil
+profissional"; existem 3 conceitos distintos, cada um com sua própria
+rota.
+
+Também decidido nesta rodada: "matching" como conceito de produto
+(busca/recomendação/compatibilidade entre pessoas) não existe mais —
+removido de toda copy alcançável a partir de Configurações. Os campos
+que alimentavam esse modal (regiões, estágio de carreira, tipos de
+trabalho/cliente, faixa de cachê, emite nota fiscal etc.) NÃO são
+legado — são lidos pelo Runtime
+(`get-professional-business-context.ts`) como conhecimento declarado
+pra representar o profissional. Reenquadrados sob "Como você
+trabalha", nome escolhido por reaproveitar copy já existente no
+cadastro (Etapa 3, "Como você trabalha") em vez de inventar um termo
+novo — as outras 2 opções cogitadas ("Sobre o seu trabalho", "Treinar
+sua Doopla") foram descartadas: a segunda por ser redundante, a
+terceira porque a fundadora determinou explicitamente que "Treinar sua
+Doopla" é uma AÇÃO conversacional (deep link pro WhatsApp), nunca o
+nome de uma tela de formulário em Settings — as duas superfícies são
+complementares, nunca a mesma coisa.
+
+"Seu link de orçamento"/"Quem recebe seus pedidos de orçamento" foi
+movido de dentro do editor de perfil pra "Canais e conexões" — não por
+capricho, mas porque sua posição anterior contradizia na prática uma
+decisão já existente ("Canais de booking da Home nunca é porta de
+volta pro Perfil profissional/editor"): o roteamento vivia do lado
+errado dessa regra. O comportamento em si (3 modos: eu / meu booker /
+eu e meu booker) não mudou uma linha — só a rota que o hospeda.
+
+Decisão técnica correlata, não pedida mas necessária: a Server Action
+`updateArtistProfileAction` fazia um único UPDATE com todos os campos
+(identidade + contexto de trabalho) num só formulário. Decompor a UI
+em 2 páginas sem decompor a action faria cada página zerar os campos
+da outra (campo ausente do FormData de uma página vira `null`/`false`
+na action antiga). Dividida em duas actions escopadas
+(`updateArtistProfileAction` + `updateArtistWorkContextAction` nova),
+mesma tabela, dois UPDATEs independentes — sem isso a decomposição
+proposta teria um bug real de perda de dado silenciosa.
+
+Achados fora de escopo, registrados e NÃO corrigidos por serem
+superfície de Booker (instrução explícita — "não expandir a lógica
+Booker agora"): `booker-profile-form.tsx` mantém sua própria seção
+"Preferências de matching" (dados do BOOKER, tabela diferente);
+`CompletePreferencesCard` (Home do Booker gerenciando artista) mantém
+copy de "matching" e um link que já estava quebrado antes desta
+rodada. Nenhum dos dois foi tocado.
+
+---
+
 ## Nova Home Pública: aprovada pela fundadora — bloco fechado, débitos residuais não reabrem o bloco — 09/09/2026
 
 A fundadora aprovou a Home pública nova (mockup `doopla-home-mockup.html`

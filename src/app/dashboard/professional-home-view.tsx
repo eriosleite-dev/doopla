@@ -418,8 +418,8 @@ function StatsRow({ needsYou, waitingClient, confirmed, completed }: { needsYou:
 // título) quando as duas já estão resolvidas — zero ruído visual no
 // estado "tudo completo". Dados de recebimento aponta pra
 // /dashboard/perfil/recebimento (superfície real de Settings V2);
-// contexto comercial aponta pro mesmo modal "Preferências de matching"
-// já linkado em Preferências da Doopla (#preferencias-matching) —
+// contexto comercial aponta pra "Como você trabalha"
+// (/dashboard/perfil/trabalho, Settings V2 consolidado, 09/09/2026) —
 // nenhuma superfície nova, nenhum campo novo.
 function ReadinessCard({
   paymentReady,
@@ -454,7 +454,7 @@ function ReadinessCard({
             <p className="text-[12px] text-[var(--pro-tx-70)]">Ajuda a Doopla te representar melhor nas conversas.</p>
           </div>
           <Link
-            href="/dashboard/perfil/editar#preferencias-matching"
+            href="/dashboard/perfil/trabalho"
             className="flex-none text-[11.5px] font-bold text-[var(--pro-red)] hover:underline"
           >
             Completar →
