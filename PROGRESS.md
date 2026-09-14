@@ -11399,6 +11399,131 @@ aplicação — este ambiente não tem essas credenciais.
 
 **Roadmap mestre**: `SETTINGS V2` → `[DELIVERED / APPROVED / CLOSED]`.
 
+## 101. ROADMAP MESTRE — reconciliação completa v1 — `[AUDIT ONLY / NO CODE CHANGE]` — 14/09/2026
+
+Auditoria read-only pedida explicitamente pela fundadora depois do
+fechamento de Settings V2: a tabela de "8 blocos" do §79 tinha sido
+tratada erroneamente como se fosse o roadmap inteiro da Doopla. Este
+bloco cruza `PROGRESS.md` + `DECISOES.md` inteiros (não só a tabela do
+§79) e devolve um ROADMAP MESTRE único, versionado, com todo item
+conhecido classificado. **Nenhum código foi alterado.** Nenhum CURRENT
+foi escolhido — por instrução explícita, essa decisão fica pra depois
+da fundadora validar esta reconciliação.
+
+Convenção de versionamento: esta é a **v1** (14/09/2026). Reconciliações
+futuras devem virar uma nova seção numerada com "v2", "v3" etc. — nunca
+editar esta em silêncio, pra preservar o histórico de auditoria.
+
+Classificação usada, conforme pedido: `DELIVERED/CLOSED`, `CURRENT`,
+`NEXT`, `FUTURE`, `BACKLOG`, `ABSORBED`, `SUPERSEDED`.
+
+### CURRENT
+
+Nenhum. Por instrução explícita da fundadora, não escolhido nesta
+rodada — aguarda a validação desta reconciliação.
+
+### NEXT
+
+Nenhum. Mesma razão acima — a ordem só é decidida depois da validação.
+
+### DELIVERED / CLOSED
+
+| Item | Evidência (seção/commit) |
+|---|---|
+| Doopla Professional Settings V2 (decomposição de `/perfil/editar`, remoção de "matching") | §100, commits `d66ce16`/`13dd768` |
+| Doopla Professional Dashboard (Shell+Home+Bookings/Agenda/Financeiro/Minha equipe/Configurações, gaps reais) | §80, commits `6db70b9`/`9064a01`/`7f675ef`/`14e710e` |
+| Comunidade — redesign visual da Home (Bloco 3 do §79) | §82 ("Bloco #3 canônico"), commits `8df5036`/`4265bbe`/`1e7af71`/`33dd13e` |
+| Comunidade Fase 1 (busca FTS, salvos, notificações V1, mentions/reply-to) | §74-§78 |
+| Comunidade — "Em alta"/"Para você" (ranking V1) | §82, migration `0079` |
+| Auditoria onboarding/cadastro (Bloco 4 do §79) | `[AUDIT DELIVERED]` em §79; as 2 decisões que gerou foram implementadas depois: `issues_invoice` editável → §95/§100, superfície de enriquecimento progressivo (regions/career_stage/etc.) → entregue como "Como você trabalha" em §100 |
+| Cadastro/Onboarding — fechamento (remove "Você emite nota fiscal?" da Etapa 3) | §95 |
+| Cadastro/Onboarding — checkpoint audit-only | §98, `[AUDIT ONLY — DELIVERED]`, zero mudança funcional por desenho |
+| Nova Home Pública (Bloco 6 do §79) | §97, commits `df7192b`/`420016e`/`7b4f159`/`102068c` |
+| Home pública — UX/navegação (Bloco 7 do §79) | Já `DELIVERED` antes desta sessão (commits `8fba1f9`/`51e5e3c`/`fca76f6`/`4097041`/`2a654a2`/`2d93c60`/`d0ec4a3`), preservado como baseline pelo Bloco 6 |
+| 6A+6B WhatsApp Outreach | §59-§60/§81, commits `8c88dca`/`f4eb371`/`47a5eb1`/`0384263`/`25b98b1` |
+| App Agenda — perda do estado "indisponível" | §90 |
+| Notificações da Comunidade — paginação/limite real (`limit()`) | §91 — escopo sempre foi só Comunidade (decisão já registrada no §79, linha 8 da tabela); não existe pendência de um "Notification Center" geral com esse mesmo bug |
+| Cache compartilhado entre os 2 sinos (Web) | §92, explicitamente Web-only |
+| Professional Product UI — P1 completo (itens a-h entregues em §86-92, item (i) formalmente fechado por ser irrecuperável) | §93, `[P1 CLOSED]` |
+| WhatsApp Identity UX + CTA "Falar com minha Doopla" real (era `[FUTURE]` no §68) | §72 (`ProWhatsappIdentityCard`, primeira UI real do OTP) + §73 (3 estados do CTA explicitados) |
+| Referral/afiliados ("Indique e ganhe") | Web + Mobile, tarefas internas #144/#85 concluídas |
+| Multi-role — fundação segura (`profile_roles`, `handle_new_user`, anti-autocobertura) | Tarefa interna #142 — **fundação apenas**; UX completa de multi-role/troca de papel permanece FUTURE, dentro do bloco Booker |
+| Booker existente — ID público estável + fluxo "Adicionar profissional" | Tarefa interna #141 |
+| **Professional Web Dashboard "final"** (item do registro do §68) | **Inferência, não 100% textual**: nenhuma frase fecha esse item nominalmente, mas o volume entregue em §69-§93 (Shell, Home, Bookings, Agenda, Financeiro, Minha equipe, Configurações, sistema de tema `--pro-*` próprio) cobre exatamente esse escopo. Marcado `DELIVERED` por inferência de escopo, não por citação direta — sinalizado pra você confirmar se concorda. |
+| **Professional App "final"** (item do registro do §68) | Mesma ressalva acima — coberto pelos blocos mobile #73-#89 (Home, Bookings, Agenda, Dinheiro, Indique e ganhe, Configurações, Decisões, bottom nav real). Inferência de escopo, não citação direta. |
+
+### ABSORBED
+
+| Item | Absorvido por |
+|---|---|
+| Configurações — Dados de recebimento (Bloco 5 do §79) | Settings V2 (Bloco 1/§80), desde §73 |
+| "Preferências de matching" como conteúdo legado (achado `[DEFERRED]` do §99) | Resolvido dentro de Settings V2 — §100 |
+
+### SUPERSEDED
+
+| Item | Substituído por / motivo |
+|---|---|
+| Conversas como aba primária de navegação | `Conversas Bloco 2` (acesso secundário via Booking) — DECISOES.md, "nunca ressuscitar sem nova instrução explícita" |
+| Doopla Verified (selo de booking) | Removido, de fato inerte — §68 |
+| Mecanismo de confirmação de booking por link do cliente | Removido — §68 |
+| Copy "Você recebeu uma mensagem da Doopla?" (confirmação/reenvio) | Removido — §68 |
+| Estados antigos dependentes de Verified/link de confirmação | Removidos — §68 |
+| Modelo antigo de Booker/marketplace (bookers/matching/comissão como eixo central do produto) | Substituído pelo modelo atual de Booker — ainda vaza como copy não revisada em páginas de marketing (`/login`, `/sobre`, `/cadastro`, `/seguranca`), ver BACKLOG |
+
+### FUTURE
+
+Itens registrados sem escopo pronto pra virar `NEXT` ainda — alguns com
+gatilho explícito de quando voltam à fila, outros bloqueados por
+decisão de produto ainda não tomada (Booker).
+
+| Item | Nota/gatilho |
+|---|---|
+| **Painel Admin** | Schema pronto desde migration `0018` (`profiles.is_admin`, `opportunity_events.source`, `ai_usage_events`), zero UI/lógica. Gatilho registrado: "volta pra fila quando a base de usuários justificar" (DECISOES.md, Bloco 4.5). A fundadora classifica como bloco obrigatório do produto — registrado aqui como tal, não como opcional, só ainda sem escopo/timing definido. |
+| Lifecycle + Transactional + Operational Messaging V1 | `[FUTURE, pré-beta]` desde §68 — cobre no mínimo DECISION/RISK/RESOLVED + compromissos temporais |
+| Intervention Moments + Feedback/Learning (wiring) | Schema/RPC prontos desde Beta Instrumentation (§66); o disparo real do evento nunca foi construído |
+| **Conversas — Bloco 3** | Citado só como item de lista desde §68 (linha única, "Conversas — Bloco 3"), **zero escopo definido em qualquer lugar do repositório** — precisa ser desenhado antes de sequer virar candidato a `NEXT` |
+| Career Intelligence V1 | Gatilho explícito: depende de volume real de uso via Beta Instrumentation, não de outro bloco de código |
+| Booker — capabilities/arquitetura (decisão de produto aberta) | Explicitamente NÃO antecipar — instrução repetida ao longo de toda a sessão |
+| Booker Web Dashboard | Não existe |
+| Booker App | Não existe em nenhuma forma |
+| Onboarding/Representation Profile (lado Booker) | Não existe |
+| Planos/trial/billing/NF e cobertura Booker (inclui Billing/Stripe real) | Explicitamente não implementar agora |
+| Multi-role — UX completa de troca de papel | Fundação já entregue (ver DELIVERED); a experiência completa depende da decisão de arquitetura do bloco Booker |
+| Materiais Pro | Hoje é só item "Em breve" (placeholder desabilitado) no painel |
+| Paridade Professional App de "Como você trabalha" (regions/career_stage/help_areas/work_types sem UI de edição no App) | Registrado em §83, reconfirmado em §100 |
+| "Minha equipe" no App | Hoje é `PlaceholderScreen` puro (`mobile/app/(tabs)/mais/equipe.tsx`) |
+| QA/E2E/Beta Readiness | Nenhum ambiente com Supabase real disponível nesta sessão desde sempre — nunca houve validação E2E autenticada formal |
+| Legal/LGPD/retention/security (programa dedicado) | Páginas estáticas (`/privacidade`, `/termos`) existem, mas isso não é um programa de compliance — nunca formalmente endereçado |
+| Notificações — extensão além do V1 (Comunidade-only) pra outros domínios (Bookings, Decisões etc.) | Decisão de escopo deliberada, não esquecimento — §79 |
+
+### BACKLOG
+
+Achados pequenos, já registrados, sem decisão de arquitetura pendente
+— podem ser puxados a qualquer momento sem precisar abrir um bloco
+maior.
+
+| Item | Origem |
+|---|---|
+| `MonthCalendar.tsx` (App) não diferencia tipos de evento visualmente no grid mensal | §90 |
+| Campo de voucher (`founderVoucherCode`) exposto no Fluxo 1 do cadastro mas nunca lido pelo backend | §98 |
+| `booker-profile-form.tsx` mantém sua própria seção "Preferências de matching" (copy legada, lado Booker) | §100 |
+| `CompletePreferencesCard` (Home do Booker) mantém copy de "matching" + link já quebrado antes desta rodada | §100 |
+| `languages` coletado em "Como você trabalha" sem consumidor confirmado no Runtime | §100 |
+| `negotiation_notes`/`pricing_notes`/`fee_varies_by_job_type`/`typical_job_duration` sem superfície de edição em lugar nenhum | §100 |
+| `SiteHeader`/`SiteFooter`/`PageShell` (páginas institucionais) continuam no tema claro antigo | §94/§97 |
+| `legal-page.tsx`/`legal.css` órfãos | §97 |
+| Links quebrados `/seguranca#pagamento`/`#verified` no rodapé do dashboard legado | §97 |
+| Excursão lateral transitória dos olhos legados em mobile na entrada (herdada, não é regressão) | §96 |
+| Marketing pages (`/login`, `/sobre`, `/cadastro`, `/seguranca`) ainda carregam linguagem do modelo antigo de Booker/marketplace | §68 |
+
+### Pendência de QA registrada (não de implementação)
+
+Validação E2E autenticada com Supabase real das 4 superfícies novas/
+realocadas de Settings V2 (`/dashboard/perfil/dados`, `/trabalho`,
+`/publico`, `/canais`) — editar → salvar → recarregar → confirmar
+persistência. Só pode ser feita por quem tem acesso ao projeto Supabase
+real (este ambiente nunca teve). Já registrada em §100.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
