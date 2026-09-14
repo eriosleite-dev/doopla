@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Share, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 
 import { colors, fonts, radii } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
+import { apiBaseUrl } from '@/lib/env';
 import { LoadingState, ErrorState } from '@/components/shared/ScreenState';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { ChevronRightIcon } from '@/components/icons/Icons';
@@ -14,7 +16,21 @@ import {
   updateCommunityProfile,
   type CommunityProfileSnapshot,
 } from '@/lib/data/community';
+import {
+  fetchArtistBookers,
+  fetchArtistLinkRouting,
+  updateArtistLinkRouting,
+  type BookerOption,
+  type LinkRoutingMode,
+} from '@/lib/data/link-routing';
 import { closeAccount, updateArtistProfileFields, updateProfileFields } from '@/lib/data/settings';
+import {
+  confirmWhatsappVerification,
+  fetchWhatsappIdentitySnapshot,
+  requestWhatsappVerification,
+  revokeWhatsappVerification,
+  type WhatsappIdentitySnapshot,
+} from '@/lib/data/whatsapp-identity';
 import type { ArtistProfile, ArtistSubscription } from '@/types/artistProfile';
 
 type Phase = 'loading' | 'ready' | 'error';
@@ -22,24 +38,38 @@ type Phase = 'loading' | 'ready' | 'error';
 // pública é legado do modelo antigo de marketplace, não produto atual
 // (mesma decisão já aplicada no painel Web). Sheet e formulário
 // removidos daqui; a coluna/toggle no banco não foram apagados.
-type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'comunidade' | 'ajuda' | 'excluir' | null;
+//
+// "whatsapp" e "link" viraram gaps bloqueantes fechados nesta rodada
+// (14/09/2026) — mesmo backend/RPCs/regras do Web, nenhum sistema
+// paralelo. Ver whatsapp-identity.ts e link-routing.ts.
+type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'link' | 'comunidade' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
+
+const WHATSAPP_STATUS_LABELS: Record<string, string> = {
+  verified: 'Verificado',
+  pending_verification: 'Verificação pendente',
+  pending_replacement: 'Verificação pendente',
+  revoked: 'Não verificado',
+  unverified: 'Não verificado',
+};
 
 export default function ConfiguracoesScreen() {
   const { user, session, profile, signOut } = useAuth();
   const [phase, setPhase] = useState<Phase>('loading');
   const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
   const [subscription, setSubscription] = useState<ArtistSubscription | null>(null);
+  const [whatsappSnapshot, setWhatsappSnapshot] = useState<WhatsappIdentitySnapshot | null>(null);
   const [openSheet, setOpenSheet] = useState<SheetKey>(null);
 
   const load = useCallback(() => {
     if (!user) return;
     setPhase('loading');
-    Promise.all([fetchArtistProfile(user.id), fetchArtistSubscription(user.id)])
-      .then(([ap, sub]) => {
+    Promise.all([fetchArtistProfile(user.id), fetchArtistSubscription(user.id), fetchWhatsappIdentitySnapshot(user.id)])
+      .then(([ap, sub, whatsapp]) => {
         setArtistProfile(ap);
         setSubscription(sub);
+        setWhatsappSnapshot(whatsapp);
         setPhase('ready');
       })
       .catch(() => setPhase('error'));
@@ -71,7 +101,12 @@ export default function ConfiguracoesScreen() {
           <View style={styles.list}>
             <SettingsRow label="Conta e perfil" sub={profile?.full_name ?? undefined} onPress={() => setOpenSheet('perfil')} />
             <SettingsRow label="Plano" sub={subscription?.artist_plan ? PLAN_LABELS[subscription.artist_plan] : undefined} onPress={() => setOpenSheet('plano')} />
-            <SettingsRow label="WhatsApp" sub={profile?.phone ?? 'Não cadastrado'} onPress={() => setOpenSheet('whatsapp')} />
+            <SettingsRow
+              label="WhatsApp"
+              sub={whatsappSnapshot ? WHATSAPP_STATUS_LABELS[whatsappSnapshot.status] : 'Não verificado'}
+              onPress={() => setOpenSheet('whatsapp')}
+            />
+            <SettingsRow label="Seu link de booking" onPress={() => setOpenSheet('link')} />
             <SettingsRow label="Privacidade na Comunidade" onPress={() => setOpenSheet('comunidade')} />
             <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} />
             <SettingsRow label="Excluir minha conta" onPress={() => setOpenSheet('excluir')} last />
@@ -112,14 +147,18 @@ export default function ConfiguracoesScreen() {
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'whatsapp'} onClose={() => setOpenSheet(null)}>
-        <View>
-          <Text style={styles.sheetTitle}>WhatsApp</Text>
-          <Text style={styles.sheetText}>{profile?.phone ?? 'Nenhum número cadastrado'}</Text>
-          <Text style={styles.gapNote}>
-            Ainda não existe verificação de posse do número no app — o que está aqui é só o número cadastrado na sua conta,
-            sem selo de &ldquo;verificado&rdquo;.
-          </Text>
-        </View>
+        {user && session && (
+          <WhatsappVerificationSheet
+            professionalId={user.id}
+            accessToken={session.access_token}
+            snapshot={whatsappSnapshot}
+            onChanged={load}
+          />
+        )}
+      </BottomSheet>
+
+      <BottomSheet visible={openSheet === 'link'} onClose={() => setOpenSheet(null)}>
+        {user && profile?.slug && <BookingLinkSheet artistId={user.id} slug={profile.slug} visible={openSheet === 'link'} />}
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'comunidade'} onClose={() => setOpenSheet(null)}>
@@ -199,6 +238,320 @@ function ProfileForm({
         <Text style={styles.submitText}>{submitting ? 'Salvando…' : 'Salvar'}</Text>
       </Pressable>
     </View>
+  );
+}
+
+const WHATSAPP_CONFIRM_REASON_LABELS: Record<string, string> = {
+  no_pending_challenge: 'Nenhuma verificação em aberto — peça um código novo.',
+  expired: 'Esse código expirou — peça um novo.',
+  too_many_attempts: 'Muitas tentativas erradas — peça um código novo.',
+  invalid_code: 'Código incorreto.',
+  number_claimed_by_another_professional: 'Esse número já está verificado por outra conta.',
+};
+
+// Gap bloqueante do beta (14/09/2026) — a camada de dados
+// (whatsapp-identity.ts) já existia como Foundation, mas nenhuma tela
+// jamais chamava request/confirm/revoke no App (comentário do próprio
+// arquivo: "as telas ... continuam fora deste bloco"). Mesmos 3 passos
+// e mesmas regras do painel Web (pro-whatsapp-identity-card.tsx):
+// visualizar → telefone → código, nunca trata um número só digitado
+// como identidade confiável até o código ser confirmado.
+function WhatsappVerificationSheet({
+  professionalId,
+  accessToken,
+  snapshot,
+  onChanged,
+}: {
+  professionalId: string;
+  accessToken: string;
+  snapshot: WhatsappIdentitySnapshot | null;
+  onChanged: () => void;
+}) {
+  const [step, setStep] = useState<'view' | 'phone' | 'code'>('view');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  const isVerified = snapshot?.status === 'verified';
+
+  function handleRequest() {
+    setSubmitting(true);
+    setError(null);
+    requestWhatsappVerification(phone, accessToken).then((result) => {
+      setSubmitting(false);
+      if (result.kind === 'error') {
+        setError(result.error);
+        return;
+      }
+      setInfo('Enviamos um código de 6 dígitos pro seu WhatsApp.');
+      setStep('code');
+    });
+  }
+
+  function handleConfirm() {
+    setSubmitting(true);
+    setError(null);
+    confirmWhatsappVerification(professionalId, code)
+      .then((result) => {
+        setSubmitting(false);
+        if (!result.confirmed) {
+          setError(WHATSAPP_CONFIRM_REASON_LABELS[result.reason ?? ''] ?? 'Não foi possível confirmar o código.');
+          return;
+        }
+        setStep('view');
+        setPhone('');
+        setCode('');
+        setInfo(null);
+        onChanged();
+      })
+      .catch(() => {
+        setSubmitting(false);
+        setError('Não foi possível confirmar agora. Tente de novo.');
+      });
+  }
+
+  function handleRevoke() {
+    setSubmitting(true);
+    setError(null);
+    revokeWhatsappVerification(professionalId)
+      .then(() => {
+        setSubmitting(false);
+        onChanged();
+      })
+      .catch(() => {
+        setSubmitting(false);
+        setError('Não foi possível remover a verificação agora.');
+      });
+  }
+
+  return (
+    <View>
+      <Text style={styles.sheetTitle}>Seu WhatsApp</Text>
+
+      {step === 'view' && (
+        <View>
+          {isVerified ? (
+            <>
+              <Text style={styles.sheetText}>✓ WhatsApp verificado · {snapshot?.verifiedNumber}</Text>
+              <View style={styles.rowActions}>
+                <Pressable style={styles.ghostBtn} onPress={() => setStep('phone')}>
+                  <Text style={styles.ghostBtnText}>Alterar número</Text>
+                </Pressable>
+                <Pressable style={styles.ghostBtn} disabled={submitting} onPress={handleRevoke}>
+                  <Text style={styles.ghostBtnText}>Remover</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.sheetSubtext}>
+                {snapshot?.status === 'pending_verification' || snapshot?.status === 'pending_replacement'
+                  ? 'Verificação pendente — confirme o código enviado, ou peça um novo.'
+                  : 'Ainda não verificado. Sem isso, a Doopla pode não reconhecer você automaticamente numa conversa.'}
+              </Text>
+              <Pressable style={styles.submit} onPress={() => setStep('phone')}>
+                <Text style={styles.submitText}>Verificar WhatsApp</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      )}
+
+      {step === 'phone' && (
+        <View>
+          <Text style={styles.label}>Número (com DDD e código do país)</Text>
+          <TextInput
+            style={styles.input}
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="+55 11 91234-5678"
+            keyboardType="phone-pad"
+            placeholderTextColor={colors.tx50}
+          />
+          <Pressable style={[styles.submit, (submitting || !phone) && styles.submitDisabled]} disabled={submitting || !phone} onPress={handleRequest}>
+            <Text style={styles.submitText}>{submitting ? 'Enviando…' : 'Enviar código'}</Text>
+          </Pressable>
+          <Pressable style={styles.ghostBtn} onPress={() => setStep('view')}>
+            <Text style={styles.ghostBtnText}>Cancelar</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {step === 'code' && (
+        <View>
+          {info && <Text style={styles.sheetSubtext}>{info}</Text>}
+          <Text style={styles.label}>Código de 6 dígitos</Text>
+          <TextInput
+            style={styles.input}
+            value={code}
+            onChangeText={setCode}
+            placeholder="000000"
+            keyboardType="number-pad"
+            maxLength={6}
+            placeholderTextColor={colors.tx50}
+          />
+          <Pressable
+            style={[styles.submit, (submitting || code.length < 6) && styles.submitDisabled]}
+            disabled={submitting || code.length < 6}
+            onPress={handleConfirm}
+          >
+            <Text style={styles.submitText}>{submitting ? 'Confirmando…' : 'Confirmar'}</Text>
+          </Pressable>
+          <Pressable style={styles.ghostBtn} onPress={() => setStep('phone')}>
+            <Text style={styles.ghostBtnText}>Reenviar</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {error && <Text style={styles.errorText}>{error}</Text>}
+    </View>
+  );
+}
+
+// Gap bloqueante do beta (14/09/2026) — o link individual de
+// booking/orçamento (canal de entrada de cliente sem login, preservado
+// como produto atual — não é Perfil Público/vitrine) não tinha NENHUMA
+// tela no App: nem pra ver/copiar o link, nem pra escolher quem recebe
+// os pedidos. Mesma tabela/regra do Web (artist_link_routing).
+function BookingLinkSheet({ artistId, slug, visible }: { artistId: string; slug: string; visible: boolean }) {
+  const [phase, setPhase] = useState<Phase>('loading');
+  const [mode, setMode] = useState<LinkRoutingMode>('eu');
+  const [bookerId, setBookerId] = useState<string | null>(null);
+  const [bookers, setBookers] = useState<BookerOption[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [infoCopied, setInfoCopied] = useState(false);
+
+  const orcamentoUrl = `${apiBaseUrl()}/orcamento/${slug}`;
+
+  const load = useCallback(() => {
+    setPhase('loading');
+    setError(null);
+    setSaved(false);
+    Promise.all([fetchArtistLinkRouting(artistId), fetchArtistBookers(artistId)])
+      .then(([routing, bookerOptions]) => {
+        setMode(routing?.mode ?? 'eu');
+        setBookerId(routing?.bookerId ?? null);
+        setBookers(bookerOptions);
+        setPhase('ready');
+      })
+      .catch(() => setPhase('error'));
+  }, [artistId]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setTimeout(load, 0);
+    return () => clearTimeout(timer);
+  }, [visible, load]);
+
+  async function copyLink() {
+    await Clipboard.setStringAsync(orcamentoUrl);
+    setSaved(false);
+    setInfoCopied(true);
+    setTimeout(() => setInfoCopied(false), 2200);
+  }
+
+  function shareLink() {
+    Share.share({ message: orcamentoUrl }).catch(() => {});
+  }
+
+  function submitRouting(nextMode: LinkRoutingMode, nextBookerId: string | null) {
+    setSubmitting(true);
+    setError(null);
+    setSaved(false);
+    updateArtistLinkRouting(artistId, nextMode, nextBookerId).then((result) => {
+      setSubmitting(false);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setMode(nextMode);
+      setBookerId(nextBookerId);
+      setSaved(true);
+    });
+  }
+
+  if (phase === 'loading') return <LoadingState label="Carregando…" />;
+  if (phase === 'error') return <ErrorState message="Não conseguimos carregar seu link agora." onRetry={load} />;
+
+  return (
+    <View>
+      <Text style={styles.sheetTitle}>Seu link de booking</Text>
+      <Text style={styles.sheetSubtext}>
+        A porta de entrada pro cliente iniciar um booking com você — não é um perfil público.
+      </Text>
+
+      <View style={styles.linkBox}>
+        <Text style={styles.linkText}>{orcamentoUrl}</Text>
+      </View>
+      <View style={styles.rowActions}>
+        <Pressable style={styles.ghostBtn} onPress={copyLink}>
+          <Text style={styles.ghostBtnText}>{infoCopied ? 'Copiado!' : 'Copiar link'}</Text>
+        </Pressable>
+        <Pressable style={styles.ghostBtn} onPress={shareLink}>
+          <Text style={styles.ghostBtnText}>Compartilhar</Text>
+        </Pressable>
+      </View>
+
+      <Text style={[styles.label, { marginTop: 20 }]}>Quem recebe seus pedidos de orçamento</Text>
+      <RoutingOption
+        label="Decidir caso a caso"
+        hint="As solicitações chegam pra você primeiro."
+        active={mode === 'eu'}
+        onPress={() => submitRouting('eu', null)}
+      />
+      {bookers.length > 0 && (
+        <>
+          <RoutingOption
+            label="Enviar automático pro meu booker"
+            hint="As solicitações vão direto pro booker escolhido."
+            active={mode === 'meu_booker'}
+            onPress={() => submitRouting('meu_booker', bookerId ?? bookers[0].profileId)}
+          />
+          <RoutingOption
+            label="Eu e meu booker acompanhamos juntos"
+            hint="As solicitações aparecem pros dois."
+            active={mode === 'eu_e_meu_booker'}
+            onPress={() => submitRouting('eu_e_meu_booker', bookerId ?? bookers[0].profileId)}
+          />
+          {mode !== 'eu' && (
+            <View style={styles.chips}>
+              {bookers.map((b) => (
+                <Pressable
+                  key={b.profileId}
+                  onPress={() => submitRouting(mode, b.profileId)}
+                  style={[styles.chip, bookerId === b.profileId && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, bookerId === b.profileId && styles.chipTextActive]}>{b.fullName}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </>
+      )}
+      {bookers.length === 0 && (
+        <Text style={styles.gapNote}>Nenhum booker te representa ainda — assim que tiver um, aparece aqui como opção.</Text>
+      )}
+
+      {submitting && <Text style={styles.sheetSubtext}>Salvando…</Text>}
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      {saved && !error && !submitting && <Text style={styles.savedText}>Salvo.</Text>}
+    </View>
+  );
+}
+
+function RoutingOption({ label, hint, active, onPress }: { label: string; hint: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.routingOption, active && styles.routingOptionActive]} onPress={onPress}>
+      <View style={[styles.radio, active && styles.radioActive]} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.routingLabel}>{label}</Text>
+        <Text style={styles.routingHint}>{hint}</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -435,4 +788,36 @@ const styles = StyleSheet.create({
   savedText: { color: colors.green, fontFamily: fonts.body, fontSize: 12, marginTop: 10 },
   deleteBtn: { backgroundColor: colors.red, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 18 },
   deleteBtnText: { color: colors.off, fontFamily: fonts.subBold, fontSize: 13 },
+  rowActions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  ghostBtn: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
+  ghostBtnText: { color: colors.off, fontFamily: fonts.subBold, fontSize: 12 },
+  linkBox: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    padding: 12,
+  },
+  linkText: { color: colors.off, fontFamily: fonts.mono, fontSize: 12 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8, marginLeft: 28 },
+  chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
+  chipActive: { backgroundColor: colors.red, borderColor: colors.red },
+  chipText: { color: colors.tx70, fontFamily: fonts.subSemiBold, fontSize: 11 },
+  chipTextActive: { color: colors.off },
+  routingOption: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    padding: 12,
+    marginTop: 8,
+  },
+  routingOptionActive: { borderColor: colors.red },
+  radio: { width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: colors.line, marginTop: 2 },
+  radioActive: { borderColor: colors.red, backgroundColor: colors.red },
+  routingLabel: { color: colors.off, fontFamily: fonts.subSemiBold, fontSize: 12.5 },
+  routingHint: { color: colors.tx50, fontFamily: fonts.body, fontSize: 11, marginTop: 2 },
 });

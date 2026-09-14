@@ -29,7 +29,7 @@ import { fetchActivePaymentDetails } from '@/lib/data/payments';
 import type { PaymentDetails } from '@/types/payment';
 import { fetchNotificationCards, markCommunityNotificationRead, type NotificationCard } from '@/lib/data/notifications';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
-import { dooplaWhatsappNumber } from '@/lib/env';
+import { apiBaseUrl, dooplaWhatsappNumber } from '@/lib/env';
 import { capitalizeName, monthDayParts } from '@/lib/format';
 
 export default function HomeScreen() {
@@ -150,6 +150,7 @@ export default function HomeScreen() {
     show(`${label} copiado.`);
   }
   const slug = profile?.slug;
+  const orcamentoUrl = slug ? `${apiBaseUrl()}/orcamento/${slug}` : '';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -265,14 +266,24 @@ export default function HomeScreen() {
              código ID (profile.slug, mesma fonte canônica do web —
              nunca referral_code, que é de outro conceito/Indique e
              ganhe). Booker não é canal de booking — vive só em Minha
-             equipe, removido daqui. */}
+             equipe, removido daqui.
+
+             Correção 14/09/2026 (achado ao fechar o gap de link de
+             orçamento no App): "Seu link" copiava `doopla.com/${slug}`
+             — nem é um domínio real (o painel pode rodar em qualquer
+             origem, ver EXPO_PUBLIC_API_BASE_URL) nem é a rota certa
+             (`/orcamento/${slug}` é o formulário de booking real;
+             `/${slug}` sozinho é a vitrine pública legada, que nem
+             sempre está habilitada). Corrigido pra montar a mesma URL
+             que o painel Web usa (`${origin}/orcamento/${slug}`, ver
+             src/app/dashboard/perfil/page.tsx). */}
           <ReadinessCard rows={readinessRows} />
 
           <ChannelsCard
             title="Seus canais de booking"
             rows={[
               ...(slug
-                ? [{ key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: `doopla.com/${slug}`, onCopy: () => copy(`doopla.com/${slug}`, 'Link') }]
+                ? [{ key: 'link', icon: <LinkIcon size={13} color={colors.off} />, label: 'Seu link', value: orcamentoUrl, onCopy: () => copy(orcamentoUrl, 'Link') }]
                 : []),
               {
                 key: 'whatsapp',

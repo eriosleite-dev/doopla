@@ -230,14 +230,21 @@ export async function buildProfessionalBusinessContextSection(toolCtx: ToolConte
     pushJoinedListFact(facts, sourceId, 'workTypes', businessContext.workTypes, loadedAt);
     pushJoinedListFact(facts, sourceId, 'clientTypes', businessContext.clientTypes, loadedAt);
   }
+  // Ajuste de precedência (14/09/2026): os 3 booleans antigos de
+  // disponibilidade pra viagem (travels/serves_other_locations/
+  // accepts_out_of_city_work — este último é o único também exposto
+  // por este tool) cobrem a mesma pergunta que "Onde você atende?"
+  // (o próprio placeholder do campo sugere "Também viajo..."), então
+  // seguem a MESMA regra de precedência de `regions`: presentes só
+  // quando whereYouServe está vazio, pra nunca contradizer o campo novo.
   if (businessContext.whereYouServe) {
     const t = truncateText(businessContext.whereYouServe, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
     pushFact(facts, 'professional_business_context', sourceId, 'whereYouServe', t.value, loadedAt, t.truncated);
   } else {
     pushJoinedListFact(facts, sourceId, 'regions', businessContext.regions, loadedAt);
+    pushFact(facts, 'professional_business_context', sourceId, 'travels', businessContext.travels, loadedAt);
+    pushFact(facts, 'professional_business_context', sourceId, 'acceptsOutOfCityWork', businessContext.acceptsOutOfCityWork, loadedAt);
   }
-  pushFact(facts, 'professional_business_context', sourceId, 'travels', businessContext.travels, loadedAt);
-  pushFact(facts, 'professional_business_context', sourceId, 'acceptsOutOfCityWork', businessContext.acceptsOutOfCityWork, loadedAt);
   pushFact(facts, 'professional_business_context', sourceId, 'attentionChannel', businessContext.attentionChannel, loadedAt);
   pushJoinedListFact(facts, sourceId, 'helpAreas', businessContext.helpAreas, loadedAt);
   pushFact(facts, 'professional_business_context', sourceId, 'careerStage', businessContext.careerStage, loadedAt);

@@ -680,9 +680,116 @@ where table_schema = 'public' and table_name = 'artist_profiles'
 ```
 Esperado: as 2 colunas, tipo `text`, `is_nullable = 'YES'`.
 
-**Categoria B continua pausada** até esta migration ser confirmada
-aplicada — só depois disso o QA volta a rodar contra o produto
-canônico correto.
+**Confirmado pela fundadora — 14/09/2026**: rodou os 2 blocos,
+resultado exatamente como esperado:
+
+| column_name | data_type | is_nullable |
+|---|---|---|
+| what_you_do | text | YES |
+| where_you_serve | text | YES |
+
+Nenhuma coluna antiga alterada/apagada — migration aplicada com
+sucesso no `doopla-qa-staging`.
+
+---
+
+## Gaps bloqueantes do App fechados + ajuste de precedência — `[IMPLEMENTADO]` — 14/09/2026
+
+Decisão da fundadora: os 3 gaps bloqueantes entram neste bloco do
+beta. Implementado mesmo backend/RPCs/regras do Web em todos os 3 —
+nenhum sistema paralelo. Restante das ausências de paridade (Segurança
+e acesso, troca de e-mail, campos profissionais extras, "Como você
+trabalha", Sua Doopla, Notificações, políticas/termos) fica
+**PÓS-BETA**, registrado, não implementado agora — **isto não é
+paridade completa de Settings, é paridade funcional só nas ações
+bloqueantes.**
+
+### Correção ao meu próprio levantamento anterior
+
+Ao implementar, encontrei um erro na minha auditoria de paridade: eu
+disse que **"Dados de recebimento (PIX)" não existia no App**. Isso
+estava errado — eu só tinha lido `mais/configuracoes.tsx` e não
+`mais/financeiro.tsx`. O PIX **já estava implementado por completo**
+lá (`fetchActivePaymentDetails`/`setPaymentDetails`, mesma RPC
+`set_payment_details` do Web, tela "Dinheiro" com formulário
+funcional). **Nenhum código novo foi necessário pra este gap** — só a
+correção do registro. Peço desculpa pela imprecisão no levantamento
+anterior.
+
+### 1. Verificação de WhatsApp — `[IMPLEMENTADO]`
+
+A camada de dados (`mobile/src/lib/data/whatsapp-identity.ts`) já
+existia como "Foundation" desde antes — o próprio arquivo já
+documentava que a UI nunca tinha sido construída. Implementado em
+`mobile/app/(tabs)/mais/configuracoes.tsx`:
+- Linha "WhatsApp" agora mostra o status real (Verificado/Verificação
+  pendente/Não verificado), lido no `load()` da tela.
+- Sheet reescrito com os mesmos 3 passos do Web
+  (`pro-whatsapp-identity-card.tsx`): visualizar → telefone → código →
+  confirmar/remover. Mesmas 3 funções de sempre
+  (`requestWhatsappVerification` via rota de API do painel, que é a
+  única forma seguro de enviar o código real por WhatsApp;
+  `confirmWhatsappVerification`/`revokeWhatsappVerification` via RPC
+  direta) — nenhuma lógica nova, só a UI que faltava.
+- Mesmas mensagens de erro do Web (`WHATSAPP_CONFIRM_REASON_LABELS`,
+  cópia fiel do mapeamento em `whatsapp-identity-actions.ts`).
+
+### 2. Dados de recebimento / PIX — `[JÁ EXISTIA, SEM MUDANÇA]`
+
+Ver correção acima — já funcional em `mais/financeiro.tsx`.
+
+### 3. Link individual de booking/orçamento — `[IMPLEMENTADO]`
+
+Não existia nenhuma tela no App pra isso. Implementado:
+- **Novo arquivo** `mobile/src/lib/data/link-routing.ts` — espelha
+  `getArtistLinkRouting`/`getArtistBookers`/`updateLinkRoutingAction`
+  do Web (`src/app/dashboard/data.ts`/`actions.ts`), mesma tabela
+  `artist_link_routing` (migration 0023), mesma validação de negócio
+  (só pode rotear pra um booker que já representa o artista — reforçada
+  também pela própria RLS `update own` da tabela, então a validação no
+  client é mensagem melhor, não a única defesa).
+- Nova linha "Seu link de booking" em Configurações → sheet com: o
+  link completo (`${apiBaseUrl()}/orcamento/${slug}`, mesma construção
+  do Web), botões Copiar (`expo-clipboard`) e Compartilhar (`Share`
+  nativo do React Native), e o seletor "Quem recebe seus pedidos de
+  orçamento" (decidir caso a caso / enviar pro meu booker / eu e meu
+  booker juntos), com lista de bookers reais que já representam o
+  artista.
+
+**Achado extra durante a implementação, corrigido**: o card "Seus
+canais de booking" na Home do App (`mobile/app/(tabs)/index.tsx`) já
+mostrava um "Seu link", mas copiava `doopla.com/${slug}` — nem é um
+domínio real, nem é a rota certa (`/orcamento/{slug}` é o formulário de
+booking; `/{slug}` sozinho é a vitrine pública legada, que nem sempre
+está habilitada). Corrigido pra montar a mesma URL real do Web
+(`${apiBaseUrl()}/orcamento/${slug}`). Bug pré-existente, não
+introduzido por esta sessão — encontrado e corrigido como parte natural
+de fechar este mesmo gap.
+
+### Ajuste de precedência — "Onde você atende" também cobre os booleans de viagem — `[IMPLEMENTADO]`
+
+Estendido o que já tinha sido feito pro par regions/whereYouServe:
+agora, se `whereYouServe` está preenchido, os 3 booleans antigos de
+viagem (`travels`/`serves_other_locations`/`accepts_out_of_city_work`)
+**também não são enviados junto** ao Intelligence Context — só
+`regions` sozinho, como antes. Enquanto `whereYouServe` estiver vazio,
+`regions` + os 3 booleans continuam como fallback, exatamente como já
+estava. Nenhum dado apagado.
+
+### Validações rodadas — `[OK]`
+
+- `npx tsc --noEmit` limpo no Web (só os 3 erros pré-existentes de
+  `PageProps`/`LayoutProps`, não relacionados) e limpo no App (exit 0).
+- `eslint` limpo nos arquivos Web tocados (App não tem `eslint`
+  configurado no projeto — não é uma lacuna desta sessão).
+- Revisão manual linha a linha dos 2 arquivos novos e dos 2 arquivos
+  editados do App (sem ambiente de simulador/dispositivo disponível
+  nesta sessão pra rodar de verdade — mesma limitação de rede de
+  sempre).
+
+**Bloco fechado do meu lado.** Aguardando a fundadora revisar (ideal:
+testar os 2 novos fluxos do App num simulador/dispositivo real, já que
+esta sessão não tem esse acesso) antes de retomar a Categoria B.
 
 ---
 
