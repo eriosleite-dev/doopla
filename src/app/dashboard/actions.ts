@@ -1495,10 +1495,13 @@ export async function updateLinkRoutingAction(
   );
   if (error) return { error: 'Não foi possível salvar o roteamento.' };
 
-  // Roteamento/link de orçamento vive em /dashboard/perfil/canais
-  // ("Canais e conexões") desde o Settings V2 consolidado (09/09/2026)
-  // — junto do WhatsApp, nunca mais dentro do antigo editor de perfil.
+  // Roteamento/link de orçamento vivia em /dashboard/perfil/canais
+  // ("Canais e conexões") desde o Settings V2 consolidado (09/09/2026);
+  // agora também aparece inline em /dashboard/perfil ("Canais da sua
+  // Doopla", 14/09/2026) — revalida os dois, a rota antiga preservada
+  // não deixou de existir, só ficou fora da navegação normal.
   revalidatePath('/dashboard/perfil/canais');
+  revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
   return { success: true };
 }
