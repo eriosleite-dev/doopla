@@ -8,6 +8,24 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Logout na web volta pra Home, não pra /login — mobile fica como já estava — 14/09/2026
+
+Durante o teste de logout na Categoria B, a fundadora questionou o
+padrão de `logoutAction` mandar pra `/login` depois de sair. Decisão:
+na **web**, onde existe um site institucional público separado do
+painel (Home com "Entrar"/"Criar conta" no menu), sair devolve pra
+**Home** (`/`) — padrão comum em SaaS com site público + painel
+separado (Notion, Linear, etc.), já que o botão de entrar continua
+acessível ali. No **mobile**, não existe site público pra voltar (é
+só o app, logado ou não), então continua indo direto pra tela de
+login — comparação explícita da fundadora com o Spotify. Não precisou
+mudar nada no mobile: `useAuth.tsx` já reage sozinho ao estado de
+sessão vazio, a navegação troca de tela sozinha.
+
+Implementado: `logoutAction` (`src/app/auth/actions.ts`) trocou
+`redirect('/login')` por `redirect('/')`, mantendo o
+`revalidatePath('/', 'layout')` que já existia.
+
 ## Arquitetura canônica de ambientes Supabase (Production vs. QA/Staging) — 14/09/2026
 
 Decisão fixada pela fundadora, confirmada via painel do Supabase:

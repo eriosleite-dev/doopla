@@ -233,5 +233,11 @@ export async function logoutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   revalidatePath('/', 'layout');
-  redirect('/login');
+  // Decisão da fundadora (14/09/2026, Categoria B): na web, sair volta
+  // pra Home (site público, com "Entrar" no menu), não pra /login —
+  // padrão comum em SaaS com site público + painel separado. O app
+  // mobile é diferente (sem site público pra voltar) e já vai direto
+  // pra tela de login sozinho, via reação ao estado de sessão vazio em
+  // useAuth.tsx — não precisou de mudança.
+  redirect('/');
 }
