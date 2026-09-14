@@ -82,7 +82,39 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
   futuro que compare direto (`= 'doopla'`) ou exiba o valor bruto
   (ex.: painel admin, métrica de distribuição de planos).
   Classificação: **FAIL NON-BLOCKER**.
-- ⏳ Login/logout
+- 🔴 **FAIL BLOCKER — Login não estabelece sessão navegável, mesmo com
+  sucesso confirmado no servidor** — 14/09/2026, conta
+  `eriosleite+qab-artista01@gmail.com` (já confirmada, testada em
+  P0-A1/A2). Reproduzido 2x, por dois caminhos diferentes:
+  1. Acesso direto a `/login?next=/dashboard`, preenche e envia →
+     tela recarrega e volta pro mesmo `/login?next=/dashboard`, campos
+     vazios, sem mensagem de erro visível.
+  2. Modal de login da Home (`HomeLoginModal`/`LoginModal`, aberto
+     pelo botão "Entrar" do menu) → mesmo resultado: sai do overlay
+     (deixa de ser modal, `home.html` some de trás), pousa na página
+     `/login?next=/dashboard` cheia, campos vazios.
+  **Confirmado no servidor que a autenticação em si funciona**: log
+  do Supabase mostra `POST /auth/v1/token?grant_type=password` → `200`
+  no exato momento da tentativa (`14:22:02`) — `signInWithPassword`
+  não retornou erro. Ou seja, `loginAction` (`src/app/auth/actions.ts:
+  23-46`) deveria ter chegado em `redirect(next)` com sucesso, mas o
+  resultado final é indistinguível de "sessão nunca existiu": o
+  usuário volta pro `/login` como se `proxy.ts`
+  (`src/lib/supabase/proxy.ts`) não reconhecesse cookie de sessão
+  nenhum na requisição seguinte. **Hipótese não confirmada** (precisaria
+  de acesso a Network tab/Vercel Function Logs pra fechar com certeza,
+  não tentado ainda): cookie de sessão setado por `loginAction` não
+  está sendo propagado/reconhecido a tempo da checagem em `proxy.ts`.
+  Não é specific do modal — o caminho 1 (rota `/login` direta, sem
+  modal nenhum) teve o mesmo resultado, então não é bug do
+  `HomeLoginModal`/`LoginModal` especificamente.
+  **P0-A1 (cadastro) e P0-A2 (criação de dados) continuam PASS** — o
+  problema é especificamente autenticação de retorno (login), não
+  criação de conta. **Bloqueia**: persistência de sessão, redirect
+  pro dashboard, e todo o resto do P0/P1 que depende de sessão
+  autenticada (Settings, Decisões, Agenda, Financeiro, Comunidade,
+  etc.) — parei a Categoria B aqui, reportando antes de continuar,
+  conforme instruído.
 - ⏳ Persistência de sessão
 - ⏳ Redirect correto pro dashboard
 - ⏳ Isolamento entre contas/RLS real
