@@ -11524,6 +11524,57 @@ realocadas de Settings V2 (`/dashboard/perfil/dados`, `/trabalho`,
 persistência. Só pode ser feita por quem tem acesso ao projeto Supabase
 real (este ambiente nunca teve). Já registrada em §100.
 
+## 102. ROADMAP MESTRE v2 — CURRENT/NEXT definidos pela fundadora — `[AUDIT ONLY / NO CODE CHANGE]` — 14/09/2026
+
+Delta sobre a v1 (§101, validada como base canônica — não reeditada
+em silêncio, conforme a própria convenção de versionamento que ela
+estabeleceu). Nenhum item `DELIVERED/CLOSED`, `ABSORBED`, `SUPERSEDED`
+ou `BACKLOG` da v1 foi alterado. Nenhum código foi tocado — só decisão
+de ordem, registrada.
+
+**Ajuste de classificação e ordem, decidido pela fundadora:**
+
+- **`CURRENT` → QA / E2E / Beta Readiness do produto Professional
+  atual** (Web + App + backend/Supabase real, jornada completa). Antes
+  estava listado só como item `FUTURE` genérico; agora é o bloco
+  ativo. Ver §103 pra escopo detalhado (scoping-only, zero
+  implementação).
+- **`NEXT` → Painel Admin.** Deixa de ser só `FUTURE` — passa a estar
+  explicitamente na fila de execução, como bloco obrigatório do
+  produto (não opcional). **Implementação ainda não iniciada** — fica
+  pra quando `CURRENT` fechar.
+- **Booker** continua `FUTURE`, não antecipado.
+- **Career Intelligence V1** continua `FUTURE`, gated por volume real
+  de uso via Beta Instrumentation.
+- **Conversas — Bloco 3** continua `FUTURE`, sem scoping ainda.
+- **Lifecycle Messaging V1** e **Intervention Moments + Feedback**
+  continuam `FUTURE` — ordem entre eles e o resto da fila só é
+  decidida depois de Beta Readiness + Painel Admin fecharem.
+
+Todo o resto da v1 (§101) permanece válido e não foi tocado.
+
+## 103. Scoping — QA / E2E / Beta Readiness do Professional atual — `[SCOPING ONLY / NO IMPLEMENTATION]` — 14/09/2026
+
+Plano de validação, não execução. Nenhuma correção foi feita nesta
+rodada — só o desenho de como e o que validar, conforme pedido
+explícito ("faça somente o SCOPING... sem implementar correções
+ainda"). Execução real (rodar os testes contra o Supabase de produção/
+Preview) não é possível a partir deste ambiente — `.env.local` aqui é
+só o template, sem projeto Supabase real conectado, gap já documentado
+em rodadas anteriores. O plano abaixo é o que a fundadora (ou alguém
+com acesso ao projeto real) precisa executar.
+
+Ver corpo completo do plano na resposta desta sessão ao pedido —
+resumo estrutural registrado aqui pra rastreabilidade: escopo
+(Professional artista, Web + App, Fluxo 1 e Fluxo 2/convite de
+cadastro, todas as superfícies de Settings V2, Comunidade, Decisões,
+Bookings/Agenda/Financeiro, WhatsApp Identity/Falar com minha Doopla,
+Minha equipe, encerramento de conta), fora de escopo (Booker/Agência,
+qualquer feature `FUTURE`), pré-requisitos de ambiente, matriz de
+jornadas E2E por papel, critérios de saída pra declarar Beta Readiness,
+achados conhecidos que a validação deve reconfirmar (pendência de QA
+já registrada em §100).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
