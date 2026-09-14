@@ -31,19 +31,30 @@ nem lacuna no código em si):
   `.env*` com exceção só do `.example` — confirmado que não existe
   `.env.local` real no working tree nem nada de env commitado no
   histórico além do example.
-- 🔒 **Verificação de conectividade real travada**: esta sessão tem
-  `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
-  `SUPABASE_SERVICE_ROLE_KEY` injetadas no ambiente (formato válido —
-  URL `https://<ref>.supabase.co`, chaves no formato novo
-  `sb_publishable_...`/`sb_secret_...`), mas a política de rede desta
-  sessão bloqueia egress pra `*.supabase.co` (proxy responde 403 —
-  bloqueio de política, não erro transitório). Não dá pra confirmar
-  daqui que essas credenciais autenticam de fato contra um projeto
-  Supabase real, nem se apontam pro projeto de QA ou de Staging
-  (indistinguíveis só pelo formato). Precisa ser conferido por você —
-  no painel do Supabase (Project Settings > API, confirmar qual
-  projeto é esse `ref`) ou rodando `npm run dev` localmente com essas
-  variáveis, num ambiente com rede liberada.
+- ✅ **Identidade do projeto confirmada pelo usuário** (print do painel
+  Supabase): Project ID `ahsyoxjzxkxcsbhqmdzv` = projeto
+  **`doopla-qa-staging`**, org "doopla Org", branch `main` marcada
+  `PRODUCTION` (ou seja: é a branch principal/estável *desse* projeto
+  Supabase — não confundir com o ambiente "Production" do app Doopla
+  em si). Bate exatamente com o `ref` de `NEXT_PUBLIC_SUPABASE_URL`
+  injetado nesta sessão. Confirma o modelo: **um único projeto
+  Supabase compartilhado entre QA e Staging** (não dois projetos
+  separados) — dado como intencional, owner é a própria conta do
+  usuário (eriosleite@gmail.com).
+- 🔒 **Ainda travado, e não é o que o usuário perguntou**: autenticar de
+  fato contra esse projeto (roundtrip real de rede) continua
+  impossível nesta sessão — política de rede bloqueia egress pra
+  `*.supabase.co` (proxy responde 403). O nome do projeto/Project ID
+  já resolve a pergunta de "é QA/Staging mesmo?"; o que falta
+  verificar (fora daqui) é comportamento em runtime — rodar
+  `npm run dev` com essas variáveis, ou testar cadastro/login direto
+  no app.
+- ❓ **Em aberto**: se existe um projeto Supabase separado pra
+  Produção (`doopla` "de verdade", sem ser o `doopla-qa-staging`) —
+  não apareceu nada aqui que confirme isso. Vale checar no seletor de
+  projetos da Supabase (canto superior esquerdo do painel) se há um
+  segundo projeto, pra garantir que a Vercel nunca aponta o
+  Environment de Production do app pro `doopla-qa-staging` por engano.
 - ⚠️ `SUPABASE_SERVICE_ROLE_KEY` está no ambiente mas nenhum arquivo em
   `src/` a referencia — nada quebrado por isso (é só reservada pra
   scripts admin/server-side futuros), mas registrando pra não parecer
