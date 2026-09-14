@@ -787,9 +787,25 @@ estava. Nenhum dado apagado.
   nesta sessão pra rodar de verdade — mesma limitação de rede de
   sempre).
 
-**Bloco fechado do meu lado.** Aguardando a fundadora revisar (ideal:
-testar os 2 novos fluxos do App num simulador/dispositivo real, já que
-esta sessão não tem esse acesso) antes de retomar a Categoria B.
+### Status — 🔒 AGUARDANDO VALIDAÇÃO MANUAL — 14/09/2026
+
+Código aprovado pela fundadora pra teste. Ela vai validar num
+App/simulador real (esta sessão não tem esse acesso):
+1. Verificação de WhatsApp.
+2. Link de booking/orçamento — visualizar, copiar, compartilhar,
+   roteamento.
+3. "Seu link" da Home apontando pra `/orcamento/{slug}` corretamente.
+4. Smoke test de Dados de recebimento (já existia — só confirmar que
+   nada quebrou).
+
+Regra combinada: se os 4 passarem, o bloco fecha como concluído e a
+Categoria B retoma do ponto correto. Se algum falhar, registro só o
+finding específico e corrijo, **sem reabrir a arquitetura de
+Configurações** (acordeão/inline/modal já aprovados e implementados —
+não voltam à mesa por causa de um bug pontual).
+
+Nenhuma mudança de código enquanto este status estiver ativo — só
+volto a mexer se a fundadora reportar uma falha específica.
 
 ---
 
