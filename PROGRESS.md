@@ -1025,8 +1025,10 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   5 grupos de chips, agora 2 campos de texto livre) — salvar "O que
   você faz e para quem?"/"Onde você atende?"/faixa de
   cachê/nota fiscal/outras preferências, persiste ao recarregar.
-- ⏳ **"Sua Doopla" inline** — trocar canal de atenção
-  (WhatsApp/Painel/Ambos), confirma sem sair da página.
+- ✅ **PASS — "Sua Doopla" inline**, confirmado pela fundadora
+  (14/09/2026): trocar o canal de atenção (WhatsApp/Painel/WhatsApp +
+  Painel) salva sozinho, sem botão, e persiste depois de recarregar —
+  testado também pelo celular.
 - ⏳ **"Canais da sua Doopla" inline** — WhatsApp (ver status), link de
   orçamento (copiar), roteamento (trocar modo/booker) — tudo sem sair
   da página, sem transporte Meta real disponível (mesma limitação de
