@@ -13,6 +13,74 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
+## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`
+
+Plano definido pela fundadora, complementa a Categoria A já executada
+(golden suites automatizadas). Execução por **execução manual
+guiada**: esta sessão remota não alcança `*.supabase.co` (rede
+bloqueada por política — ver seção de setup abaixo), então não
+consigo rodar `npm run dev`/testar sozinho. Padrão adotado (mesmo que
+funcionou pras migrations): eu especifico o passo exato (dados de
+teste, o que verificar, query de confirmação), você executa localmente
+(rede real, `.env.local` apontando pro `doopla-qa-staging`) e reporta
+o resultado aqui na conversa — eu classifico e vou atualizando esta
+lista.
+
+**Regras fixas pra toda a Categoria B** (repetindo pra não esquecer
+entre itens): só dados/contas sintéticas no `doopla-qa-staging`;
+nunca tocar `doopla`/Production; não corrigir bugs durante o QA
+(achados só entram na lista, correção é decisão separada); não criar
+migrations. `artist_link_routing` INSERT RLS já é **OPEN FINDING /
+FAIL NON-BLOCKER / MUST FIX BEFORE BETA CLOSE** conhecido, não
+precisa redescobrir. WhatsApp/Meta real = Categoria D (BLOCKED
+EXTERNAL). App/dispositivo e julgamento visual = Categoria C.
+
+Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
+· `BLOCKED ENVIRONMENT` · `BLOCKED EXTERNAL` · `NOT APPLICABLE`.
+
+### P0 — Autenticação e jornada base
+
+- ⏳ Cadastro real de artista
+- ⏳ Criação correta de `profiles`/`artist_profiles`/subscription-trial
+- ⏳ Login/logout
+- ⏳ Persistência de sessão
+- ⏳ Redirect correto pro dashboard
+- ⏳ Isolamento entre contas/RLS real
+
+### P0 — Settings V2 / persistência
+
+- ⏳ `/dashboard/perfil/dados`: editar → salvar → recarregar → persiste
+- ⏳ `/dashboard/perfil/trabalho`: editar → salvar → recarregar → persiste
+- ⏳ Salvar `/trabalho` NÃO zera/altera `/dados`
+- ⏳ `/dashboard/perfil/publico`: editar/ativar → `/[slug]` mostra certo
+- ⏳ `website_url`/`other_links` não aparecem publicamente
+- ⏳ `/dashboard/perfil/canais`: validar o que der sem transporte Meta real
+
+### P0 — Core Professional com backend real
+
+- ⏳ Oportunidade/booking com dado real
+- ⏳ Decisões / "Precisa de você"
+- ⏳ Aprovação/rejeição com sessão autenticada (onde automatizável)
+- ⏳ Persistência e isolamento cross-tenant
+- ⏳ Retomar golden suites BLOCKED ENVIRONMENT da Categoria A (Auth real
+  disponível agora)
+
+### P1 — Demais superfícies
+
+- ⏳ Agenda
+- ⏳ Financeiro/dados de recebimento
+- ⏳ Comunidade
+- ⏳ Notificações
+- ⏳ Avatar/Storage
+- ⏳ Demais Settings relevantes
+- ⏳ Encerramento de conta (só com conta sintética dedicada a esse teste)
+
+### Achados consolidados (preenchido conforme os testes avançam)
+
+- `artist_link_routing` INSERT RLS — **FAIL NON-BLOCKER / MUST FIX
+  BEFORE BETA CLOSE** (herdado da Categoria A, não retestado aqui
+  ainda).
+
 ## Categoria B — variáveis de ambiente do Supabase QA/Staging
 
 Auditoria de setup concluída (nenhuma mudança de código — não havia
