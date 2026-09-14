@@ -11612,6 +11612,147 @@ lógica pura do pipeline via fixture, mas **não** dá pra rodar
 qualquer E2E de navegador que dependa de autenticação real — isso
 empurra qualquer fluxo que exija login/sessão real pra categoria (B).
 
+## 104. Beta Readiness — execução da Categoria A (QA/E2E) — `[CATEGORIA A COMPLETA]` — 14/09/2026
+
+Execução real (não mais scoping) da Categoria A definida no bloco 103:
+o que esta sessão consegue rodar sozinha, sem Supabase Preview/Staging
+real. **Nenhuma correção de produto foi feita** — só teste. Zero
+arquivo de código do produto tocado (`git status` limpo no fim). Todos
+os artefatos (bootstrap SQL, fixtures, harness de teste) foram
+descartáveis, em `/tmp`, nunca commitados — removidos ao final.
+
+**Ambiente real usado**: PostgreSQL 16 local (instalado no container,
+antes parado), banco descartável `doopla_qa_a`, criado e destruído
+várias vezes nesta rodada. Sem Docker daemon disponível (confirmado no
+bloco 103) — não dá pra rodar GoTrue/PostgREST real, então todo teste
+aqui é no nível SQL direto (RPCs/RLS), nunca HTTP/sessão de navegador.
+
+### 1. Baseline (regra 5) — `PASS`
+
+`tsc --noEmit` (Web + Mobile): limpo. `eslint`: 44 erros/4 warnings,
+100% pré-existentes em `mobile/` (arquivos nunca tocados por nenhum
+bloco recente — `MascotBall.tsx`, `useAuth.tsx`, mesma contagem exata
+já documentada em rodadas anteriores) + 1 warning pré-existente em
+`src/app/layout.tsx`. `next build`: limpo, 61 rotas geradas, as 6 rotas
+`/dev/*-golden-suite` e `/dev/runtime-smoke-test` presentes.
+
+### 2. Postgres local + migrations (regra 6) — `PASS`
+
+As 79 migrations (`0001` a `0079`) aplicadas em ordem, do zero, contra
+um Postgres 16 limpo com stubs mínimos de `auth`/`storage`/roles
+(`anon`/`authenticated`/`service_role`) + GRANTs de tabela base
+(replicando o que a plataforma Supabase concede fora das migrations).
+Zero erro de aplicação. Schema final: 69 tabelas, 150 funções, todas as
+RPCs-chave confirmadas presentes.
+
+### 3. RLS/RPC/idempotência (regra 6) — resultados
+
+| Teste | Resultado | Detalhe |
+|---|---|---|
+| RLS-1a — A lê profile de B | `PASS` | 0 linhas |
+| RLS-1b — A escreve em artist_profiles de B | `PASS` | 0 linhas afetadas |
+| RPC-2a — select_artist_plan(pro), dono | `PASS` | aceito |
+| RPC-2b — select_artist_plan(plano inválido) | `PASS` | rejeitado |
+| **RLS-3a — INSERT direto em artist_link_routing com booker que não representa o artista** | **`FAIL NON-BLOCKER`** | **aceito — ver achado #1 abaixo** |
+| RLS-3b — UPDATE em artist_link_routing com booker rogue | `PASS` | rejeitado pela RLS |
+| RPC-4a — set_payment_details, dono | `PASS` | aceito |
+| RPC-4b — isolamento de payment_details entre A e B | `PASS` | dados de B intocados |
+| RPC-5a — activate_community_profile como booker | `PASS` | rejeitado (`community_requires_artist_role`) |
+| RPC-5b — activate + update_community_profile como artista | `PASS` | aceito |
+| RPC-5d — update_community_profile sem ativação prévia | `PASS` | rejeitado (`community_membership_required`) |
+| RPC-12a/b — close_own_account + status | `PASS` | conta encerrada, `profiles.status='closed'` |
+
+### 4. Pipeline P0 via fixture (regra 7, atenção máxima) — todos `PASS`
+
+Cadeia completa exercitada via RPCs reais (não simulação em TS — os
+RPCs de produção, um por um, na ordem real):
+`claim_inbound_event` (idempotência) → `create_conversation` →
+`persist_inbound_message` → `ensure_opportunity_for_conversation`
+(idempotente, 2ª chamada não duplica) → isolamento cross-tenant da
+conversa → `start_orchestrator_run`/`finish_orchestrator_run` →
+`policy_gate_decisions` (outcome `blocked`/`no_matching_approval`,
+simulando o Policy Gate real bloqueando o envio automático) →
+`create_runtime_pending_reply` (decisão gerada pro profissional) →
+`resolve_runtime_pending_reply_allowed` (profissional aprova) →
+`persist_ai_message` (conversa continua) → `commit_approval_resolution`
+com lease/context inventados (`PASS` — rejeitado fail-closed,
+confirmando que o Approval Engine nunca aceita um commit sem
+proveniência real).
+
+**P0 = PASS integralmente na Categoria A.** Nenhuma quebra encontrada
+no núcleo de representação, até onde esta categoria consegue alcançar
+sem LLM real (ver limite abaixo).
+
+**Limite explícito, não uma falha**: o Classifier/Planner reais (que
+decidiriam `primary_intent`/`classification_status`/o conteúdo da
+resposta a partir de um LLM de verdade) não foram exercitados — os
+valores usados nesta fixture (`orcamento`/`classified`) foram
+fornecidos manualmente, simulando um resultado já decidido, exatamente
+como avisado no scoping (bloco 103). A chamada real ao model e o
+transporte real via WhatsApp continuam como `BLOCKED EXTERNAL`
+(Categoria D) — não reclassificados como `PASS` por este teste.
+
+### 5. Golden suites (regra 8) — `BLOCKED ENVIRONMENT`
+
+Tentativa real: `next build` + `next start` local, `curl` contra as 6
+rotas `/dev/*-golden-suite`/`runtime-smoke-test`. Todas devolvem `307`
+para `/login?next=...` — exigem sessão autenticada real (Supabase
+Auth/GoTrue), que este ambiente não tem (sem projeto Supabase real,
+sem Docker pra rodar GoTrue local). Adicionalmente, as golden suites de
+Approval/Classification/Planner chamam o model real da Anthropic em
+Preview (comentário no próprio código-fonte, `golden-suite.ts`) —
+precisariam de `ANTHROPIC_API_KEY` configurada pro app, também ausente
+aqui. **Nenhuma tentativa de adaptar o produto (remover auth, mockar
+sessão) foi feita** — classificado `BLOCKED ENVIRONMENT` com a causa
+exata documentada, como pedido.
+
+### 6. Achados/bugs encontrados
+
+**Achado #1 — `artist_link_routing`, gap real de defesa em profundidade
+(não é o achado do Fluxo 1/onboarding, é novo, desta rodada).**
+A policy de UPDATE da tabela (`0023_perfil_completo_e_orcamento.sql`)
+valida corretamente que `booker_id` precisa estar em `representations`
+antes de aceitar a mudança — mas a policy de INSERT (mesma migration,
+linha 49-50) só verifica `auth.uid() = artist_id`, sem essa mesma
+validação. Na prática do produto hoje isso é blindado pela camada de
+aplicação (`updateLinkRoutingAction` em `actions.ts` já valida
+`representations` antes de fazer o upsert) — **não é explorável pelo
+fluxo real do app**. Mas se alguém com uma sessão `authenticated`
+válida chamasse a API do Supabase diretamente (bypassando o Next.js),
+poderia, na primeira vez que salva o próprio roteamento (nunca depois,
+porque aí vira UPDATE, que já é protegido), apontar `booker_id` pra
+qualquer booker, mesmo um que não a representa. **Severidade: baixa —
+FAIL NON-BLOCKER, não afeta P0, exige bypassar a aplicação com uma
+sessão roubada/válida.** Não corrigido nesta rodada (regra 1).
+
+**Nenhum outro achado de bug** — todos os demais resultados divergentes
+das primeiras rodadas do harness (detalhados no processo, não
+repetidos aqui) eram gaps do meu próprio script de teste (GRANTs de
+base ausentes no bootstrap, GUC errado pra simular `service_role`,
+fixtures incompletas — `external_participants`, `policy_gate_decisions`,
+`orchestrator_runs`), nunca do produto. Corrigidos no harness, não no
+produto, e re-executados até dar resultado real.
+
+### 7. O que ainda depende de B/C/D
+
+- **Categoria B (Supabase Preview/Staging real)**: as 4 superfícies de
+  Settings V2 (editar→salvar→recarregar→confirmar persistência, já
+  registrado como pendência no §100), upload de avatar (Storage real),
+  WhatsApp Identity request/confirm OTP, Bookings/Agenda/Financeiro/
+  Comunidade/Decisões com dado real, golden suites completas (auth +
+  LLM real).
+- **Categoria C (dispositivo/ação humana)**: App em device/simulador
+  real, clique humano de aprovação/rejeição na UI, julgamento visual.
+- **Categoria D (bloqueado por Meta/WhatsApp)**: transporte real do
+  webhook do WhatsApp, "Falar com minha Doopla" ponta a ponta real, OTP
+  via número real — continuam `BLOCKED EXTERNAL`, nunca reclassificados
+  como aprovados por este teste.
+
+**Conclusão da Categoria A**: nenhum `FAIL BLOCKER` encontrado, P0
+íntegro no que é testável sem LLM/Auth real, 1 achado real de baixa
+severidade registrado (não corrigido). Categoria A considerada
+completa — Beta Readiness definitivo ainda depende de B/C/D.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
