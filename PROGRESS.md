@@ -82,62 +82,82 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
   futuro que compare direto (`= 'doopla'`) ou exiba o valor bruto
   (ex.: painel admin, métrica de distribuição de planos).
   Classificação: **FAIL NON-BLOCKER**.
-- 🔴 **FAIL BLOCKER — Login não estabelece sessão navegável, mesmo com
-  sucesso confirmado no servidor** — 14/09/2026, conta
-  `eriosleite+qab-artista01@gmail.com` (já confirmada, testada em
-  P0-A1/A2). Reproduzido 2x, por dois caminhos diferentes:
-  1. Acesso direto a `/login?next=/dashboard`, preenche e envia →
-     tela recarrega e volta pro mesmo `/login?next=/dashboard`, campos
-     vazios, sem mensagem de erro visível.
-  2. Modal de login da Home (`HomeLoginModal`/`LoginModal`, aberto
-     pelo botão "Entrar" do menu) → mesmo resultado: sai do overlay
-     (deixa de ser modal, `home.html` some de trás), pousa na página
-     `/login?next=/dashboard` cheia, campos vazios.
-  **Confirmado no servidor que a autenticação em si funciona**: log
-  do Supabase mostra `POST /auth/v1/token?grant_type=password` → `200`
-  no exato momento da tentativa (`14:22:02`) — `signInWithPassword`
-  não retornou erro. Ou seja, `loginAction` (`src/app/auth/actions.ts:
-  23-46`) deveria ter chegado em `redirect(next)` com sucesso, mas o
-  resultado final é indistinguível de "sessão nunca existiu": o
-  usuário volta pro `/login` como se `proxy.ts`
-  (`src/lib/supabase/proxy.ts`) não reconhecesse cookie de sessão
-  nenhum na requisição seguinte. **Hipótese não confirmada** (precisaria
-  de acesso a Network tab/Vercel Function Logs pra fechar com certeza,
-  não tentado ainda): cookie de sessão setado por `loginAction` não
-  está sendo propagado/reconhecido a tempo da checagem em `proxy.ts`.
-  Não é specific do modal — o caminho 1 (rota `/login` direta, sem
-  modal nenhum) teve o mesmo resultado, então não é bug do
-  `HomeLoginModal`/`LoginModal` especificamente.
-  **P0-A1 (cadastro) e P0-A2 (criação de dados) continuam PASS** — o
-  problema é especificamente autenticação de retorno (login), não
-  criação de conta. **Bloqueia**: persistência de sessão, redirect
-  pro dashboard, e todo o resto do P0/P1 que depende de sessão
-  autenticada (Settings, Decisões, Agenda, Financeiro, Comunidade,
-  etc.) — parei a Categoria B aqui, reportando antes de continuar,
-  conforme instruído.
+- ✅ **RESOLVIDO em 14/09/2026 — Login confirmado funcionando de ponta a
+  ponta.** Histórico completo do diagnóstico (achado real ficou bem
+  longe da hipótese inicial):
+  1. **Sintoma**: login "funcionava" no servidor (`POST /auth/v1/token
+     ?grant_type=password` → `200` no log do Supabase) mas o navegador
+     sempre voltava pra `/login?next=/dashboard` com campos vazios,
+     sem erro visível — reproduzido tanto via rota `/login` direta
+     quanto via modal da Home, então nunca foi bug do modal.
+  2. **1ª hipótese, correta mas insuficiente**: `loginAction`/
+     `logoutAction` (`src/app/auth/actions.ts`) chamavam `redirect()`
+     sem `revalidatePath('/', 'layout')` antes — confirmado contra a
+     documentação oficial do Next.js 16.3.0 (baixado via `npm pack`
+     pra ler `dist/docs/`, já que não há `node_modules` nesta sessão,
+     conforme `AGENTS.md`) + padrão canônico Supabase+Next.js (busca
+     externa). Corrigido (commit `03602d2`) — é boa prática real e
+     ficou no código, mas **não resolveu o problema sozinho**.
+  3. **Diagnóstico de verdade**: adicionado log temporário em
+     `proxy.ts` e `session.ts` (commits `89f19a3`/`603cdda`), lido via
+     **Vercel Runtime Logs do deployment específico** (não os logs
+     gerais do projeto, dominados pelos cron jobs de Produção rodando
+     a cada minuto — achado à parte, ver abaixo). Log revelou a causa
+     real: `getSessionProfile` (`src/app/dashboard/session.ts`)
+     conseguia achar o `user` (`getUser()` OK), mas a query seguinte
+     em `public.profiles` falhava com
+     `permission denied for table profiles` (Postgres `42501`), hint
+     do próprio Postgres: `GRANT SELECT ON public.profiles TO
+     authenticated`. **O `doopla-qa-staging`, por ser projeto novo
+     criado fora do fluxo padrão da plataforma, nunca recebeu as
+     permissões básicas de tabela que o Supabase concede
+     automaticamente pra todo projeto (fora das migrations) — exatamente
+     o que a Categoria A já tinha documentado como gap conhecido.**
+     Não tinha nada a ver com cookies, cache de Router ou redirect.
+  4. **Correção real**: script de `GRANT ALL ON ALL TABLES/ROUTINES/
+     SEQUENCES ... TO anon, authenticated, service_role` +
+     `ALTER DEFAULT PRIVILEGES` (mesmo padrão que a própria plataforma
+     Supabase aplica na criação de todo projeto nosso) — rodado no
+     `doopla-qa-staging`. Login retestado e confirmado: redireciona
+     pro `/dashboard` de verdade, painel renderiza.
+  5. **Logs de debug removidos** (commit `ce252db`) depois de
+     confirmado.
 
-  **Causa raiz fechada e corrigida (commit `03602d2`)**, com
-  autorização explícita da fundadora — exceção pontual à regra de não
-  corrigir bugs durante QA, porque isso bloqueava literalmente todo o
-  resto do teste. Confirmado contra a documentação oficial do padrão
-  Supabase+Next.js Server Actions (via busca — sem acesso à internet
-  pro Supabase/Vercel de dentro desta sessão, então usei o Next.js
-  16.3.0 real baixado via `npm pack` pra ler `dist/docs/` como o
-  `AGENTS.md` manda, mais busca externa pra confirmar o padrão
-  canônico): `loginAction`/`logoutAction`
-  (`src/app/auth/actions.ts`) chamavam `redirect()` sem
-  `revalidatePath('/', 'layout')` antes — o padrão oficial do Supabase
-  pra Server Actions de auth em Next.js sempre revalida antes de
-  redirecionar, exatamente pra evitar que a rota protegida de destino
-  reaproveite cache do Router de antes da mudança de sessão (o mesmo
-  padrão de bug documentado como causa de "logout inesperado"/"sessão
-  não gruda" em apps Supabase+Next.js). Adicionado
-  `revalidatePath('/', 'layout')` antes do `redirect()` nas duas
-  functions. **Ainda não reconfirmado contra o app real** (deploy novo
-  em andamento) — próximo passo é retestar login antes de seguir pro
-  resto do P0.
-- ⏳ Persistência de sessão
-- ⏳ Redirect correto pro dashboard
+  **🔴 Incidente durante a correção, registrado por transparência**: a
+  fundadora rodou o script de `GRANT ALL` por engano no **`doopla`
+  (Produção)** em vez do `doopla-qa-staging`. Investigado e corrigido
+  na hora: `GRANT ALL` só *amplia* permissões, nunca as retira nem
+  mexe em dado — mas as 79 migrations têm ~297 declarações `grant`/
+  `revoke` deliberadas (ex.: `authenticated` não deveria poder
+  `INSERT`/`UPDATE` direto em `conversations`, só via RPC) que ficaram
+  temporariamente reabertas. Corrigido reaplicando as 297 declarações
+  originais, na ordem cronológica das migrations, cada uma isolada
+  num `DO $$ ... EXCEPTION ...` que pula sozinha qualquer objeto que
+  `doopla` ainda não tenha (achado à parte: `doopla` está some
+  migrations atrás de `doopla-qa-staging`/desta branch — não
+  investigado a fundo agora, fora de escopo da Categoria B, mas
+  registrando que existe defasagem real de schema entre os dois
+  projetos). Reaplicação confirmada com sucesso; conferido por
+  amostragem (`conversations`/`conversation_mandate_events`
+  batendo exatamente com o que as migrations pretendiam). Um detalhe
+  não crítico ficou aberto: `community_topic_reads` tem
+  `authenticated` com mais privilégio de tabela do que a migration
+  `0077` concede explicitamente — mas essa migration nunca revogou de
+  `authenticated`, só de `anon`/`public`, então é bem provável que
+  esse "excesso" já existisse desde antes de qualquer coisa de hoje
+  (RLS continua sendo a proteção real de qualquer forma). Não
+  corrigido — fora do escopo do incidente de hoje, fica registrado.
+
+  **Prática nova, pedida pela fundadora e implementada**: antes de
+  rodar qualquer coisa arriscada, uma query de 1 linha
+  (`select case when exists (select 1 from auth.users where email
+  like 'eriosleite+qab-%@gmail.com') then '✅ doopla-qa-staging' else
+  '🚫 doopla (PRODUÇÃO)' end`) diz em português simples em qual
+  projeto está — não depende de prestar atenção no seletor visual.
+- ✅ Persistência de sessão / redirect pro dashboard — confirmado
+  junto com o teste de login acima (login levou direto ao painel
+  renderizado).
+- ⏳ Logout (ainda não testado)
 - ⏳ Isolamento entre contas/RLS real
 
 ### P0 — Settings V2 / persistência
