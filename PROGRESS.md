@@ -115,6 +115,27 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
   autenticada (Settings, Decisões, Agenda, Financeiro, Comunidade,
   etc.) — parei a Categoria B aqui, reportando antes de continuar,
   conforme instruído.
+
+  **Causa raiz fechada e corrigida (commit `03602d2`)**, com
+  autorização explícita da fundadora — exceção pontual à regra de não
+  corrigir bugs durante QA, porque isso bloqueava literalmente todo o
+  resto do teste. Confirmado contra a documentação oficial do padrão
+  Supabase+Next.js Server Actions (via busca — sem acesso à internet
+  pro Supabase/Vercel de dentro desta sessão, então usei o Next.js
+  16.3.0 real baixado via `npm pack` pra ler `dist/docs/` como o
+  `AGENTS.md` manda, mais busca externa pra confirmar o padrão
+  canônico): `loginAction`/`logoutAction`
+  (`src/app/auth/actions.ts`) chamavam `redirect()` sem
+  `revalidatePath('/', 'layout')` antes — o padrão oficial do Supabase
+  pra Server Actions de auth em Next.js sempre revalida antes de
+  redirecionar, exatamente pra evitar que a rota protegida de destino
+  reaproveite cache do Router de antes da mudança de sessão (o mesmo
+  padrão de bug documentado como causa de "logout inesperado"/"sessão
+  não gruda" em apps Supabase+Next.js). Adicionado
+  `revalidatePath('/', 'layout')` antes do `redirect()` nas duas
+  functions. **Ainda não reconfirmado contra o app real** (deploy novo
+  em andamento) — próximo passo é retestar login antes de seguir pro
+  resto do P0.
 - ⏳ Persistência de sessão
 - ⏳ Redirect correto pro dashboard
 - ⏳ Isolamento entre contas/RLS real
