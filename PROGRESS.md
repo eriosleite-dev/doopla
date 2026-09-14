@@ -80,31 +80,34 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - `artist_link_routing` INSERT RLS — **FAIL NON-BLOCKER / MUST FIX
   BEFORE BETA CLOSE** (herdado da Categoria A, não retestado aqui
   ainda).
-- 🔴 **`NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` na
-  Vercel (projeto `doopla`, `doopla-zr9p`) estão escopadas como
-  "Production and Preview" — um único valor pros dois ambientes**,
-  descoberto em 14/09/2026 checando Environment Variables no painel
-  da Vercel. Isso contradiz a arquitetura fixada em `DECISOES.md`
-  (Production=`doopla`, Preview=`doopla-qa-staging`) e é inconsistente
-  com `SUPABASE_SERVICE_ROLE_KEY`, que já está corretamente separada
-  (linha própria pra Production, linha própria pra Preview). **Não
-  identificado qual dos dois projetos é o valor compartilhado** — o
-  valor está marcado "Secret" no painel da Vercel e não foi possível
-  revelar pela UI. Classificação: **FAIL BLOCKER / MUST FIX ANTES DE
-  USAR QUALQUER DEPLOY PREVIEW PRA TESTE** — se o valor compartilhado
-  for o `doopla`, todo deploy de Preview (inclusive o desta branch)
-  escreve direto em Produção; se for o `doopla-qa-staging`, é
-  Produção que está rodando contra o banco de QA. De qualquer forma,
-  correção requer decisão de quem administra a Vercel (separar em
-  duas variáveis com escopo distinto) — **não é algo pra resolver às
-  pressas dentro do QA, e não é um achado de produto (correção normal
-  ficaria pra depois); é uma trava de segurança de ambiente, deveria
-  ser corrigida com prioridade fora do fluxo de achados de QA**.
-  **Decisão tomada**: por causa disso, a Categoria B não vai usar o
-  link de Preview da Vercel pra nenhum teste — segue só via
-  `npm run dev` local com `.env.local` (não depende de nada da
-  Vercel, zero risco de tocar em Produção independente de como esse
-  ponto for resolvido).
+- ✅ **RESOLVIDO em 14/09/2026** — `NEXT_PUBLIC_SUPABASE_URL`/
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Vercel (projeto `doopla`,
+  `doopla-zr9p`) estavam escopadas como "Production and Preview" (um
+  único valor pros dois ambientes), contradizendo a arquitetura fixada
+  em `DECISOES.md`. Como o valor antigo estava marcado "Secret"
+  (write-only, não revelável), não dava pra saber qual dos dois
+  projetos era — corrigido apagando as entradas antigas e recriando
+  do zero como **Config** (tipo legível, evita esse problema de novo
+  no futuro), com valores pegos direto na fonte (Project Settings →
+  API de cada projeto no Supabase, não "preservando" o valor antigo
+  desconhecido):
+  - `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+    escopo **Production** → valores do projeto `doopla`
+    (`ysjzhirlhuujxoysbava`).
+  - `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+    escopo **Preview** → valores do projeto `doopla-qa-staging`
+    (`ahsyoxjzxkxcsbhqmdzv`).
+  Conferido revelando (Config permite) os 4 valores finais — refs
+  batem com o esperado em cada ambiente. `SUPABASE_SERVICE_ROLE_KEY`
+  já estava corretamente separada antes, não precisou mexer.
+  **Efeito prático**: como variáveis `NEXT_PUBLIC_` do Next.js são
+  gravadas no bundle só no momento do build, o site de Production já
+  publicado não mudou nada com isso (sem risco durante a correção);
+  o próximo deploy de Preview desta branch (e todos os futuros) já
+  sai com os valores certos do `doopla-qa-staging`. **Isso também
+  destrava o P0 de teste**: dá pra usar o link de Preview no
+  navegador com segurança agora, sem depender de `npm run dev` local
+  (resolve de quebra o bloqueio do Mac com macOS antigo abaixo).
 - 🔴 **Plano de `npm run dev` local travado — o Mac disponível pra
   execução manual guiada roda macOS 10.13.6 (High Sierra, 2017), sem
   suporte da Apple há anos.** Node.js moderno não carrega nesse
