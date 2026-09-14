@@ -551,6 +551,139 @@ ainda não existem no App — perguntar se entram num próximo bloco ou
 ficam como estão (o App já tem "Ajuda / Sobre a Doopla" e WhatsApp
 básico, só não no formato de acordeão do Web).
 
+### Validação pedida pela fundadora antes de fechar o bloco — 14/09/2026
+
+Bloco **NÃO fechado** até os 3 pontos abaixo. Ela aprovou em conceito,
+mas pediu 3 validações antes de considerar Categoria B liberada pra
+retomar: (1) regra de precedência whatYouDo/whereYouServe vs. dado
+antigo, (2) auditoria objetiva de paridade Web/App — sem construir
+telas novas —, (3) migration `0080` de fato aplicada/validada no
+`doopla-qa-staging`.
+
+#### 1. Regra de precedência — `[IMPLEMENTADO]`
+
+`context-builder/sections.ts` agora aplica a regra exata pedida: se
+`whatYouDo` está preenchido, ele é a fonte e `workTypes`/`clientTypes`
+antigos **não** são enviados junto (só um dos dois, nunca os dois); se
+vazio, os arrays antigos continuam servindo de fallback (preserva
+contexto de quem se cadastrou antes desta mudança). Mesma regra,
+independente, pra `whereYouServe` vs. `regions`. Nenhum dado apagado —
+só passa a não ser enviado ao modelo quando superado pelo campo novo.
+Idiomas/`help_areas` não foram alterados além do que já estava
+aprovado (não há duplicação nova com os campos livres).
+
+Não estendi a mesma regra aos 3 booleans de viagem (`travels`/
+`serves_other_locations`/`accepts_out_of_city_work`) — continuam sendo
+enviados incondicionalmente, como já estavam. Existe uma sobreposição
+leve de conteúdo com "Onde você atende?" (o placeholder já sugere "Também
+viajo..."), mas é redundância, não contradição — a fundadora só definiu
+a regra de precedência para os pares explicitamente citados
+(work_types/client_types ↔ whatYouDo; regions ↔ whereYouServe).
+Sinalizando aqui, não decidindo sozinho: avisar se quiser a mesma regra
+aplicada a esses booleans.
+
+#### 2. Auditoria de paridade Web/App — `[SÓ LEITURA, NADA CONSTRUÍDO]`
+
+Lido `mobile/app/(tabs)/mais/configuracoes.tsx` e as data layers
+relacionadas (`whatsapp-identity.ts`, `settings.ts`, `community.ts`)
+ponto a ponto contra a nova estrutura do Web.
+
+**Já existe no App hoje:**
+- "Conta e perfil" (bottom sheet): nome profissional, cidade, bio.
+- "Plano": resumo somente-leitura do plano/status da assinatura.
+- "WhatsApp": exibe o número cadastrado — **somente leitura, sem
+  verificação** (o próprio código já documenta isso: "Ainda não existe
+  verificação de posse do número no app").
+- "Privacidade na Comunidade": os 7 toggles, já inline/sob demanda —
+  mesmo padrão que o Web acabou de adotar.
+- "Ajuda / Sobre a Doopla": texto fixo do disclaimer de IA.
+- "Excluir minha conta": modal com senha + checkbox — já era assim,
+  igual ao padrão novo do Web.
+
+**Ausente no App (existe só no Web):**
+- Segurança e acesso (trocar senha estando logado, encerrar outras
+  sessões).
+- Trocar e-mail de login.
+- Dados profissionais: categoria, gêneros, site, outros links (App só
+  edita nome/cidade/bio).
+- Como você trabalha: os 2 campos novos + faixa de cachê + nota fiscal
+  + outras preferências — não existe nada disso no App.
+- Sua Doopla (canal de atenção: WhatsApp/Painel/Ambos).
+- Notificações (texto explicativo — baixo risco, só informativo).
+- **Verificação de WhatsApp** (fluxo telefone → código → confirmar) —
+  a camada de dados já existe (`whatsapp-identity.ts`,
+  `/api/mobile/whatsapp-identity/request`), mas o comentário no próprio
+  arquivo confirma que a UI nunca foi construída: *"as telas de
+  solicitar/confirmar/revogar OTP continuam fora deste bloco"*.
+- **Ver/copiar o link de orçamento e configurar quem recebe os
+  pedidos** (roteamento eu/booker) — não existe nenhuma tela no App
+  pra isso.
+- Dados de recebimento (chave PIX) — não existe nenhuma tela no App.
+- Política/termos/exportação de dados — ausentes (baixo risco).
+
+**Ausências que bloqueiam uma ação importante sem recorrer ao Web** (as
+únicas 3 que classifico como bloqueantes, com evidência de código, não
+suposição):
+1. **Verificação de WhatsApp.** Confirmado em
+   `src/lib/professional-doopla-cta.ts`: o CTA "Falar com minha Doopla"
+   e o reconhecimento automático do profissional numa conversa de
+   WhatsApp têm como pré-condição `whatsappIdentityStatus === 'verified'`.
+   Sem UI de verificação no App, um profissional mobile-only nunca
+   consegue ativar isso — fica permanentemente sem uma capacidade
+   central do produto (a Doopla reconhecer quem fala com ela).
+2. **Dados de recebimento (PIX).** Confirmado em
+   `policy-gate-post/gate.ts`: a RPC `is_operationally_ready` (que
+   decide se a Doopla pode assumir um compromisso comercial concreto
+   com um cliente externo) lê esses dados. Sem chave PIX cadastrada, a
+   Doopla fica bloqueada de fechar bookings reais — e não existe
+   nenhuma tela no App pra cadastrar isso.
+3. **Link de orçamento (ver/copiar) + roteamento.** É o canal de
+   entrada de booking sem login que a fundadora decidiu preservar como
+   produto atual — um profissional mobile-only não tem como sequer
+   encontrar o próprio link pra compartilhar com um cliente, muito
+   menos decidir quem recebe os pedidos.
+
+As demais ausências (segurança/e-mail, dados profissionais extras,
+Como você trabalha, Sua Doopla, Notificações, política/termos) afetam
+completude de dado ou conveniência, não impedem nenhuma ação central —
+classifico como **pós-beta**, não bloqueantes.
+
+**Nenhuma tela nova foi construída nesta passada** (só levantamento),
+como pedido. Aguardando decisão da fundadora sobre os 3 itens
+bloqueantes: entram neste bloco (mobile) antes de encerrar, ou ficam
+formalmente registrados como pendência pós-beta.
+
+#### 3. Migration `0080` no `doopla-qa-staging` — `[AGUARDANDO EXECUÇÃO DA FUNDADORA]`
+
+Ainda não aplicada nem confirmada no `doopla-qa-staging` — esta sessão
+não alcança `*.supabase.co` (rede bloqueada), então continua o mesmo
+padrão de sempre: SQL abaixo pra rodar no SQL Editor do projeto
+**`doopla-qa-staging`** (confirme o projeto certo antes de colar,
+mesma regra de sempre).
+
+Aplicar:
+```sql
+alter table public.artist_profiles
+  add column what_you_do text,
+  add column where_you_serve text;
+
+comment on column public.artist_profiles.what_you_do is 'Texto livre: "o que você faz e para quem" — substitui work_types/client_types na UI do beta (Settings V2, 14/09/2026). Conhecimento declarado pro Intelligence Context, nunca autorização.';
+comment on column public.artist_profiles.where_you_serve is 'Texto livre: "onde você atende" — substitui regions na UI do beta (Settings V2, 14/09/2026). Conhecimento declarado pro Intelligence Context, nunca autorização.';
+```
+
+Verificar depois de aplicar:
+```sql
+select column_name, data_type, is_nullable
+from information_schema.columns
+where table_schema = 'public' and table_name = 'artist_profiles'
+  and column_name in ('what_you_do', 'where_you_serve');
+```
+Esperado: as 2 colunas, tipo `text`, `is_nullable = 'YES'`.
+
+**Categoria B continua pausada** até esta migration ser confirmada
+aplicada — só depois disso o QA volta a rodar contra o produto
+canônico correto.
+
 ---
 
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`

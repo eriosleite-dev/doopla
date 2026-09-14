@@ -213,20 +213,29 @@ export async function buildProfessionalBusinessContextSection(toolCtx: ToolConte
   }
   pushFact(facts, 'professional_business_context', sourceId, 'typicalJobDuration', businessContext.typicalJobDuration, loadedAt);
   // Beta "Como você trabalha" simplificado (14/09/2026) — texto livre
-  // que substitui workTypes/clientTypes/regions na UI; os arrays
-  // abaixo continuam lidos como estavam (dado antigo preservado, não
-  // reescrito), sem nenhuma mudança de comportamento da representação.
+  // que substitui workTypes/clientTypes/regions na UI. Regra de
+  // precedência (decisão da fundadora, 14/09/2026, pra nunca mandar
+  // contexto duplicado/contraditório pro modelo): quando o campo novo
+  // está preenchido, ele é a fonte atual e o(s) array(s) antigo(s)
+  // correspondente(s) NÃO entram junto; enquanto estiver vazio (ex.:
+  // profissional cadastrado antes desta mudança, que só tem o array
+  // antigo), o legado funciona como fallback, pra não perder contexto
+  // de quem já preencheu antes. Nunca os dois ao mesmo tempo. Dado
+  // antigo nunca é apagado — só passa a não ser enviado quando
+  // superado pelo campo novo.
   if (businessContext.whatYouDo) {
     const t = truncateText(businessContext.whatYouDo, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
     pushFact(facts, 'professional_business_context', sourceId, 'whatYouDo', t.value, loadedAt, t.truncated);
+  } else {
+    pushJoinedListFact(facts, sourceId, 'workTypes', businessContext.workTypes, loadedAt);
+    pushJoinedListFact(facts, sourceId, 'clientTypes', businessContext.clientTypes, loadedAt);
   }
   if (businessContext.whereYouServe) {
     const t = truncateText(businessContext.whereYouServe, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
     pushFact(facts, 'professional_business_context', sourceId, 'whereYouServe', t.value, loadedAt, t.truncated);
+  } else {
+    pushJoinedListFact(facts, sourceId, 'regions', businessContext.regions, loadedAt);
   }
-  pushJoinedListFact(facts, sourceId, 'workTypes', businessContext.workTypes, loadedAt);
-  pushJoinedListFact(facts, sourceId, 'clientTypes', businessContext.clientTypes, loadedAt);
-  pushJoinedListFact(facts, sourceId, 'regions', businessContext.regions, loadedAt);
   pushFact(facts, 'professional_business_context', sourceId, 'travels', businessContext.travels, loadedAt);
   pushFact(facts, 'professional_business_context', sourceId, 'acceptsOutOfCityWork', businessContext.acceptsOutOfCityWork, loadedAt);
   pushFact(facts, 'professional_business_context', sourceId, 'attentionChannel', businessContext.attentionChannel, loadedAt);
