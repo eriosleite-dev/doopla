@@ -107,6 +107,7 @@ export function ProWorkContextForm({
         <button type="submit" disabled={pending} className={proGhostButtonClass}>
           {pending ? 'Salvando…' : 'Salvar'}
         </button>
+        {state.success && !pending && <p className="text-[13px] text-[var(--pro-green)]">Salvo ✓</p>}
         {state.error && <p className="text-[13px] text-[var(--pro-red)]">{state.error}</p>}
       </div>
     </form>

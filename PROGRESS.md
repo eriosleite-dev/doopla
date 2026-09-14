@@ -1018,19 +1018,19 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   **auditoria de UI pré-lançamento** (não especificados agora, não
   bloqueiam a Categoria B) — não é achado novo desta sessão, registrar
   quando ela detalhar.
-- 🟡 **PASS parcial — `/dashboard/perfil/dados`**, confirmado pela
-  fundadora (14/09/2026): Subcategoria/Mercados de fato sumiram, os
-  campos restantes salvam e persistem depois de recarregar (dado real
-  gravando certo). **Achado (não novo)**: nenhuma confirmação visual
-  aparece ao clicar "Salvar" — mesmo `FAIL NON-BLOCKER` já registrado
-  antes da reestruturação ("feedback de salvamento inconsistente entre
-  sub-páginas"), que fazia parte do que a fundadora aprovou corrigir
-  ("feedback visual consistente de salvamento") mas que **não foi
-  implementado** em `pro-artist-identity-form.tsx`/
-  `pro-work-context-form.tsx` nesta rodada — gap da minha
-  implementação, não achado novo de QA. Aguardando decisão da
-  fundadora: corrigir agora (mudança pequena e contida, já dentro do
-  escopo aprovado) ou registrar e continuar os testes.
+- ✅ **PASS — `/dashboard/perfil/dados`**, confirmado pela fundadora
+  (14/09/2026): Subcategoria/Mercados de fato sumiram, os campos
+  restantes salvam e persistem depois de recarregar.
+  **Achado corrigido na hora**: nenhuma confirmação visual aparecia ao
+  clicar "Salvar" — mesmo `FAIL NON-BLOCKER` já registrado antes da
+  reestruturação, que fazia parte do escopo aprovado
+  ("feedback visual consistente de salvamento") mas não tinha sido
+  implementado em `pro-artist-identity-form.tsx`/
+  `pro-work-context-form.tsx`. Corrigido: `updateArtistProfileAction`/
+  `updateArtistWorkContextAction` agora retornam `{ success: true }`
+  (mesmo padrão já usado em `updateCommunityPrivacyAction`), e os 2
+  formulários mostram "Salvo ✓" (verde) depois de salvar com sucesso.
+  `tsc`/`eslint` limpos.
 - ⏳ **RE-VALIDAÇÃO "Como você trabalha"** (reescrito por completo — era
   5 grupos de chips, agora 2 campos de texto livre) — salvar "O que
   você faz e para quem?"/"Onde você atende?"/faixa de

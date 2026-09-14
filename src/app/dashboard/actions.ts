@@ -1309,9 +1309,9 @@ export async function updatePublicLinksAction(
 // abaixo) — mesma tabela, mesma validação, só o campo de escrita
 // dividido em dois UPDATEs independentes.
 export async function updateArtistProfileAction(
-  _prevState: { error?: string },
+  _prevState: { error?: string; success?: boolean },
   formData: FormData
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; success?: boolean }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
   const { supabase, user, profile } = ctx;
@@ -1347,7 +1347,7 @@ export async function updateArtistProfileAction(
 
   revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
-  return {};
+  return { success: true };
 }
 
 // Contexto de trabalho ("Como você trabalha") — os campos que o
@@ -1372,9 +1372,9 @@ export async function updateArtistProfileAction(
 // do payload abaixo (incluí-las como null/false apagaria dado de quem
 // já preencheu antes de hoje).
 export async function updateArtistWorkContextAction(
-  _prevState: { error?: string },
+  _prevState: { error?: string; success?: boolean },
   formData: FormData
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; success?: boolean }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
   const { supabase, user, profile } = ctx;
@@ -1406,7 +1406,7 @@ export async function updateArtistWorkContextAction(
 
   revalidatePath('/dashboard/perfil/trabalho');
   revalidatePath('/dashboard');
-  return {};
+  return { success: true };
 }
 
 export async function updateBookerProfileAction(
