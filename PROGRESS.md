@@ -414,6 +414,73 @@ Promovida a seção própria, inline (hoje já é 1 card só):
 Fora essas 2 perguntas pontuais, o restante desta estrutura está
 pronto pra implementação assim que aprovada.
 
+### Respostas da fundadora às 2 pendências — 14/09/2026
+
+1. **Subcategoria/Mercados** → confirmado, saem da UI do beta, dado
+   preservado no banco. Condição dela: só se não forem necessários
+   como input explícito do profissional pra representação atual — não
+   são (nenhum consumidor no Intelligence Context, ver auditoria
+   acima).
+2. **Excluir minha conta** → **modal de confirmação**, não página
+   própria (ajuste ao que eu tinha proposto). Ação pontual/destrutiva,
+   não precisa tirar o usuário de Configurações — mas a confirmação
+   precisa deixar clara a irreversibilidade antes de executar.
+
+### "Como você trabalha" — NÃO aprovado ainda, análise pedida antes de fechar — 14/09/2026
+
+A fundadora não aceitou manter os 5 grupos de chips só porque "a IA
+consome os dados" — pediu prova concreta de necessidade técnica, campo
+a campo, antes de aprovar. Investiguei o consumo real (não assumido) em
+`get-professional-business-context.ts` e `context-builder/sections.ts`.
+
+**Achado central**: nenhum dos 5 grupos tem qualquer lógica de
+filtro/comparação/ranking rodando em cima dele. Todo grupo passa por
+`pushJoinedListFact()`, que faz `values.join(', ')` e entrega **uma
+única string de texto** pro modelo — exatamente o mesmo tratamento que
+campos já livres como `pricingNotes`/`negotiationNotes`/
+`typicalJobDuration` recebem lado a lado, no mesmo tool. E a razão
+original de serem chips fixos está documentada no próprio código-fonte
+das opções (`matching-options.ts`, comentário de topo): *"Sempre
+seleção múltipla ou única entre opções fixas, nunca texto livre,
+porque isso é o que alimenta o matching."* Esse motivo não existe mais
+no produto atual.
+
+| # | Grupo | Opções atuais | O que a IA de fato recebe | Observação |
+|---|---|---|---|---|
+| 1 | Tipos de trabalho (`work_types`) | Shows/apresentações, Casamentos, Festas corporativas, Eventos privados, Gravações/estúdio, Campanhas de marca, Palestras/treinamentos, Produção de conteúdo, Outro | 1 string juntada por vírgula | Opções se sobrepõem com o grupo 2 (Casamentos e Festas corporativas aparecem nos dois) |
+| 2 | Tipos de cliente/evento (`client_types`) | Casamentos, Festas corporativas, Clubs/festivais, Marcas, Agências de eventos, Produtoras, Pessoa física, Outro | 1 string juntada por vírgula | Mesma sobreposição do grupo 1 — duas perguntas quase pedindo a mesma resposta |
+| 3 | Regiões onde atua (`regions`) | [cidade/estado do cadastro] + Todo o Brasil, América Latina, Internacional, Outro | 1 string juntada por vírgula | Já existem 3 booleans ao lado (Viajo / Atendo outras cidades / Aceito fora da cidade) cobrindo a mesma intenção de forma mais direta |
+| 4 | Idiomas (`languages`) | Português, Inglês, Espanhol, Francês, Outro | **Nada.** Confirmado: a query em `get-professional-business-context.ts` nem seleciona esta coluna — é preenchido e salvo, mas 100% sem consumidor de IA hoje | Mesma família dos itens sinalizados como "sem uso identificado" (mercados/subcategoria) |
+| 5 | Em quais atividades precisa de ajuda (`help_areas`) | Negociação, Prospecção, Cobrança, Contratos, Organização, Atendimento ao cliente, Fechamento de bookings, Outra | 1 string juntada por vírgula | Nenhuma lógica de permissão/Mandate/Policy Gate lê isso — é só texto pro contexto, igual aos outros |
+
+**Conclusão técnica**: nenhum dos 5 grupos precisa continuar
+estruturado por necessidade da IA — cortar pra texto livre não tira
+nenhuma informação que a IA usa hoje, porque a forma final que ela
+recebe já é texto solto de qualquer jeito.
+
+**Proposta de simplificação** (poucos campos, sem contagem artificial
+de "grupos que sobraram"):
+1. **"O que você faz e para quem"** — texto livre, funde Tipos de
+   trabalho + Tipos de cliente/evento (elimina a sobreposição real
+   entre os dois).
+2. **"Onde você atende"** — texto livre, funde Regiões (as 3 booleans
+   de viagem continuam do lado, já são simples e diretas).
+3. **Idiomas** — proposta: **tirar da UI** (mesma regra usada em
+   mercados/subcategoria — dado não apagado, sem uso identificado). Se
+   a fundadora preferir manter a pergunta, cabe como uma frase dentro
+   do campo 1 ("atendo em português e inglês"), sem precisar de campo
+   próprio.
+4. **"Em que você quer que sua Doopla te ajude mais"** — texto livre,
+   mantém a pergunta de hoje (`help_areas`) sem chips.
+
+Resultado: de 5 grupos de chips + 1 dropdown (Estágio de carreira, já
+cortado antes) pra **3 campos de texto livre** (ou 2, se Idiomas sair),
+sem perder nenhuma informação que a IA de fato usa hoje.
+
+**Aguardando a palavra final da fundadora** sobre esta proposta (número
+exato de campos, texto das perguntas, destino de Idiomas) antes de
+fechar "Perfil e trabalho" e então executar o pacote inteiro aprovado.
+
 ---
 
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`
