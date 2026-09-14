@@ -11,40 +11,17 @@ export const getSessionProfile = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
-    error: getUserError,
   } = await supabase.auth.getUser();
-
-  // DEBUG TEMPORÁRIO (achado da Categoria B, remover depois de
-  // diagnosticar) — getUser() aqui não está achando a mesma sessão que
-  // o proxy.ts encontra, mesmo logo após login bem-sucedido.
-  console.log('[DEBUG getSessionProfile]', {
-    hasUser: !!user,
-    userId: user?.id,
-    errorMessage: getUserError?.message,
-    errorStatus: getUserError?.status,
-    errorCode: getUserError?.code,
-  });
 
   if (!user) {
     redirect('/login?next=/dashboard');
   }
 
-  const { data: profile, error: profileError, status: profileStatus } = await supabase
+  const { data: profile } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single<Profile>();
-
-  // DEBUG TEMPORÁRIO (idem acima) — cobre a segunda causa possível do
-  // mesmo redirect: getUser() passa, mas a query de profiles falha.
-  console.log('[DEBUG getSessionProfile profile query]', {
-    hasProfile: !!profile,
-    profileStatus,
-    errorMessage: profileError?.message,
-    errorCode: profileError?.code,
-    errorDetails: profileError?.details,
-    errorHint: profileError?.hint,
-  });
 
   if (!profile) {
     redirect('/login?next=/dashboard');
