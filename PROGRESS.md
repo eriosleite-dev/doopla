@@ -115,6 +115,14 @@ confirmado completo. Escopo, quando iniciar: só contra
 de produto encontrados durante o QA** (só reportar/registrar —
 correção é decisão separada da fundadora).
 
+**Prática fixa, pedida pela fundadora em 14/09/2026**: toda vez que
+eu te passar um passo que envolve rodar algo no painel do Supabase
+(SQL Editor, ou qualquer painel com os dois projetos lado a lado), a
+instrução abre dizendo em qual projeto (`doopla` ou
+`doopla-qa-staging`) tem que estar selecionado antes de colar/rodar —
+motivo explícito: risco real de confundir os dois. Vale pra qualquer
+sessão futura, não só pra esta.
+
 ## Revisão UX — Visão Geral do Artista (nomenclatura + hierarquia)
 
 Mesma lógica aplicada ao painel do Booker, agora no do Artista.
