@@ -64,17 +64,51 @@ escolhe entre vários profissionais) = o que precisa sair.
 - **Órfão técnico**: link `/dashboard/bookers#descubra` (gerado por `discover-work-deck.tsx` e `oportunidades/[id]/page.tsx`) aponta pra uma âncora que não existe mais em `/dashboard/bookers` (foi removida no `c712fb6`). Bug de navegação morta, independente da decisão de classificação.
 - **Coluna de banco morta**: `specialties` (texto livre) em `artist_profiles`, substituída por `specialty_areas`, mantida no schema mas não mais escrita pelo cadastro/Perfil (`src/lib/supabase/types.ts`, comentário confirma).
 
-### Não decidido aqui, por instrução explícita
+### Decisão canônica da fundadora sobre os itens de DÚVIDA — 14/09/2026
 
-Nenhuma implementação feita. Itens `LEGADO-MATCHING` de alta confiança
-(4, 5, 6, 7, 14) têm evidência forte o bastante pra virar remoção
-direta quando autorizado. Itens `DÚVIDA` (1, 2, 3, 10, 11, 12, 13)
-dependem de uma decisão de produto da fundadora sobre se
-"perfil público compartilhável + link de orçamento próprio" é
-modelo atual (personal booking link, análogo a um Calendly do
-profissional) ou resquício de marketplace (vitrine pra desconhecidos
-descobrirem) — as duas leituras têm apoio documental, e a Categoria B
-fica pausada quanto a essas superfícies até isso ser resolvido.
+Resolvido, `[DECISÃO DE PRODUTO — NO CODE CHANGE AINDA]`: **link de
+booking/orçamento ≠ perfil público/vitrine**, são duas coisas
+diferentes que hoje compartilham a mesma rota/flag por acidente de
+implementação, não por decisão.
+
+- **Item 1 (`/[slug]` vitrine) → LEGADO-MATCHING, confirmado.** Não
+  existe mais "Perfil público" como feature — nenhuma página com
+  foto/bio/categoria/mercados/Instagram/portfólio pra apresentar o
+  profissional a desconhecidos.
+- **Item 2 (toggle ativar/desativar perfil público) → LEGADO-MATCHING,
+  confirmado.** Não deve existir esse toggle em Configurações.
+- **Item 3 (`/orcamento/[slug]`) → ATUAL, confirmado — PRESERVAR A
+  FUNÇÃO.** É o canal de entrada do link individual de
+  booking/orçamento que o profissional compartilha (não uma vitrine,
+  não descoberta) — a Doopla precisa continuar permitindo que o
+  cliente inicie uma solicitação sem login e gere a
+  oportunidade/conversa correspondente.
+  **Conflito técnico a resolver na implementação (não decidido
+  agora)**: hoje `/orcamento/[slug]` e a RPC `submit_orcamento_request`
+  checam `artist_profiles.public_enabled` — a MESMA flag do toggle de
+  vitrine (item 2) que vai sair. Precisa de um gate próprio,
+  independente do toggle de vitrine, pra não derrubar o link de
+  orçamento junto com a vitrine.
+- **Item 10 (`mercados`/`subcategory`) → SEM USO IDENTIFICADO após a
+  remoção da vitrine (sinalizado, não decidido).** Único consumo
+  encontrado era exibição na vitrine (item 1) — com ela saindo, não
+  há consumidor confirmado. Regra da fundadora: sinalizar antes de
+  decidir, não remover dado/coluna agora.
+- **Item 11 (`instagram_url`/`portfolio_url`) → mesma situação do item
+  10 — sem uso identificado após a remoção da vitrine, sinalizado.**
+- **Item 12 (`favorites`/`FavoriteButton`) e item 13 (`/artistas/[id]`,
+  `/bookers/[id]` vitrines internas) → LEGADO-MATCHING quando
+  alcançados a partir das telas de descoberta (itens 4/5, que saem);
+  o uso isolado de "ver informação de um Booker/Artista já conectado"
+  (a partir de "Meus Bookers"/relação existente) precisa de uma
+  superfície própria, mais simples, no redesign — não
+  necessariamente herdando o componente de vitrine inteiro (rating
+  completo, bio extensa) que foi desenhado pra "escolher entre
+  vários". Fica para a proposta de Configurações/painel enxuto
+  (abaixo), não decidido linha a linha aqui.**Regra geral reforçada
+  pela fundadora**: não confundir isso com o **futuro produto Booker**
+  — estrutura necessária à gestão/representação de profissionais pelo
+  Booker não deve ser apagada só por ter "Booker" no nome.
 
 ---
 
