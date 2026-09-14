@@ -1010,9 +1010,14 @@ concluídas e aprovadas). Pendências desta seção, todas ⏳ NOVO (código
 nunca teve teste manual ao vivo — só `tsc`/`eslint`/revisão de código
 nesta sessão, sem acesso a `doopla-qa-staging`):
 
-- ⏳ **Estrutura do acordeão em `/dashboard/perfil`** — abre, cada seção
-  expande/recolhe (chevron), "Perfil Público" não aparece em nenhum
-  lugar da navegação.
+- ✅ **PASS — Estrutura do acordeão em `/dashboard/perfil`**, confirmado
+  pela fundadora (14/09/2026): as 8 seções aparecem na ordem certa,
+  "Perfil Público" não aparece em nenhum lugar da navegação, cada seção
+  expande/recolhe com o chevron sem sair da página. **Alguns detalhes
+  visuais** ficaram sinalizados pela fundadora pra correção na
+  **auditoria de UI pré-lançamento** (não especificados agora, não
+  bloqueiam a Categoria B) — não é achado novo desta sessão, registrar
+  quando ela detalhar.
 - ⏳ **RE-VALIDAÇÃO `/dashboard/perfil/dados`** (formulário mudou —
   Subcategoria/Mercados saíram) — salvar Nome artístico/Categoria/Bio/
   Gêneros/Site/Outros links, persiste ao recarregar.
