@@ -225,6 +225,195 @@ pra: (1) ocultar as rotas/itens marcados OCULTAR DO BETA da navegação
 normal do beta, (2) simplificar as telas marcadas SIMPLIFICAR pro
 acordeão proposto, sem alterar dado/schema/migration.
 
+### Aprovação da fundadora, com 2 ajustes — 14/09/2026
+
+Classificação acima **aprovada**, com duas correções de escopo antes
+de qualquer implementação:
+
+1. **Booker fica fora deste bloco de implementação.** Os achados de
+   matching do Booker (seção 2 e 4 acima — "Descobrir trabalhos",
+   "Artistas"/"Favoritos", "Preferências de matching") passam de
+   OCULTAR DO BETA para **FUTURO**: ficam registrados, mas shell,
+   navegação e Configurações do Booker **não são tocados agora**. O
+   foco deste bloco é só **Professional/Artista, Web + App**.
+2. **"Canais da sua Doopla" não deve virar exceção de navegação só por
+   ter formulário.** Resolvida abaixo (seção "Canais da sua Doopla")
+   — decisão final: **inline, sem subpágina**, com uma nota técnica de
+   implementação (não é uma exceção que precisasse de aprovação
+   separada).
+
+---
+
+## Estrutura final das Configurações — Professional/Artista, Web + App — `[PROPOSTA / NÃO IMPLEMENTADO]` — 14/09/2026
+
+Resposta ao pedido da fundadora: "estrutura final exata das
+Configurações do Profissional para Web + App, já mostrando quais
+campos ficarão dentro de cada accordion e quais serão removidos da UI
+do beta." Baseado na leitura completa de cada formulário/subpágina
+hoje existente (`pro-artist-identity-form.tsx`,
+`pro-work-context-form.tsx`, `pro-whatsapp-identity-card.tsx`,
+`link-routing-card.tsx`, `conta/`, `seguranca/`, `privacidade/`,
+`privacidade/comunidade/`, `notificacoes/`, `suporte/`). Ainda
+**nenhum código alterado** — aguardando aprovação desta estrutura
+antes do código, como pedido.
+
+**Parity Web+App**: as 8 seções, os campos dentro de cada uma, o que é
+inline vs. página dedicada, e o padrão de feedback de salvamento são
+os mesmos nas duas superfícies — só a apresentação visual do acordeão
+adapta ao padrão nativo de cada plataforma (ex.: `Accordion`/
+`DisclosureGroup` no App vs. o componente web). Nenhuma UI de Booker é
+construída ou alterada agora.
+
+**Padrão de feedback de salvamento (aplicado às 8 seções, corrige a
+inconsistência já registrada)**: todo campo/seção com autosave mostra
+"Salvo ✓" (toast/inline, transitório); toda seção com botão "Salvar"
+explícito mostra "Alterações salvas ✓" após sucesso, e mensagem de erro
+inline sem apagar o que foi digitado. Nenhuma seção fica muda sobre o
+resultado da ação.
+
+### 1. Assinatura e cobrança — MANTER VISÍVEL, sem mudança
+
+Vira cabeçalho de acordeão (chevron), mas o conteúdo continua sendo 2
+linhas → página própria (Stripe/pagamento são fluxos legitimamente
+complexos, justificam página dedicada com "← Configurações"):
+- Plano e assinatura (`/dashboard/perfil/assinatura`)
+- Dados de recebimento (`/dashboard/perfil/recebimento`)
+
+### 2. Sua conta — MANTER VISÍVEL, sem mudança
+
+Vira cabeçalho de acordeão, conteúdo continua como 2 linhas → página
+própria (troca de e-mail e senha são fluxos de segurança com
+confirmação/verificação — mesma justificativa de página dedicada):
+- Informações da conta (`/dashboard/perfil/conta`): nome completo,
+  telefone, e-mail de login (com fluxo de troca), código público
+  (`profile.slug`, somente leitura).
+- Segurança e acesso (`/dashboard/perfil/seguranca`): trocar senha,
+  encerrar outras sessões.
+
+### 3. Perfil e trabalho — SIMPLIFICAR
+
+- **Dados profissionais** (`/dashboard/perfil/dados`, página própria —
+  mantém, é edição de conteúdo real) — campos finais:
+  - Nome artístico ✅ mantém
+  - Categoria ✅ mantém (consumido pelo Intelligence Context)
+  - Bio ✅ mantém
+  - Gêneros/estilos ✅ mantém
+  - Site / Outros links (Spotify, SoundCloud, YouTube) ✅ mantém —
+    contexto de representação, nunca exibido publicamente
+  - **Subcategoria** e **Mercados** — 🚩 **proposta: remover da UI do
+    beta** (campo some do formulário; coluna no banco **não é
+    apagada**). Motivo: nenhum consumidor confirmado (Intelligence
+    Context não usa, e o único consumo de exibição era a vitrine
+    pública que está saindo). Como sua própria regra pede sinalização
+    antes de decidir e não decisão unilateral minha: **preciso da sua
+    confirmação explícita pra tirar esses 2 campos da tela** — se você
+    apontar um uso real, ficam.
+- **Como você trabalha** (`/dashboard/perfil/trabalho`, página própria
+  — mantém, formulário grande demais pra inline) — campos finais:
+  - Tipos de trabalho, Tipos de cliente/evento, Regiões, Idiomas,
+    Em quais atividades precisa de ajuda (5 grupos de chips) ✅ mantêm
+    — todos já confirmados ATUAL (alimentam representação por IA)
+  - Faixa de cachê, Emite nota fiscal, Viajo/Atendo outras
+    cidades/Aceito fora da cidade, Outras preferências ✅ mantêm
+  - **Estágio de carreira / volume de trabalho** — ❌ **removido**,
+    conforme você já apontou como desnecessário (campo vago, resposta
+    default "Prefiro não dizer" na prática).
+- **Perfil público** — ❌ **removido por completo**: linha some do
+  menu, rota `/dashboard/perfil/publico` some da navegação, toggle
+  Ativar/desativar some da UI (`enablePublicProfileAction`/
+  `disablePublicProfileAction` deixam de ser chamados pelo beta).
+  `instagram_url`/`portfolio_url` (que só existiam nesta tela) saem
+  junto, sem UI própria em outro lugar.
+
+### 4. Sua Doopla (renomeado de "Preferências da Doopla") — SIMPLIFICAR, inline
+
+Promovida a seção própria do acordeão, todo o conteúdo **inline**
+(hoje já é 1 card enxuto, cabe direto no corpo do acordeão sem
+subpágina):
+- "Como sua Doopla fala com você" — rádio: WhatsApp / Painel / Ambos
+  (`attention_channel`) ✅ mantém, inline
+- (o link cruzado pra "Como você trabalha" que existe hoje deixa de
+  ser necessário aqui, já que "Perfil e trabalho" é sua própria seção
+  visível ao lado)
+
+### 5. Notificações — SIMPLIFICAR, inline
+
+Promovida a seção própria, inline (hoje é 1 card só, sem formulário):
+- Texto explicando que notificações da Comunidade chegam pelo sino +
+  link "Ver Comunidade" ✅ mantém, inline
+- Nenhum canal configurável existe hoje (e-mail/WhatsApp) — não
+  inventado, mesmo critério já usado no código atual
+
+**Achado funcional pendente de verificação** (você reportou "aparentou
+não responder" no marcar/desmarcar notificação da Comunidade): ainda
+não confirmado em código nesta passada — fica registrado como
+verificação pendente, separada desta reestruturação.
+
+### 6. Canais da sua Doopla (renomeado de "Canais e conexões") — SIMPLIFICAR, **inline, sem subpágina**
+
+Ajuste pedido: avaliado o conteúdo (identidade de WhatsApp +
+roteamento do link de orçamento) e **não há necessidade técnica real
+de página própria** — o fluxo de verificação do WhatsApp
+(`pro-whatsapp-identity-card.tsx`) já é hoje um mini-fluxo de estado
+local do próprio componente (visualizar → telefone → código), não uma
+navegação entre páginas, então funciona igual dentro de um painel de
+acordeão. Proposta final, tudo inline nesta seção:
+- "Seu WhatsApp": status (✓ verificado + número, ou "não verificado")
+  com botão "Verificar WhatsApp" que expande, dentro do próprio
+  acordeão, os passos telefone → código → confirmar (mesmo componente
+  de hoje, sem mudar de rota)
+- "Seu link de orçamento": link + botão copiar — inline
+- "Quem recebe seus pedidos de orçamento": seletor eu/booker
+  específico — inline
+- Reforço de copy: deixa explícito que isso é "porta de entrada do
+  cliente pra iniciar um booking", nunca um perfil público/vitrine
+
+**Nota técnica de implementação** (não é uma exceção, só um cuidado):
+o painel do acordeão precisa continuar montado (escondido por CSS) e
+não desmontar ao recolher, senão um código de verificação recém-pedido
+se perde se a seção for fechada sem querer no meio do fluxo.
+
+### 7. Privacidade e dados — SIMPLIFICAR, majoritariamente inline
+
+Promovida a seção própria do acordeão:
+- Política de privacidade / Termos de uso (links externos) — inline
+- "Seus dados" (exportação, hoje "em breve") — inline
+- **Privacidade na Comunidade** (8 controles: disponível pra
+  indicações, mostrar cidade/avatar/bio/especialidades/tipos de
+  trabalho/Instagram/portfólio na Comunidade) — 🚩 **proposta: tirar da
+  subpágina aninhada `/privacidade/comunidade` e trazer os 8 toggles
+  pra dentro do acordeão**, exatamente o exemplo que você deu
+  ("Mostrar minha cidade" como controle simples em vez de página
+  própria). Artista-only, mesma regra de hoje.
+- **Excluir minha conta** — proposta: **mantém como fluxo próprio**
+  (não inline). Justificativa, já que sua regra pede que eu explique
+  antes de manter algo fora do acordeão: é uma ação destrutiva e
+  irreversível, precisa de confirmação explícita em etapas (aviso,
+  possivelmente reautenticação) — não é um "ajuste pequeno", é o único
+  caso desta seção com a mesma natureza de "página dedicada realmente
+  necessária" que você já previu. Se preferir, posso reavaliar.
+
+### 8. Ajuda e suporte — SIMPLIFICAR, inline
+
+Promovida a seção própria, inline (hoje já é 1 card só):
+- "Fale com o suporte da Doopla" + botão de e-mail — inline
+- Sem Central de Ajuda (não existe hoje, não inventada)
+
+### Fora do acordeão
+
+- **Sair da conta** — botão fixo depois da lista de seções, como hoje.
+
+### Pendências que preciso da sua decisão antes de codar
+
+1. Remover **Subcategoria** e **Mercados** da UI de "Dados
+   profissionais" (dado não apagado do banco) — confirma?
+2. "Excluir minha conta" continuar como fluxo próprio em vez de
+   inline — confirma, ou prefere que eu avalie um modal em vez de
+   página?
+
+Fora essas 2 perguntas pontuais, o restante desta estrutura está
+pronto pra implementação assim que aprovada.
+
 ---
 
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`
