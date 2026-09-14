@@ -105,6 +105,22 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
   `npm run dev` local com `.env.local` (não depende de nada da
   Vercel, zero risco de tocar em Produção independente de como esse
   ponto for resolvido).
+- 🔴 **Plano de `npm run dev` local travado — o Mac disponível pra
+  execução manual guiada roda macOS 10.13.6 (High Sierra, 2017), sem
+  suporte da Apple há anos.** Node.js moderno não carrega nesse
+  sistema (`dyld: cannot load 'node' (load command 0x80000034 is
+  unknown)` — binário usa "chained fixups", recurso que dyld só
+  entende a partir de macOS bem mais novo; reinstalar o Node não
+  resolve, é incompatibilidade de SO). Mesmo com um Node antigo o
+  bastante pra carregar nesse macOS, o Next.js 16 deste projeto exige
+  uma versão de Node que esse sistema não suporta de qualquer forma.
+  **Sem caminho viável pra rodar o projeto localmente nesse
+  computador específico.** Classificação: **BLOCKED ENVIRONMENT**.
+  Reabre a necessidade do item anterior (Vercel Preview/Production
+  compartilhados) — resolver aquilo destrava teste **só pelo
+  navegador** (roda na nuvem da Vercel, não depende do Node local),
+  o que contorna esse Mac antigo também. Alternativa: usar outro
+  computador com macOS mais novo só pra rodar `npm run dev`.
 
 ## Categoria B — variáveis de ambiente do Supabase QA/Staging
 
