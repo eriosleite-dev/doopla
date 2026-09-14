@@ -1031,10 +1031,10 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   (mesmo padrão já usado em `updateCommunityPrivacyAction`), e os 2
   formulários mostram "Salvo ✓" (verde) depois de salvar com sucesso.
   `tsc`/`eslint` limpos.
-- ⏳ **RE-VALIDAÇÃO "Como você trabalha"** (reescrito por completo — era
-  5 grupos de chips, agora 2 campos de texto livre) — salvar "O que
-  você faz e para quem?"/"Onde você atende?"/faixa de
-  cachê/nota fiscal/outras preferências, persiste ao recarregar.
+- ✅ **PASS — "Como você trabalha"**, confirmado pela fundadora
+  (14/09/2026): só os 2 campos de texto livre + faixa de cachê/nota
+  fiscal/outras preferências aparecem (sem chips, sem Estágio de
+  carreira), salva, mostra "Salvo ✓" e persiste ao recarregar.
 - ✅ **PASS — "Sua Doopla" inline**, confirmado pela fundadora
   (14/09/2026): trocar o canal de atenção (WhatsApp/Painel/WhatsApp +
   Painel) salva sozinho, sem botão, e persiste depois de recarregar —
