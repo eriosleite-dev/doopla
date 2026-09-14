@@ -186,15 +186,24 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - ✅ `/dashboard/perfil/dados` — PASS, persiste após recarregar.
 - ✅ Salvar `/trabalho` NÃO zera/altera `/dados` — PASS (as duas
   persistiram de forma independente nos testes acima).
-- ✅ `/dashboard/perfil/publico` → `/[slug]` — PASS. Página pública
-  (`/qa-categoria-b-artista-02`) mostra nome, categoria, mensagem
-  padrão pra artista novo, link de portfólio, rodapé doopla.
-- ✅ `website_url`/`other_links` não aparecem publicamente — PASS.
-  Campos ficam em `/dashboard/perfil/dados` (não `/canais` — correção
-  de percurso: são "Site"/"Outros links" dentro de
-  `pro-artist-identity-form.tsx`, renderizado em `/dados`, não em
-  `/canais`, que é sobre WhatsApp/roteamento). Preenchidos, salvos,
-  confirmado que não aparecem na página pública.
+- ❌ **RETIRADO em 14/09/2026 — não vale como PASS de produto atual.**
+  A fundadora identificou que `/dashboard/perfil/publico` e a rota
+  pública `/[slug]` são **candidatos a legado da Doopla
+  antiga/marketplace** (matching cliente-encontra-profissional), não
+  necessariamente parte do produto atual (AI-first, representação).
+  Os dois itens abaixo foram tecnicamente exercitados e o
+  comportamento observado continua registrado como fato (útil se a
+  feature for mesmo legado e for removida, ou se for confirmada como
+  atual) — **mas sem valor de PASS/FAIL de Categoria B até a
+  auditoria de legado (abaixo) classificar isso**:
+  - `/dashboard/perfil/publico` → `/[slug]` renderiza (nome, categoria,
+    mensagem, portfólio, CTA "Pedir orçamento").
+  - `website_url`/`other_links` (campos "Site"/"Outros links" em
+    `/dashboard/perfil/dados`, componente
+    `pro-artist-identity-form.tsx`) não aparecem na página pública.
+  **Categoria B pausada neste ponto** — próximo passo é a auditoria de
+  resíduo de legado pedida pela fundadora, ver seção dedicada abaixo,
+  antes de continuar testando qualquer coisa do painel.
 - ⏳ `/dashboard/perfil/canais`: validar o que der sem transporte Meta real
 
 ### P0 — Core Professional com backend real
