@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
-import { ensureCommunityProfileActivated, getMyCommunityProfile } from '@/lib/community/data';
+import { getMyCommunityProfile } from '@/lib/community/data';
 
 import { ProCard } from '../../../pro-ui';
 import { getSessionProfile } from '../../../session';
@@ -30,19 +30,16 @@ export default async function ComunidadePrivacidadePage() {
   const { supabase, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard/perfil/privacidade');
 
-  // Mesma convenção de "ativação invisível" já usada em toda superfície
-  // de Comunidade — nenhum passo explícito de "entrar" antes de ver as
-  // próprias preferências (ver comentário de ensureCommunityProfileActivated
-  // em src/lib/community/data.ts). Visitar esta tela é, em si, uma ação
-  // relacionada à Comunidade — consistente com o resto do produto, não
-  // uma decisão nova.
-  await ensureCommunityProfileActivated(supabase);
+  // Correção 14/09/2026 (achado da fundadora durante a Categoria B):
+  // visualizar/carregar as próprias preferências NUNCA pode ativar
+  // participação sozinho — só a leitura pura (getMyCommunityProfile),
+  // nunca ensureCommunityProfileActivated aqui. Quem nunca entrou na
+  // Comunidade vê os 7 toggles todos desmarcados (estado inicial real,
+  // não fabricado); a ativação só acontece dentro de
+  // updateCommunityPrivacyAction, no momento em que o profissional de
+  // fato salva uma preferência — a ação explícita que conta como
+  // "participar", nunca abrir a tela pra olhar.
   const communityProfile = await getMyCommunityProfile(supabase);
-
-  // Só acontece se a ativação acima falhar silenciosamente por algum
-  // motivo interno — nunca o fluxo esperado, mas evita renderizar o
-  // form sem dado nenhum pra sustentar os defaultChecked.
-  if (!communityProfile) redirect('/dashboard/perfil/privacidade');
 
   return (
     <main>
@@ -53,14 +50,14 @@ export default async function ComunidadePrivacidadePage() {
 
       <ProCard>
         <CommunityPrivacyForm
-          availableForReferrals={communityProfile.availableForReferrals}
-          showCity={communityProfile.showCity}
-          showAvatar={communityProfile.showAvatar}
-          showBio={communityProfile.showBio}
-          showSpecialties={communityProfile.showSpecialties}
-          showWorkTypes={communityProfile.showWorkTypes}
-          showInstagram={communityProfile.showInstagram}
-          showPortfolio={communityProfile.showPortfolio}
+          availableForReferrals={communityProfile?.availableForReferrals ?? false}
+          showCity={communityProfile?.showCity ?? false}
+          showAvatar={communityProfile?.showAvatar ?? false}
+          showBio={communityProfile?.showBio ?? false}
+          showSpecialties={communityProfile?.showSpecialties ?? false}
+          showWorkTypes={communityProfile?.showWorkTypes ?? false}
+          showInstagram={communityProfile?.showInstagram ?? false}
+          showPortfolio={communityProfile?.showPortfolio ?? false}
         />
       </ProCard>
     </main>

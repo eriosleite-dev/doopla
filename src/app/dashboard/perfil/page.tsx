@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { getMyCommunityProfile } from '@/lib/community/data';
 import { siteOrigin } from '@/lib/site-url';
 import { hasDooplaPro } from '@/lib/subscription';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
@@ -41,19 +42,25 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, attentionData, bookers, routing, origin] = await Promise.all([
-      getSubscription(user.id, supabase),
-      getCachedProfessionalHomeFacts(supabase),
-      getActivePaymentDetails(user.id, supabase),
-      supabase
-        .from('artist_profiles')
-        .select('attention_channel')
-        .eq('profile_id', user.id)
-        .maybeSingle<{ attention_channel: 'whatsapp' | 'painel' | 'ambos' | null }>(),
-      getArtistBookers(user.id, supabase),
-      getArtistLinkRouting(user.id, supabase),
-      siteOrigin(),
-    ]);
+    const [subscription, homeFacts, paymentDetails, attentionData, bookers, routing, origin, communityProfile] =
+      await Promise.all([
+        getSubscription(user.id, supabase),
+        getCachedProfessionalHomeFacts(supabase),
+        getActivePaymentDetails(user.id, supabase),
+        supabase
+          .from('artist_profiles')
+          .select('attention_channel')
+          .eq('profile_id', user.id)
+          .maybeSingle<{ attention_channel: 'whatsapp' | 'painel' | 'ambos' | null }>(),
+        getArtistBookers(user.id, supabase),
+        getArtistLinkRouting(user.id, supabase),
+        siteOrigin(),
+        // Leitura pura (getMyCommunityProfile nunca ativa nada — só
+        // `null` quando o profissional nunca entrou na Comunidade,
+        // ver correção 14/09/2026 abaixo) — segura pra rodar sempre
+        // que Configurações carrega, sem nenhum efeito colateral.
+        getMyCommunityProfile(supabase),
+      ]);
     return (
       <ProConfiguracoesView
         hasPro={hasDooplaPro(subscription)}
@@ -66,6 +73,7 @@ export default async function PerfilPage() {
         linkRoutingMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
         linkRoutingBookerId={routing?.booker_id ?? null}
         orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
+        communityProfile={communityProfile}
       />
     );
   }

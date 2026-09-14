@@ -1050,9 +1050,43 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   tem booker ("Conecte um booker pra liberar esta opção" —
   comportamento já existente de `ProLinkRoutingForm`, reusado sem
   mudança). Tudo dentro do acordeão, sem navegação.
-- ⏳ **"Privacidade e dados" inline** — abrir "Ver privacidade na
-  Comunidade" e confirmar que só ATIVA a participação na Comunidade
-  nesse clique específico, nunca só por abrir Configurações.
+- 🟡 **Achado real, corrigido — "Privacidade e dados" inline**
+  (14/09/2026): a fundadora testou e reportou por print que os 7
+  toggles de Privacidade na Comunidade estavam escondidos atrás de um
+  clique extra ("Ver privacidade na Comunidade"), e apontou o problema
+  de raiz certo: **existia um acoplamento indevido entre "carregar/
+  visualizar as preferências" e "ativar participação"** — minha
+  implementação anterior chamava `ensureCommunityProfileActivated`
+  (que cria a linha em `community_profiles` se não existir) no exato
+  momento em que o painel era aberto pra visualização, não só quando o
+  profissional de fato salvava algo. Corrigido em 4 lugares (Web +
+  App, não só onde eu tinha acabado de mexer):
+  1. `pro-configuracoes-view.tsx` — os 7 toggles aparecem direto dentro
+     do acordeão "Privacidade e dados" (sem clique extra), alimentados
+     por uma leitura pura (`getMyCommunityProfile`, nunca ativa nada)
+     feita no carregamento normal de `/dashboard/perfil`. `null` (nunca
+     entrou na Comunidade) vira toggles desmarcados, não erro.
+  2. `community-privacy-actions.ts` — removida a action
+     `loadCommunityPrivacyAction` (era ela que causava o acoplamento);
+     `updateCommunityPrivacyAction` (o SAVE) continua sendo o único
+     lugar que ativa, exatamente como já era — só que agora é o único
+     gatilho de verdade, não mais um "backstop" redundante.
+  3. `/dashboard/perfil/privacidade/comunidade/page.tsx` (subpágina
+     antiga, já fora de navegação mas ainda viva no código) — tinha o
+     mesmo bug (ativava antes de renderizar), corrigido do mesmo jeito.
+  4. **App**: `CommunityPrivacySheet` em `mobile/.../configuracoes.tsx`
+     tinha exatamente o mesmo bug (`load()` ativava só por abrir o
+     sheet) — corrigido: `load()` vira leitura pura, e a ativação foi
+     movida pra dentro de `submit()`, junto do salvamento real.
+  Verificado: não sobrou nenhum outro lugar (Web ou App) que ative
+  participação sem ser uma ação explícita de Comunidade (postar/
+  responder/ver tópicos, ou agora salvar uma preferência de
+  privacidade) — os únicos outros chamadores de
+  `ensureCommunityProfileActivated`/`activateCommunityProfile` são as
+  páginas/telas reais da Comunidade (`comunidade/page.tsx`,
+  `comunidade/[topicId]/page.tsx`, `mobile/app/forum/*`), que
+  continuam corretas por design (visitar a Comunidade de verdade é a
+  ação explícita). `tsc --noEmit` limpo (Web e App), `eslint` limpo.
 - ⏳ **"Excluir minha conta" por modal** — abre modal (não navega pra
   outra página), fecha com "Cancelar" sem excluir nada.
 - ⏳ "Notificações"/"Ajuda e suporte" inline — conteúdo aparece, sem

@@ -2,13 +2,14 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
+import type { CommunityProfileSnapshot } from '@/lib/community/data';
 import { SUPPORT_EMAIL } from '@/lib/support';
 import type { LinkRoutingMode, Subscription } from '@/lib/supabase/types';
 
 import type { BookerOption } from '../link-routing-form';
 import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
 import { ProLinkRoutingForm } from '../pro-link-routing-form';
-import { CommunityPrivacyInline } from './community-privacy-inline';
+import { CommunityPrivacyForm } from './privacidade/comunidade/community-privacy-form';
 import { DeleteAccountModal } from './delete-account-modal';
 import { AttentionChannelForm } from './preferencias/attention-channel-form';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
@@ -45,6 +46,7 @@ export function ProConfiguracoesView({
   linkRoutingMode,
   linkRoutingBookerId,
   orcamentoUrl,
+  communityProfile,
 }: {
   hasPro: boolean;
   subscription: Subscription | null;
@@ -56,6 +58,11 @@ export function ProConfiguracoesView({
   linkRoutingMode: LinkRoutingMode;
   linkRoutingBookerId: string | null;
   orcamentoUrl: string | null;
+  // Leitura pura (getMyCommunityProfile, sem ativar nada) — null
+  // quando o profissional nunca entrou na Comunidade. Ver correção
+  // 14/09/2026: visualizar Configurações nunca pode ativar
+  // participação, só a ação explícita de salvar uma preferência aqui.
+  communityProfile: CommunityProfileSnapshot | null;
 }) {
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
@@ -155,8 +162,21 @@ export function ProConfiguracoesView({
 
             <div>
               <p className="font-pro-sub text-[13.5px] font-bold">Privacidade na Comunidade</p>
-              <div className="mt-2">
-                <CommunityPrivacyInline />
+              <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">
+                O que outros profissionais veem no seu perfil público dentro da Comunidade — não afeta seus dados
+                profissionais gerais na Doopla.
+              </p>
+              <div className="mt-3">
+                <CommunityPrivacyForm
+                  availableForReferrals={communityProfile?.availableForReferrals ?? false}
+                  showCity={communityProfile?.showCity ?? false}
+                  showAvatar={communityProfile?.showAvatar ?? false}
+                  showBio={communityProfile?.showBio ?? false}
+                  showSpecialties={communityProfile?.showSpecialties ?? false}
+                  showWorkTypes={communityProfile?.showWorkTypes ?? false}
+                  showInstagram={communityProfile?.showInstagram ?? false}
+                  showPortfolio={communityProfile?.showPortfolio ?? false}
+                />
               </div>
             </div>
 

@@ -573,11 +573,16 @@ const COMMUNITY_TOGGLES: { key: CommunityToggleKey; label: string }[] = [
 // (fetchMyCommunityProfile/updateCommunityProfile/
 // ensureCommunityProfileActivated — cópia deliberada de
 // src/lib/community/data.ts, mesmo backend/RPC/RLS). Busca só ao abrir
-// o sheet (não no load() da tela toda) — abrir Configurações não deve
-// silenciosamente ativar a participação na Comunidade; só entrar
-// NESTE sheet especificamente é uma ação relacionada à Comunidade.
-// Refaz a busca toda vez que o sheet reabre, pra nunca mostrar valor
-// desatualizado depois de fechar/reabrir.
+// o sheet (não no load() da tela toda), só por escopo — não é o que
+// evita ativação. Refaz a busca toda vez que o sheet reabre, pra nunca
+// mostrar valor desatualizado depois de fechar/reabrir.
+//
+// Correção 14/09/2026: abrir/ver este sheet NUNCA ativa participação
+// sozinho — load() só chama fetchMyCommunityProfile (leitura pura;
+// `null` é estado real de "nunca ativou", mostrado com os 7 toggles
+// desmarcados, nunca erro). ensureCommunityProfileActivated só roda
+// dentro de submit(), no momento em que o profissional de fato salva
+// uma preferência — a ação explícita que conta como "participar".
 //
 // availableForReferrals nunca vira toggle aqui (não é um dos 7 campos
 // pedidos) — só é lido do snapshot atual e reenviado sem alteração no
@@ -599,27 +604,41 @@ function CommunityPrivacySheet({ visible }: { visible: boolean }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Correção 14/09/2026 (achado da fundadora durante a Categoria B):
+  // abrir este sheet pra VER as preferências nunca pode ativar
+  // participação sozinho — só leitura pura (fetchMyCommunityProfile).
+  // `null` aqui é um estado real (nunca entrou na Comunidade ainda),
+  // não erro — mostra os 7 toggles desmarcados normalmente. A ativação
+  // (ensureCommunityProfileActivated) só acontece dentro de submit(),
+  // no momento em que o profissional de fato salva uma preferência.
   const load = useCallback(() => {
     setPhase('loading');
     setError(null);
     setSaved(false);
-    ensureCommunityProfileActivated()
-      .then(() => fetchMyCommunityProfile())
+    fetchMyCommunityProfile()
       .then((profile) => {
-        if (!profile) {
-          setPhase('error');
-          return;
-        }
         setSnapshot(profile);
-        setValues({
-          showCity: profile.showCity,
-          showAvatar: profile.showAvatar,
-          showBio: profile.showBio,
-          showSpecialties: profile.showSpecialties,
-          showWorkTypes: profile.showWorkTypes,
-          showInstagram: profile.showInstagram,
-          showPortfolio: profile.showPortfolio,
-        });
+        setValues(
+          profile
+            ? {
+                showCity: profile.showCity,
+                showAvatar: profile.showAvatar,
+                showBio: profile.showBio,
+                showSpecialties: profile.showSpecialties,
+                showWorkTypes: profile.showWorkTypes,
+                showInstagram: profile.showInstagram,
+                showPortfolio: profile.showPortfolio,
+              }
+            : {
+                showCity: false,
+                showAvatar: false,
+                showBio: false,
+                showSpecialties: false,
+                showWorkTypes: false,
+                showInstagram: false,
+                showPortfolio: false,
+              }
+        );
         setPhase('ready');
       })
       .catch(() => setPhase('error'));
@@ -632,11 +651,11 @@ function CommunityPrivacySheet({ visible }: { visible: boolean }) {
   }, [visible, load]);
 
   function submit() {
-    if (!snapshot) return;
     setSubmitting(true);
     setError(null);
     setSaved(false);
-    updateCommunityProfile({ availableForReferrals: snapshot.availableForReferrals, ...values })
+    ensureCommunityProfileActivated()
+      .then(() => updateCommunityProfile({ availableForReferrals: snapshot?.availableForReferrals ?? false, ...values }))
       .then(() => {
         setSubmitting(false);
         setSaved(true);

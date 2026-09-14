@@ -3,71 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
-import { ensureCommunityProfileActivated, getMyCommunityProfile, updateCommunityProfile } from '@/lib/community/data';
+import { ensureCommunityProfileActivated, updateCommunityProfile } from '@/lib/community/data';
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/supabase/types';
 
 export interface CommunityPrivacyFormState {
   error?: string;
   success?: boolean;
-}
-
-export interface CommunityPrivacySnapshotState {
-  error?: string;
-  loaded?: {
-    availableForReferrals: boolean;
-    showCity: boolean;
-    showAvatar: boolean;
-    showBio: boolean;
-    showSpecialties: boolean;
-    showWorkTypes: boolean;
-    showInstagram: boolean;
-    showPortfolio: boolean;
-  };
-}
-
-// Configurações inline (Settings V2, 14/09/2026) — os 7 toggles de
-// "Privacidade na Comunidade" saíram da subpágina própria
-// (/dashboard/perfil/privacidade/comunidade) e viraram um painel
-// dentro do acordeão de "Privacidade e dados". Mas a busca só pode
-// acontecer quando o profissional de fato abre esse painel — carregar
-// isso junto com o resto de Configurações ativaria a participação na
-// Comunidade (ensureCommunityProfileActivated) só por abrir
-// Configurações, o que nunca foi a intenção (mesma regra já aplicada
-// no App, ver mobile/app/(tabs)/mais/configuracoes.tsx). Por isso esta
-// action existe separada, chamada por um Client Component só na
-// primeira expansão do painel, nunca no carregamento da página.
-export async function loadCommunityPrivacyAction(): Promise<CommunityPrivacySnapshotState> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: 'Sessão expirada. Recarregue a página.' };
-
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single<Profile>();
-  if (!profile || profile.role !== 'artista') {
-    return { error: 'Privacidade na Comunidade só está disponível pra artistas.' };
-  }
-
-  try {
-    await ensureCommunityProfileActivated(supabase);
-    const snapshot = await getMyCommunityProfile(supabase);
-    if (!snapshot) return { error: 'Não foi possível carregar agora. Tente novamente.' };
-    return {
-      loaded: {
-        availableForReferrals: snapshot.availableForReferrals,
-        showCity: snapshot.showCity,
-        showAvatar: snapshot.showAvatar,
-        showBio: snapshot.showBio,
-        showSpecialties: snapshot.showSpecialties,
-        showWorkTypes: snapshot.showWorkTypes,
-        showInstagram: snapshot.showInstagram,
-        showPortfolio: snapshot.showPortfolio,
-      },
-    };
-  } catch {
-    return { error: 'Não foi possível carregar agora. Tente novamente.' };
-  }
 }
 
 // Bloco 7, P1 — "Privacidade na Comunidade" (feature nova, não
@@ -110,9 +52,11 @@ export async function updateCommunityPrivacyAction(
   const showPortfolio = formData.get('showPortfolio') === 'on';
 
   try {
-    // Defesa, não fluxo esperado: a página já ativa antes de renderizar
-    // o form, mas garante que um submit não falhe com
-    // community_membership_required num caso de corrida improvável.
+    // Correção 14/09/2026: este SAVE é o único gatilho de ativação —
+    // visualizar/carregar os 7 toggles em Configurações (getMyCommunityProfile,
+    // leitura pura) NUNCA ativa participação sozinho. Só o ato explícito
+    // de configurar e salvar uma preferência de Comunidade conta como
+    // "participar" — nunca abrir uma tela pra olhar.
     await ensureCommunityProfileActivated(supabase);
     await updateCommunityProfile(supabase, {
       availableForReferrals,
