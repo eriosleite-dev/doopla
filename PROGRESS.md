@@ -112,6 +112,121 @@ implementação, não por decisão.
 
 ---
 
+## Classificação do painel/Configurações pro Beta — `[PROPOSTA / NÃO IMPLEMENTADO]` — 14/09/2026
+
+Pedido explícito da fundadora, mais estreito que a auditoria acima:
+**"Antes de implementar, me apresente a estrutura final do
+painel/Configurações classificando apenas: MANTER VISÍVEL /
+SIMPLIFICAR / OCULTAR DO BETA / FUTURO. Não implemente até eu
+aprovar."** Escopo explícito dela: isto é sobre o que aparece na
+**navegação do beta**, não uma limpeza técnica definitiva — "Não
+apagar tabelas, migrations, rotas ou infraestrutura antiga apenas por
+causa desta tarefa." Nenhum código foi alterado para produzir esta
+tabela; é leitura direta de `pro-shell.tsx`, `legacy-shell.tsx`,
+`pro-configuracoes-view.tsx` e as subpáginas de `/dashboard/perfil/*`.
+
+Legenda das 4 categorias, como pedido: **MANTER VISÍVEL** (fica como
+está, sem mudança de navegação) · **SIMPLIFICAR** (fica visível, mas
+o conteúdo/estrutura interna muda) · **OCULTAR DO BETA** (some da
+navegação normal do beta; código/dado permanece intacto) · **FUTURO**
+(pertence ao produto Booker ainda não construído, ou já está marcado
+"Em breve" — não é trabalho deste bloco).
+
+### 1. Navegação principal — Artista (`pro-shell.tsx`, shell atual)
+
+| Item | Rota | Classificação | Nota |
+|---|---|---|---|
+| Início | `/dashboard` | MANTER VISÍVEL | — |
+| Bookings | `/dashboard/trabalhos` | MANTER VISÍVEL | — |
+| Agenda | `/dashboard/agenda` | MANTER VISÍVEL | — |
+| Decisões | `/dashboard/decisoes` | MANTER VISÍVEL | — |
+| Financeiro | `/dashboard/dinheiro` | MANTER VISÍVEL | — |
+| Materiais | `/dashboard/materiais` | FUTURO | Já marcado `comingSoon` no código — nenhuma mudança necessária. |
+| Analytics | `/dashboard/analytics` | FUTURO | Idem — já `comingSoon`. |
+| Minha equipe | `/dashboard/bookers` | MANTER VISÍVEL | Já foi limpo de descoberta/busca/ranking (commit `c712fb6`) — é o modelo a copiar pro lado Booker, não precisa de nova ação. |
+| Configurações | `/dashboard/perfil` | MANTER VISÍVEL (conteúdo interno muda — ver seção 3) | — |
+
+### 2. Navegação principal — Booker (`legacy-shell.tsx`, shell legado)
+
+O Booker ainda usa o shell antigo (bege), não o dark novo — fora de
+escopo trocar isso agora (Booker Web Dashboard final é produto
+FUTURO, "Quatro superfícies distintas"). Dentro do que existe hoje:
+
+| Item | Rota | Classificação | Nota |
+|---|---|---|---|
+| Visão geral | `/dashboard` | MANTER VISÍVEL | — |
+| Agenda | `/dashboard/agenda` | MANTER VISÍVEL | — |
+| **Descobrir trabalhos** | `/dashboard/oportunidades` | **OCULTAR DO BETA** | Swipe/busca de oportunidades com "combina com seu perfil" — descoberta/matching, item 5 da auditoria acima. |
+| Meus trabalhos | `/dashboard/trabalhos` | MANTER VISÍVEL | — |
+| **Artistas** | `/dashboard/artistas` | **OCULTAR DO BETA** | Busca/descoberta/comparação de artistas — item 4 da auditoria. |
+| **Favoritos** (âncora `#favoritos` dentro de Artistas) | `/dashboard/artistas#favoritos` | **OCULTAR DO BETA** | Só é alcançável pela tela de descoberta que está saindo; o uso "favoritar quem já trabalho" pode voltar como superfície própria depois (item 12/13 da auditoria, ainda sinalizado, não decidido). |
+| Ganhos | `/dashboard/dinheiro` | MANTER VISÍVEL | — |
+| Meu perfil | `/dashboard/perfil` | MANTER VISÍVEL (conteúdo interno muda — ver seção 4) | Booker ainda cai no formulário antigo de uma página só, não no Settings V2. |
+
+Nota à parte, sem ação necessária: o branch `role === 'artista'` dentro
+de `legacy-shell.tsx` (linhas ~83-113) é código morto — `layout.tsx`
+só chama `LegacyDashboardShell` quando `profile.role === 'booker'`, o
+outro branch nunca executa. Mesma família do achado já registrado
+sobre `booker-home-view.tsx`/"Bookers para você" (item 6 da auditoria).
+Candidato a limpeza técnica futura, não bloqueia o beta.
+
+### 3. Configurações — Artista (`pro-configuracoes-view.tsx` → proposta de acordeão)
+
+| Grupo atual | Linha atual | → Seção nova (nome exato pedido) | Classificação |
+|---|---|---|---|
+| Assinatura e cobrança | Plano e assinatura | Assinatura e cobrança | MANTER VISÍVEL |
+| Assinatura e cobrança | Dados de recebimento | Assinatura e cobrança | MANTER VISÍVEL |
+| Sua conta | Informações da conta | Sua conta | MANTER VISÍVEL |
+| Sua conta | Segurança e acesso | Sua conta | MANTER VISÍVEL |
+| Perfil e trabalho | Dados profissionais | Perfil e trabalho | SIMPLIFICAR | 
+| Perfil e trabalho | Como você trabalha | Perfil e trabalho | SIMPLIFICAR (reduzir chips; remover "Estágio de carreira / Prefiro não dizer" citado pela fundadora) |
+| Perfil e trabalho | **Perfil público** | — | **OCULTAR DO BETA** — remover a linha inteira e o toggle Ativar/desativar (`enablePublicProfileAction`/`disablePublicProfileAction`) |
+| Doopla | Preferências da Doopla | **Sua Doopla** (renomeado, promovido a seção própria) | SIMPLIFICAR (já é 1 card enxuto — inline, sem página própria) |
+| Doopla | Notificações | **Notificações** (promovido a seção própria) | SIMPLIFICAR (já é 1 card enxuto — inline; hoje é uma subpágina inteira só pra isso) |
+| Doopla | Canais e conexões | **Canais da sua Doopla** (renomeado) | SIMPLIFICAR (mantém como página própria — tem formulário real de WhatsApp + roteamento do link de orçamento; só troca o nome e reforça que é "porta de entrada de cliente", não vitrine) |
+| Privacidade e suporte | Privacidade e dados | **Privacidade e dados** (promovido a seção própria) | SIMPLIFICAR (inline os controles simples — ex. já existem 7 toggles de "mostrar X na Comunidade" numa subpágina própria, `/privacidade/comunidade`, que poderiam virar controles diretos no acordeão) |
+| Privacidade e suporte | Ajuda e suporte | **Ajuda e suporte** (promovido a seção própria) | SIMPLIFICAR (já é 1 card enxuto — inline) |
+| — | Sair da conta | (fora do acordeão, botão fixo no fim) | MANTER VISÍVEL |
+
+Achado técnico ao ler o código desta seção: `Notificações` e `Ajuda e
+suporte` já são páginas de **um card só**, sem formulário nenhum — a
+"simplificação" aqui é praticamente só mudar de rota-própria pra
+inline no acordeão, não reescrever conteúdo. `Preferências da Doopla`
+também é enxuta (1 card real + 1 link pra "Como você trabalha").
+`Canais e conexões` é a única do grupo "Doopla" com formulário de
+verdade (identidade WhatsApp + `LinkRoutingCard`), então é a candidata
+natural a continuar como página própria com "← Configurações" visível,
+como a fundadora previu pra quando "uma página dedicada realmente é
+necessária".
+
+### 4. Configurações — Booker (formulário legado de uma página só)
+
+O Booker não passa pelo Settings V2 acima — `/dashboard/perfil` pra
+`role === 'booker'` ainda renderiza o formulário antigo
+(`booker-profile-form.tsx`).
+
+| Item | Classificação | Nota |
+|---|---|---|
+| Formulário de perfil do Booker (dados de conta/empresa) | MANTER VISÍVEL | — |
+| **Seção "Preferências de matching"** (`id="preferencias-matching"`, `matching-summary.tsx`) | **OCULTAR DO BETA** | Copy explícita "encontrar pessoas e oportunidades mais compatíveis" — item 7 da auditoria. Precisa da mesma revisão que `pro-work-context-form.tsx` já recebeu do lado Artista (extrair o que é conhecimento declarado útil, descartar a moldura de matching). |
+
+### Itens de dado (não navegação) que seguem sinalizados, sem decisão nova aqui
+
+Sem mudança em relação à seção de DÚVIDA já resolvida acima — só
+repetindo pra não perder de vista: `mercados`/`subcategory` e
+`instagram_url`/`portfolio_url` continuam **sem uso identificado**
+após a saída da vitrine (sinalizado, dado não apagado). O acoplamento
+técnico `/orcamento/[slug]` ↔ `artist_profiles.public_enabled` também
+segue como pendência de implementação (precisa de gate próprio antes
+de remover o toggle de vitrine que usa a mesma flag hoje).
+
+**Nada disto foi implementado.** Aguardando aprovação da fundadora
+pra: (1) ocultar as rotas/itens marcados OCULTAR DO BETA da navegação
+normal do beta, (2) simplificar as telas marcadas SIMPLIFICAR pro
+acordeão proposto, sem alterar dado/schema/migration.
+
+---
+
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`
 
 Plano definido pela fundadora, complementa a Categoria A já executada
