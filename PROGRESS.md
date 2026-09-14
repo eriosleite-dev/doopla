@@ -1039,10 +1039,17 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   (14/09/2026): trocar o canal de atenção (WhatsApp/Painel/WhatsApp +
   Painel) salva sozinho, sem botão, e persiste depois de recarregar —
   testado também pelo celular.
-- ⏳ **"Canais da sua Doopla" inline** — WhatsApp (ver status), link de
-  orçamento (copiar), roteamento (trocar modo/booker) — tudo sem sair
-  da página, sem transporte Meta real disponível (mesma limitação de
-  sempre pra envio real do código por WhatsApp).
+- ✅ **PASS — "Canais da sua Doopla" inline**, confirmado pela fundadora
+  (14/09/2026, print): status "Não verificado" aparece no cabeçalho do
+  acordeão, card de WhatsApp inline com o botão "Verificar WhatsApp"
+  (fluxo real de envio de código por Meta segue fora do alcance desta
+  sessão — Categoria D), link de orçamento correto
+  (`.../orcamento/qa-categoria-b-artista-02`, confirmado abrindo e
+  renderizando a página real de pedido de orçamento pro cliente), e
+  "Quem recebe seus pedidos" mostra a mensagem certa pra quem ainda não
+  tem booker ("Conecte um booker pra liberar esta opção" —
+  comportamento já existente de `ProLinkRoutingForm`, reusado sem
+  mudança). Tudo dentro do acordeão, sem navegação.
 - ⏳ **"Privacidade e dados" inline** — abrir "Ver privacidade na
   Comunidade" e confirmar que só ATIVA a participação na Comunidade
   nesse clique específico, nunca só por abrir Configurações.
