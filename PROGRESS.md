@@ -80,6 +80,15 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - `artist_link_routing` INSERT RLS — **FAIL NON-BLOCKER / MUST FIX
   BEFORE BETA CLOSE** (herdado da Categoria A, não retestado aqui
   ainda).
+- ⚠️ **Deployment Check de lint falhando no deploy de Preview desta
+  branch** (`348 problems, 10 errors, 338 warnings`, `eslint` saindo
+  com código 1) — visto em 14/09/2026 no painel da Vercel. Não bloqueia
+  o deploy em si (Status continua "Ready", site funcional). Não
+  investigado a fundo (fora do escopo de infra desta sessão, e o commit
+  que disparou esse deploy só mexeu em `PROGRESS.md` — não é algo que
+  introduzimos agora). Classificação: **FAIL NON-BLOCKER**, registrado
+  pra investigar depois, não faz parte do P0/P1 funcional da Categoria
+  B.
 - ✅ **RESOLVIDO em 14/09/2026** — `NEXT_PUBLIC_SUPABASE_URL`/
   `NEXT_PUBLIC_SUPABASE_ANON_KEY` na Vercel (projeto `doopla`,
   `doopla-zr9p`) estavam escopadas como "Production and Preview" (um
