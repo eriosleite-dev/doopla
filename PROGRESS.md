@@ -11262,7 +11262,7 @@ verdade a arquitetura já definida — **CONFIGURAÇÕES → DETALHE → AÇÃO*
 ser reconciliado contra essa arquitetura, não corrigido isoladamente
 dentro da tela existente.
 
-## 100. Settings V2 consolidado — decompõe /dashboard/perfil/editar, remove "matching" da UX, move roteamento pra Canais — `[DELIVERED]`
+## 100. Settings V2 consolidado — decompõe /dashboard/perfil/editar, remove "matching" da UX, move roteamento pra Canais — `[DELIVERED / APPROVED / CLOSED]`
 
 Implementação da arquitetura V2 aprovada pela fundadora após a
 reconciliação do bloco 98/99 (audit-only) + duas rodadas de revisão
@@ -11377,8 +11377,27 @@ salvamento/leitura ponta a ponta; a correção do split de action acima
 foi validada por leitura de código (cada action só grava as próprias
 colunas), não por teste E2E autenticado.
 
-**Roadmap mestre**: `SETTINGS V2` → `[DELIVERED]`, aguardando revisão
-final da fundadora antes de considerar o bloco fechado.
+**Aprovado pela fundadora em 09/09/2026 — bloco fechado.** Os
+findings de superfície de Booker (`booker-profile-form.tsx`,
+`CompletePreferencesCard`) e os campos pré-existentes sem UI
+(`languages`, `negotiation_notes`/`pricing_notes`/
+`fee_varies_by_job_type`/`typical_job_duration`) permanecem
+registrados como achados/backlog — não reabrem este bloco; tratamento
+fica para o bloco correspondente (Booker) ou backlog geral, quando
+houver pedido explícito.
+
+**Pendência de QA (não de implementação), registrada e não bloqueante
+pra este fechamento**: validação E2E autenticada com Supabase real das
+4 superfícies novas/realocadas (`/dashboard/perfil/dados`,
+`/trabalho`, `/publico`, `/canais`) — fluxo completo editar → salvar →
+recarregar → confirmar persistência, nas 4 rotas, incluindo confirmar
+que o split de `updateArtistProfileAction`/`updateArtistWorkContextAction`
+não perde dado em uso real (só validado por leitura de código nesta
+rodada, não por teste ponta a ponta autenticado). Só pode ser feita
+pela fundadora ou por alguém com acesso ao projeto Supabase real desta
+aplicação — este ambiente não tem essas credenciais.
+
+**Roadmap mestre**: `SETTINGS V2` → `[DELIVERED / APPROVED / CLOSED]`.
 
 ## Como usar isso
 
