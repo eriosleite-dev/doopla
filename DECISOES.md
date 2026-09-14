@@ -8,6 +8,37 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Arquitetura canônica de ambientes Supabase (Production vs. QA/Staging) — 14/09/2026
+
+Decisão fixada pela fundadora, confirmada via painel do Supabase:
+
+- **Production** (app Doopla real, dados de usuários de verdade) →
+  projeto Supabase **`doopla`** (o mesmo que já vínhamos usando neste
+  histórico todo até aqui).
+- **Preview / Development / QA / Staging** (Categoria B e testes
+  futuros) → projeto Supabase separado **`doopla-qa-staging`**
+  (`ahsyoxjzxkxcsbhqmdzv`, org "doopla Org"), criado especificamente
+  pra isolar dados de teste de dados reais.
+
+Dois projetos Supabase distintos, não um projeto único compartilhado
+por Environment — decisão deliberada pra evitar que testes/QA sujem
+ou exponham dados reais de usuário.
+
+**Proteção que depende de configuração fora deste repo, não
+verificável por código nem por mim nesta sessão** (rede desta sessão
+bloqueia egress pra `*.supabase.co`/painel da Vercel): o Environment
+**Production** da Vercel precisa apontar `NEXT_PUBLIC_SUPABASE_URL`/
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` pras
+credenciais do projeto `doopla`; os Environments **Preview** e
+**Development** precisam apontar pras credenciais do
+`doopla-qa-staging`. Registrado como **CHECK MANUAL DA FUNDADORA** —
+não bloqueia o trabalho da Categoria B contra `doopla-qa-staging` (a
+identidade desse projeto já está confirmada por fonte própria, o
+painel do Supabase), mas precisa ser conferido por ela no painel da
+Vercel (Project Settings → Environment Variables, por Environment)
+antes de qualquer deploy real pra Production depender dessa
+separação.
+
 ## "Precisa da sua atenção" (artista): não incluí "contrato aguardando validação" — 19/08/2026
 
 O pedido de revisão da Visão Geral do artista dá como exemplo "Seu

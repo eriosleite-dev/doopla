@@ -15,65 +15,55 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ## Categoria B — variáveis de ambiente do Supabase QA/Staging
 
-Auditoria do que já existe (nenhuma mudança de código — não havia bug
-nem lacuna no código em si):
+Auditoria de setup concluída (nenhuma mudança de código — não havia
+bug nem lacuna no código em si). Arquitetura canônica fixada (ver
+`DECISOES.md`, 14/09/2026):
 
-- ✅ `src/lib/supabase/env.ts` só lê `NEXT_PUBLIC_SUPABASE_URL` e
-  `NEXT_PUBLIC_SUPABASE_ANON_KEY` via `requireEnv` (falha rápido, erro
-  em PT-BR apontando pra `.env.local.example`) — nomes genéricos, sem
-  nada hardcoded de um projeto específico. Funciona igual pra
-  dev/QA/staging/produção; qual projeto Supabase cada ambiente aponta
-  é decidido por **quais valores** cada ambiente da Vercel injeta
-  nessas mesmas variáveis (Production/Preview/Development têm
-  configuração própria no painel), não por código neste repo.
-- ✅ `.env.local.example` documenta as 2 variáveis obrigatórias +
-  `NEXT_PUBLIC_SITE_URL`/`OPENAI_API_KEY` opcionais. `.gitignore` reflete
-  `.env*` com exceção só do `.example` — confirmado que não existe
-  `.env.local` real no working tree nem nada de env commitado no
-  histórico além do example.
-- ✅ **Identidade do projeto confirmada pelo usuário** (print do painel
-  Supabase): Project ID `ahsyoxjzxkxcsbhqmdzv` = projeto
-  **`doopla-qa-staging`**, org "doopla Org", branch `main` marcada
-  `PRODUCTION` (ou seja: é a branch principal/estável *desse* projeto
-  Supabase — não confundir com o ambiente "Production" do app Doopla
-  em si). Bate exatamente com o `ref` de `NEXT_PUBLIC_SUPABASE_URL`
-  injetado nesta sessão. Confirma o modelo: **um único projeto
-  Supabase compartilhado entre QA e Staging** (não dois projetos
-  separados) — dado como intencional, owner é a própria conta do
-  usuário (eriosleite@gmail.com).
-- 🔒 **Ainda travado, e não é o que o usuário perguntou**: autenticar de
-  fato contra esse projeto (roundtrip real de rede) continua
-  impossível nesta sessão — política de rede bloqueia egress pra
-  `*.supabase.co` (proxy responde 403). O nome do projeto/Project ID
-  já resolve a pergunta de "é QA/Staging mesmo?"; o que falta
-  verificar (fora daqui) é comportamento em runtime — rodar
-  `npm run dev` com essas variáveis, ou testar cadastro/login direto
-  no app.
-- ✅ **Confirmado pelo usuário**: existe um segundo projeto Supabase,
-  `doopla` — é o de Produção, o mesmo que vínhamos usando neste
-  histórico todo até agora. `doopla-qa-staging` é um projeto à parte,
-  criado especificamente pra isolar QA/Staging de dados reais. Risco
-  de mistura de dados afastado.
-- ❓ **Novo item em aberto, decorrente do anterior**: `doopla-qa-staging`
-  é um projeto novo/separado — precisa ter recebido as mesmas
-  migrations de `supabase/migrations/` (até `0044`, ver seção Bloco 4
-  mais abaixo) que já rodaram no `doopla`, senão o schema de
-  QA/Staging não bate com o de Produção e os testes lá não
-  representam o app real. Não dá pra checar isso daqui (mesma rede
-  bloqueada) — confirmar rodando as migrations pendentes no SQL
-  Editor do `doopla-qa-staging`, ou comparando schema pelo painel.
+- **Production** → Supabase `doopla` (projeto de sempre).
+- **Preview/Development/QA/Staging** → Supabase `doopla-qa-staging`
+  (`ahsyoxjzxkxcsbhqmdzv`), projeto separado, identidade confirmada
+  pelo usuário no painel Supabase. Dois projetos distintos por
+  desenho — não mistura dados de teste com dados reais.
+
+O que já foi conferido:
+
+- ✅ `src/lib/supabase/env.ts` só lê `NEXT_PUBLIC_SUPABASE_URL`/
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` via `requireEnv`, nomes genéricos
+  sem nada hardcoded de projeto — funciona igual em qualquer
+  ambiente, quem decide o projeto é o **valor** que cada Environment
+  da Vercel injeta.
+- ✅ `.env.local.example`/`.gitignore` corretos, sem segredo real
+  commitado.
+- ✅ Identidade do `doopla-qa-staging` confirmada (Project ID bate com
+  o `ref` injetado nesta sessão) e confirmado que `doopla` (produção)
+  é um projeto separado — risco de mistura de dados afastado.
+
+**🔒 CHECK MANUAL DA FUNDADORA (não bloqueia a Categoria B)**: preciso
+que você confirme no painel da Vercel (Project Settings → Environment
+Variables, por Environment) que o Environment **Production** aponta
+`NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`/
+`SUPABASE_SERVICE_ROLE_KEY` pro projeto `doopla`, e que **Preview**/
+**Development** apontam pro `doopla-qa-staging`. Não dá pra verificar
+isso por código nem nesta sessão (rede bloqueada pro painel da
+Vercel/Supabase) — mas como a identidade do `doopla-qa-staging` já
+está confirmada por fonte própria (o painel do Supabase), isso não
+impede o trabalho da Categoria B contra esse projeto começar agora.
+Só precisa estar resolvido antes de qualquer deploy real de Production
+depender dessa separação.
+
+- ❓ Em aberto, não bloqueia: `doopla-qa-staging` é projeto novo —
+  precisa ter recebido as mesmas migrations de `supabase/migrations/`
+  (até `0044`) que já rodaram no `doopla`, senão o schema diverge do
+  de produção. Confirmar rodando as pendentes no SQL Editor do
+  `doopla-qa-staging`.
 - ⚠️ `SUPABASE_SERVICE_ROLE_KEY` está no ambiente mas nenhum arquivo em
-  `src/` a referencia — nada quebrado por isso (é só reservada pra
-  scripts admin/server-side futuros), mas registrando pra não parecer
-  que sumiu.
-- **QA vs. Staging como projetos Supabase separados** não é (e não
-  deveria ser) resolvido em código: é configuração de painel — na
-  Vercel, cada Environment (ou dois projetos Vercel distintos, se for
-  esse o modelo) recebe os valores do projeto Supabase correspondente
-  em `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`. Nada
-  a fazer aqui até haver um pedido concreto de mudança de
-  comportamento (ex.: código que precise saber em qual ambiente está
-  rodando).
+  `src/` a referencia ainda — reservada pra uso futuro, registrando
+  pra não parecer que sumiu.
+
+**Escopo combinado pra Categoria B a partir daqui**: trabalhar só
+contra `doopla-qa-staging`, nunca tocar em Production, e **não
+corrigir achados encontrados durante o QA** (só reportar/registrar —
+correção é decisão separada da fundadora).
 
 ## Revisão UX — Visão Geral do Artista (nomenclatura + hierarquia)
 
