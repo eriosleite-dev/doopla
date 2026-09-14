@@ -80,6 +80,17 @@ Classificações possíveis: `PASS` · `FAIL BLOCKER` · `FAIL NON-BLOCKER`
 - `artist_link_routing` INSERT RLS — **FAIL NON-BLOCKER / MUST FIX
   BEFORE BETA CLOSE** (herdado da Categoria A, não retestado aqui
   ainda).
+- 🎨 **`/cadastro` com identidade visual desatualizada** — a Home
+  (`/`) já está na identidade nova (hero vermelho, "AI-first"), mas ao
+  clicar em "Criar conta" o onboarding de 7 etapas abre com UI/skin
+  antiga, inconsistente com a Home. Achado da fundadora, confirmado em
+  14/09/2026 testando P0-A1. **Explicitamente não é problema de fluxo/
+  lógica** — as 7 etapas do onboarding em si continuam válidas, o
+  problema é só visual (cores/tipografia/identidade). Classificação:
+  **FAIL NON-BLOCKER** — correção é um re-skin de consistência visual,
+  **sem reabrir ou redesenhar a lógica do onboarding**. Não bloqueia a
+  Categoria B: o fluxo continua sendo usado pra testar funcionalidade
+  normalmente.
 - ⚠️ **Deployment Check de lint falhando no deploy de Preview desta
   branch** (`348 problems, 10 errors, 338 warnings`, `eslint` saindo
   com código 1) — visto em 14/09/2026 no painel da Vercel. Não bloqueia
