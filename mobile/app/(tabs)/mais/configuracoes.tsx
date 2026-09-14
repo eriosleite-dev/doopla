@@ -87,6 +87,19 @@ export default function ConfiguracoesScreen() {
     ]);
   }
 
+  // Ajuste de proteção (14/09/2026, achado da fundadora, mesma regra
+  // aplicada no Web): o primeiro toque na linha nunca pode ir direto
+  // pro formulário com senha — passa por uma confirmação nativa antes
+  // (mesmo padrão já usado em confirmSignOut acima). Só confirmando
+  // aqui é que o BottomSheet com DeleteAccountSheet (senha + checkbox
+  // + submit real, lógica intocada) abre.
+  function confirmDeleteAccount() {
+    Alert.alert('Excluir minha conta?', 'Esta ação excluirá permanentemente sua conta e não poderá ser desfeita.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Excluir minha conta', style: 'destructive', onPress: () => setOpenSheet('excluir') },
+    ]);
+  }
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.header}>
@@ -109,7 +122,7 @@ export default function ConfiguracoesScreen() {
             <SettingsRow label="Seu link de booking" onPress={() => setOpenSheet('link')} />
             <SettingsRow label="Privacidade na Comunidade" onPress={() => setOpenSheet('comunidade')} />
             <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} />
-            <SettingsRow label="Excluir minha conta" onPress={() => setOpenSheet('excluir')} last />
+            <SettingsRow label="Excluir minha conta" onPress={confirmDeleteAccount} last />
           </View>
 
           <Pressable style={styles.signOutBtn} onPress={confirmSignOut}>

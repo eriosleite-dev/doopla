@@ -1087,8 +1087,29 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   `comunidade/[topicId]/page.tsx`, `mobile/app/forum/*`), que
   continuam corretas por design (visitar a Comunidade de verdade é a
   ação explícita). `tsc --noEmit` limpo (Web e App), `eslint` limpo.
-- ⏳ **"Excluir minha conta" por modal** — abre modal (não navega pra
-  outra página), fecha com "Cancelar" sem excluir nada.
+- 🟡 **Achado real, corrigido — "Excluir minha conta"** (14/09/2026): a
+  fundadora pediu proteção extra — o primeiro clique/toque nunca pode
+  ir direto pro formulário com senha, precisa passar por uma
+  confirmação simples antes ("Excluir minha conta?" / frase única /
+  Cancelar / Excluir minha conta em vermelho destacado).
+  **Auditoria antes de mexer**: o backend/lógica de exclusão já existia
+  e continua 100% intocado —
+  `requestAccountClosureAction`/`DeleteAccountForm` no Web,
+  `closeAccount`/`DeleteAccountSheet` no App (reauth por senha + RPC
+  `close_own_account` + Admin API). Nenhum segundo fluxo criado — só a
+  camada de proteção em volta.
+  **O que mudou**:
+  - Web (`delete-account-modal.tsx`): o modal ganhou um passo
+    `'confirm'` antes do passo `'form'` de sempre. Primeiro clique
+    sempre abre no passo de confirmação simples; só confirmando ali é
+    que aparece a lista detalhada + `DeleteAccountForm` (sem nenhuma
+    mudança).
+  - App (`configuracoes.tsx`): nova `confirmDeleteAccount()` usando
+    `Alert.alert` nativo — mesmo padrão já usado em "Sair da conta"
+    (`confirmSignOut`) no mesmo arquivo. Só confirmando no Alert é que
+    o BottomSheet com `DeleteAccountSheet` (senha + checkbox, intocado)
+    abre.
+  `tsc --noEmit` limpo em Web e App.
 - ⏳ "Notificações"/"Ajuda e suporte" inline — conteúdo aparece, sem
   navegação.
 
