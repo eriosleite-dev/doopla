@@ -1050,7 +1050,7 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   tem booker ("Conecte um booker pra liberar esta opção" —
   comportamento já existente de `ProLinkRoutingForm`, reusado sem
   mudança). Tudo dentro do acordeão, sem navegação.
-- 🟡 **Achado real, corrigido — "Privacidade e dados" inline**
+- ✅ **PASS (após correção) — "Privacidade e dados" inline**
   (14/09/2026): a fundadora testou e reportou por print que os 7
   toggles de Privacidade na Comunidade estavam escondidos atrás de um
   clique extra ("Ver privacidade na Comunidade"), e apontou o problema
@@ -1087,8 +1087,12 @@ nesta sessão, sem acesso a `doopla-qa-staging`):
   `comunidade/[topicId]/page.tsx`, `mobile/app/forum/*`), que
   continuam corretas por design (visitar a Comunidade de verdade é a
   ação explícita). `tsc --noEmit` limpo (Web e App), `eslint` limpo.
-- 🟡 **Achado real, corrigido — "Excluir minha conta"** (14/09/2026): a
-  fundadora pediu proteção extra — o primeiro clique/toque nunca pode
+  **Reteste final da fundadora confirmado**: os 3 critérios bateram —
+  toggles aparecem direto, visualizar não tem side effect, e a
+  alteração de um toggle persiste depois de salvar/recarregar.
+- ✅ **PASS (após correção), confirmado pela fundadora — "Excluir minha
+  conta"** (14/09/2026): a fundadora pediu proteção extra — o primeiro
+  clique/toque nunca pode
   ir direto pro formulário com senha, precisa passar por uma
   confirmação simples antes ("Excluir minha conta?" / frase única /
   Cancelar / Excluir minha conta em vermelho destacado).
