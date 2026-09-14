@@ -8,7 +8,7 @@ import './onboarding.css';
 
 const initialState: AuthFormState = {};
 
-// Etapa 1 de 7 do funil público: só cria a conta (nome, e-mail,
+// Etapa 1 de 6 do funil público: só cria a conta (nome, e-mail,
 // WhatsApp, senha). Sem pergunta de Artista/Booker — esse fluxo é
 // sempre artista. "Prepare sua Doopla" e "Escolher plano" vêm depois,
 // já autenticado.
@@ -35,10 +35,8 @@ export function CreateAccountForm({
         }
       >
         <div className="ob-step">
-          <div className="eyebrow">Etapa 1 de 7</div>
-          <h1 className="headline">
-            Vamos criar <em>sua conta.</em>
-          </h1>
+          <div className="eyebrow">Etapa 1 de 6</div>
+          <h1 className="headline">Vamos criar sua conta.</h1>
           <p className="sub">
             Leva menos de um minuto. O resto, sua Doopla aprende com você na próxima etapa.
           </p>

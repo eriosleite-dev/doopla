@@ -1,17 +1,32 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { OnboardingShell } from '../OnboardingShell';
 import { savePrepareAction, type OnboardingFormState } from '../actions';
 import '../onboarding.css';
 
 const initialState: OnboardingFormState = {};
-const SUBSTEPS = 5; // Etapas 2 a 6 (globais) = índices 0 a 4 aqui
+const SUBSTEPS = 4; // Etapas 2 a 5 (globais) = índices 0 a 3 aqui
 
-function formatCentsToInput(cents: number | null): string {
-  if (cents === null) return '';
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+// Rola o ancestral rolável mais próximo de volta pro topo — usado ao
+// trocar de sub-etapa (carrossel horizontal por transform, que não mexe
+// no scroll vertical sozinho). Genérico de propósito: em /cadastro/
+// preparar standalone quem rola é a PÁGINA (window); dentro do modal da
+// Home (boxed=true) quem rola é o miolo interno do card
+// (CreateAccountModal.tsx) — sem acoplar este componente a nenhum dos
+// dois contextos, só sobe a árvore até achar quem realmente tem scroll.
+function scrollNearestScrollableToTop(el: HTMLElement | null) {
+  let node = el?.parentElement ?? null;
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node);
+    if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+      node.scrollTo({ top: 0 });
+      return;
+    }
+    node = node.parentElement;
+  }
+  window.scrollTo({ top: 0 });
 }
 
 // Input conversacional único (textarea + microfone embutido), nunca dois
@@ -65,25 +80,41 @@ export function PrepareForm({
   initialLocal,
   initialBio,
   initialLink,
-  initialFeeCents,
-  initialPricingNotes,
-  initialIssuesInvoice,
   initialNegotiationNotes,
   initialChannel,
+  modalMode = false,
+  onStepComplete,
+  boxed = false,
 }: {
   initialStageName: string;
   initialProfession: string;
   initialLocal: string;
   initialBio: string;
   initialLink: string;
-  initialFeeCents: number | null;
-  initialPricingNotes: string;
-  initialIssuesInvoice: boolean | null;
   initialNegotiationNotes: string;
   initialChannel: 'whatsapp' | 'painel' | 'ambos' | null;
+  // Funil iniciado no modal da Home (ver CreateAccountModal.tsx) — quando
+  // true, savePrepareAction não faz redirect() (ver cadastro/actions.ts);
+  // este componente detecta o sucesso via state.success e chama
+  // onStepComplete() em vez de deixar o framework navegar. Sem isso
+  // (uso normal em /cadastro/preparar), o comportamento é 100% o de
+  // sempre — mesmo componente, mesma etapa, dois contextos de disparo.
+  modalMode?: boolean;
+  onStepComplete?: () => void;
+  // Repassado direto pro OnboardingShell — ver onboarding.css.
+  boxed?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(savePrepareAction, initialState);
   const [sub, setSub] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (modalMode && state.success) onStepComplete?.();
+  }, [modalMode, state.success, onStepComplete]);
+
+  useEffect(() => {
+    scrollNearestScrollableToTop(formRef.current);
+  }, [sub]);
 
   const [stageName, setStageName] = useState(initialStageName);
   const [profession, setProfession] = useState(initialProfession);
@@ -91,13 +122,6 @@ export function PrepareForm({
   const [bio, setBio] = useState(initialBio);
   const [link, setLink] = useState(initialLink);
 
-  const [priceChoice, setPriceChoice] = useState<'valor' | 'depende' | null>(
-    initialFeeCents !== null ? 'valor' : initialPricingNotes ? 'depende' : null
-  );
-  const [feeValue, setFeeValue] = useState(formatCentsToInput(initialFeeCents));
-  const [pricingNotes, setPricingNotes] = useState(initialPricingNotes);
-
-  const [issuesInvoice, setIssuesInvoice] = useState<boolean | null>(initialIssuesInvoice);
   const [negotiationNotes, setNegotiationNotes] = useState(initialNegotiationNotes);
 
   const [channel, setChannel] = useState<'whatsapp' | 'painel' | 'ambos' | null>(initialChannel);
@@ -106,10 +130,7 @@ export function PrepareForm({
     if (s === 0) {
       return Boolean(stageName.trim() && profession.trim() && local.trim() && bio.trim());
     }
-    if (s === 1) {
-      return priceChoice === 'depende' || (priceChoice === 'valor' && feeValue.trim().length > 0);
-    }
-    if (s === 3) {
+    if (s === 2) {
       return Boolean(channel);
     }
     return true;
@@ -125,25 +146,19 @@ export function PrepareForm({
   const footerLabel = sub === SUBSTEPS - 1 ? 'Continuar para os planos' : 'Continuar';
 
   return (
-    <form action={formAction}>
+    <form ref={formRef} action={formAction}>
+      {modalMode && <input type="hidden" name="modalMode" value="1" />}
       <input type="hidden" name="stageName" value={stageName} />
       <input type="hidden" name="profession" value={profession} />
       <input type="hidden" name="local" value={local} />
       <input type="hidden" name="bio" value={bio} />
       <input type="hidden" name="link" value={link} />
-      <input type="hidden" name="priceChoice" value={priceChoice ?? ''} />
-      <input type="hidden" name="feeValue" value={feeValue} />
-      <input type="hidden" name="pricingNotes" value={pricingNotes} />
-      <input
-        type="hidden"
-        name="issuesInvoice"
-        value={issuesInvoice === null ? '' : String(issuesInvoice)}
-      />
       <input type="hidden" name="negotiationNotes" value={negotiationNotes} />
       <input type="hidden" name="channel" value={channel ?? ''} />
 
       <OnboardingShell
         step={sub + 2}
+        boxed={boxed}
         onBack={sub > 0 ? back : undefined}
         footer={
           sub === SUBSTEPS - 1 ? (
@@ -174,10 +189,8 @@ export function PrepareForm({
         >
           {/* Etapa 2 — Prepare sua Doopla */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 2 de 7</div>
-            <h1 className="headline">
-              Vamos preparar <em>sua Doopla.</em>
-            </h1>
+            <div className="eyebrow">Etapa 2 de 6</div>
+            <h1 className="headline">Vamos preparar sua Doopla.</h1>
             <p className="sub">
               Vamos começar pelo essencial. Sua Doopla vai conhecer melhor seu jeito de trabalhar
               aos poucos.
@@ -236,95 +249,17 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 3 — Valores */}
+          {/* Etapa 3 — Como você trabalha */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 3 de 7</div>
-            <h1 className="headline">
-              Seus <em>valores.</em>
-            </h1>
-            <p className="sub">
-              O valor informado é uma referência para sua Doopla entender como você trabalha
-              comercialmente — não é autorização pra fechar automaticamente nesse valor.
-            </p>
-
-            <div className="field">
-              <label>Você tem um valor de referência para seu trabalho?</label>
-              <div
-                className={`option-card${priceChoice === 'valor' ? ' selected' : ''}`}
-                onClick={() => setPriceChoice('valor')}
-              >
-                <div className="option-radio" />
-                <div>
-                  <div className="option-title">R$ [valor]</div>
-                </div>
-              </div>
-              <div
-                className={`option-card${priceChoice === 'depende' ? ' selected' : ''}`}
-                onClick={() => setPriceChoice('depende')}
-              >
-                <div className="option-radio" />
-                <div>
-                  <div className="option-title">Depende do trabalho</div>
-                </div>
-              </div>
-            </div>
-
-            {priceChoice === 'valor' && (
-              <div className="field">
-                <label htmlFor="f-valor">Qual valor, aproximadamente?</label>
-                <input
-                  type="text"
-                  id="f-valor"
-                  value={feeValue}
-                  onChange={(e) => setFeeValue(e.target.value)}
-                  placeholder="Ex: R$ 2.500"
-                />
-              </div>
-            )}
-
-            {priceChoice === 'depende' && (
-              <div className="field">
-                <label>Como você costuma definir seus valores? (opcional)</label>
-                <ConversationalField
-                  value={pricingNotes}
-                  onChange={setPricingNotes}
-                  placeholder="Ex.: depende do cliente, duração, complexidade ou tipo de trabalho..."
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Etapa 4 — Como você trabalha */}
-          <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 4 de 7</div>
-            <h1 className="headline">
-              Como <em>você trabalha.</em>
-            </h1>
+            <div className="eyebrow">Etapa 3 de 6</div>
+            <h1 className="headline">Como você trabalha.</h1>
             <p className="sub">
               Contexto comercial e regras básicas que podem afetar como sua Doopla representa
               você.
             </p>
 
             <div className="field">
-              <label>Você emite nota fiscal?</label>
-              <div className="chip-group">
-                <div
-                  className={`chip${issuesInvoice === true ? ' selected' : ''}`}
-                  onClick={() => setIssuesInvoice(true)}
-                >
-                  Sim
-                </div>
-                <div
-                  className={`chip${issuesInvoice === false ? ' selected' : ''}`}
-                  onClick={() => setIssuesInvoice(false)}
-                >
-                  Não
-                </div>
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Tem algo que sua Doopla sempre deve saber antes de negociar por você?</label>
+              <label>Tem algo que sua Doopla sempre deve saber antes de negociar por você? (opcional)</label>
               <p className="hint" style={{ marginTop: '-4px', marginBottom: '10px' }}>
                 Pode ser uma preferência, condição ou algo que você sempre faz questão de aprovar.
               </p>
@@ -336,12 +271,10 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 5 — Como falar com você */}
+          {/* Etapa 4 — Como falar com você */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 5 de 7</div>
-            <h1 className="headline">
-              Como sua Doopla <em>fala com você.</em>
-            </h1>
+            <div className="eyebrow">Etapa 4 de 6</div>
+            <h1 className="headline">Como sua Doopla fala com você.</h1>
             <p className="sub">Quando sua Doopla precisar de você, como prefere ser avisado?</p>
 
             <div
@@ -373,14 +306,14 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 6 — Conclusão */}
+          {/* Etapa 5 — Conclusão */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 6 de 7</div>
+            <div className="eyebrow">Etapa 5 de 6</div>
             <div className="done-mark" />
             <h1 className="headline">
               Sua Doopla já tem o
               <br />
-              necessário para <em>começar.</em>
+              necessário para começar.
             </h1>
             <p className="sub">
               Isso é só o começo. No painel, você pode contar mais sobre seus valores,
@@ -392,7 +325,7 @@ export function PrepareForm({
 
             <p
               style={{
-                color: 'var(--offwhite)',
+                color: 'var(--off)',
                 fontWeight: 700,
                 fontSize: '14.5px',
                 lineHeight: 1.4,

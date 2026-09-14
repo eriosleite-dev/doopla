@@ -118,6 +118,7 @@ export async function runIntelligenceTestCall(conversationId: string): Promise<I
             professionalDecisionSignal: plan.professionalDecisionSignal,
             missingInformationCount: plan.missingInformation.length,
             evidenceUsedCount: plan.evidenceUsed.length,
+            requiresProfessionalReviewBeforeSend: plan.requiresProfessionalReviewBeforeSend,
           }
         : undefined,
     });

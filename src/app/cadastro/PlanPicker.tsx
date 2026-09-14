@@ -1,34 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 
 import { fieldInputClass } from '@/app/auth/ui';
 import { MARKETS, TRIAL_DAYS, type PlanId } from '@/lib/market';
-
-export const PLAN_CARDS: { id: PlanId; name: string; description: string; features: string[] }[] = [
-  {
-    id: 'doopla',
-    name: 'Doopla',
-    description: 'Sua Doopla trabalha com você.',
-    features: [
-      'Até 5 novos bookings por mês',
-      'Sua Doopla atende, negocia e acompanha cada booking até o fechamento',
-      'Contratos e acompanhamento de pagamentos',
-      'Comunidade Doopla',
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Doopla Pro',
-    description: 'Mais estrutura para fazer sua carreira crescer.',
-    features: [
-      'Bookings ilimitados',
-      'Especialista humano se precisar',
-      'Inteligência sobre cachês, clientes e negociações',
-      'Materiais profissionais para sua carreira',
-    ],
-  },
-];
+import { PLAN_CARDS } from '@/lib/plans';
 
 // Sem cobrança de verdade ainda (nenhum processador de pagamento
 // integrado) — "confirmar assinatura" grava estado real no banco
@@ -61,11 +37,27 @@ export function PlanPicker({
 }) {
   const [selected, setSelected] = useState<PlanId>(initialPlan);
   const [showVoucher, setShowVoucher] = useState(false);
+  // Quais cards têm "Ver todos os recursos" aberto — por id, não
+  // exclusivo (dá pra expandir os dois planos ao mesmo tempo pra
+  // comparar). Só usado pelo variant="onboarding".
+  const [expanded, setExpanded] = useState<Set<PlanId>>(new Set());
   const market = MARKETS.BR;
 
   function choose(plan: PlanId) {
     setSelected(plan);
     onChange?.(plan);
+  }
+
+  function toggleExpanded(plan: PlanId, event: MouseEvent) {
+    // stopPropagation: o botão fica DENTRO do card clicável (onClick
+    // seleciona o plano) — expandir/recolher nunca deve mudar a seleção.
+    event.stopPropagation();
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(plan)) next.delete(plan);
+      else next.add(plan);
+      return next;
+    });
   }
 
   if (variant === 'onboarding') {
@@ -74,6 +66,8 @@ export function PlanPicker({
         <input type="hidden" name={fieldName} value={selected} />
         {PLAN_CARDS.map((card) => {
           const isSelected = selected === card.id;
+          const isExpanded = expanded.has(card.id);
+          const detailsId = `plan-more-${card.id}`;
           return (
             <div
               key={card.id}
@@ -93,6 +87,25 @@ export function PlanPicker({
                 <span className="plan-trial">{TRIAL_DAYS} dias grátis</span>
                 <ul className="plan-feats">
                   {card.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+
+                <button
+                  type="button"
+                  className="plan-more-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
+                  onClick={(e) => toggleExpanded(card.id, e)}
+                >
+                  {isExpanded ? 'Mostrar menos ↑' : 'Ver todos os recursos ↓'}
+                </button>
+                <ul
+                  id={detailsId}
+                  className={`plan-feats plan-more${isExpanded ? ' open' : ''}`}
+                  aria-hidden={!isExpanded}
+                >
+                  {card.moreFeatures.map((f) => (
                     <li key={f}>{f}</li>
                   ))}
                 </ul>

@@ -2,7 +2,7 @@ import type { ClassificationStatus, ConfidenceLevel, Intent } from '../classific
 import type { ContextFact, ContextSection } from '../context-builder';
 import { INTENT_MANDATORY_DECISION_CATEGORIES, PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import type { ProfessionalDecisionCategory } from './decision-categories';
-import type { PlannerModelResponsePlan } from './response-plan';
+import type { PlannerModelResponsePlan, ResponsePlan } from './response-plan';
 import type { CommitmentNature, EvidenceUsed, MissingInformationItem, PlannerContext, ProfessionalDecisionSignal } from './types';
 
 // Doopla Intelligence Core v1 — Bloco 4: invariantes determinísticas
@@ -49,13 +49,51 @@ function factSection(ctx: PlannerContext, sourceType: EvidenceUsed['sourceType']
       return ctx.booking;
     case 'external_participant':
       return ctx.externalParticipant;
+    // Professional Intelligence Context — grounding funciona igual às
+    // fontes acima (nunca aceita uma citação sem checar contra o
+    // PlannerContext real), mas o sourceType em si fica de fora de
+    // COMMITMENT_AUTHORIZING_SOURCE_TYPES abaixo: uma citação real
+    // dessas fontes prova que o Planner TEM/usou o dado (camada A —
+    // contexto/raciocínio), nunca que isso autoriza relatar/confirmar
+    // um compromisso sobre o booking/oportunidade ATUAL (camada B).
+    case 'professional_business_context':
+      return ctx.professionalBusinessContext;
+    case 'professional_commercial_history':
+      return ctx.professionalCommercialHistory;
     case 'conversation_message':
       return null;
   }
 }
 
+// Camada B — "commitment-authorizing evidence". Só estas fontes podem
+// sustentar commitmentNature='report_existing_fact', o piso de
+// answer_with_known_information, e o anchor-check de
+// professionalDecisionSignal — exatamente o conjunto que já existia
+// antes do Professional Intelligence Context (nenhuma mudança de
+// comportamento pras 5 fontes originais). As 2 novas fontes (camada A,
+// ver factSection acima) nunca entram aqui — preferência declarada não
+// autoriza nada, precedente histórico não autoriza repeti-lo, mesmo
+// citado/grounded/real.
+// Exportado (não só local) — Beta Instrumentation reaproveita esta
+// MESMA lista pra rotular is_commitment_authorizing ao persistir a
+// camada A em detalhe (orchestrator_run_context_evidence), nunca uma
+// segunda cópia do whitelist que poderia dessincronizar.
+export const COMMITMENT_AUTHORIZING_SOURCE_TYPES: ReadonlySet<EvidenceUsed['sourceType']> = new Set([
+  'professional_profile',
+  'opportunity',
+  'booking',
+  'external_participant',
+  'conversation_message',
+]);
+
+export function isCommitmentAuthorizingSourceType(sourceType: EvidenceUsed['sourceType']): boolean {
+  return COMMITMENT_AUTHORIZING_SOURCE_TYPES.has(sourceType);
+}
+
 // Único ponto que decide se uma EvidenceUsed é real — nunca confia no
 // que o model afirma sem checar contra o PlannerContext de verdade.
+// Aplica-se às DUAS camadas (A e B) igualmente: mesmo uma citação só
+// pra fins de auditoria/raciocínio nunca é aceita sem essa prova.
 export function isEvidenceGrounded(evidence: EvidenceUsed, ctx: PlannerContext): boolean {
   if (evidence.sourceType === 'conversation_message') {
     if (ctx.triggerMessage?.messageId === evidence.sourceId) return true;
@@ -71,6 +109,12 @@ export function isEvidenceGrounded(evidence: EvidenceUsed, ctx: PlannerContext):
 // deduplicado) aplicado aqui de propósito antes de qualquer outro
 // cálculo. O corte de MAX_EVIDENCE_USED é determinístico (preserva a
 // ordem, sempre os primeiros) — nunca aleatório.
+//
+// Resultado = camada A completa ("context evidence used") — auditável,
+// pensada pra responder no futuro "que fatos/contexto a Doopla usou
+// pra preparar isto" (Beta Instrumentation). Nunca, sozinha, decide
+// autorização — ver filterCommitmentAuthorizingEvidence abaixo pra
+// camada B, a única que os invariantes de compromisso consultam.
 export function validateEvidenceUsed(rawEvidence: readonly EvidenceUsed[], ctx: PlannerContext): EvidenceUsed[] {
   const seen = new Set<string>();
   const result: EvidenceUsed[] = [];
@@ -83,6 +127,16 @@ export function validateEvidenceUsed(rawEvidence: readonly EvidenceUsed[], ctx: 
     result.push(e);
   }
   return result;
+}
+
+// Camada B — subconjunto de uma lista JÁ validada (validateEvidenceUsed)
+// restrito a COMMITMENT_AUTHORIZING_SOURCE_TYPES. Nunca re-valida
+// grounding (a lista de entrada já passou por isso) — só filtra por
+// sourceType. Esta é a única lista/contagem que resolveCommitmentNature/
+// resolveResponsePlan/resolveProfessionalDecisionSignal podem consultar
+// pra decidir autorização — nunca a lista completa (camada A).
+export function filterCommitmentAuthorizingEvidence(evidence: readonly EvidenceUsed[]): EvidenceUsed[] {
+  return evidence.filter((e) => COMMITMENT_AUTHORIZING_SOURCE_TYPES.has(e.sourceType));
 }
 
 export function boundMissingInformation(raw: readonly MissingInformationItem[]): MissingInformationItem[] {
@@ -186,13 +240,31 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
   const planAsAny = plan as any;
   if (planAsAny === 'wait_for_external_participant') plan = 'ask_external_participant';
   if (planAsAny === 'wait_for_professional') plan = 'consult_professional';
-  // answer_with_known_information: nunca quando há decisão nova em
-  // jogo — "tenho o fato" nunca vira "posso confirmar/oferecer". E
-  // nunca SEM nenhuma evidência grounded por trás — "responder com
-  // fato conhecido" sem fato nenhum validado é uma contradição em
-  // termos, não uma leitura permissiva.
-  if (plan === 'answer_with_known_information' && (input.requiresProfessionalDecision || input.evidenceUsedCount === 0)) {
-    plan = 'consult_professional';
+  // answer_with_known_information: nunca SEM nenhuma evidência
+  // grounded por trás — "responder com fato conhecido" sem fato
+  // nenhum validado é uma contradição em termos, não uma leitura
+  // permissiva (checagem incondicional, não depende de quem fala).
+  //
+  // requiresProfessionalDecision sozinho só rebaixa quando o GATILHO
+  // deste turno NÃO é a própria profissional decidindo agora
+  // (professionalDecisionSignal !== 'candidate_contextual', já
+  // validado acima como ancorado numa mensagem real da conversa —
+  // nunca 'candidate_ambiguous', esse caso já caiu no piso de cima).
+  // Achado real de produção (passo 4b, achado #2): sem esta exceção,
+  // a PRÓPRIA profissional respondendo decisivamente uma pergunta de
+  // logística (ex.: "não precisa, a gente leva nosso próprio palco")
+  // era sempre rebaixada pra consult_professional — pedindo a mesma
+  // decisão de volta pra ela, em vez de deixar a resposta seguir pro
+  // cliente. O Post-model Policy Gate (Bloco 6) continua sendo quem
+  // valida o CONTEÚDO real do texto antes de qualquer envio — esta
+  // exceção só evita perguntar de novo pra quem acabou de responder,
+  // nunca pula a checagem de compromisso/approval.
+  if (plan === 'answer_with_known_information') {
+    const noEvidence = input.evidenceUsedCount === 0;
+    const decisionNeedsReview = input.requiresProfessionalDecision && input.professionalDecisionSignal !== 'candidate_contextual';
+    if (noEvidence || decisionNeedsReview) {
+      plan = 'consult_professional';
+    }
   }
   // no_response_needed reservado pra gatilho sem texto utilizável —
   // qualquer mensagem humana real com conteúdo merece ao menos um
@@ -205,4 +277,64 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
 
 export function missingInformationFallback(field: string): MissingInformationItem[] {
   return [{ field, reason: 'unavailable', blocksProfessionalDecision: true }];
+}
+
+// Fallback determinístico — nunca um segundo model call, nunca um
+// fato inventado (texto fixo, sem citar valor/data/local nenhum).
+// Fecha uma lacuna real de produção (passo 4b, achado #2): o piso de
+// resolveResponsePlan acima já garante que o RÓTULO final nunca é
+// silencioso (no_response_needed vira acknowledge; evidência
+// insuficiente vira consult_professional), mas plan.ts descarta o
+// TEXTO do model sempre que o plano final diverge do que o model
+// propôs (exceto pra clarify_ambiguity/acknowledge) — e o texto do
+// model, quando o próprio no_response_needed foi escolhido por ele,
+// naturalmente já vem null. Sem este fallback, o rótulo final
+// cumpria a promessa "nunca silêncio" mas o ciclo inteiro (Gate/
+// outbound/persist_ai_message) nunca chegava a rodar, porque
+// pipeline.ts só age quando decision.proposedResponse é truthy.
+// Só cobre os dois planos que o piso PODE produzir sem o model ter
+// escrito pra eles — os demais (ask_external_participant/
+// clarify_ambiguity/answer_with_known_information) sempre dependem
+// do texto real do model; sem fallback seguro pra eles (inventaria
+// conteúdo), continuam null se o model falhar — risco residual já
+// existente, não introduzido aqui.
+export function deterministicFallbackResponse(plan: ResponsePlan): string | null {
+  if (plan === 'consult_professional') {
+    return 'Preciso que você confirme esse ponto antes de eu responder ao cliente — pode revisar a conversa e me dar uma posição?';
+  }
+  if (plan === 'acknowledge') {
+    return 'Combinado, obrigado por avisar!';
+  }
+  return null;
+}
+
+// Deriva requiresProfessionalReviewBeforeSend a partir do responsePlan
+// FINAL (já pós-piso de resolveResponsePlan acima) — decisão do
+// usuário (fechamento do Runtime): nunca a partir de
+// requiresProfessionalDecision, que é um sinal do TURNO inteiro (ex.:
+// intent=orcamento sempre ativa price_or_cache/accept_or_decline_work),
+// não do texto específico deste responsePlan — usá-lo aqui bloquearia
+// autonomamente até uma simples pergunta de esclarecimento
+// (ask_external_participant) feita no meio de uma negociação, que já é
+// um resultado esperado e testado (golden-suite.ts, "novo compromisso
+// — desconto": ask_external_participant é família aceita mesmo com
+// requiresProfessionalDecision=true).
+//
+// consult_professional: pode estar endereçado ao próprio profissional
+// (ver prompt.ts) ou pedir uma decisão de compromisso — sempre exige
+// revisão. answer_with_known_information: nunca é compromisso, mas
+// pode carregar dado potencialmente sensível (telefone/endereço de
+// terceiros) que este bloco não classifica por campo — mantido
+// conservador de propósito (golden-suite audita isso). Os demais
+// quatro planos (acknowledge/ask_external_participant/
+// clarify_ambiguity/no_response_needed) nunca afirmam compromisso, por
+// definição de prompt.ts — não precisam de revisão humana.
+//
+// Isto NUNCA é a garantia de conteúdo: mesmo com false aqui, o
+// Post-model Policy Gate (Bloco 6) ainda lê o TEXTO real via
+// extractCommitments — um responsePlan mal rotulado que na prática
+// afirma um compromisso é pego por lá (no_matching_approval/
+// stale_dependency/etc.), independente deste campo.
+export function resolveRequiresProfessionalReviewBeforeSend(responsePlan: ResponsePlan): boolean {
+  return responsePlan === 'consult_professional' || responsePlan === 'answer_with_known_information';
 }

@@ -4,6 +4,10 @@
 
 export type UserRole = 'artista' | 'booker' | 'agencia';
 
+// Encerramento de conta (Settings V2, migration 0078) — "closed" nunca
+// é revertido por nenhuma superfície do produto hoje.
+export type ProfileStatus = 'active' | 'closed';
+
 export type Profile = {
   id: string;
   role: UserRole;
@@ -16,6 +20,8 @@ export type Profile = {
   slug: string | null;
   is_admin: boolean;
   referral_code: string;
+  status: ProfileStatus;
+  status_changed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -217,7 +223,7 @@ export type BookingEvent = {
   created_at: string;
 };
 
-export type InviteStatus = 'pendente' | 'confirmado';
+export type InviteStatus = 'pendente' | 'confirmado' | 'expirada';
 
 export type Invite = {
   id: string;
@@ -225,18 +231,26 @@ export type Invite = {
   invitee_name: string;
   invitee_contact: string | null;
   invitee_profile_id: string | null;
+  invitee_role: UserRole;
   status: InviteStatus;
   token: string;
   created_at: string;
   confirmed_at: string | null;
+  expires_at: string;
+  resend_count: number;
+  last_resent_at: string | null;
 };
 
 // Retorno de get_invite_by_token — lookup público e mínimo pra
-// /convite/[token], nunca o convite inteiro.
+// /convite/[token], nunca o convite inteiro. invitee_role e is_expired
+// (migration 0069) tiram a página da dependência de "oposto do
+// inviter_role" e permitem distinguir "não existe" de "já venceu".
 export type InviteByToken = {
   inviter_name: string;
   inviter_role: UserRole;
   invitee_name: string;
+  invitee_role: UserRole;
+  is_expired: boolean;
 };
 
 export type Favorite = {
@@ -514,6 +528,11 @@ export type ConversationMessage = {
   attachment_metadata: Record<string, unknown> | null;
   generated_by: ConversationMessageGeneratedBy;
   created_at: string;
+  // Conversas Bloco 2 (migration 0066) — proveniência factual draft x
+  // resposta enviada, nunca interpretação. Ver comentário em
+  // src/lib/runtime/types.ts (InboundEvent.repliedToOutboundIntentId).
+  replied_to_outbound_intent_id: string | null;
+  prepared_response_outcome: 'sent' | 'edited' | null;
 };
 
 // Append-only. previous_mandate null = linha de nascimento da
@@ -642,6 +661,26 @@ export type FounderVoucher = {
   created_at: string;
 };
 
+// Dados de recebimento (adendo WhatsApp/concierge, migration 0046).
+// Append-only versionado — status='active' é sempre a única linha
+// vigente por profile_id, o resto é histórico/auditoria.
+export type PaymentMethod = 'pix';
+export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria';
+export type PaymentDetailsStatus = 'active' | 'superseded';
+
+export type PaymentDetails = {
+  id: string;
+  profile_id: string;
+  method: PaymentMethod;
+  pix_key_type: PixKeyType | null;
+  pix_key: string | null;
+  holder_name: string | null;
+  status: PaymentDetailsStatus;
+  created_at: string;
+  created_by: string;
+  superseded_at: string | null;
+};
+
 export type PayoutRequestStatus = 'solicitado';
 
 export type PayoutRequest = {
@@ -715,6 +754,339 @@ export type Review = {
   submitted_at: string | null;
   edited_at: string | null;
   created_at: string;
+};
+
+// ============================================================
+// Professional Product UI — Foundation. Tipos que faltavam pra estas
+// tabelas/RPCs (migrations 0045/0047/0049-0051/0053/0059/0064/0065),
+// já em uso real via casts manuais em vários pontos do código
+// (ex.: src/app/dashboard/runtime-state-reads.ts). Nullability/enums
+// copiados exatamente das CREATE TABLE/CHECK das migrations — nenhum
+// campo inventado.
+// ============================================================
+
+// --- outbound_intents (migration 0051) ---------------------------
+export type OutboundIntentDeliveryState =
+  | 'policy_allowed'
+  | 'queued'
+  | 'sending'
+  | 'sent_unknown'
+  | 'sent_confirmed'
+  | 'delivered'
+  | 'read'
+  | 'failed_transient'
+  | 'failed_permanent'
+  | 'cancelled';
+
+export type OutboundIntent = {
+  id: string;
+  conversation_id: string;
+  professional_id: string;
+  trigger_message_id: string | null;
+  run_id: string | null;
+  policy_decision_id: string | null;
+  channel: ConversationChannel;
+  recipient_external_participant_id: string | null;
+  // Rascunho ainda não entregue — nunca exposto por
+  // get_conversation_operational_facts (0060), só por leitura direta
+  // sob "outbound_intents: select own".
+  content: string;
+  delivery_state: OutboundIntentDeliveryState;
+  send_attempt_id: string | null;
+  send_lease_expires_at: string | null;
+  provider_message_id: string | null;
+  failure_reason: string | null;
+  conversation_message_id: string | null;
+  created_at: string;
+  queued_at: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  failed_at: string | null;
+  updated_at: string;
+};
+
+// --- runtime_pending_replies (migration 0053) ---------------------
+// Sem policy pra authenticated nesta tabela (0053) até a leitura ser
+// autorizada explicitamente em 0056 — "select own" via
+// conversations.represented_professional_id, nunca coluna própria.
+export type RuntimePendingReplyStatus = 'pending' | 'completed' | 'superseded';
+
+export type RuntimePendingReply = {
+  id: string;
+  conversation_id: string;
+  commercial_root_id: string;
+  trigger_message_id: string;
+  policy_gate_decision_id: string;
+  run_id: string | null;
+  status: RuntimePendingReplyStatus;
+  superseded_by_id: string | null;
+  created_at: string;
+  resolved_at: string | null;
+};
+
+// --- approval_records (migration 0045) ----------------------------
+export type ApprovalOperationType =
+  | 'contextual_decision'
+  | 'explicit_decision'
+  | 'counterproposal'
+  | 'revocation'
+  | 'professional_initiated';
+
+export type ApprovalRecord = {
+  id: string;
+  professional_id: string;
+  // Sempre resolve_commercial_root_id() — id de booking OU de
+  // opportunity, sem FK direta a uma tabela só.
+  commercial_root_id: string;
+  decision_category: string;
+  subject_key: string;
+  version: number;
+  operation_type: ApprovalOperationType;
+  // null se e somente se operation_type='revocation'.
+  approved_value: Record<string, unknown> | null;
+  professional_statement_message_id: string;
+  communicated_proposal_message_ids: string[];
+  referred_value: Record<string, unknown> | null;
+  created_at: string;
+};
+
+// --- policy_gate_decisions (migration 0049, enum estendido em 0051) ---
+export type PolicyGateOutcome = 'allowed' | 'blocked';
+export type PolicyGateBlockReason =
+  | 'no_matching_approval'
+  | 'value_mismatch'
+  | 'subject_key_unresolved'
+  | 'commercial_root_terminal'
+  | 'invalid_extracted_value'
+  | 'extraction_unavailable'
+  | 'stale_dependency'
+  | 'professional_not_operationally_ready';
+
+export type PolicyGateDecision = {
+  id: string;
+  professional_id: string;
+  conversation_id: string;
+  commercial_root_id: string;
+  message_id: string | null;
+  run_id: string | null;
+  outcome: PolicyGateOutcome;
+  policy_version: string;
+  // Preenchido só quando outcome='blocked' (CHECK simétrico no banco).
+  primary_block_reason: PolicyGateBlockReason | null;
+  checks: unknown[];
+  created_at: string;
+};
+
+// --- product_events (migration 0065) ------------------------------
+export type ProductEventCategory = 'product' | 'value' | 'lifecycle';
+export type ProductEventActorType = 'professional' | 'external_participant' | 'ai' | 'system';
+// Reservado pro futuro Lifecycle Messaging — nenhum event_type atual usa.
+export type ProductEventSignalType = 'decision' | 'risk' | 'resolved' | 'opportunity';
+export type ProductEventSource = 'runtime' | 'dashboard' | 'webhook' | 'cron';
+
+export type ProductEvent = {
+  id: string;
+  professional_id: string;
+  category: ProductEventCategory;
+  // Livre no banco, validado pelo registry em código
+  // (src/lib/beta-instrumentation/event-types.ts) — nunca um union
+  // fechado aqui, isso duplicaria a fonte de verdade.
+  event_type: string;
+  occurred_at: string;
+  recorded_at: string;
+  idempotency_key: string;
+  subject_type: string;
+  subject_id: string;
+  commercial_root_id: string | null;
+  conversation_id: string | null;
+  run_id: string | null;
+  source_message_id: string | null;
+  actor_type: ProductEventActorType | null;
+  payload: Record<string, unknown>;
+  // Reservados pro futuro Lifecycle Messaging — sempre null hoje.
+  why_now: string | null;
+  signal_type: ProductEventSignalType | null;
+  source: ProductEventSource;
+  created_at: string;
+};
+
+// --- professional_whatsapp_identities (migration 0064) ------------
+export type ProfessionalWhatsappIdentityStatus =
+  | 'unverified'
+  | 'pending_verification'
+  | 'verified'
+  | 'pending_replacement'
+  | 'revoked';
+
+export type ProfessionalWhatsappIdentity = {
+  professional_id: string;
+  status: ProfessionalWhatsappIdentityStatus;
+  // Só populado em 'verified'/'pending_replacement'.
+  verified_number: string | null;
+  verified_at: string | null;
+  // Número em processo de verificação (primeira vez OU troca).
+  candidate_number: string | null;
+  candidate_requested_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProfessionalWhatsappIdentityEventType = 'candidate_submitted' | 'verified' | 'replaced' | 'revoked';
+
+export type ProfessionalWhatsappIdentityEvent = {
+  id: string;
+  professional_id: string;
+  event_type: ProfessionalWhatsappIdentityEventType;
+  number: string | null;
+  previous_status: string | null;
+  new_status: string | null;
+  created_at: string;
+};
+
+// --- Comunidade (migration 0059) -----------------------------------
+// V1 é artista-only (community_profiles/RPCs recusam role != 'artista'
+// — nunca reforçado só no client). Escrita sempre via RPC security
+// definer, exceto community_saved_topics (única exceção, RLS direta).
+export type CommunityCategory = {
+  id: string;
+  slug: string;
+  label: string;
+  sort_order: number;
+  active: boolean;
+};
+
+export type CommunityTag = {
+  id: string;
+  slug: string;
+  label: string;
+  active: boolean;
+};
+
+// Domínio exclusivo de moderação (bloco futuro) — nunca setado pelo
+// próprio profissional (trigger prevent_self_community_moderation_change
+// bloqueia isso no banco, não só por convenção de RPC).
+export type CommunityVisibilityStatus = 'active' | 'restricted' | 'blocked';
+
+export type CommunityProfile = {
+  profile_id: string;
+  visibility_status: CommunityVisibilityStatus;
+  available_for_referrals: boolean;
+  show_city: boolean;
+  show_avatar: boolean;
+  show_bio: boolean;
+  show_specialties: boolean;
+  show_work_types: boolean;
+  show_instagram: boolean;
+  show_portfolio: boolean;
+  activated_at: string;
+  updated_at: string;
+};
+
+// Leitura seletiva de OUTRO profissional na Comunidade — única fonte
+// seura pra isso (aplica as preferências show_*, nunca o client
+// escondendo depois). visibility_status nunca é exposto aqui de
+// propósito (moderação é assunto interno).
+export type CommunityProfilePublic = {
+  profile_id: string;
+  display_name: string;
+  profession_label: string | null;
+  profession_id: string | null;
+  is_pro: boolean;
+  available_for_referrals: boolean;
+  is_incomplete: boolean;
+  city: string | null;
+  state: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  specialties: string[] | null;
+  work_types: string[] | null;
+  instagram_url: string | null;
+  portfolio_url: string | null;
+  // Desambiguação de homônimos no autocomplete de @menções (08/09/2026,
+  // migration 0076) — profiles.slug, o identificador público estável já
+  // existente (gerado por ensurePublicId() na primeira visita ao painel,
+  // já usado como "Seu código ID" alhures). Nunca profile_id/UUID.
+  public_id: string | null;
+};
+
+export type CommunityTopicAudience = 'niche' | 'all';
+// Soft delete sempre — a linha nunca é apagada, pra nunca quebrar
+// reply_to_post_id de terceiros nem o contexto de outras respostas.
+export type CommunityContentStatus = 'published' | 'removed_by_author' | 'removed_by_moderator';
+
+export type CommunityTopic = {
+  id: string;
+  author_profile_id: string;
+  title: string;
+  body: string;
+  category_id: string;
+  audience: CommunityTopicAudience;
+  status: CommunityContentStatus;
+  // Conta TODAS as respostas já criadas, inclusive removidas depois —
+  // sinal de atividade, não de conteúdo visível agora.
+  reply_count: number;
+  participant_count: number;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+// Comunidade V2 — ranking (migration 0079). Mesma forma de CommunityTopic
+// + o score calculado pela function (nunca recomputado no client).
+export type CommunityTrendingTopic = CommunityTopic & { trending_score: number };
+export type CommunityForYouTopic = CommunityTopic & { for_you_score: number };
+
+export type CommunityTopicTag = {
+  topic_id: string;
+  tag_id: string;
+};
+
+export type CommunityPost = {
+  id: string;
+  topic_id: string;
+  author_profile_id: string;
+  body: string;
+  reply_to_post_id: string | null;
+  status: CommunityContentStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommunityMention = {
+  id: string;
+  post_id: string;
+  mentioned_profile_id: string;
+  created_at: string;
+};
+
+export type CommunitySavedTopic = {
+  profile_id: string;
+  topic_id: string;
+  created_at: string;
+};
+
+export type CommunityNotificationType = 'reply_to_topic' | 'reply_to_post' | 'mention';
+
+export type CommunityNotification = {
+  id: string;
+  recipient_profile_id: string;
+  actor_profile_id: string;
+  type: CommunityNotificationType;
+  topic_id: string;
+  post_id: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+// Item 12 (08/09/2026, migration 0077) — posição de leitura por
+// (profile, topic). Só apresentação (onde pousar o scroll), nunca
+// usado em regra de autorização/negócio.
+export type CommunityTopicRead = {
+  profile_id: string;
+  topic_id: string;
+  last_read_post_id: string | null;
+  updated_at: string;
 };
 
 // A lib do Supabase exige `Relationships` em cada tabela (usado só pra
@@ -922,22 +1294,40 @@ export type Database = {
         Update: Partial<AgendaEntry>;
         Relationships: [];
       };
+      // 07/09/2026, migration 0075 — client não grava estado comercial
+      // direto (artist_plan/status/trial_ends_at/booker_plan/role/
+      // canceled_at/pro_period_ends_at/price_rule/locked_price_cents/
+      // founder_voucher_id): só handle_new_user (insert inicial) ou as
+      // RPCs select_artist_plan/confirm_booker_pro_upgrade/
+      // cancel_booker_pro. Só active_artist_profile_id/
+      // active_artist_pending_choice continuam graváveis direto.
       subscriptions: {
         Row: Subscription;
-        Insert: Partial<Subscription> & Pick<Subscription, 'profile_id' | 'role'>;
-        Update: Partial<Subscription>;
+        Insert: never;
+        Update: Pick<Subscription, 'active_artist_profile_id' | 'active_artist_pending_choice' | 'updated_at'>;
         Relationships: [];
       };
       founder_vouchers: {
         Row: FounderVoucher;
         Insert: Partial<FounderVoucher> & Pick<FounderVoucher, 'code'>;
-        Update: Partial<FounderVoucher>;
+        // Update: nenhum — "claim if unredeemed" (0031) removida na 0075
+        // (nunca teve uso legítimo real: a redenção inteira acontece
+        // dentro de handle_new_user, SECURITY DEFINER).
+        Update: never;
         Relationships: [];
       };
       payout_requests: {
         Row: PayoutRequest;
         Insert: Partial<PayoutRequest> & Pick<PayoutRequest, 'profile_id' | 'amount_cents'>;
         Update: Partial<PayoutRequest>;
+        Relationships: [];
+      };
+      payment_details: {
+        Row: PaymentDetails;
+        // Sem Insert/Update reais — RLS não permite escrita direta,
+        // único caminho é a RPC set_payment_details (migration 0046).
+        Insert: never;
+        Update: never;
         Relationships: [];
       };
       reviews: {
@@ -967,8 +1357,120 @@ export type Database = {
         Update: Partial<ArtistLinkRouting>;
         Relationships: [];
       };
+      // Professional Product UI — Foundation. Escrita exclusiva via RPC
+      // security definer em todas as tabelas abaixo (Insert/Update
+      // `never` reflete a garantia real de RLS/grant, não preferência
+      // de código) — exceto community_saved_topics, único caso com
+      // policy de insert/delete direta pra authenticated (0059).
+      outbound_intents: {
+        Row: OutboundIntent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      runtime_pending_replies: {
+        Row: RuntimePendingReply;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      approval_records: {
+        Row: ApprovalRecord;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      policy_gate_decisions: {
+        Row: PolicyGateDecision;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      product_events: {
+        Row: ProductEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      professional_whatsapp_identities: {
+        Row: ProfessionalWhatsappIdentity;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      professional_whatsapp_identity_events: {
+        Row: ProfessionalWhatsappIdentityEvent;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_categories: {
+        Row: CommunityCategory;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_tags: {
+        Row: CommunityTag;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_profiles: {
+        Row: CommunityProfile;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_topics: {
+        Row: CommunityTopic;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_topic_tags: {
+        Row: CommunityTopicTag;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_posts: {
+        Row: CommunityPost;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_mentions: {
+        Row: CommunityMention;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_saved_topics: {
+        Row: CommunitySavedTopic;
+        Insert: Pick<CommunitySavedTopic, 'profile_id' | 'topic_id'>;
+        Update: never;
+        Relationships: [];
+      };
+      community_notifications: {
+        Row: CommunityNotification;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      community_topic_reads: {
+        Row: CommunityTopicRead;
+        Insert: Pick<CommunityTopicRead, 'profile_id' | 'topic_id'> & Partial<Pick<CommunityTopicRead, 'last_read_post_id' | 'updated_at'>>;
+        Update: Partial<Pick<CommunityTopicRead, 'last_read_post_id' | 'updated_at'>>;
+        Relationships: [];
+      };
     };
-    Views: Record<string, never>;
+    Views: {
+      community_profiles_public: {
+        Row: CommunityProfilePublic;
+        Relationships: [];
+      };
+    };
     Functions: {
       // Doopla Intelligence OS v1 (migration 0039) — únicos caminhos
       // de escrita pra conversations/conversation_mandate_events/
@@ -1022,6 +1524,10 @@ export type Database = {
           p_input_tokens?: number | null;
           p_output_tokens?: number | null;
           p_run_id?: string | null;
+          // Migration 0055 — obrigatório no caminho is_system_caller()
+          // (service_role/Runtime); ignorado no caminho authenticated
+          // (profile_id continua sempre auth.uid()).
+          p_professional_id?: string | null;
         };
         Returns: AiUsageEvent;
       };
@@ -1069,7 +1575,61 @@ export type Database = {
         Args: Record<string, never>;
         Returns: undefined;
       };
+      expire_stale_invites: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      list_actionable_decisions_page: {
+        Args: { p_sort?: string; p_limit?: number; p_offset?: number };
+        Returns: {
+          id: string;
+          kind: string;
+          conversation_id: string;
+          related_booking_id: string | null;
+          related_opportunity_id: string | null;
+          commercial_root_id: string | null;
+          created_at: string;
+          block_reason: string | null;
+          prepared_content: string | null;
+          total_count: number;
+        }[];
+      };
+      list_resolved_decisions_page: {
+        Args: { p_sort?: string; p_limit?: number; p_offset?: number };
+        Returns: {
+          id: string;
+          conversation_id: string;
+          related_booking_id: string | null;
+          resolved_at: string;
+          status: string | null;
+          superseded_by_id: string | null;
+          prepared_response_outcome: string | null;
+          source: string;
+          total_count: number;
+        }[];
+      };
+      resend_invite: {
+        Args: { p_invite_id: string };
+        Returns: { new_token: string; new_expires_at: string }[];
+      };
+      // 07/09/2026, migration 0075 — escopada a auth.uid(), nunca mais
+      // efeito global (antes varria todos os bookers, EXECUTE aberto a
+      // qualquer authenticated).
       expire_booker_pro_subscriptions: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      // Único caminho de escrita de subscriptions.artist_plan pelo
+      // client (migration 0075) — nunca aceita status/trial/preço.
+      select_artist_plan: {
+        Args: { p_plan: 'doopla' | 'pro' };
+        Returns: undefined;
+      };
+      confirm_booker_pro_upgrade: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      cancel_booker_pro: {
         Args: Record<string, never>;
         Returns: undefined;
       };
@@ -1085,6 +1645,19 @@ export type Database = {
         };
         Returns: string;
       };
+      set_payment_details: {
+        Args: {
+          p_method: PaymentMethod;
+          p_pix_key_type: PixKeyType | null;
+          p_pix_key: string | null;
+          p_holder_name: string | null;
+        };
+        Returns: PaymentDetails;
+      };
+      is_operationally_ready: {
+        Args: { p_profile_id: string };
+        Returns: boolean;
+      };
       request_representation_link: {
         Args: { p_target_profile_id: string; p_message: string | null };
         Returns: 'requested' | 'accepted';
@@ -1093,13 +1666,113 @@ export type Database = {
         Args: { p_contact: string };
         Returns: ContactMatch[];
       };
+      find_representation_target_by_public_id: {
+        Args: { p_public_id: string };
+        Returns: ContactMatch[];
+      };
       terminate_representation: {
         Args: { p_representation_id: string };
+        Returns: undefined;
+      };
+      add_secondary_role: {
+        Args: { p_role: UserRole };
+        Returns: undefined;
+      };
+      switch_active_role: {
+        Args: { p_role: UserRole };
         Returns: undefined;
       };
       get_invite_by_token: {
         Args: { p_token: string };
         Returns: InviteByToken[];
+      };
+      // Professional Product UI — Foundation. RPCs de WhatsApp Identity
+      // (migration 0064) — auth.uid() sempre revalidado contra
+      // p_professional_id por dentro da function, nunca confiado do
+      // parâmetro sozinho.
+      request_whatsapp_verification: {
+        Args: { p_professional_id: string; p_candidate_number: string };
+        Returns: { challenge_id: string; code: string; expires_at: string }[];
+      };
+      confirm_whatsapp_verification: {
+        Args: { p_professional_id: string; p_code: string };
+        Returns: { confirmed: boolean; reason: string | null }[];
+      };
+      revoke_whatsapp_verification: {
+        Args: { p_professional_id: string };
+        Returns: boolean;
+      };
+      // Professional Product UI — Foundation. RPCs de Comunidade
+      // (migration 0059) — auth.uid() é sempre a fonte de identidade
+      // dentro da function, nunca um parâmetro vindo do client.
+      activate_community_profile: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      update_community_profile: {
+        Args: {
+          p_available_for_referrals: boolean;
+          p_show_city: boolean;
+          p_show_avatar: boolean;
+          p_show_bio: boolean;
+          p_show_specialties: boolean;
+          p_show_work_types: boolean;
+          p_show_instagram: boolean;
+          p_show_portfolio: boolean;
+        };
+        Returns: undefined;
+      };
+      create_community_topic: {
+        Args: {
+          p_title: string;
+          p_body: string;
+          p_category_id: string;
+          p_audience?: CommunityTopicAudience;
+          p_tag_ids?: string[];
+        };
+        Returns: string;
+      };
+      remove_community_topic: {
+        Args: { p_topic_id: string };
+        Returns: undefined;
+      };
+      create_community_post: {
+        Args: {
+          p_topic_id: string;
+          p_body: string;
+          p_reply_to_post_id?: string | null;
+          p_mentioned_profile_ids?: string[];
+        };
+        Returns: string;
+      };
+      remove_community_post: {
+        Args: { p_post_id: string };
+        Returns: undefined;
+      };
+      mark_community_notification_read: {
+        Args: { p_notification_id: string };
+        Returns: undefined;
+      };
+      search_community_topics: {
+        Args: {
+          p_query: string;
+          p_category_id?: string | null;
+          p_tag_id?: string | null;
+          p_limit?: number;
+        };
+        Returns: CommunityTopic[];
+      };
+      close_own_account: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      get_community_trending_topics: {
+        Args: { p_limit?: number };
+        Returns: CommunityTrendingTopic[];
+      };
+      get_community_for_you_topics: {
+        Args: { p_limit?: number };
+        Returns: CommunityForYouTopic[];
       };
     };
   };

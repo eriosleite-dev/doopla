@@ -10,9 +10,12 @@ import { PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import {
   boundMissingInformation,
   computeDecisionCategories,
+  deterministicFallbackResponse,
+  filterCommitmentAuthorizingEvidence,
   missingInformationFallback,
   resolveCommitmentNature,
   resolveProfessionalDecisionSignal,
+  resolveRequiresProfessionalReviewBeforeSend,
   resolveResponsePlan,
   validateEvidenceUsed,
 } from './invariants';
@@ -28,13 +31,21 @@ import type { PlannerDecision } from './types';
 // PlannerDecision: sem requiresProfessionalDecision/
 // professionalDecisionCategory finais (só invariants.ts, em código,
 // preenche isso, unindo o mandatório com o que o model propôs) e sem
-// requiresProfessionalReviewBeforeSend (hardcoded, fora do schema —
-// estruturalmente impossível do model influenciar).
+// requiresProfessionalReviewBeforeSend (derivado por
+// resolveRequiresProfessionalReviewBeforeSend, invariants.ts, a partir
+// só do responsePlan FINAL — fora do schema, estruturalmente
+// impossível do model influenciar).
 const evidenceUsedSchema = z.discriminatedUnion('sourceType', [
   z.object({ sourceType: z.literal('professional_profile'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('opportunity'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('booking'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('external_participant'), sourceId: z.string(), field: z.string() }),
+  // Professional Intelligence Context — camada A ("context evidence"),
+  // ver invariants.ts. Citável pelo model (prova que usou o dado pra
+  // preparar a resposta), mas nunca conta como camada B (autorização de
+  // compromisso) — filterCommitmentAuthorizingEvidence exclui as duas.
+  z.object({ sourceType: z.literal('professional_business_context'), sourceId: z.string(), field: z.string() }),
+  z.object({ sourceType: z.literal('professional_commercial_history'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('conversation_message'), sourceId: z.string() }),
 ]);
 
@@ -146,21 +157,29 @@ export async function planResponse(
         professionalDecisionCategory: [],
         professionalDecisionSignal: 'none',
         proposedResponse: null,
-        requiresProfessionalReviewBeforeSend: true,
+        requiresProfessionalReviewBeforeSend: resolveRequiresProfessionalReviewBeforeSend('consult_professional'),
       },
       inputTokens,
       outputTokens,
     };
   }
 
+  // evidenceUsed = camada A completa (context/reasoning evidence,
+  // auditável) — nunca usada diretamente pelos invariantes de
+  // compromisso abaixo. commitmentEvidence = camada B (subconjunto
+  // restrito a COMMITMENT_AUTHORIZING_SOURCE_TYPES, ver invariants.ts)
+  // — a única que pode influenciar commitmentNature/responsePlan/
+  // professionalDecisionSignal. Mesmo comportamento de antes do
+  // Professional Intelligence Context pras 5 fontes originais.
   const evidenceUsed = validateEvidenceUsed(parsed.evidenceUsed, plannerContext);
+  const commitmentEvidence = filterCommitmentAuthorizingEvidence(evidenceUsed);
   const allIntents = [intentClassification.primaryIntent, ...intentClassification.secondaryIntents];
-  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, evidenceUsed.length, allIntents);
+  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, commitmentEvidence.length, allIntents);
   const { categories, requiresProfessionalDecision } = computeDecisionCategories(allIntents, commitmentNature, parsed.proposedDecisionCategory);
   const professionalDecisionSignal = resolveProfessionalDecisionSignal(
     parsed.professionalDecisionSignal,
     plannerContext.triggerMessage?.authorType,
-    evidenceUsed
+    commitmentEvidence
   );
   const responsePlan = resolveResponsePlan({
     modelPlan: parsed.responsePlan,
@@ -169,7 +188,7 @@ export async function planResponse(
     requiresProfessionalDecision,
     professionalDecisionSignal,
     triggerHasUsableText,
-    evidenceUsedCount: evidenceUsed.length,
+    evidenceUsedCount: commitmentEvidence.length,
   });
 
   // O draft do model foi escrito pensando no plano QUE ELE propôs — se
@@ -179,7 +198,13 @@ export async function planResponse(
   // fora do contexto pra que foi escrito. clarify_ambiguity/acknowledge
   // ainda fazem sentido com o draft original na maioria dos casos.
   const draftStillValid = responsePlan === parsed.responsePlan || responsePlan === 'clarify_ambiguity' || responsePlan === 'acknowledge';
-  const proposedResponse = draftStillValid ? parsed.proposedResponse : null;
+  // Nunca silêncio quando há texto humano real no gatilho: se o draft
+  // foi descartado (piso mudou o plano pra algo que o texto do model
+  // não cobre) ou nunca existiu (no_response_needed legitimamente não
+  // escreve nada), um fallback determinístico fecha a lacuna — ver
+  // comentário em deterministicFallbackResponse (invariants.ts).
+  const rawProposedResponse = draftStillValid ? parsed.proposedResponse : null;
+  const proposedResponse = rawProposedResponse ?? (triggerHasUsableText ? deterministicFallbackResponse(responsePlan) : null);
 
   return {
     decision: {
@@ -192,7 +217,7 @@ export async function planResponse(
       professionalDecisionCategory: categories,
       professionalDecisionSignal,
       proposedResponse,
-      requiresProfessionalReviewBeforeSend: true,
+      requiresProfessionalReviewBeforeSend: resolveRequiresProfessionalReviewBeforeSend(responsePlan),
     },
     inputTokens,
     outputTokens,

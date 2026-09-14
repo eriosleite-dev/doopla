@@ -87,7 +87,7 @@ export default async function CadastroPage({
           defaultRole={defaultRole}
           referralCode={params.ref}
           inviteToken={params.invite}
-          showRolePicker={isBooker}
+          showRolePicker={isBooker && !params.invite}
           planIntent={planIntent}
         />
 

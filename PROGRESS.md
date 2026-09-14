@@ -11,6 +11,17 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-14.
 
+**Nota de reconciliação de branch (14/09/2026)**: este arquivo é o
+resultado de um merge entre duas branches que divergiram — a sessão
+de hoje (Categoria B, no topo, a partir daqui) rodava numa branch
+criada do ponto errado (sem as migrations `0045`-`0079` nem o
+trabalho de Home V2/Settings V2/Runtime/Beta Instrumentation). O
+conteúdo anterior a essa divergência (ROADMAP MESTRE, Categoria A,
+OPEN FINDINGS — Beta Readiness) está preservado mais abaixo neste
+arquivo, na numeração "## N. Título — data". Nada foi perdido no
+merge, só concatenado — reorganizar cronologicamente fica pra depois,
+não é prioridade agora.
+
 ---
 
 ## Categoria B — QA/E2E do Professional contra `doopla-qa-staging`
@@ -3418,6 +3429,8656 @@ consulta/aprovação.
 **Não alterar o Bloco 4 (congelado) pra absorver estas
 responsabilidades sem uma razão arquitetural demonstrável** — são
 responsabilidades do Gate, não do Planner.
+
+## 34. Doopla Intelligence Core v1 — Bloco 5: Approval Engine (implementado, aguardando auditoria adversarial da implementação)
+
+Camada que representa formalmente o que o profissional efetivamente
+APROVOU — não o que ele comunicou, não o que a contraparte aceitou.
+KNOW ≠ COMMUNICATED ≠ APPROVED ≠ COMMITTED. Fonte de verdade: SPEC
+CONSOLIDADA V3.10 (10 rodadas de revisão adversarial só de desenho,
+V1→V3.10, sem uma linha de código até a aprovação final do usuário).
+Não implementa Post-model Policy Gate, não habilita envio, não cria
+tool de escrita, não altera o Bloco 4 (congelado).
+
+- ✅ **Migration `0045_approval_engine.sql`**: `bookings.originated_from_opportunity_id`
+  (única coluna nova em tabela pré-existente — fecha a lacuna que a
+  0007 já descrevia em comentário e nunca implementou); 6 tabelas novas
+  (`approval_records` append-only versionado; `communicated_proposal_candidates`
+  com estados `open`/`possibly_superseded`/`structurally_closed` —
+  inferência nunca apaga, só rebaixa; `communicated_proposal_classifications`
+  e `approval_resolutions` pin-once; `approval_resolution_claims`
+  efêmero e `approval_resolution_backoff` persistente, fisicamente
+  separados); `resolve_commercial_root_id()` como função canônica
+  única de identidade comercial; 2 triggers determinísticos de
+  fechamento de candidato (status terminal negativo de booking/
+  opportunity; aprovação real commitada na mesma chain — nunca por
+  inferência); RPCs security definer (`try_acquire_approval_resolution_claim`,
+  `reserve_approval_dispatch_token`, `release_approval_resolution_claim`,
+  `commit_approval_resolution`, `try_classify_communicated_proposal`,
+  `get_active_approvals`, `get_communicated_proposal_candidates`); RLS
+  tenant-safe (posse via `professional_id = auth.uid()` direto, sem
+  join composto — lição da 0039) com deny-all pra `authenticated` nas
+  duas tabelas de estado interno do motor (claims/backoff).
+- ✅ **`src/lib/intelligence/approval/`**: `canonicalize.ts`
+  (canonicalização determinística única — mesma função em F1 e F2,
+  SHA-256 de 32 bytes, fisicamente separada do hash de 64 bits do
+  advisory lock); `resolution-context.ts` (bounded lineage real:
+  declaração do profissional + últimas 20 mensagens brutas + toda
+  mensagem-fonte de candidato aberto — nunca o histórico inteiro
+  desde a última resolução); `resolver.ts` (Approval Resolver,
+  closed-candidate-selection, model call injetável mesmo padrão de
+  `PlannerModelCall`); `orchestrator.ts` (encadeia claim → build
+  contexto F1 → reserve token → chamada externa → rebuild F2 → commit,
+  nunca segura transação Postgres aberta durante I/O externo);
+  `value-schemas.ts` (os 13 shapes de `approved_value`, reaproveitando
+  o enum do Bloco 4); `rate-limiter.ts` (espelho puro da matemática do
+  token bucket, pra teste sem depender de Postgres); `golden-suite.ts`
+  (6 casos semânticos).
+- ✅ **Validação real contra Postgres** (não simulada): apliquei a
+  migration `0045` no banco de teste `doopla_rls_test` (já com
+  `0001`–`0044`, incluindo `auth.uid()`/RLS reais) e rodei 4 baterias
+  de teste via `psql` — **36 asserções, todas PASS**: CHECK simétrico
+  de provenance (`cardinality()`, nunca `array_length()`); terminalidade
+  física (só `resolved` é único-terminal); ciclo completo
+  acquire→reserve→resolver→commit; retry pós-commit nunca reinfere;
+  stale context (F1≠F2) descarta sem escrever nada; token bucket (5
+  consumos imediatos + 6º bloqueado por `rate_limited`); backoff
+  exponencial sensível a `context_identity` (mesmo contexto respeita,
+  contexto novo ignora); proteção ABA de lease (`lease_token` errado
+  nunca commita, correto continua funcionando depois); candidato
+  comunicado nunca apagado por supersessão (só rebaixado, valor
+  original íntegro); os dois fechamentos determinísticos (booking
+  cancelado; aprovação real commitada); isolamento de tenant completo
+  (RLS + `not_authorized` nas functions). **Concorrência real** (dois
+  processos `psql` simultâneos, não simulação sequencial): duas
+  chamadas verdadeiramente concorrentes a `commit_approval_resolution`
+  na MESMA chain produziram versões `1` e `2` — nunca duplicata,
+  provando a serialização do advisory lock sob carga real, repetido
+  com sucesso; corrida de claim pela mesma mensagem rodada 10x, mutex
+  respeitado em toda tentativa com overlap real (as demais foram
+  `rate_limited`, achado tratado abaixo).
+- ✅ **2 bugs reais encontrados e corrigidos durante o próprio teste de
+  concorrência** (não achados de auditoria externa — acharam-se
+  testando):
+  1. `try_acquire_approval_resolution_claim` debitava o token do rate
+     limiter ANTES de saber se o claim seria concedido — perder a
+     corrida por outro worker (`claim_held_by_another_worker`) ainda
+     assim queimava orçamento, violando o V3.7 ponto 1 ("não pode
+     consumir cota sem representar chamada efetiva"). Corrigido:
+     débito movido pra uma function nova e separada,
+     `reserve_approval_dispatch_token` (a transação B de verdade),
+     chamada só depois de já ter vencido a corrida pelo claim.
+  2. Consequência do fix acima: quando `reserve_approval_dispatch_token`
+     nega por `rate_limited`, o claim ficava preso até `lease_expires_at`
+     mesmo sendo um bloqueio de custo, não de posse — bloqueando
+     retries por até 120s à toa. Corrigido com
+     `release_approval_resolution_claim`, liberação explícita e
+     idempotente chamada pelo worker sempre que desiste antes de
+     commitar.
+  Ambos corrigidos na migration, reaplicados do zero no banco de teste
+  e revalidados — as 36 asserções + as 2 corridas de concorrência
+  passam limpas na versão final.
+- ✅ **Testes determinísticos TS** (`npx tsx`, scratchpad
+  `bloco5-approval-tests.ts`, sem I/O/rede): **38 asserções, todas
+  PASS** — ordenação de chaves recursiva produz bytes idênticos
+  independente de ordem de inserção; `installments` (array
+  semanticamente ordenado) reordenado MUDA o digest; número
+  não-inteiro falha a canonicalização (fail-closed); `null` e campo
+  ausente equivalentes; qualquer campo semanticamente relevante muda o
+  digest; `contentDigest` muda quando transcrição passa de
+  `pending`→`done` mantendo o mesmo `messageId`; bound formal do token
+  bucket `N(T) ≤ C + r·T` e latência máxima `período/capacidade`
+  batendo com a fórmula; backoff exponencial com teto; os 13
+  `value-schemas` (inclusive rejeição de campo extra/float onde exige
+  inteiro).
+- ✅ `npx tsc --noEmit` e `npx eslint` limpos no projeto inteiro
+  (módulo novo + rota nova). `npx next build` completo sem erro, com
+  `/dev/approval-golden-suite` listada na build — rota deixada
+  pronta, não executada de verdade aqui (depende de `OPENAI_API_KEY`
+  real, só disponível em Preview).
+- ⚠️ **Divergência conhecida, não resolvida** (reportada, não decidida
+  sozinho): quando `buildResolutionContext` retorna `budgetExceeded`
+  (contexto grande demais pra construir), a spec V3.10 pede que o
+  outcome (`context_budget_exceeded`/`chain_candidate_overflow`) seja
+  PINADO em `approval_resolutions` — mas essa tabela exige
+  `context_identity` de 32 bytes, e por definição não é possível
+  calcular um `context_identity` real quando o `ResolutionContext`
+  nem chega a ser construído. A V3.10 nunca especificou qual
+  identidade usar nesse caso específico. `orchestrator.ts` deixa isso
+  explícito no código (comentário + early return) em vez de inventar
+  uma identidade sozinho — retorna `budget_exceeded` sem persistir
+  nada. Precisa de uma decisão sua antes de fechar esse caminho
+  (candidatos: hash de um marcador reduzido específico pra overflow;
+  ou tratar overflow como um `inconclusive_reason` que não exige
+  `context_identity` real, com ajuste de CHECK na migration).
+- ⚠️ **Riscos residuais** (declarados, não escondidos): taxonomia de
+  `subject_key` de `scope_change` continua a menos fundamentada das
+  quatro (herdada da V2, nunca revisada); rate limiting/quota global
+  de uso de IA por profissional/tenant não existe em bloco nenhum
+  (V3.8, registrado como requisito futuro, fora do escopo do Bloco 5);
+  `resolver.ts`/`orchestrator.ts` não foram exercitados contra OpenAI
+  de verdade nem contra um Supabase real vivo nesta sessão (só a
+  camada SQL, chamada diretamente via `psql`, e a camada TS pura,
+  sem I/O) — a golden suite fica pronta pra fechar essa lacuna no
+  Preview; `get_active_approvals`/`get_communicated_proposal_candidates`
+  não têm tipos gerados (`src/lib/supabase/types.ts` não foi
+  regenerado — precisa rodar `supabase gen types` contra o projeto
+  real depois que a migration for aplicada lá).
+- ✅ **Commit inicial**: `ac86f26`.
+
+### Red Team adversarial da implementação (não do desenho) — PASS COM RESSALVAS, 4 achados reais corrigidos
+
+Auditoria contra o commit `ac86f26`, com ataques reais executados
+(nunca só teóricos) — SQL direto contra Postgres real e injeção de
+model call hostil em TS, cobrindo as 10 áreas obrigatórias pedidas
+(autorização acidental, provenance/grounding cross-tenant,
+idempotência/concorrência avançada, revalidação F1/F2 em lote,
+bounded lineage, rate limiter/backoff, tenant isolation nas 6 tabelas
+e 8 RPCs, outputs hostis do model, divergência de budget_exceeded,
+golden suite).
+
+**4 achados reais, corrigidos** (commit `0c2f7b8`, todos bugs
+inequívocos contra invariante já explícita na spec, nenhum exigiu
+decisão arquitetural):
+1. `resolver.ts` nunca verificava que `communicatedProposalMessageIds`
+   do model realmente pertencia ao `ResolutionContext` fornecido — um
+   model hostil/alucinado passava sem erro. Violava o
+   closed-candidate-selection principle (V2). Provado com um
+   `modelCall` injetado retornando um ID fora de contexto.
+2. Os 13 `value-schemas.ts` nunca eram consultados no pipeline real —
+   `approvedValue` malformado (campo ausente, tipo errado, extra)
+   passava sem validação. Provado com `amountCents: "trezentos reais"`
+   aceito sem erro.
+3. **Mais grave**: nada verificava `author_type='professional'` da
+   mensagem usada como `professional_statement_message_id` — a
+   mensagem do CLIENTE ("Pedem R$3.000?") virou, sem checagem nenhuma,
+   uma `approval_records` real atribuída ao profissional. Violação
+   direta de KNOW≠APPROVE. Provado com escrita real no banco,
+   corrigido nos dois pontos (`try_acquire_approval_resolution_claim` e
+   `commit_approval_resolution`, defesa em profundidade).
+4. `reserve_approval_dispatch_token`/`release_approval_resolution_claim`
+   nunca verificavam posse (`auth.uid()` contra o dono da mensagem) —
+   mitigado na prática pela entropia do `lease_token`, mas
+   inconsistente com toda outra function da migration.
+
+**1 achado real reportado, deliberadamente não corrigido** (exige
+decisão arquitetural, não decidida sozinho): `commit_approval_resolution`
+aceita `commercialRootId`/`communicatedProposalMessageIds` do caller
+sem revalidação cruzada contra a raiz comercial real da conversa — só
+protegido hoje pela confiabilidade do `orchestrator.ts`, não pela RPC
+em si contra uma chamada direta forjada (as RPCs `security definer`
+são chamáveis diretamente por qualquer `authenticated`, não só pelo
+orchestrator TS). Provado com escrita real de um `approval_records`
+apontando pro booking de outro profissional. Ver relatório completo
+entregue na conversa (seção E/decisão pendente).
+
+**Regressão completa revalidada após cada fix**: 43 asserções SQL
+contra Postgres real (regressão original + os novos ataques,
+incluindo mensagem composta com 2 decisões na mesma chain, takeover
+real de worker com lease expirado, descarte de lote inteiro em
+F1≠F2, varredura sistemática cross-tenant nos 8 RPCs) + 38 TS
+determinísticas + `tsc`/`eslint`/`next build` limpos.
+
+- ✅ **Commit de correção**: `0c2f7b8`.
+- 🔒 **Nenhum merge, nenhum PR, Post-model Policy Gate não iniciado.**
+  Aguardando decisão sobre o achado não corrigido antes de considerar
+  o Bloco 5 fechado.
+
+## 35. Adendo WhatsApp/concierge — dados de recebimento + auditoria de plano (Bloco 5 intocado)
+
+Documento de produto grande (WhatsApp-first, e-mail de booking Pro,
+dados de recebimento). Antes de implementar, revisei a arquitetura
+real e reportei achados/conflitos (não repetidos aqui, ver histórico
+da conversa) — usuário decidiu os dois conflitos e autorizou só um
+subconjunto pra implementar agora.
+
+- ✅ **Mapeamento (sem alterar nada)**: `/orcamento/[slug]` e
+  `submit_orcamento_request()` (migration 0023) são a única porta
+  pública de cliente hoje, e criam `opportunities` diretamente — nunca
+  passam pela Intelligence Core (`create_conversation()` só é chamada
+  em `/dev/intelligence-test`, nunca em produção). URL construída em
+  exatamente 2 lugares (`dashboard/page.tsx`, `dashboard/perfil/page.tsx`),
+  exibida via `orcamento-link-card.tsx`/`link-routing-card.tsx`.
+  Decisão do usuário: isso vira, no futuro, um redirecionamento pro
+  WhatsApp — não implementado agora, de propósito.
+- ✅ **Achado que evitou uma migration desnecessária**: o plano público
+  "Doopla / Doopla Pro" (R$29,90/R$59,90) **já existe** —
+  `subscriptions.artist_plan` (migration 0036), preexistente a esta
+  sessão. `booker_plan` continua intocado, tratado como legado
+  conforme instruído. Adicionado `hasDooplaPro()` em
+  `src/lib/subscription.ts` — gate canônico, role-consciente, nunca
+  deriva de `booker_plan`. Booker ainda não tem equivalente — não
+  inventei um, fica como pergunta em aberto.
+- ✅ **Migration `0046_payment_details.sql`**: `payment_details`
+  (Pix, `method` extensível) append-only versionado — mesmo padrão de
+  `approval_records` do Bloco 5 (toda alteração insere linha nova,
+  marca a anterior `superseded`, nunca `UPDATE` in-place — auditoria
+  de quando/quem/vigente-em-T de graça). Escrita exclusiva via
+  `set_payment_details()` (security definer); RLS select-own,
+  deny-all pra escrita direta. `is_operationally_ready(profile_id)`
+  representa "Doopla pronta pra operar" (existe recebimento ativo),
+  sempre derivado da tabela real — nunca uma coluna denormalizada.
+  Testado com 9 asserções reais contra Postgres (prontidão
+  falsa→verdadeira, supersessão nunca duplica ativo, validação de
+  chave vazia/método não suportado, isolamento de tenant).
+- ✅ **Painel**: seção "Dados de recebimento" em `/dashboard/dinheiro`
+  — cadastro/edição de Pix, chave mascarada na exibição, cópia sem
+  jargão técnico ("Seus dados de recebimento ficam protegidos na sua
+  conta Doopla").
+- ✅ `tsc`/`eslint`/`next build` limpos.
+- ✅ **Commit**: `fb6ecd9`.
+- 🔒 **Deliberadamente fora desta rodada** (por instrução explícita):
+  integração real de WhatsApp, Resend, alias de e-mail
+  `booking.nome@doopla.pro`, lead reverso via WhatsApp, substituição
+  destrutiva de `/orcamento/[slug]`, qualquer wiring novo entre
+  Intelligence Core e fluxos reais do produto. Bloco 5 (Approval
+  Engine) não foi tocado nem referenciado por nenhuma linha desta
+  rodada.
+
+## 36. Bloco 5 — fechamento do Approval Resolver (migration 0047)
+
+Fecha os 3 pontos que o Red Team sobre `ac86f26` (seção 34) deixou
+explicitamente em aberto, seguindo as decisões dadas pelo usuário pra
+cada um. Nenhuma arquitetura redesenhada — só o que as decisões
+pediram, no boundary SQL (nunca só TS, por instrução explícita).
+
+- ✅ **Achado 4 — `commercial_root_id`/provenance forjável**: nova
+  function `commercial_root_belongs_to_professional()` (ownership real,
+  booking OU opportunity) chamada em `commit_approval_resolution` logo
+  após validar `author_type='professional'`. Revalidação COMPLETA do
+  lote inteiro ANTES de qualquer lock/insert: todo `commercialRootId`
+  de cada decisão precisa bater com o root já validado; simetria de
+  provenance re-checada; todo `communicatedProposalMessageIds`
+  precisa apontar pra um candidato REAL, da MESMA chain (profissional
+  + root + categoria + subject), ainda `open`/`possibly_superseded` —
+  nunca um UUID arbitrário, nunca candidato de outra chain, nunca de
+  outro profissional. Qualquer falha descarta o LOTE INTEIRO
+  (`invalid_provenance`, claim liberado, nada gravado) — nunca corrige
+  por inferência. Limitação documentada no próprio comentário SQL:
+  não valida vínculo estrito conversa↔root (`conversations.related_*`
+  não é populado por nenhum caminho de escrita real hoje) — fecha o
+  ataque real demonstrado (tenant/ownership), não essa lacuna mais
+  ampla.
+- ✅ **Achado 5 — `MAX_CANDIDATES_PER_CHAIN` só na leitura**: teto
+  físico agora aplicado em `try_classify_communicated_proposal`, sob
+  `pg_advisory_xact_lock` por chain (seed distinto do lock de
+  versionamento do commit). Ao estourar: `RAISE WARNING` com
+  diagnóstico completo, retorna `limit_exceeded=true`, **nada é
+  inserido nem apagado, nenhuma escolha automática de candidato a
+  manter, classificação nunca pinada** — uma tentativa futura, depois
+  que a chain encolher, pode reclassificar normalmente.
+- ✅ **Ponto 3 — `context_budget_exceeded`/`chain_candidate_overflow`
+  sem `context_identity`**: `approval_resolutions` continua nunca
+  aceitando um outcome sem `context_identity` real (invariante
+  intocada). Overflow é tratado como condição OPERACIONAL do resolver,
+  nunca decisão comercial — reaproveita `approval_resolution_backoff`
+  (auditado antes: já era a camada de "attempts" certa, só faltavam
+  colunas de diagnóstico) via nova RPC `record_resolution_overflow()`
+  (aplica o mesmo backoff exponencial já usado pro resolver, tratando
+  overflow como tentativa que não progrediu) e `get_resolution_backoff_status()`
+  (leitura barata). `orchestrator.ts` foi religado: consulta o status
+  de backoff ANTES de montar `ResolutionContext` (evita reconstrução
+  cara numa mensagem cronicamente over-budget) e chama
+  `record_resolution_overflow` nos dois pontos onde `budgetExceeded`
+  já existia (F1 e F2) — o antigo comentário "DIVERGÊNCIA CONHECIDA,
+  NÃO RESOLVIDA" foi removido, pois esta é exatamente a resolução.
+- ✅ **Defesa em profundidade adicional**: `revoke execute ... from
+  anon` explícito nas 5 functions pré-existentes da 0045 que ainda não
+  tinham (lição já documentada na 0041 — Supabase real concede EXECUTE
+  a `anon` direto via `alter default privileges`, não via `PUBLIC`;
+  `revoke all from public` sozinho não bloqueia isso).
+- ✅ **TypeScript religado**: `CommitResolutionResult.discardReason`
+  ganhou `'invalid_provenance'`; novo tipo `ClassifyCommunicatedProposalResult`
+  documentando o contrato retornado por `try_classify_communicated_proposal`
+  (ainda sem caller real — só `resolveApproval()`, sem I/O, é chamado
+  hoje pela rota dev); `BuildResolutionContextResult` (overflow) ganhou
+  `commercialRootId`/`decisionCategory`/`subjectKey`/`magnitude` pra
+  alimentar `record_resolution_overflow` com diagnóstico real.
+- ✅ **Regressão completa revalidada**: as 33 asserções SQL antigas
+  (núcleo, backoff/candidatos, concorrência real, tenant isolation,
+  Red Team composto/takeover/tenant-RPCs/F1≠F2) + a sanidade de
+  `payment_details` continuam passando sem alteração de regra de
+  negócio — só 3 scripts de teste precisaram de fixtures atualizadas
+  (candidato real em vez de `message_id` solto, já que é exatamente
+  isso que a correção do achado 4 passou a exigir).
+- ✅ **11 testes adversariais novos** (`41_redteam_provenance_and_overflow.sql`,
+  script preservado no scratchpad da sessão): forja de
+  `commercial_root_id` de outro profissional bloqueada; UUID
+  inexistente rejeitado; candidato real de outra chain rejeitado;
+  candidato real de outro profissional rejeitado; chamada direta da
+  RPC (fora do `orchestrator.ts`) bloqueia igual — não existe atalho;
+  51ª candidata na mesma chain bloqueada deterministicamente (50
+  aceitas, 51ª nunca inserida, nunca pinada); **concorrência real**
+  (2 processos `psql` simultâneos contra a chain já saturada — nenhum
+  ultrapassa 50, advisory lock seguro sob concorrência de verdade);
+  overflow nunca cria linha em `approval_resolutions`, só em
+  `approval_resolution_backoff` (com backoff exponencial reaplicado
+  corretamente numa segunda ocorrência); backoff/attempt-control de
+  resolução normal (`inconclusive`) continua intacto após as colunas
+  novas na mesma tabela; tenant isolation intacto; guarda de ownership
+  de `0c2f7b8` (author_type/auth.uid()) continua em vigor. Todos PASS.
+- ✅ `tsc`/`eslint`/`next build` limpos (escopo completo do projeto).
+
+**Risco residual reportado, não corrigido sozinho** (decisão
+arquitetural, não decidida por conta própria): o gate de backoff
+dentro de `try_acquire_approval_resolution_claim` só nega retry
+(`deny_reason='backoff'`) quando o `context_identity` da tentativa
+repete o ÚLTIMO `context_identity` gravado na linha (`last_context_identity`)
+— comportamento correto e intencional pra backoff de resolução NORMAL
+(V3.6: contexto novo sempre merece tentativa nova). `record_resolution_overflow()`
+nunca escreve `last_context_identity` (overflow não tem um
+`context_identity` associável, por definição), então uma chamada
+DIRETA a `try_acquire_approval_resolution_claim` com um
+`context_identity` qualquer sempre passa pelo bypass de "contexto
+novo" e ignora o `next_eligible_at` escrito por overflow — o boundary
+SQL, sozinho, não impede isso. Na prática isso é fechado pelo
+`orchestrator.ts` (`get_resolution_backoff_status` é consultado ANTES
+de sequer tentar `try_acquire`, incondicional a qualquer
+`context_identity`), que é o único caminho real de chamada hoje — mas
+não é uma garantia no próprio boundary SQL, ao contrário do padrão
+"TS nunca é suficiente pra este boundary" usado no resto desta rodada
+(achado 4). Não alterei a semântica de `try_acquire_approval_resolution_claim`
+(função não tocada por esta migration) porque isso mexeria no
+comportamento já validado de backoff de resolução normal e não estava
+no escopo das 3 decisões desta rodada — reporto em vez de decidir
+sozinho.
+
+**Também não resolvido, mesmo escopo do achado 4 original**: a
+"restrição de acesso" (impedir chamada direta da RPC por qualquer
+`authenticated`, só permitir via caminho de aplicação) não foi
+implementada — o codebase inteiro não tem NENHUMA infraestrutura de
+service-role/admin client hoje (sem `SUPABASE_SERVICE_ROLE_KEY`, sem
+helper algum), e introduzir isso agora seria uma mudança de convenção
+que atinge toda a base (não só o Bloco 5), não verificável de ponta a
+ponta neste sandbox (Postgres de teste local não distingue
+`service_role` real de superuser bypass) e exigiria um secret novo do
+usuário provisionar. A revalidação de conteúdo (achado 4, acima) fecha
+o ataque demonstrado; a restrição de quem pode ligar continua em
+aberto, como já reportado na rodada anterior.
+
+- ✅ **Migration**: `0047_approval_engine_provenance_and_overflow.sql`.
+- 🔒 **Nenhum merge, nenhum PR, Post-model Policy Gate não iniciado.**
+  `payment_details`, WhatsApp, Resend, `/orcamento/[slug]` e legado de
+  booker não foram tocados nesta rodada, conforme instruído.
+
+## 37. Bloco 5 — decisão final sobre os 2 riscos residuais (migration 0048)
+
+Fecha o risco residual #1 reportado no fechamento da migration 0047.
+Risco residual #2 permanece registrado como dívida técnica explícita
+(decisão do usuário: não introduzir infraestrutura de service-role
+nesta rodada).
+
+- ✅ **Backoff de overflow agora incondicional no boundary SQL**: nova
+  coluna `approval_resolution_backoff.next_eligible_reason`
+  (`'resolution_attempt' | 'overflow'`) marca qual mecanismo escreveu
+  por último `next_eligible_at`. `record_resolution_overflow()` marca
+  `'overflow'` (nunca toca `last_context_identity` — overflow não tem
+  identidade semântica real, por decisão explícita: "não fabricar
+  context_identity para overflow"). `commit_approval_resolution`
+  (branch `inconclusive`) marca `'resolution_attempt'` — comportamento
+  de bypass em contexto novo (V3.6) inalterado. `try_acquire_approval_resolution_claim`
+  ganhou um gate NOVO, checado ANTES do gate de backoff normal: quando
+  `next_eligible_reason='overflow'` e `now() < next_eligible_at`, nega
+  incondicionalmente (`deny_reason='backoff'`) — **nenhum
+  `context_identity`, por mais novo que seja, faz bypass**. Uma
+  chamada SQL direta ao RPC de claim, fora do `orchestrator.ts`, agora
+  respeita exatamente o mesmo backoff que o orchestrator já respeitava
+  por fora.
+- ✅ **Teste adversarial dedicado** (`42_redteam_overflow_backoff_sql_boundary.sql`,
+  script preservado no scratchpad): registra overflow com backoff
+  curto → confirma `next_eligible_at` futuro e `next_eligible_reason=overflow`
+  via `get_resolution_backoff_status` → chama o RPC de claim
+  DIRETAMENTE (sem orchestrator.ts) com um `context_identity` novo →
+  confirma recusa (`backoff`) → repete com um SEGUNDO `context_identity`
+  diferente do primeiro → confirma que continua recusado (bloqueio é
+  incondicional, não é coincidência de ter batido o mesmo contexto) →
+  confirma que nenhum claim foi gravado enquanto o backoff estava ativo
+  → aguarda a elegibilidade real (`pg_sleep`) → confirma claim concedido
+  normalmente depois → confirma que `commit_approval_resolution` e o
+  guard `already_resolved` continuam funcionando (idempotência/
+  context-identity preservados, nada quebrado pela mudança). Todos
+  PASS.
+- ✅ **Regressão completa revalidada**: as 33 asserções SQL antigas +
+  os 11 testes adversariais da rodada anterior (seção 36, incluindo os
+  2 workers de concorrência real) + este novo teste — todos PASS sem
+  alteração de regra de negócio. `tsc`/`eslint`/`next build` limpos.
+- 📋 **Dívida técnica / Beta Gate registrada explicitamente** (risco
+  residual #2, decisão deliberada de NÃO resolver agora): as RPCs
+  sensíveis do Intelligence OS continuam acessíveis a qualquer
+  `authenticated` (sem boundary de backend privilegiado) — aceitável
+  nesta fase porque (a) validação SQL fail-closed está completa
+  (provenance real, ownership real, cap de candidatos, backoff
+  incondicional — nenhum parâmetro do caller é tratado como autoridade
+  sem revalidação), (b) isolamento de tenant está intacto (RLS
+  deny-all nas tabelas sensíveis, ownership via `auth.uid()` em toda
+  function), (c) `anon` continua sem `execute` onde aplicável. **Antes
+  de produção aberta**: as RPCs sensíveis do Intelligence OS devem
+  deixar de depender de acesso genérico `authenticated` e passar por
+  um boundary de backend autorizado apropriado — decisão de arquitetura
+  a ser tomada de forma centralizada quando chegar a etapa de
+  integração real WhatsApp/backend do Intelligence OS. Explicitamente
+  não criar service-role client no frontend nem expor a service-role
+  key ao browser.
+- ✅ **Migration**: `0048_approval_engine_overflow_backoff_sql_boundary.sql`.
+- 🔒 **Confirmação**: nenhuma etapa do Post-model Policy Gate foi
+  iniciada. Nenhum merge, nenhum PR.
+- ⏳ **Golden Suite continua pendente** (sem acesso a OpenAI/Preview
+  neste sandbox) — permanece como gate explícito antes de considerar o
+  Approval Resolver validado com modelo real.
+
+## 38. Post-model Policy Gate — bloco novo (pós Bloco 5)
+
+Antes de implementar, fiz auditoria da arquitetura real (Blocos 1–5) e
+entreguei um desenho de 12 pontos na conversa — achado principal: o
+Response Planner (Bloco 4) já produz `proposedResponse` (o draft real),
+`commitmentNature`, `requiresProfessionalDecision` e
+`professionalDecisionCategory` (mesmo enum do Bloco 5), mas nunca teve
+acesso a `activeApprovalCandidates` — foi construído antes do Bloco 5
+existir. O Post-model Policy Gate é o bloco que fecha essa lacuna.
+Usuário aprovou o desenho com 2 decisões: implementar o extrator de
+valor estruturado, e analisar (sem implementar ainda) o gap de
+`subject_key` antes de decidir — análise concluiu que cabe inteira
+dentro do próprio extrator do Gate, sem tocar o Bloco 4 (frozen).
+Usuário autorizou a implementação completa em seguida.
+
+- ✅ **Módulo `src/lib/intelligence/policy-gate-post/`**: `extractor.ts`
+  (model call injetável, mesmo padrão de resolver.ts/plan.ts — extrai
+  compromissos estruturados de `proposedResponse`, no shape fechado de
+  `APPROVED_VALUE_SCHEMAS`/`SUBJECT_KEY_TAXONOMY` já existentes no
+  Bloco 5, reusados sem duplicar; nunca decide allow/block); `matcher.ts`
+  (100% código, puro — `resolveSubjectKey()`/`matchCommitment()`/
+  `evaluateCommitments()`, multidecisão sempre AND); `gate.ts`
+  (`evaluatePostModelGate`, orquestra leitura de `get_active_approvals`
+  + status terminal + extração); `tool-gate.ts` (`evaluateToolCallGate`,
+  mesmo matcher, deliberadamente desacoplado de `tool-registry.ts` —
+  Bloco 1 é frozen e nenhuma tool de escrita existe ainda, então não há
+  nada real pra encadear; quando uma existir, chama esta function
+  direto); `apply-outcome.ts` (`applyGateOutcome` — anti policy
+  laundering: bloqueio nunca retorna ao mesmo model call, só
+  transformação determinística pra `responsePlan='consult_professional'`
+  + `proposedResponse=null`, mesmo padrão de `draftStillValid` do
+  Bloco 4); `value-equality.ts` (igualdade estrutural self-contained,
+  não acopla aos internals não-exportados de `approval/canonicalize.ts`);
+  `log.ts`/`golden-suite.ts`/`config.ts`/`types.ts`/`index.ts`.
+- ✅ **Subject_key multi-instância resolvido sem tocar o Bloco 4**: pra
+  `scope_change`/`logistics_commitment`/`contractual_exception` (taxonomia
+  fechada já existente) o extrator propõe um `subjectKey`; se
+  inválido/ausente, fallback de cardinalidade — se existir EXATAMENTE
+  UMA approval ativa daquela categoria no commercial root, usa o
+  `subjectKey` dela (caso inambíguo); com 0 ou 2+, bloqueia
+  (`subject_key_unresolved`), nunca escolhe uma candidata arbitrária.
+  `other_commitment_change` (sem taxonomia fechada, V2 herdado) usa o
+  mesmo fallback.
+- ✅ **Migration `0049_post_model_policy_gate.sql`**: `is_commercial_root_terminal()`
+  (reusa `commercial_root_belongs_to_professional`, migration 0047, e a
+  MESMA lista de status terminal do trigger `close_candidates_on_structural_invalidation`
+  da migration 0045 — fecha o gap de `approval_records` nunca ser
+  invalidado automaticamente quando um booking/opportunity é cancelado,
+  sem alterar o Bloco 5); tabela `policy_gate_decisions` (append-only,
+  RLS select-own/deny-all-write, CHECK simétrico outcome↔primary_block_reason,
+  nunca duplica `proposedResponse` inteiro nem valores aprovados —
+  `matchedApprovalRecordId` referencia `approval_records`, `extractedValueForDebug`
+  só gravado quando `blocked`); RPC `record_policy_gate_decision()`
+  (único caminho de escrita, reusa `commercial_root_belongs_to_professional`
+  pra ownership).
+- ✅ **Testes SQL** (`43_policy_gate_sql.sql`, scratchpad): terminal
+  status muda corretamente e reverte; ownership cross-tenant bloqueada
+  (`not_authorized`/`invalid_provenance`); CHECK simétrico nos dois
+  sentidos (`blocked` sem motivo falha, `allowed` com motivo falha,
+  motivo fora do enum falha); tenant isolation (RLS select-own);
+  append-only (UPDATE direto não afeta nenhuma linha, sem policy).
+  Todos PASS. Regressão completa (33+11+1 asserções anteriores)
+  revalidada sem alteração de regra de negócio.
+- ✅ **30 testes determinísticos TS** (matcher/extractor com model call
+  injetado, script no scratchpad): os 20 cenários originais + os 8
+  específicos desta rodada (R$3000→R$2900 bloqueado; R$3000→R$3000+
+  transporte bloqueado por shape extra; multidecisão parcial; root/
+  instância errados; extrator `null`/fora-do-schema) + os de
+  `subject_key` da análise aprovada + `applyGateOutcome`
+  (anti-laundering). Todos PASS.
+- ✅ **Golden suite dev-only** (`/dev/policy-gate-golden-suite`, mesmo
+  padrão de `/dev/approval-golden-suite`): 10 casos, incluindo
+  confirmação implícita sem palavra-chave ("nos vemos sábado às 22h",
+  item 10 da spec) — só roda com `OPENAI_API_KEY`/Preview, ainda não
+  executada neste sandbox.
+- ✅ `tsc`/`eslint`/`next build` limpos (projeto inteiro).
+
+**Risco residual reportado, não corrigido** (limitação estrutural, não
+uma decisão adiável): o extrator opera só sobre o texto de
+`proposedResponse`, sem contexto de calendário/conversa — datas
+relativas ("sábado que vem") não são resolvíveis por ele; documentado
+diretamente no `golden-suite.ts`. Também documentado: dependência
+entre categorias continua não modelada (preço aprovado "pra 2h" não é
+invalidado automaticamente se a duração mudar) — mesma limitação já
+reportada no desenho, não resolvida nesta implementação (fora do
+escopo das decisões desta rodada).
+
+- ✅ **Migration**: `0049_post_model_policy_gate.sql`.
+- 🔒 **Nenhum wiring de produção real** — nenhuma integração com
+  `test-call.ts`/Orchestrator ainda (não existe um Orchestrator real
+  rodando 1→5 em produção hoje, confirmado na auditoria). Nenhuma
+  integração WhatsApp/Resend/pagamento iniciada. Nenhum bloco
+  posterior iniciado. Nenhum merge, nenhum PR.
+
+## 39. Post-model Policy Gate — dependência entre categorias + resolução temporal (fechamento)
+
+Fecha os 2 riscos residuais reportados no fechamento do bloco 38.
+Usuário aprovou análise prévia (ver histórico) com 1 ajuste: timezone
+NUNCA hardcoded como verdade do domínio (Doopla pode expandir além do
+Brasil) — nenhuma migration de timezone criada nesta rodada, sem
+decisão de produto sobre onde ela pertence.
+
+- ✅ **Dependência entre categorias** (`dependencies.ts`): matriz
+  estática `CATEGORY_DEPENDENCIES` (`price_or_cache`/`accept_or_decline_work`
+  ← `date_change,time_change,duration_change,location_change,scope_change`;
+  `discount`/`payment_condition` ← `price_or_cache`; `logistics_commitment`
+  ← `date_change,location_change`), nunca ampliada por inferência.
+  `matcher.ts` ganhou checagem `stale_dependency`: depois do match de
+  valor passar, compara o `created_at` da approval usada contra a
+  approval mais recente de cada categoria-dependência (ambas já vêm
+  juntas de `get_active_approvals`, migration 0045 — **zero query
+  nova, zero migration no Bloco 5**). Comparação por instante real
+  (`Date.parse`, nunca lexicográfica de string). Empate (mesma
+  transação — commit composto) nunca invalida entre si. Categorias
+  fora da matriz (`contractual_exception`/`other_commitment_change`,
+  dependência não generalizável com segurança) nunca bloqueiam por
+  isso.
+- ✅ **Resolução temporal por closed-candidate-selection** (`temporal.ts`):
+  o extrator NUNCA calcula/inventa uma data — código gera lista fechada
+  de candidatos (hoje, amanhã, próxima E seguinte ocorrência de cada
+  dia da semana — cobre a ambiguidade real de "sábado" vs "sábado que
+  vem" como duas leituras distintas, nunca escolhendo uma sozinho —,
+  dia-do-mês 1..31 do mês corrente e do seguinte, mais a data
+  estrutural conhecida do commercial root quando fornecida) a partir
+  de `referenceTimestamp` (ISO, sempre de um dado estrutural real —
+  nunca `new Date()` implícito) + `timezone` (IANA explícito ou
+  `null` — sem coluna própria no schema hoje, decisão explícita de
+  não criar uma só pra isto); o model só ecoa um `label` da lista (ou
+  `null`); código revalida (`resolveTemporalCandidateLabel`) e aplica
+  um backstop de plausibilidade (`isDatePlausible`, ±730 dias) mesmo
+  pra datas absolutas já bem-formadas. `timezone=null` ou IANA
+  inválido → zero candidatos relativos → nunca adivinha. "depois das
+  22h" e formas de restrição/intervalo continuam deliberadamente fora
+  do schema (`time_change` exige horário exato) — não fabricamos
+  precisão que o schema não representa.
+- ✅ **`PostModelGateInput`/`ActiveApprovalForMatch` estendidos**:
+  `referenceTimestamp`/`timezone`/`knownEventDate` (todos explícitos,
+  fornecidos por quem chama — o Gate nunca busca sozinho) e
+  `createdAt` (já vinha na resposta de `get_active_approvals`, só
+  precisava ser mapeado).
+- ✅ **Migration `0050_policy_gate_dependencies_and_temporal.sql`**:
+  só estende o CHECK de `policy_gate_decisions.primary_block_reason`
+  pra incluir `stale_dependency` — nenhuma tabela/coluna/RPC nova
+  (dependência e resolução temporal são 100% TS).
+- ✅ **Testes**: SQL — CHECK novo aceita `stale_dependency`, suite
+  completa de `policy_gate_decisions` revalidada (script no
+  scratchpad). TS determinísticos — 34 novos cenários: os 10 de
+  dependência explicitamente pedidos (preço/2h→duração muda→bloqueia;
+  duração muda→preço aprovado depois→permite; aprovação conjunta
+  mesmo timestamp→não invalida entre si; múltiplas dependências, uma
+  só já bloqueia; ausência de approval na dependência ≠ mudança;
+  categoria fora da matriz nunca inventa invalidação; data/local
+  depois do aceite→aceite antigo não reutilizado; preço depois de
+  desconto/condição de pagamento→antigos não reutilizados); os 4 de
+  `subject_key` prometidos (2 approvals ativas + draft ambíguo; subject
+  válido sem approval correspondente; approval de outro commercial
+  root; label fora da taxonomia com 2+ candidatos); e os de resolução
+  temporal (virada de ano, fim/início de mês, fevereiro não-bissexto,
+  timezones diferentes explícitos divergindo corretamente, ambiguidade
+  de "sábado" sempre com 2 candidatos distintos, label alucinado nunca
+  resolve, timezone `null`/IANA inválido nunca adivinha,
+  `knownEventDate` funciona mesmo sem timezone, backstop de
+  plausibilidade rejeita datas absurdas mesmo bem-formadas,
+  `extractCommitments` fail-closed com label alucinado e resolve
+  corretamente com label real). Regressão dos 30 cenários da rodada
+  anterior revalidada sem alteração de regra de negócio. Todos PASS.
+  `tsc`/`eslint`/`next build` limpos.
+- ✅ **Golden suite atualizada**: 2 casos novos de data relativa
+  ("amanhã", "sábado" ambíguo) exercitando o mecanismo contra o model
+  real — rota dev usa um fixture de timezone EXPLICITAMENTE marcado
+  como fixture de teste (`GOLDEN_SUITE_FIXTURE_TIMEZONE`), nunca a
+  verdade do domínio.
+
+**Decisão de produto ainda em aberto, não resolvida aqui** (fora do
+escopo autorizado nesta rodada): onde `timezone` confiável deveria
+viver estruturalmente (coluna em `profiles`? por booking? por
+conversa?) — nenhuma migration criada pra isso agora. Até essa decisão
+existir, qualquer integração real precisa fornecer `timezone`
+explicitamente por fora (ou aceitar que expressões relativas de data
+ficam sempre não-resolvidas).
+
+- ✅ **Migration**: `0050_policy_gate_dependencies_and_temporal.sql`.
+- 🔒 **Confirmação**: nenhum wiring de produção, nenhuma integração
+  WhatsApp/Resend/pagamento, nenhum bloco posterior iniciado. Golden
+  Suite continua pendente de execução real (sem OpenAI/Preview neste
+  sandbox) — permanece como gate explícito antes de considerar o
+  Post-model Policy Gate validado com modelo real.
+
+## 38. Orchestrator / Runtime Integration Layer (migration 0051 + `src/lib/runtime/`)
+
+Fecha o bloco autorizado explicitamente pelo usuário: "inbound_events,
+lease por conversation, linking conversation↔commercial root,
+outbound_intents + state machine/claim de delivery, boundary
+server-side corrigido, wiring dos Blocos 1–6" — com a correção final
+de readiness incorporada antes de implementar (ver abaixo). WhatsApp/
+Meta/Resend continuam fora de escopo. Nenhum merge, nenhum PR.
+
+### Identidade de sistema — resolvido empiricamente antes de tocar RPC
+
+Testei em Postgres real (função `diagnose_caller_identity()` ad hoc,
+descartada depois) os valores observáveis dentro de uma `SECURITY
+DEFINER`: `current_user`/`current_role` são **sempre** o dono da
+function (`postgres`), nunca o caller, mesmo após `SET ROLE` do
+chamador — minha proposta original (`current_user = 'service_role'`)
+era estruturalmente impossível de satisfazer e foi descartada. O único
+sinal confiável é `request.jwt.claims` — a MESMA GUC que `auth.uid()`
+já lê pro claim `sub`. `is_system_caller()` (nova, migration 0051)
+checa `request.jwt.claims->>'role' = 'service_role'`. `service_role`
+já tinha `EXECUTE` em toda function via `ALTER DEFAULT PRIVILEGES` do
+bootstrap (mesma lição de `anon` nas migrations 0041/0047) — nenhuma
+mudança de GRANT foi necessária, só lógica de autorização interna.
+
+Escopo final da extensão (maior que a descrição inicial "create_conversation,
+persist_inbound_message, etc" — reportado como o pedido pedia, não
+decidido em silêncio): **9 functions** ganharam `v_is_system :=
+public.is_system_caller()` como condição ADICIONAL a `auth.uid()`,
+nunca substituindo — `create_conversation`, `try_acquire_approval_resolution_claim`,
+`reserve_approval_dispatch_token`, `release_approval_resolution_claim`
+(motivo: `boolean` real, mudança de tipo — `void`), `commit_approval_resolution`,
+`record_resolution_overflow`, `get_resolution_backoff_status`,
+`is_commercial_root_terminal` (ganhou `p_professional_id` opcional),
+`record_policy_gate_decision`. Em toda extensão, a condição de sistema
+só pula a comparação FINAL contra `auth.uid()` — a derivação estrutural
+do dono (via `conversation_messages`→`conversations` ou
+`commercial_root_belongs_to_professional`) nunca é pulada. Único par de
+parâmetros onde a responsabilidade de identidade correta passa a ser
+do Orchestrator (não mais provada criptograficamente): `p_represented_professional_id`
+em `create_conversation` e `p_professional_id` em
+`is_commercial_root_terminal` — inerente a rodar sem sessão de usuário.
+
+### Novo: `src/lib/supabase/service-role.ts`
+
+O codebase não tinha NENHUMA infraestrutura de service-role client
+(dívida explicitamente registrada na seção 37, deferida "pra quando
+chegar a etapa de integração real WhatsApp/backend do Intelligence
+OS" — exatamente esta rodada). `createServiceRoleClient()` usa
+`SUPABASE_SERVICE_ROLE_KEY` (nova env var, documentada em
+`.env.local.example`, nunca prefixada `NEXT_PUBLIC_`), sem cookies/sessão
+(não representa um usuário). Único consumidor pretendido:
+`src/lib/runtime/`, que roda exclusivamente server-side. Nenhum client
+component importa este arquivo.
+
+### `inbound_events` + `conversation_processing_leases`
+
+Mesmo padrão de claim/lease já validado em `approval_resolution_claims`
+(Bloco 5). `claim_inbound_event(channel, provider_event_id, ...)` —
+`unique(channel, provider_event_id)` é a idempotência física; reentrega
+do mesmo webhook nunca reprocessa (retorna `already_processed=true`
+quando já `processed`, ou nega quando outro worker já está com lease
+válido). Lease vencido (`failed` ou `claimed` expirado) é reclamável
+sem duplicar o `event_id`. `acquire_conversation_processing_lease`
+serializa por `conversation_id` (nunca lock global) — dois workers na
+mesma conversation, só um vence.
+
+### Linking conversation↔commercial root — corrigido, nunca usa Bloco 4
+
+`ensure_opportunity_for_conversation(conversation_id, primary_intent,
+classification_status)` roda logo após o Classifier (Bloco 3), NUNCA
+usa `commitmentNature`/`requiresProfessionalDecision` (Bloco 4) —
+correção explícita do usuário: opportunity pode nascer antes de
+qualquer compromisso ("queria saber valor pra tocar no meu casamento
+dia 20" já é uma oportunidade comercial, mesmo sem decisão nenhuma
+ainda). Sinal único: `classification_status='classified' AND
+primary_intent IN ('orcamento','disponibilidade')`. Idempotente (trava
+a conversation, `for update`); root terminal é SUBSTITUÍDO, nunca
+reaberto (histórico intacto). Deliberadamente NÃO reusa/refatora
+`submit_orcamento_request` (protegido por instrução de rodadas
+anteriores) — cria pela mesma tabela `opportunities`, com um `source`
+próprio (`'conversation'`, novo valor no CHECK), path paralelo e
+independente.
+
+### Intake dedicado — o caminho que a RLS de 0039 sempre previu
+
+`resolve_or_create_external_participant` + `persist_inbound_message`
+são o "caminho de intake dedicado, fora daquela migration" que o
+comentário original da RLS de `conversation_messages` (0039) já
+anunciava mas nunca implementava (a policy só permite insert de
+mensagem PRÓPRIA do profissional). `persist_inbound_message` nunca
+confia no parâmetro sozinho: `author_profile_id` (professional) tem
+que bater com `represented_professional_id` da conversa;
+`author_external_participant_id` (external_participant) tem que bater
+com o já vinculado (ou a conversa ainda não ter nenhum — primeiro
+contato, que também é quando `external_participant_id` da conversa é
+setado).
+
+### `outbound_intents` — state machine própria, nunca dependente de provider
+
+Decisão do usuário: "não assumir client-idempotency-key de provider
+como garantia arquitetural". `delivery_state`: `policy_allowed → queued
+→ sending → sent_unknown | sent_confirmed → delivered → read`, mais
+`failed_transient/failed_permanent/cancelled`. `sent_unknown`
+(provider aceitou mas a conexão caiu antes de confirmar) é TERMINAL
+PRA AUTOMAÇÃO — `claim_outbound_intent_for_send` nunca reclama
+(recuperação exige reconciliação real com o provider, ou um
+`outbound_intent` NOVO, nunca reenvio cego). Toda transição de estado
+guardada por `send_attempt_id` — um worker perdedor (claim antigo)
+nunca consegue marcar sucesso depois de um takeover.
+
+### `requiresProfessionalReviewBeforeSend` — teto do que o Runtime automatiza
+
+Achado arquitetural, não uma pergunta que precisasse de resposta do
+usuário: `PlannerDecision.requiresProfessionalReviewBeforeSend` (Bloco
+4) é um tipo literal `true`, sempre, fora do schema que o model
+preenche — nenhuma mensagem pode sair sem revisão humana antes do
+envio, por invariante já existente e testado. Resolução adotada: o
+Runtime cria o `outbound_intent` (prova de que o Post-model Gate já
+validou o draft, em `delivery_state='policy_allowed'`) e PARA
+exatamente aí. `claim_outbound_intent_for_send`/`mark_outbound_intent_*`
+ficam implementados e testados (ver testes SQL abaixo), mas SEM NENHUM
+CHAMADOR no pipeline — reservados pra um worker de envio real futuro,
+disparado por uma ação explícita (painel do profissional, ou uma
+política de auto-send que o usuário autorize depois). Consistente com
+"não implementar envio real" — de qualquer forma não existe canal.
+
+### Correção de readiness incorporada — a última antes da autorização
+
+`professional_not_operationally_ready` (novo `primary_block_reason`)
+é checado no Post-model Gate (`gate.ts`) SÓ quando: (a) o extrator
+(Bloco 6) já encontrou pelo menos um `ExtractedCommitment` concreto, E
+(b) o destinatário é `external_participant`. Nunca baseado em
+"conversation tem opportunity/booking" (rejeitado explicitamente pelo
+usuário), nunca em `requiresProfessionalDecision` (rejeitado numa
+rodada anterior por ser o eixo errado), nunca regex/palavra-chave —
+reusa só o sinal estrutural que o próprio Bloco 6 já calcula.
+`recipientType` (`'external_participant' | 'professional'`, novo campo
+de `PostModelGateInput`) é derivado de `conversation_type` (sinal
+estrutural já existente — `'external_inquiry'` sempre fala com o
+participante externo, `'professional_self'` nunca sai do app), nunca
+regex.
+
+### Bug real encontrado e corrigido DURANTE a implementação, não reportado como pendência
+
+Ao ligar o pipeline fim-a-fim percebi que minha primeira versão gateava
+TODO o Post-model Gate (e portanto todo `outbound_intent`) em "existe
+commercial root" — o que reproduziria exatamente o erro que a correção
+de readiness do usuário já tinha vetado: bloquear a Doopla de sequer
+responder no intake/discovery ("recebe o lead, responde, se apresenta,
+entende o trabalho... isso ainda é intake/discovery comercial e não
+deve ser bloqueado"), porque uma conversa nova não tem opportunity
+nenhuma até o Classifier detectar `orcamento`/`disponibilidade`.
+Corrigido na origem certa (`gate.ts`, não um remendo no Runtime): sem
+NENHUM commercial root, o Gate roda só o extrator (puro, sem
+`supabase`) — texto sem compromisso concreto passa livre (é
+exatamente o caso de saudação/coleta de contexto); qualquer compromisso
+extraído aqui é estruturalmente INGROUNDÁVEL (não pode haver approval
+real sem commercial root) e bloqueia fail-closed
+(`no_matching_approval`). `policy_gate_decisions.commercial_root_id`
+é `NOT NULL` (migration 0049) — sem root, o log append-only é pulado
+(mesmo raciocínio já usado pra `proposedResponse` vazio), mas o
+outcome/motivo continua no `RuntimeCycleOutcome` retornado.
+
+### Gap conhecido e reportado, não resolvido silenciosamente
+
+Não existe hoje nenhuma RPC pra persistir a resposta da Doopla direto
+em `conversation_messages` (`author_type='ai'`) fora do caminho de
+`outbound_intents` — que é só pra canais externos reais (WhatsApp/
+email/etc, via provider). Conversas `professional_self` (Doopla
+falando só com o profissional dentro do próprio app, nunca "entregue"
+por provider nenhum) não têm hoje um caminho de escrita: o pipeline
+detecta esse caso (`outboundSkippedReason: 'professional_self_not_implemented'`)
+e para, em vez de inventar uma migration nova fora do escopo desta
+rodada.
+
+### `src/lib/runtime/` — módulo TS novo
+
+`types.ts` (`InboundEvent`, `RuntimeCycleOutcome`), `inbound-events.ts`,
+`conversation-lease.ts`, `intake.ts`, `commercial-root.ts` (incluindo
+`resolveEffectiveCommercialRoot`, função pura extraída pra ser
+testável isoladamente — a RPC de linking devolve um id UNIFICADO que
+pode ser booking OU opportunity, coalesce estrutural; a derivação de
+qual é qual nunca adivinha, compara contra o que a conversation já
+tinha antes da chamada), `outbound.ts`, `system-actor.ts` (resolve
+`ActorContext` pro caminho de sistema — Bloco 1 está congelado,
+`resolveActorContext()` recusa `trigger.kind='system'` explicitamente;
+este é o "bloco futuro" que o comentário original de `actor-context.ts`
+previa, reusa só o tipo `ActorContext`/`resolveCapabilities()`, nunca
+duplica autorização — autoridade real vem de `is_system_caller()` do
+lado do banco), `structural-facts.ts`, `pipeline.ts`
+(`processInboundEvent` — ponto de entrada único), `index.ts` (barrel).
+
+Ordem do pipeline (auditada e implementada exatamente): claim do
+evento → lease da conversation → identidade de sistema (`ActorContext`)
+→ pre-model gate (Bloco 1, reusado sem alteração) → intake (resolve
+participante + persiste mensagem) → `start_orchestrator_run` → Context
+Builder (Bloco 2) → Classifier (Bloco 3) → linking comercial → Planner
+(Bloco 4) → Approval Engine (Bloco 5, só quando quem fala é o
+profissional E já existe commercial root — Approval Resolver nunca
+interpreta mensagem de cliente) → Post-model Gate (Bloco 6) →
+`outbound_intent` (só quando allowed) → `finish_orchestrator_run` →
+`finish_inbound_event` → release da lease.
+
+### Testes
+
+**SQL adversariais** (`51_runtime_orchestrator_adversarial.sql`,
+script preservado no scratchpad, não commitado): rebuild completo do
+zero (bootstrap + 51 migrations + seed, `ON_ERROR_STOP=1`) pra
+descartar qualquer resíduo de aplicação anterior — dois erros reais
+encontrados e corrigidos direto na migration 0051 (não reportados como
+pendência): `release_approval_resolution_claim` mudou de `void` pra
+`boolean` sem `drop function` explícito antes (Postgres recusa mudança
+de tipo de retorno em `create or replace`); `is_commercial_root_terminal`
+virou ambíguo entre a assinatura antiga (1 arg) e a nova (2 args com
+default) sem um `drop function` do 1-arg antes — ambos corrigidos com
+`drop function if exists ... ; create function ...` explícito. Depois
+da correção: rebuild limpo, regressão completa (todos os arquivos
+`02_*.sql`...`43_*.sql` acumulados desde Bloco 1) comparada linha a
+linha contra os baselines mais recentes de cada — só diffs de
+UUID/timestamp gerados aleatoriamente e uma diferença de contagem de
+linhas explicada por estado de DB acumulado num teste antigo (não uma
+regressão; `10_context_builder_external_participant.sql` bateu
+IDÊNTICO). **28 asserções PASS, 0 FAIL** nos 27 cenários novos: `is_system_caller()`
+nega `authenticated`/`anon` nas functions service_role-only (GRANT
+revogado — mesmo sem forjar a claim, a chamada já é negada);
+idempotência de `inbound_events` (reentrega nunca reprocessa, reclaim
+só após lease vencido ou `failed`, MESMO `event_id`); concorrência de
+`conversation_processing_leases` (dois workers, um vence; release com
+token errado é no-op; release correto libera pro próximo); `ensure_opportunity_for_conversation`
+idempotente + terminal substituído nunca reaberto (histórico
+preservado); `outbound_intents` completo (claim exclusivo, `stale
+send_attempt_id` nunca confirma, `sent_confirmed`/`sent_unknown`/
+`failed_permanent` nunca reclamados, `failed_transient` é retryable,
+tenant isolation via RLS `select own`).
+
+**TS determinístico** (tsx, model call simulado, scripts descartados
+depois de rodar — mesmo padrão de Blocos 1–6): `resolveEffectiveCommercialRoot`
+(5 casos, cobre as 4 combinações de created/reused × booking/opportunity);
+caminho sem commercial root do `gate.ts` (10 asserções: sem compromisso
+→ allowed sem NENHUMA chamada a `supabase.rpc` — mock que lança se
+qualquer RPC for chamada, prova que o caminho é 100% local; compromisso
+concreto → blocked/`no_matching_approval`; extrator indisponível →
+blocked/`extraction_unavailable`, fail-closed; `proposedResponse` vazio
+→ allowed sem chamar o extrator, não-regressão); fronteira de readiness
+fim-a-fim (8 asserções: não-pronto + `external_participant` + compromisso
+→ blocked/`professional_not_operationally_ready`; `recipientType='professional'`
+→ NUNCA consulta `is_operationally_ready`, nunca bloqueia por isso;
+extração vazia → NUNCA consulta `is_operationally_ready` — floor só
+quando há algo concreto; pronto + approval real correspondente →
+allowed).
+
+- ✅ `tsc --noEmit`, `eslint .` (limpo — únicos achados são
+  pré-existentes em `public/vendor/gsap/*.min.js`, vendor de terceiros
+  não tocado) e `next build` (32 rotas, sem erro) — todos limpos após
+  cada mudança.
+- ✅ **Migration**: `0051_runtime_orchestrator.sql`.
+- ✅ **Novo**: `src/lib/runtime/`, `src/lib/supabase/service-role.ts`,
+  `SUPABASE_SERVICE_ROLE_KEY` documentada em `.env.local.example`.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend/pagamento
+  real, nenhum wiring de envio de fato (só até `outbound_intent` em
+  `policy_allowed` — ver seção sobre `requiresProfessionalReviewBeforeSend`
+  acima), Blocos 1–4 não tocados, `/orcamento/[slug]`/`submit_orcamento_request`/
+  legado de booker não tocados. Nenhum merge, nenhum PR. Golden Suites
+  continuam pendentes de execução real (sem OpenAI/Preview neste
+  sandbox) — Beta Gate inalterado.
+
+## 39. Fechamento do Runtime — autonomia de envio seguro + professional_self (migration 0052)
+
+Fecha os dois pontos que a seção 38 deixou em aberto, autorizados
+depois de auditoria (não implementados até a auditoria ser aprovada
+explicitamente). WhatsApp/Meta/Resend continuam fora de escopo.
+Nenhum merge, nenhum PR.
+
+### 1. `requiresProfessionalReviewBeforeSend` deixou de ser `true` incondicional
+
+Era reforçado em três camadas independentes: tipo literal TS, fora do
+schema do model, e um CHECK físico em `orchestrator_runs`
+(`requires_professional_review_before_send = true`, migration 0044).
+Auditei as três antes de tocar em qualquer uma — a própria migration
+0044 já previa esse relaxamento *"quando o Approval Engine existir"*
+(existe desde o Bloco 5; o Post-model Policy Gate, Bloco 6, também
+existe agora e continua sendo o enforcement final de CONTEÚDO).
+
+Nova derivação (`resolveRequiresProfessionalReviewBeforeSend`,
+`planner/invariants.ts`), a partir só do `responsePlan` FINAL (pós-piso
+de `resolveResponsePlan`) — **nunca de `requiresProfessionalDecision`**,
+que é um sinal do turno inteiro, não do texto: usá-lo bloquearia
+autonomamente até uma pergunta de esclarecimento (`ask_external_participant`)
+feita em pleno turno de decisão, que já é um resultado esperado e
+testado (`golden-suite.ts`, "novo compromisso — desconto").
+
+- `consult_professional` → `true` (pode estar endereçado ao próprio
+  profissional, ou pedir uma decisão real).
+- `answer_with_known_information` → `true`, mantido conservador de
+  propósito — nunca é compromisso, mas pode carregar dado
+  potencialmente sensível (telefone/endereço de terceiros) que este
+  bloco não classifica por campo. Nenhum dos exemplos de auto-send do
+  usuário é este plano.
+- `acknowledge`/`ask_external_participant`/`clarify_ambiguity`/`no_response_needed`
+  → `false` — nunca afirmam compromisso, por definição de `prompt.ts`.
+
+Isto NUNCA é a garantia de conteúdo: mesmo com `false`, o Post-model
+Gate ainda lê o TEXTO real via `extractCommitments` — um `responsePlan`
+mal rotulado que na prática afirma um compromisso é pego por lá
+(`no_matching_approval`/`stale_dependency`/etc.), independente deste
+campo.
+
+- ✅ **Golden-suite reescrita, não só "feita passar"**: o caso antigo
+  ("controle — fato interno nunca vira autorizado pra envio", que
+  afirmava `true` incondicional pra qualquer plano) foi substituído por
+  dois: um mantendo o teste de dado sensível (agora com a expectativa
+  correta: `true` só quando o plano resolve pra
+  `answer_with_known_information`/`consult_professional`), e um novo
+  demonstrando o outro lado — `requiresProfessionalDecision=true` no
+  turno (intent `orcamento`) com `ask_external_participant` como plano
+  final fica elegível a auto-send. A checagem universal
+  (`/dev/planner-golden-suite/actions.ts`) também mudou: deixou de
+  assumir `true` sempre e passou a verificar que o valor bate
+  EXATAMENTE com a derivação, pra TODO caso da suíte — não só o de
+  controle (nunca executada contra o model real neste sandbox — Beta
+  Gate).
+
+### 2. Três `disposition`, compostos — nunca uma segunda política
+
+`resolveRuntimeDisposition(gateOutcome, requiresProfessionalReviewBeforeSend)`
+(`runtime/disposition.ts`) — só nomeia a combinação de dois sinais já
+autoritativos, nunca reavalia nada:
+
+```
+gate.outcome === 'blocked'                          → 'blocked'
+gate.outcome === 'allowed' + review=true             → 'professional_action_required'
+gate.outcome === 'allowed' + review=false            → 'auto_send_eligible'
+sem proposedResponse nenhum                          → 'not_applicable'
+```
+
+### 3. Bug real encontrado e corrigido: `consult_professional` numa conversa `external_inquiry`
+
+O Runtime original derivava `recipientType` só de `conversation_type`
+— então uma conversa `external_inquiry` sempre tentaria mandar o draft
+pro cliente, mesmo quando o plano final é `consult_professional`
+("pergunta clara ao profissional", `prompt.ts`). Corrigido
+(`resolveRecipientType`, `runtime/recipient.ts`, extraído de
+`pipeline.ts` pra ser testável isoladamente):
+
+```
+conversation_type='professional_self' OU responsePlan='consult_professional'
+  → 'professional'
+senão → 'external_participant'
+```
+
+`resolveOutboundAction(recipientType, gateOutcome, hasExternalParticipantId)`
+decide o caminho de escrita: `external_participant` + `allowed` →
+`create_outbound_intent` (canal externo real, com provider — nunca
+muda); `professional` + `allowed` → `persist_ai_message` (nova RPC,
+abaixo); qualquer outro caso → `none`.
+
+### 4. `persist_ai_message` — fecha o gap de `professional_self`
+
+Nova RPC (migration 0052), mesmo padrão de `persist_inbound_message`
+(0051): `is_system_caller()`-only, insere `conversation_messages` com
+`direction='outbound', author_type='ai', generated_by='ai'`. Sem
+`p_run_id`/`p_trigger_message_id` — `conversation_messages` não tem
+essas colunas (nem `persist_inbound_message` tem); correlação continua
+no nível de `orchestrator_runs`, mesmo padrão já usado em toda mensagem
+inbound. `last_activity_at` fica pro trigger existente
+(`bump_conversation_last_activity_trigger`, 0040) — nunca duplicado
+com um `UPDATE` explícito. Usa a MESMA infraestrutura de
+`conversations`/`conversation_messages` — nunca um sistema paralelo,
+serve tanto `professional_self` quanto `consult_professional` dentro
+de `external_inquiry` (ponto 3).
+
+Explícito, reafirmado no comentário da function: só persiste
+conteúdo — não concede autoridade, não executa tool, não cria
+approval, não é um segundo caminho de policy (o Gate já decidiu
+`allowed` antes desta chamada).
+
+### Gap novo encontrado DURANTE a implementação (fora do escopo original dos 9 RPCs)
+
+`start_orchestrator_run`/`finish_orchestrator_run` (Bloco 1, migration
+0042) nunca tinham sido estendidos com `is_system_caller()` na seção
+38 — o audit anterior escopou só Blocos 5/6. Sem isso, **nenhum ciclo
+do Runtime conseguiria sequer abrir/fechar um `orchestrator_run`**:
+`start_orchestrator_run` recusava incondicionalmente qualquer caller
+sem `auth.uid()` E recusava `actor_type='system'` explicitamente;
+`finish_orchestrator_run` também bloqueava incondicionalmente sem
+`auth.uid()`. Corrigido no mesmo padrão já auditado das 9 functions da
+seção 38 (condição adicional, nunca substitui `auth.uid()`; ownership
+estrutural nunca pulado): caminho `system` exige `actor_type='system'`
+E `actor_profile_id is null` (sistema nunca representa um humano
+específico) em `start_orchestrator_run`; `finish_orchestrator_run` só
+fecha runs cujo `actor_type` na própria linha já é `'system'` (nunca
+um run de sessão comum). Não é uma decisão arquitetural nova — é a
+aplicação mecânica do padrão já aprovado a duas functions que ficaram
+de fora por escopo estreito demais na auditoria original; reportado
+aqui em vez de silenciado.
+
+### Testes
+
+**SQL adversarial** (`52_runtime_closing_adversarial.sql`, scratchpad):
+rebuild completo do zero (bootstrap + 52 migrations + seed,
+`ON_ERROR_STOP=1`) — limpo. 11 cenários: `start_orchestrator_run` como
+`service_role` com `actor_type='system'` (antes desta migration,
+falhava incondicionalmente); `actor_type='professional'`/`actor_profile_id`
+preenchido pelo sistema → negados; `represented_professional_id`
+forjado sem conversation real → `conversation_not_owned`;
+`finish_orchestrator_run` como sistema fecha o próprio run com
+`requires_professional_review_before_send=false`, valor **persiste de
+verdade** na coluna (constraint física confirmada relaxada, não só
+TypeScript); sistema não fecha um run que não abriu; `persist_ai_message`
+persiste `author_type='ai'`/`direction='outbound'` corretamente,
+`last_activity_at` bate com o trigger existente (sem duplicar update);
+`authenticated` comum negado por GRANT; conversation inexistente →
+`conversation_not_found`. **Regressão completa revalidada**: todos os
+arquivos `02_*`...`52_*` acumulados desde o Bloco 1 — só a mesma falha
+pré-existente já documentada (`30_redteam_composite_and_takeover.sql`,
+teste de timing de expiração de lease, idêntica ao baseline) e uma
+asserção do `15_planner_migration_tests.sql` que testava o CHECK
+antigo (`=true`) — reescrita pra testar o oposto (constraint relaxada
+aceita `false` de verdade), não simplesmente descartada.
+
+**TS determinístico** (tsx, scripts descartados depois de rodar — mesmo
+padrão de sempre): `resolveRequiresProfessionalReviewBeforeSend` (6
+valores), `resolveRuntimeDisposition` (6 combinações, `blocked` sempre
+vence), `resolveRecipientType` (6 casos, incluindo o bug corrigido),
+`resolveOutboundAction` (6 combinações), `shouldRunApprovalEngine` (4
+combinações — cliente nunca aciona o Approval Engine). **Os 13
+cenários pedidos**, compostos a partir dessas funções (a "cola" real
+de `pipeline.ts`) e citando a cobertura já existente onde aplicável:
+1–2 pergunta segura/coleta de contexto → `auto_send_eligible`; 3
+preço sem approval → `blocked`; 4/11 cliente nunca cria approval
+(mesmo dizendo "fechado"); 5 confirmação pós-approval pode ficar
+`auto_send_eligible` (plano seguro) ou continuar conservadora (relato
+de fato); 6 valor divergente → `blocked` sempre; 7/8 fronteira de
+`is_operationally_ready` (intake livre, negociação protegida
+bloqueada) — já provada em `gate-no-root-test.ts`/`gate-readiness-test.ts`
+da rodada anterior, reconfirmados sem alteração nesta; 9
+`professional_self` → `persist_ai_message`; 10 profissional aciona o
+Approval Engine antes do Gate (ordem estrutural do `pipeline.ts`,
+nunca invertida); 12/13 duplicidade/concorrência → já cobertos pelos
+28/28 testes SQL adversariais da seção 38, reconfirmados no rebuild
+desta rodada. **34 + 11 = 45 asserções, 0 FAIL.**
+
+- ✅ `tsc --noEmit`, `eslint` (limpo) e `next build` (32 rotas) — todos
+  limpos após cada mudança.
+- ✅ **Migration**: `0052_runtime_autonomy_and_professional_self.sql`.
+- ✅ **Novo**: `runtime/disposition.ts`, `runtime/recipient.ts`,
+  `runtime/professional-message.ts`.
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **`outbound_intents` não carrega `disposition` fisicamente** — a
+  proposta original cogitava uma coluna nova (`requires_professional_review`)
+  pra um futuro send-worker nunca precisar re-derivar isso; não estava
+  no checklist final que o usuário autorizou, então não foi
+  implementada. `disposition` hoje só existe no retorno de
+  `processInboundEvent` (`RuntimeCycleOutcome`), não persistido.
+- **Outcome `blocked` não notifica o profissional** — fica só no log
+  append-only (`policy_gate_decisions`) e no retorno do ciclo; nenhum
+  painel/notificação existe ainda pra isso (fora de escopo, nenhuma UI
+  autorizada nesta rodada).
+- **`persist_ai_message` sem correlação a `run_id`/`trigger_message_id`**
+  na própria linha (schema de `conversation_messages` não tem essas
+  colunas — mesma limitação que já existia pra mensagens inbound).
+  Correlação fica só no nível de `orchestrator_runs`.
+- Golden Suites (Classifier/Planner/Approval/Policy Gate) continuam
+  **Beta Gate** — nenhuma rodada real contra OpenAI neste sandbox
+  desde o início do projeto.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend/pagamento
+  real nesta rodada. Nenhum merge, nenhum PR.
+
+## 40. Fechar o ciclo de decisão do profissional (migration 0053)
+
+Cobre o caminho completo: `professional_action_required`/`blocked` →
+pendência → mensagem/consulta ao profissional → aprovação → resolução
+→ retomada segura do turno do cliente. Passou por 3 rodadas de
+auditoria-e-correção antes da autorização final — as correções do
+usuário (nunca inventadas por mim) definiram a arquitetura real:
+provenance nunca fabricada, `policy_gate_decisions` nunca vira fila,
+`subject_key_unresolved` nunca entra em matching automático. Sem
+PR/merge, sem WhatsApp/Meta/Resend.
+
+### 1. Gap real encontrado: `try_classify_communicated_proposal` nunca tinha chamador
+
+Mesma classe do gap de `start_orchestrator_run`/`finish_orchestrator_run`
+da seção 39: a RPC existe desde o Bloco 5 (migrations 0045/0047), mas
+nenhum código TS jamais a chamava — `communicated_proposal_candidates`
+ficava sempre vazia em produção, o que significa que
+`operationType='contextual_decision'` (a única forma de um "sim" bare
+resolver sem restatar o valor) **sempre falhava `invalid_provenance`**.
+Estendida com `is_system_caller()` (mesmo padrão: condição adicional,
+nunca substitui `auth.uid()`; ownership sempre derivado de
+`conversation_messages→conversations`).
+
+### 2. Extrator dedicado de proposta inbound (`src/lib/intelligence/inbound-proposal/`)
+
+Decisão do usuário: um 4º model call independente, nunca integrado ao
+Planner (separação de responsabilidades — Planner desenha resposta com
+contexto rico, este só detecta literal-texto; misturar arriscaria
+contexto vazar pra extração). Provenance é **estrutural, não só
+instrução de prompt**: o `input` da chamada é só
+`{messageText, temporalCandidates}` — sem histórico, sem
+`ContextPackage`, é fisicamente impossível "completar" um valor que a
+mensagem não afirma. Gate de disparo: **`hasCommercialRoot` sozinho**
+— nunca `commitmentNature` (achado real: esse sinal só escala
+`report_existing_fact`→`new_or_changed_commitment`, nunca valida um
+`not_applicable` alucinado pelo Planner — usá-lo como gate arriscava
+perder propostas reais por erro de outro model call). Roda em toda
+mensagem inbound com commercial root, de qualquer autor.
+
+Reaproveita `generateTemporalCandidates`/`resolveTemporalCandidateLabel`/
+`isDatePlausible` (`policy-gate-post/temporal.ts`) e
+`validateApprovedValue` (`approval/value-schemas.ts`) — nunca reinventa
+resolução temporal/validação de shape. `resolveSubjectKeyForNewProposal`
+é deliberadamente diferente do `resolveSubjectKey` do matcher (Bloco
+6): não há nada aprovado ainda pra fazer fallback contra, então o único
+fallback seguro é a taxonomia fechada — sem isso, sem candidato
+(fail-closed).
+
+`registerInboundProposal` (`runtime/proposal-classification.ts`, novo
+chamador real da RPC) decide `created_candidate`/`reaffirmed_candidate`/
+`superseded_candidate` reaproveitando o MESMO mecanismo de chain que
+`resolution-context.ts` já usa (`get_communicated_proposal_candidates`
++ `valuesStructurallyEqual`) — nunca uma segunda política de matching.
+
+### 3. `runtime_pending_replies` — estado de workflow separado do audit log
+
+Correção do usuário, 1ª rodada: rejeitei provenance-por-"sim" e
+`policy_gate_decisions`-como-fila nas minhas duas primeiras propostas.
+Tabela nova e mínima (migration 0053): cada linha é uma **fotografia
+imutável** de UM `policy_gate_decision_id` — nunca reaproveitada pra
+representar uma avaliação diferente. Lifecycle:
+`pending → completed` (Gate re-avaliado permitiu, outbound criado) ou
+`pending → superseded` (+ `superseded_by_id` apontando pra uma pendência
+NOVA referenciando o NOVO `policy_gate_decision_id`, se ainda bloqueado;
+sem sucessora se a raiz virou terminal).
+
+Só os 3 motivos de bloqueio que uma aprovação de fato resolve
+(`no_matching_approval`/`stale_dependency`/`subject_key_unresolved`)
+criam pendência (`shouldCreatePendingReply`,
+`runtime/pending-replies-matching.ts`, 100% puro) — os outros
+(`invalid_extracted_value`/`commercial_root_terminal`/
+`professional_not_operationally_ready`/`extraction_unavailable`) são
+classes de problema diferentes, uma approval nunca resolve.
+
+**Os dois ajustes finais do usuário antes de autorizar** (3ª rodada),
+os mais importantes deste bloco:
+- `subject_key_unresolved` **nunca** é auto-supersedida na criação nem
+  auto-retomada — nem por `decision_category + commercial_root_id`
+  sozinhos. Duas instâncias distintas (ex.: dois horários diferentes)
+  podem existir na mesma root/categoria; sem `subject_key` real não há
+  identidade suficiente pra provar que é a mesma coisa.
+- Uma pendência com **qualquer** commitment `subject_key_unresolved` é
+  inelegível pra matching automático **como um todo**, mesmo que outros
+  commitments dela tenham subject_key resolvido — nunca resume parcial
+  silencioso.
+
+5 RPCs novas (`create_runtime_pending_reply`, `list_pending_runtime_replies`,
+`resolve_runtime_pending_reply_allowed`, `resolve_runtime_pending_reply_still_blocked`,
+`supersede_runtime_pending_replies_for_terminal_root`), todas
+`is_system_caller()`-only. Idempotência: claim atômico
+(`UPDATE ... WHERE status='pending'`) na MESMA function/transação que a
+escrita resultante — mesmo padrão já usado em `claim_inbound_event`/
+`try_acquire_approval_resolution_claim`, nunca uma chave nova
+inventada. Ajuste feito DEPOIS do primeiro round de testes SQL (e
+revalidado no round final): `resolve_runtime_pending_reply_allowed`
+recebe `p_channel`/`p_recipient_external_participant_id`/`p_content`
+como `default null` — quando a retomada muda o destinatário pro
+próprio profissional (`recipientType` virou `'professional'` na
+reavaliação), a function só faz o claim, sem `outbound_intent`; o
+chamador usa `persist_ai_message` por fora, best-effort, não atômico
+com o claim (tradeoff aceito: duplicação de mensagem interna é
+bem menos grave que duplicação client-facing).
+
+### 4. `pipeline.ts` — fecha o ciclo
+
+`commercialRootId`/`structuralFacts`/`knownEventDate` passaram a ser
+resolvidos **uma vez** por ciclo (antes, `buildStructuralFacts` era
+chamado duas vezes — pro Approval Engine e separadamente pro Gate;
+mesma leitura, sem motivo pra duplicar — simplificação instrumental,
+nunca uma mudança de comportamento).
+
+- **Registro de proposta inbound**: logo após resolver o commercial
+  root, antes do Approval Engine rodar (pra um candidato criado NESTA
+  mensagem já estar visível caso o mesmo ciclo também rode o Approval
+  Engine).
+- **Criação de pendência**: quando o Gate bloqueia por motivo elegível
+  E há commercial root, calcula supersessão contra pendências
+  existentes (`shouldSupersedeOnCreation`) e chama
+  `createRuntimePendingReply`.
+- **Retomada**: só depois de `runApprovalEngine` retornar
+  `status:'committed', outcome:'resolved'` com `approvalRecordIds`
+  não-vazio — busca as identidades recém-aprovadas em
+  `approval_records`, filtra pendências elegíveis via
+  `shouldAttemptResume`, tenta cada uma isoladamente
+  (`runtime/resumption.ts`).
+
+**Achado de design, resolvido no próprio escopo do Runtime**:
+`classification-context.ts`/`planner-context.ts` (Blocos 3/4,
+congelados) derivam a mensagem-gatilho implicitamente como
+`messages[messages.length-1]` — o item mais NOVO da janela, nunca um
+parâmetro explícito. `buildMessagesSection` (Bloco 2, congelado) não
+tem limite superior de data. Numa retomada, o gatilho de verdade é uma
+mensagem ANTIGA, mas pode haver mensagens mais novas na mesma
+conversation desde então. Resolvido SEM tocar nos arquivos congelados:
+`runtime/context-window.ts` (`truncateContextAtMessage`) poda
+`contextPackage.messages.items` DEPOIS de `buildContextPackage` já ter
+rodado sem alteração — a derivação "último item" das duas projeções
+volta a estar correta, porque agora o último item É o gatilho da
+retomada. Fail-closed: gatilho fora da janela carregada → retomada não
+prossegue, pendência fica como está.
+
+**Cada tentativa de retomada**: `orchestrator_run` PRÓPRIO;
+`resolveCommercialRootForResumption` (`runtime/commercial-root.ts`)
+reconstrói `{bookingId, opportunityId}` comparando `commercial_root_id`
+armazenado contra o `related_booking_id`/`related_opportunity_id`
+ATUAIS da conversation (nunca via `ensureOpportunityForConversation`
+de novo — arriscaria criar uma opportunity nova à toa); sem bater
+contra nenhum dos dois, fail-closed (`null`), pendência intocada.
+Reprocessa Planner + Post-model Gate 100% frescos ("Approval resolved
+≠ send allowed") — nunca reaproveita draft/decisão antigos. Isolamento
+de falha: a conversation da pendência quase sempre é DIFERENTE da
+conversation do evento que disparou a aprovação (cliente vs.
+professional_self, ligadas só por `commercial_root_id`) — cada
+tentativa adquire sua PRÓPRIA `conversation_processing_lease` (nunca
+reusa a do ciclo principal); erro em uma tentativa vira outcome, nunca
+propaga e derruba o ciclo que a disparou.
+
+- ✅ `tsc --noEmit`, `eslint` (limpo).
+- ✅ **Migration**: `0053_runtime_pending_replies.sql`.
+- ✅ **Novo**: `src/lib/intelligence/inbound-proposal/` (módulo
+  completo), `runtime/pending-replies.ts`,
+  `runtime/pending-replies-matching.ts`, `runtime/proposal-classification.ts`,
+  `runtime/context-window.ts`, `runtime/resumption.ts`; extensão de
+  `runtime/commercial-root.ts` (`resolveCommercialRootForResumption`).
+
+### Testes
+
+**SQL adversarial** (scratchpad, rebuild completo do zero,
+`ON_ERROR_STOP=1`, migrations 0001-0053 + seed): `53_runtime_pending_replies_adversarial.sql`
+(15 asserções + 3 negações de permissão) + `54_runtime_decision_cycle_adversarial.sql`
+(novo, fecha as lacunas que o 53 tinha deixado — 11 asserções + 2
+negações): `resolve_runtime_pending_reply_allowed` com recipient NULO
+(o ajuste feito DEPOIS do 53 já ter passado — nunca reverificado até
+agora — confirmado: claim sem `outbound_intent`, zero linhas
+inseridas); `create_runtime_pending_reply` com `p_supersede_ids`
+não-vazio supersedindo de verdade, atomicamente; `list_pending_runtime_replies`
+nunca retorna `superseded`; isolamento entre pendências de
+categorias/roots diferentes (resolver uma nunca mexe na outra);
+`authenticated` negado em `still_blocked`/`supersede_bulk` (faltava no
+53). **Regressão completa revalidada** (`02_*` a `54_*`, rebuild
+limpo): 0 FAIL em tudo que este round tocou. Duas falhas
+PRÉ-EXISTENTES e não relacionadas confirmadas (`30_redteam_composite_and_takeover.sql`,
+já documentada na seção 39 como baseline conhecido — teste de timing
+de expiração de lease dentro de um único `do $$ end $$` onde `now()`
+fica congelado pro início da transação, `pg_sleep` real não move o
+relógio que a function lê; `41_redteam_provenance_and_overflow.sql`,
+mesmo padrão, confirmado reproduzível de forma isolada sem nenhuma
+relação com este round — nenhuma das duas toca `runtime_pending_replies`/
+`try_classify_communicated_proposal`/lease de conversation).
+
+**TS determinístico** (tsx, scripts descartados depois de rodar):
+`pending-replies-matching.ts` — 23 asserções cobrindo especificamente
+os dois ajustes finais do usuário (`subject_key_unresolved` nunca
+supersede/retoma mesmo com categoria+root batendo; nunca resume
+parcial mesmo com outro commitment resolvido ao lado; duas instâncias
+distintas da mesma categoria nunca se confundem). `context-window.ts` +
+`resolveCommercialRootForResumption` — 9 asserções (truncamento correto,
+fail-closed sem o gatilho na janela, fail-closed sem correspondência
+de raiz). **Total: 11 + 2 + 23 + 9 = 45 asserções, 0 FAIL** (fora as 2
+falhas pré-existentes documentadas acima).
+
+`inbound-proposal/golden-suite.ts` (9 casos) segue **Beta Gate** — sem
+acesso a OpenAI neste sandbox, mesma limitação de todas as golden
+suites do projeto.
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **Retomada falhando por `conversation_busy` nunca é reagendada** — se
+  a lease da conversation do cliente estiver ocupada no exato momento
+  da tentativa, o outcome fica `skipped_conversation_busy` e NADA mais
+  dispara uma nova tentativa (só outra aprovação futura no mesmo root
+  chamaria `shouldAttemptResume` de novo). Gap real, não coberto por
+  nenhum mecanismo de retry — fora do que o usuário autorizou resolver
+  nesta rodada.
+- **Falha ao logar `policy_gate_decision` numa retomada deixa a
+  pendência intocada** (nunca chama a RPC de resolução sem uma
+  fotografia real) — mas também não é reagendada automaticamente, mesmo
+  gap acima.
+- Golden Suites continuam **Beta Gate** — nenhuma rodada real contra
+  OpenAI neste sandbox.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend real
+  nesta rodada. Nenhum merge, nenhum PR. Nenhuma alteração nos Blocos
+  1–4 (planner/classification/context-builder/policy-gate
+  pre-model) — só Runtime (novo) e uma extensão pontual de uma RPC do
+  Bloco 5 (`try_classify_communicated_proposal`).
+
+## 41. Retomada durável — fecha o risco residual `conversation_busy` (migration 0054)
+
+Extensão pequena e isolada, autorizada explicitamente em cima do bloco
+40 já fechado — nenhum redesenho do que já estava aprovado, nenhuma
+alteração nos Blocos 1–4. Objetivo único: uma aprovação já resolvida
+nunca morre silenciosamente só porque a conversation estava ocupada no
+momento exato da retomada.
+
+### Lifecycle/estados finais de `runtime_pending_replies`
+
+Três colunas novas na MESMA linha (nunca uma tabela paralela):
+`attempt_count` (monotônico, nunca resetado — uma pendência nova
+nascida de supersessão sempre começa em 0), `next_attempt_at` (quando
+a linha volta a ficar elegível pro reconciler) e `last_attempt_at`
+(observabilidade). Um status novo, `needs_attention`, junta-se aos três
+já existentes:
+
+```
+pending          → obrigação viva, explicitamente retryable.
+completed        → Gate permitiu, outbound criado (ou terminal-de-sucesso).
+superseded       → substituída por uma pendência mais nova, ou raiz virou terminal.
+needs_attention  → esgotou attempt_count sem resolver — teto de
+                    segurança, NUNCA mais retentada automaticamente,
+                    estado observável, nunca uma falha silenciosa.
+```
+
+`next_attempt_at` começa `NULL` (só alcançável via aprovação nova,
+igual ao bloco 40) e só ganha um valor real depois da PRIMEIRA
+tentativa de retomada — nunca antes disso, pra não transformar isto
+num polling genérico de toda pendência viva (fora do que foi pedido).
+
+### Estratégia de retry/backoff/idempotência
+
+**`begin_runtime_pending_reply_attempt`** roda ANTES de qualquer
+`conversation_processing_lease`/Planner/Gate — serve DUAS funções na
+mesma escrita atômica (`select ... for update` + `UPDATE` condicional,
+mesmo boundary de idempotência já usado em `resolve_runtime_pending_reply_allowed`):
+(a) **heartbeat de segurança** — agenda `next_attempt_at` generoso
+(15min, `RUNTIME_PENDING_REPLY_SAFETY_NET_SECONDS`) ANTES de tentar
+qualquer coisa, cobrindo não só `conversation_busy` mas um crash a
+meio do caminho; (b) **claim de concorrência** — duas tentativas
+batendo na MESMA linha (reconciler duplicado, ou reconciler +
+aprovação simultâneos) nunca processam a mesma janela: a segunda vê
+`next_attempt_at` no futuro (empurrado pela primeira) e desiste.
+
+Se a conversation lease falhar (`conversation_busy` de verdade),
+**`record_runtime_pending_reply_busy`** substitui o heartbeat genérico
+por um backoff mais apertado e ESPECÍFICO
+(`computeRuntimeRetryBackoffSeconds`, exponencial capado: 30s → 60s →
+120s → ... teto 1800s/`RUNTIME_PENDING_REPLY_MAX_ATTEMPTS`=8) — a
+linha NUNCA sai de `pending`, nunca é "perdida". Se este JÁ era o
+último attempt permitido, fecha pra `needs_attention` na hora, sem
+esperar uma tentativa extra descobrir isso depois.
+
+Idempotência real (mensagem duplicada) continua 100% garantida pelo
+MESMO boundary do bloco 40 (`resolve_runtime_pending_reply_allowed`,
+`UPDATE ... WHERE status='pending'` como linearização) — as duas RPCs
+novas NUNCA tocam `outbound_intents`, só controlam agendamento/claim de
+tentativa. `**reconcileDueRuntimePendingReplies**` (`runtime/resumption.ts`)
+é o ponto de entrada que um worker/cron futuro chamaria
+periodicamente — só descoberta (`list_due_runtime_pending_replies`) +
+reaproveita o MESMO `resumeOnePendingReply` que o caminho
+aprovação-disparada já usa (agora exportado, chamado por ambos).
+Nenhuma infraestrutura real de agendamento (cron/fila) foi criada
+nesta rodada — decidir QUANDO/COMO ele roda de verdade é uma decisão
+de infra fora do escopo autorizado aqui.
+
+### Testes (10 cenários pedidos)
+
+**SQL adversarial** (`57_runtime_durable_retry_adversarial.sql`,
+scratchpad, rebuild completo do zero, `ON_ERROR_STOP=1`, migrations
+0001-0054 + seed): **28 asserções PASS, 0 FAIL**, 3 negações de
+permissão confirmadas (`authenticated` negado nas 3 RPCs novas).
+Cobertura ponto a ponto:
+1. aprovação durante busy → retoma depois (begin→busy→due→begin
+   sucesso→resolve, 1 outbound_intent);
+2. múltiplas tentativas busy → só 1 resposta final (mesmo teste acima,
+   contagem exata de `outbound_intents`);
+3. crash depois de adquirir a tentativa, antes do envio → recuperável
+   (heartbeat de 1s + `pg_sleep(1.2)` + nova tentativa concedida, SEM
+   simular `conversation_busy` explícito — prova o caso genérico, não
+   só o nomeado);
+4. crash depois do envio, antes de marcar concluído → sem duplicação
+   (reconfirmação do boundary do bloco 40 com as colunas novas
+   presentes);
+5. mensagem nova durante o backoff → Planner fresco considera —
+   **validado por design, não por execução** (nenhum acesso a OpenAI
+   neste sandbox): a mensagem nova dispara um `processInboundEvent`
+   NORMAL, com `buildContextPackage` completo e NUNCA truncado
+   (`truncateContextAtMessage` só existe dentro do caminho de
+   retomada) — as duas mensagens usam pipelines estruturalmente
+   diferentes, nunca compartilham contexto por acidente;
+6. proposta superseded durante o backoff → resposta antiga nunca
+   retomada (pendência antiga vira `superseded` com `next_attempt_at`
+   limpo — nunca mais aparece pro reconciler nem aceita
+   `begin_attempt`);
+7. pendência completed nunca é reapanhada (`begin_attempt` sempre nega,
+   `exhausted=false` — já é terminal por outro motivo);
+8. duas pendências elegíveis da MESMA root, categorias diferentes →
+   resolvidas isoladamente, sem resposta conflitante (resolver uma não
+   toca a outra);
+9. isolamento entre conversations/roots — coberto estruturalmente
+   (todas as RPCs escopam por `id` explícito, nunca por root/conversation
+   implícito) + fixture cross-professional quando disponível;
+10. teto de tentativas → `needs_attention`, nunca falha silenciosa
+    (max_attempts=2 no teste — 2ª busy fecha na hora, sem esperar uma
+    3ª tentativa; reconciler nunca mais pega a linha; `begin_attempt`
+    subsequente nega sem re-disparar `exhausted=true`).
+
+**TS determinístico** (tsx): `retry-backoff.ts` — 9 asserções
+(sequência exponencial exata, monotonicidade, teto físico nunca
+ultrapassado, constantes coerentes).
+
+**Achado real durante os testes, corrigido na migration**: as duas
+RPCs novas com colunas OUT homônimas às colunas da própria tabela
+(`attempt_count`, `next_attempt_at`) geravam `column reference ...
+is ambiguous` em PL/pgSQL — `returns table(...)` declara essas
+variáveis implicitamente, colidindo com a coluna bare dentro de
+`UPDATE ... SET x = x + 1 ... RETURNING x`. Corrigido qualificando com
+o nome completo da tabela nos dois pontos (lado direito do `SET` e
+`RETURNING`) — achado e corrigido ainda nesta rodada, antes do commit,
+nunca chegou a ficar quebrado no código commitado.
+
+**Regressão completa revalidada** (`02_*` a `54_*`, rebuild limpo):
+0 FAIL em tudo que este round tocou. `30_redteam_composite_and_takeover.sql`
+(o teste de timing de lease com `now()` congelado, documentado como
+baseline conhecido desde a seção 39) foi **corrigido de verdade** nesta
+rodada — dividido em dois `do $$ end $$` com um `pg_sleep` TOP-LEVEL
+entre eles (statements separados = transações separadas = `now()`
+avança de verdade); 3 reruns confirmam 0 FAIL estável, nenhuma lógica
+de produção mudou. `41_redteam_provenance_and_overflow.sql` continua
+com 3 falhas — **investigado a fundo e caracterizado corretamente
+desta vez**: NÃO é o mesmo problema de relógio (não tem nenhum
+`pg_sleep`, nem um único `do $$`) — é um `reset role`/limpeza de JWT
+claims que acontece ANTES do loop de 50 mensagens da seção 6, deixando
+a chamada a `try_classify_communicated_proposal` sem `auth.uid()` nem
+`is_system_caller()`. Confirmado que isto já falharia com a function
+ORIGINAL (pré-migration 0053) — não é uma regressão desta rodada nem
+da rodada anterior, é um gap pré-existente e não relacionado neste
+arquivo de scratchpad específico, fora do que foi autorizado corrigir
+("o problema já identificado é o relógio transacional congelado" — não
+se aplica aqui). Reportado com precisão em vez de forçado sob a mesma
+explicação do outro teste.
+
+- ✅ `tsc --noEmit`, `eslint` (limpo), `next build` (32 rotas).
+- ✅ **Migration**: `0054_runtime_pending_reply_durable_retry.sql`.
+- ✅ **Novo**: `runtime/retry-backoff.ts`. `runtime/pending-replies.ts`
+  ganhou `beginRuntimePendingReplyAttempt`/`recordRuntimePendingReplyBusy`/
+  `listDueRuntimePendingReplies`. `runtime/resumption.ts` ganhou
+  `resumeOnePendingReply` exportado + `reconcileDueRuntimePendingReplies`.
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **Nenhuma infraestrutura real de agendamento** (cron/fila/worker)
+  foi criada — `reconcileDueRuntimePendingReplies` é o ponto de
+  entrada pronto, mas nada chama ele periodicamente ainda nesta
+  rodada. Decisão de infra explicitamente fora do escopo autorizado.
+- **`41_redteam_provenance_and_overflow.sql`** continua com 3 falhas
+  pré-existentes, não relacionadas a este bloco nem ao anterior (ver
+  seção de testes acima) — não corrigido, por não ser o problema que
+  foi autorizado a corrigir.
+- Os dois gaps residuais do bloco 40 que NÃO eram sobre
+  `conversation_busy` continuam abertos, fora do escopo desta extensão
+  pontual: `outbound_intents` não carrega `disposition` fisicamente;
+  outcome `blocked` não notifica o profissional (sem painel/notificação
+  ainda).
+- Golden Suites continuam **Beta Gate** — nenhuma rodada real contra
+  OpenAI neste sandbox.
+- 🔒 **Confirmação**: nenhuma integração WhatsApp/Meta/Resend real
+  nesta rodada. Nenhum merge, nenhum PR. **Blocos 1–4 intocados** —
+  única mudança fora de `runtime/` foi a migration adicionar colunas/
+  RPCs novas em `runtime_pending_replies` e fazer `create or replace`
+  (mesma assinatura) nas 4 functions do bloco 40 só pra limpar
+  `next_attempt_at` ao finalizar uma linha (higiene, sem mudança de
+  comportamento observável).
+
+## 42. Correção: contexto posterior na retomada (nunca mais resposta stale)
+
+Correção material encontrada pelo usuário no bloco 41, antes do
+freeze: `runResumptionCycle` truncava o `ContextPackage` no trigger
+original (`truncateContextAtMessage`) antes de mandar pro
+Classifier/Planner — isso resolvia o problema original (mensagem nova
+virando trigger por acidente), mas criava o oposto: numa retomada
+depois de minutos/horas, o Planner respondia com base numa fotografia
+congelada, sem NUNCA enxergar que o cliente mudou, cancelou ou
+recontextualizou a proposta enquanto a pendência esperava. Exemplo do
+usuário: cliente propõe R$3000 → Gate bloqueia → profissional aprova →
+retomada esbarra em `conversation_busy` → cliente manda "esquece os
+R$3000, muda a data" → reconciler retoma → SEM a correção, a Doopla
+confirmaria R$3000 como se a mensagem 5 não existisse.
+
+### Solução mínima implementada (as 4 propriedades pedidas, simultâneas)
+
+**A) trigger original inequívoco** — nunca foi, na verdade, sobre o
+que Classifier/Planner tratam como "última mensagem" dentro de UMA
+chamada (isso sempre foi um conceito efêmero, por chamada). É sobre
+`pending.trigger_message_id`/`policy_gate_decisions.message_id`/
+`outbound_intents.trigger_message_id` — identidade PERSISTENTE no
+banco, usada pra correlação/auditoria — que esta correção nunca toca
+(continua apontando pra mensagem original em toda a linhagem, mesmo
+com supersessão). Testado explicitamente (cenário 7 abaixo).
+
+**B) contexto posterior disponível** — `truncateContextAtMessage`
+removido do caminho de retomada (arquivo `context-window.ts` inteiro
+apagado — sem outro chamador, manter seria deixar uma armadilha pra um
+uso futuro). `runResumptionCycle` agora passa o `ContextPackage`
+INTEIRO (sem alteração) pro Classifier/Planner — exatamente como o
+ciclo normal já faz. `classification-context.ts`/`planner-context.ts`
+(Blocos 3/4, congelados) continuam derivando trigger = última mensagem
+da janela, SEM NENHUMA mudança neles — agora essa última mensagem É a
+realidade atual da conversation, não uma escolhida artificialmente.
+`referenceTimestamp` do Gate também passou a acompanhar essa mensagem
+real (antes usava sempre o timestamp da mensagem original, mesmo
+quando o Planner já estava respondendo a algo mais novo — inconsistência
+que a correção também fecha).
+
+**C) nenhuma resposta stale** — depende em parte da competência do
+Planner congelado (Bloco 4) de não confirmar algo que acabou de ser
+retratado, dado contexto completo — isso é confiado, não redesenhado
+(ver limite nomeado abaixo). O que o Runtime GARANTE mecanicamente,
+independente do que o Planner escrever: `freshChecksAddressPendingIdentities`
+(nova, pura, `pending-replies-matching.ts`) — a pendência só é
+completada/enviada quando o Gate fresco de fato voltou a TOCAR em pelo
+menos uma das identidades (categoria+subject) que ela bloqueava
+originalmente (matched OU blocked, qualquer motivo — o outcome real
+continua 100% decisão do Gate). Se o draft fresco não tem nada a ver
+com o assunto (a conversa seguiu adiante), a pendência NUNCA é
+completada por essa tentativa — outcome novo `left_pending_context_diverged`:
+nada é enviado, nada é marcado concluído, a linha continua `pending`,
+retryable, e esgota pra `needs_attention` normalmente se o assunto
+nunca mais voltar (reaproveita 100% o mecanismo do bloco 41 — nenhuma
+infraestrutura nova).
+
+**D) nenhum redesenho dos blocos congelados** — zero linhas tocadas em
+Blocos 1–4. A correção inteira vive em `runtime/` (resumption.ts +
+pending-replies-matching.ts) + a remoção de um arquivo que só existia
+pra sustentar o bug.
+
+### Limite nomeado (não escondido)
+
+Pra cancelamentos puros especificamente (ex.: "esquece os R$3000"),
+esta correção depende do Planner congelado, dado contexto real,
+simplesmente não redigir uma confirmação do que foi retratado — não é
+uma lógica NOVA de "isto é um cancelamento" (fora de escopo, tocaria
+Bloco 4). O que o Runtime garante MECANICAMENTE, não importa o que o
+Planner escreva: mesmo que ele confirme por engano, `freshChecksAddressPendingIdentities`
+só permite completar quando a identidade original foi REVISITADA —
+mas se o Planner literalmente restatasse o mesmo valor antigo (R$3000)
+ele SERIA reenviado, porque bateria contra a approval real ainda ativa
+(KNOW≠APPROVE não muda — a approval continua válida até ser
+explicitamente revogada, ninguém revogou nada aqui). Pior caso de uma
+falha de julgamento do Planner: nunca pior do que o comportamento já
+aceito do sistema hoje pra reafirmação legítima — não uma regressão
+nova introduzida por este Runtime, mas também não uma garantia
+absoluta contra um Planner que erre a leitura. Nomeado explicitamente,
+nunca escondido.
+
+### Gap real encontrado (fora de escopo, NÃO corrigido nesta rodada)
+
+Auditoria do Red Team encontrou: `evaluatePostModelGate` (`gate.ts`,
+Bloco 6) chama `is_commercial_root_terminal` sem `p_professional_id` —
+migration 0051 tornou esse parâmetro OBRIGATÓRIO pro caminho
+`is_system_caller()` (`raise exception 'professional_id_required_for_system_caller'`
+sem ele). Isso significa que **o Post-model Gate falha
+incondicionalmente toda vez que o Runtime real (service_role) processa
+um evento com commercial root** — não é um bug desta correção, é
+pré-existente desde a migration 0051, nunca detectado porque nenhuma
+execução end-to-end do pipeline TS contra Postgres real tinha
+acontecido neste projeto até este Red Team (todo teste anterior
+simulava decisões do Gate via `record_policy_gate_decision` direto,
+nunca chamando `evaluatePostModelGate` de verdade). Como `authenticated`
+usa o ramo `auth.uid()` (não exige o parâmetro), isso nunca apareceu
+em nenhum teste/uso anterior.
+
+**Não corrigido nesta rodada** — o usuário foi explícito: "não altere
+mais nada". O fix (`gate.ts`, uma linha: passar
+`p_professional_id: input.professionalId`) foi aplicado SÓ
+localmente pra rodar o Red Team de verdade contra Postgres, e revertido
+antes do commit — o diff commitado não toca `gate.ts`. Reportado aqui
+pra decisão explícita do usuário, separada desta correção.
+
+### Testes
+
+**TS puro** (`pending-replies-matching.ts`): 6 novas asserções pra
+`freshChecksAddressPendingIdentities` (matched bate, blocked-de-novo
+bate, nada bate, categoria diferente, subject_key diferente, pendência
+sem identidade elegível) — **29 PASS no total do arquivo** (23 do
+bloco 40 + 6 novas), 0 FAIL.
+
+**Red Team real** (não SQL/state machine) — `resumeOnePendingReply()`
+de PRODUÇÃO, executado de verdade contra Postgres real via um shim
+`pg`→formato-supabase-js (sem PostgREST disponível neste sandbox — só
+os 3 model calls injetados, Classifier/Planner/Gate-extractor,
+retornando outputs REALISTAS por cenário — mesmo princípio de
+testabilidade (`opts.modelCall`) já usado em todo o projeto). **8/8
+cenários PASS**, estável em 3 execuções seguidas:
+1. mensagem nova contradiz → `left_pending_context_diverged`, 0
+   outbound_intent;
+2. mensagem nova muda valor → `still_blocked` com fotografia nova
+   (Pending B), antiga superseded;
+3. mensagem nova cancela → `left_pending_context_diverged`, 0 envio;
+4. pergunta irrelevante → `left_pending_context_diverged`, pendência
+   continua `pending` (não mata, não trava, não duplica);
+5. múltiplas mensagens em vários retries (busy real simulado + nova
+   mensagem no meio) → cada tentativa reflete o estado atual;
+6. root superseded durante a espera (bulk supersede real) → `begin_attempt`
+   nega, nunca retomada;
+7. `trigger_message_id` no banco nunca muda, mesmo com 3 mensagens
+   novas na janela;
+8. resolução feliz (nada mudou) seguida de retry simulando crash
+   pós-commit → exatamente 1 `outbound_intent`, nunca duplicado.
+
+Achado de infraestrutura de teste (não produção): duas correções no
+shim `pg`→supabase-js foram necessárias — (a) JSON.stringify seletivo
+pra parâmetros `jsonb` reais (consultado via
+`information_schema.parameters`, nunca hardcoded por nome de function)
+— sem isso, `pg` serializa array/objeto JS como array literal do
+Postgres, não JSON, e `record_policy_gate_decision` falhava com
+"invalid input syntax for type json"; (b) limpeza da conversation de
+teste no início do script — reruns anteriores acumulavam mensagens na
+mesma conversation, poluindo "última mensagem = trigger" das rodadas
+seguintes. Nenhuma das duas é um achado sobre `resumption.ts`, ambas
+são do arnês de teste (scratchpad, nunca commitado).
+
+**Revisão da afirmação anterior** (bloco 41, seção de testes,
+cenário 5 "validado por design"): a afirmação estava CORRETA quanto à
+arquitetura (mensagem nova nunca usa `truncateContextAtMessage`,
+sempre dispara um `processInboundEvent` normal e separado), mas o
+teste anterior (`55_context_window_and_root_resolution_test.ts`, TS
+puro) só provava que `truncateContextAtMessage` corta o array
+corretamente — nunca provava que o Planner de fato RECEBE mensagens
+posteriores numa retomada, porque a função ERA chamada dentro de
+`runResumptionCycle` justamente pra IMPEDIR isso. A alegação de
+cobertura era, na prática, sobre uma propriedade adjacente, não sobre
+o comportamento que importava. Esta rodada corrige isso com um teste
+que de fato executa `runResumptionCycle` e prova que mensagens
+posteriores chegam ao Planner (cenários 1, 2, 3, 4, 5, 7 acima).
+
+**Regressão completa revalidada** (`02_*` a `57_*`, rebuild limpo
+0001-0054): 0 FAIL em tudo tocado por esta correção — só as mesmas 3
+falhas pré-existentes e não relacionadas de `41_redteam_provenance_and_overflow.sql`
+(gap de auth context anterior a esta rodada, já documentado no bloco
+41).
+
+- ✅ `tsc --noEmit`, `eslint` (limpo), `next build` (32 rotas).
+- ✅ **Sem migration nova** — correção 100% TS.
+- 🗑️ **Removido**: `runtime/context-window.ts` (a causa raiz do bug —
+  sem outro chamador, apagado por completo em vez de deixado morto).
+- ✅ **Novo**: `freshChecksAddressPendingIdentities` (`pending-replies-matching.ts`).
+- ✏️ **Modificado**: `runtime/resumption.ts` (contexto não-truncado +
+  gate de cobertura de identidade + `ResumptionModelCalls` injetável
+  pra teste), `runtime/index.ts` (exports).
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- **Gap real do Gate (`is_commercial_root_terminal` sem `p_professional_id`)**
+  — descrito acima, bloqueia o Post-model Gate real em QUALQUER
+  execução service_role com commercial root, não só retomada. Fix de
+  uma linha identificado, não aplicado (fora do escopo autorizado
+  nesta rodada). **Este é o risco residual mais importante — sem ele,
+  o Runtime real não roda.**
+- **Limite nomeado da seção acima**: cancelamento puro sem nenhuma
+  mudança de valor depende do julgamento do Planner congelado; o
+  Runtime garante mecanicamente que a pendência só completa quando a
+  identidade original foi revisitada, mas não impede um Planner que
+  erre restatando o valor antigo exatamente — mesma superfície de
+  risco que já existia pra reafirmação legítima, não uma regressão
+  nova.
+- Gaps residuais do bloco 41 (sem infraestrutura real de
+  agendamento) continuam abertos, fora do escopo desta correção
+  pontual.
+- Golden Suites continuam **Beta Gate**.
+- 🔒 **Confirmação**: **Blocos 1–4 intocados.** Nenhuma migration.
+  Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR.
+
+## 43. Corrige o mesmo gap de identidade também no ramo `blocked`
+
+2ª rodada de auditoria do bloco 42, antes do freeze. `freshChecksAddressPendingIdentities`
+só protegia o ramo `allowed` de `runResumptionCycle` — o ramo
+`blocked` chamava `resolveRuntimePendingReplyStillBlocked`
+incondicionalmente, mesmo quando o Gate fresco bloqueou uma identidade
+**completamente diferente** da que originou a pendência. Exemplo do
+usuário: pendência de `price_or_cache` esperando aprovação; durante o
+backoff a conversa muda de assunto; o Planner fresco responde sobre
+logística; o Gate fresco bloqueia `logistics_commitment`; o código
+antigo superseder a pendência de PREÇO e criava uma pendência nova de
+LOGÍSTICA no lugar — a obrigação de preço desaparecia sem nunca ter
+sido de fato reavaliada.
+
+### Correção
+
+A checagem de cobertura de identidade subiu pra ANTES do `if (gate.outcome === 'blocked')`,
+aplicando-se aos dois ramos igualmente — nunca mais um `switch`
+duplicado nem uma segunda política: é a MESMA `freshChecksAddressPendingIdentities`,
+chamada uma vez só, decidindo se a pendência pode ser tocada (por
+qualquer RPC de resolução) antes mesmo de saber se o resultado vai ser
+`allowed` ou `blocked`.
+
+```
+fresh Gate NÃO toca identidade original + allowed  → left_pending_context_diverged
+fresh Gate NÃO toca identidade original + blocked  → left_pending_context_diverged (NUNCA supersede)
+fresh Gate toca identidade original     + allowed  → resolve normalmente
+fresh Gate toca identidade original     + blocked  → resolveRuntimePendingReplyStillBlocked
+```
+
+`supersede_runtime_pending_replies_for_terminal_root` (raiz virando
+terminal) nunca foi tocada por esta mudança — é uma RPC/caminho
+completamente separado (chamada de `pipeline.ts`, bulk, por
+`commercial_root_id`, nunca por identidade) — continua encerrando
+pendências normalmente, exatamente como antes.
+
+### Achado extra durante a auditoria: pendência com múltiplas identidades
+
+Auditando o pedido do usuário ("pendência com múltiplas identidades +
+Gate fresco toca só uma: mantenha fail-closed se houver risco de
+perder as demais"), percebi que `freshChecksAddressPendingIdentities`
+originalmente exigia só **UMA** identidade original tocada (`some`) —
+suficiente pro caso de uma identidade só, mas insuficiente pro caso de
+uma pendência nascida de um Gate que bloqueou VÁRIAS identidades no
+mesmo draft (ex.: preço E logística juntos). Se o draft fresco só
+voltasse a tocar preço, a pendência inteira seria resolvida/superseded
+mesmo com a obrigação de logística nunca revisitada — a mesma classe
+de perda silenciosa, só que dentro de uma única pendência multi-
+identidade em vez de entre duas pendências diferentes.
+
+Corrigido trocando `some` por `every`: **todas** as identidades
+originais elegíveis (`blockedIdentities(pendingChecks)`) precisam
+aparecer nos checks frescos (matched ou blocked, qualquer motivo) —
+mesma disciplina já usada pra `subject_key_unresolved` em
+`isEligibleForAutoMatch`/`shouldAttemptResume` ("nenhum blocker sem
+identidade prescinde a pendência inteira de auto-match"), agora
+generalizada pra qualquer pendência multi-identidade. Pendências de
+identidade única (o caso comum) não mudam de comportamento — `every`
+sobre um array de 1 elemento é idêntico a `some`.
+
+### Por que os 8 testes anteriores não pegaram isso
+
+Revisão honesta pedida pelo usuário: o cenário 5 do bloco 42
+("múltiplas mensagens durante vários retries") já testava, sem saber,
+quase exatamente a situação do bug — a 2ª tentativa usava um extrator
+fake devolvendo `date_change/primary` (identidade DIFERENTE da
+pendência original, `price_or_cache/primary`). Mas a asserção só
+checava `outcome.kind === 'still_blocked'` — que era verdade tanto com
+o bug presente (a RPC supersedia a pendência de preço incondicionalmente
+em qualquer bloqueio) quanto sem ele. A asserção nunca checava QUAL
+pendência foi de fato tocada nem se a identidade original sobreviveu —
+provava a forma do outcome, não a substância. Corrigido nesta rodada:
+o cenário 5 agora afirma explicitamente `left_pending_context_diverged`
+e que a pendência de preço continua `pending` depois da 2ª tentativa
+(nunca superseded por um assunto diferente).
+
+### Testes (Red Team real, cenários novos)
+
+Adicionados ao mesmo arquivo de integração real (`58_redteam_stale_context_integration_test.ts`,
+scratchpad) — mesmo princípio do bloco 42 (Postgres real,
+`resumeOnePendingReply()` de produção, model calls injetados). **13/13
+cenários PASS** (os 8 do bloco 42 + 5 novos), estável em 3 execuções:
+- **9** (pedido #1): pending de preço + Gate fresco bloqueia logística
+  (identidade diferente) → `left_pending_context_diverged`, preço
+  continua `pending`, 0 outbound;
+- **10** (pedido #2): pending de preço + Gate fresco bloqueia o MESMO
+  preço com valor novo → `still_blocked`, supersede corretamente
+  (confirma que a correção não travou o caso legítimo);
+- **11** (pedido #3): pendência com 2 identidades (preço + logística)
+  originais, Gate fresco toca só preço → `left_pending_context_diverged`,
+  fail-closed, logística nunca perdida;
+- **11b** (contraprova do #3): mesma pendência de 2 identidades, Gate
+  fresco toca AS DUAS → `still_blocked`, supersede corretamente;
+- **12** (pedido #7): depois de ficar `left_pending_context_diverged`
+  no cenário 9, uma mensagem posterior que de fato volta a tocar preço
+  faz uma tentativa seguinte resolver normalmente — a obrigação nunca
+  fica irrecuperável, só espera o assunto certo voltar.
+
+Pedido #4 (allowed sem identidade original) e #5 (root terminal) já
+estavam cobertos pelos cenários 1/3/4 e 6 do bloco 42 — reconfirmados
+nesta rodada sem alteração. Pedido #6 (nenhuma rota cria outbound
+indevido) — asserção `outboundIntentCountByTrigger(...) === 0`
+adicionada explicitamente em cada cenário `diverged`/fail-closed novo
+(9, 11), não só assumida.
+
+**Achado de fixture (não de produção)**: dois bugs nos MEUS cenários
+de teste, achados rodando contra o Gate real — `subjectKey: 'transporte'`
+(português) não existe na taxonomia real de `logistics_commitment`
+(`['transport', 'lodging', 'equipment', 'crew_access', 'other']`,
+`value-schemas.ts`) e teria sido silenciosamente resolvido pra
+`subject_key_unresolved` pelo matcher real; e `value: { detail: ... }`
+não bate com o schema real (`{ description: string }`, `.strict()`).
+Os dois só apareceram porque estes testes rodam o Gate DE VERDADE
+(`matcher.ts`/`value-schemas.ts` reais) — nenhum teste anterior deste
+projeto tinha exercitado essa validação com dado de fixture solto.
+Corrigidos nos fixtures, nunca em código de produção.
+
+- ✅ `tsc --noEmit`, `eslint` (limpo), `next build` (32 rotas).
+- ✅ **Sem migration nova.**
+- ✏️ **Modificado**: `runtime/resumption.ts` (checagem de cobertura
+  movida pra antes do branch allowed/blocked), `pending-replies-matching.ts`
+  (`freshChecksAddressPendingIdentities`: `some` → `every`).
+- **Regressão completa revalidada** (`02_*` a `57_*`, rebuild limpo
+  0001-0054): 0 FAIL em tudo tocado — só as mesmas 3 falhas
+  pré-existentes e não relacionadas de `41_redteam_provenance_and_overflow.sql`.
+
+### Nível de integração exato dos testes Red Team (esclarecimento pedido)
+
+Pra não superclamar cobertura: os testes deste bloco e do bloco 42 são
+**integração real do Runtime com model calls injetados** — não
+"end-to-end completo". Precisamente:
+
+| Camada | Real ou injetado? |
+|---|---|
+| Postgres (schema, RLS, functions/RPCs) | **Real** — mesmo `doopla_rls_test` de sempre |
+| `resumeOnePendingReply()`/`runResumptionCycle()` | **Real** — código de produção, sem cópia/reimplementação |
+| Todas as RPCs (`begin_runtime_pending_reply_attempt`, `record_policy_gate_decision`, `resolve_runtime_pending_reply_*`, `get_active_approvals`, `is_operationally_ready`, etc.) | **Real** |
+| `evaluatePostModelGate`/`matcher.ts`/`value-schemas.ts` (matching de valor, resolução de subject_key, extractCommitments exceto o model call em si) | **Real** |
+| Lifecycle da pendência (`pending`/`completed`/`superseded`/`needs_attention`), decisão de outbound (`resolveOutboundAction`) | **Real** |
+| Classifier, Planner, extrator do Gate (as 3 chamadas ao model) | **Injetados** (`opts.modelCall`) — sem acesso a OpenAI neste sandbox |
+
+Ou seja: tudo que é CÓDIGO/BANCO é real; só a INFERÊNCIA de linguagem
+natural (as 3 chamadas de model) é simulada com outputs plausíveis por
+cenário, escritos por mim. Isso prova que o Runtime ORQUESTRA
+corretamente dado qualquer combinação razoável de saídas do model —
+não prova que o Classifier/Planner/extrator REAIS vão de fato produzir
+essas saídas plausíveis (isso continua Beta Gate, sem OpenAI).
+
+### Riscos residuais / gaps conhecidos, não resolvidos nesta rodada
+
+- Gap do Gate (seção 44 abaixo) segue sem correção — bloqueador do
+  freeze final do Runtime, aguardando micro-patch isolado autorizado
+  separadamente.
+- Mesma dependência do julgamento do Planner congelado pra
+  cancelamentos puros, já nomeada na seção 42 — inalterada por esta
+  correção.
+- Gaps residuais do bloco 41 (sem infraestrutura real de agendamento)
+  continuam abertos.
+- 🔒 **Confirmação**: **Blocos 1–4 intocados.** Nenhuma migration.
+  Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR.
+
+## 44. Bug preexistente do Post-model Gate (documentado, NÃO corrigido nesta rodada)
+
+> **Atualização**: corrigido no micro-patch isolado da seção 45, com
+> autorização explícita do usuário, depois da auditoria do commit
+> `b7b142c`. Esta seção é mantida como registro histórico exato do
+> diagnóstico — nenhum conteúdo abaixo foi alterado.
+
+Achado durante o Red Team do bloco 42, mantido sem correção permanente
+por instrução explícita do usuário — será tratado num micro-patch
+isolado, com regression test próprio, depois desta auditoria.
+
+**1. Resultado com HEAD puro** (nenhuma alteração local em `gate.ts`):
+rodando `resumeOnePendingReply()` de verdade contra Postgres real, com
+uma conversation que tem `related_booking_id` (commercial root real) e
+um draft que produz `decision.proposedResponse`, `evaluatePostModelGate`
+lança sempre que chega na chamada de `is_commercial_root_terminal`.
+
+**2. Erro exato**:
+```
+is_commercial_root_terminal falhou: professional_id_required_for_system_caller
+```
+(levantado dentro da própria function PL/pgSQL, `errcode = '22023'`,
+propagado por `gate.ts` como `throw new Error(...)`.)
+
+**3. Chamada atual** (`src/lib/intelligence/policy-gate-post/gate.ts:119`):
+```ts
+supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId }),
+```
+— nunca passou `p_professional_id`, em nenhuma versão desde que o
+parâmetro foi introduzido.
+
+**4. Assinatura atual** (migration 0051,
+`supabase/migrations/0051_runtime_orchestrator.sql`):
+```sql
+create function public.is_commercial_root_terminal(
+  p_commercial_root_id uuid,
+  p_professional_id uuid default null
+)
+```
+com, no corpo:
+```sql
+if public.is_system_caller() then
+  if p_professional_id is null then
+    raise exception 'professional_id_required_for_system_caller' using errcode = '22023';
+  end if;
+  v_professional_id := p_professional_id;
+else
+  if auth.uid() is null then raise exception 'not_authorized' ...; end if;
+  v_professional_id := auth.uid();
+end if;
+```
+
+**5. Por que `service_role`/system caller precisa do parâmetro**: o
+caminho `auth.uid()` deriva o profissional automaticamente do JWT de
+uma sessão autenticada real — não existe pra uma chamada `service_role`
+(o JWT não representa nenhum profissional específico). A function
+precisa que o CHAMADOR passe explicitamente qual profissional está
+sendo verificado pra derivar ownership (`commercial_root_belongs_to_professional`)
+— sem isso, não há como saber de quem é a raiz comercial sendo checada,
+e a function recusa fail-closed em vez de assumir.
+
+**6. Caminhos reais afetados**: `evaluatePostModelGate` é chamado tanto
+pelo ciclo normal (`pipeline.ts::runCycle`) quanto pela retomada
+(`resumption.ts::runResumptionCycle`) — **qualquer** execução real do
+Runtime (sempre via `service_role`, nunca `authenticated`) que tenha
+`bookingId`/`opportunityId` resolvido E um `decision.proposedResponse`
+não-vazio cai nesta chamada. Ou seja: todo o Post-model Gate real,
+pro caminho automatizado do Runtime, com commercial root — que é o
+caso comum, não uma borda.
+
+**7. Por que nenhum teste anterior detectou**: nenhuma execução
+end-to-end do pipeline TS contra Postgres real tinha acontecido neste
+projeto até o Red Team do bloco 42 — sem acesso a OpenAI (Classifier/
+Planner/extrator) e sem PostgREST local, todo teste anterior (Blocos
+1-6, Runtime, "fechar o ciclo", retomada durável) simulava decisões do
+Gate via `record_policy_gate_decision` chamado DIRETO com `p_checks`
+fabricados, nunca passando por `evaluatePostModelGate`/`is_commercial_root_terminal`
+de verdade. Testes via UI/dev routes usam `authenticated` (sessão real
+de profissional), que sempre teve `auth.uid()` preenchido — o ramo
+`is_system_caller()` nunca foi exercitado por nenhum caminho de teste
+existente antes deste Red Team.
+
+**8. Correção mínima identificada** (uma linha, `gate.ts:119`):
+```ts
+supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId, p_professional_id: input.professionalId }),
+```
+`input.professionalId` já existe no `PostModelGateInput` — nenhum dado
+novo precisa ser buscado, só passar o que já está disponível.
+
+**9. Resultado dos testes com a correção aplicada só localmente**: com
+essa única linha alterada, **13/13 cenários do Red Team passaram**
+(blocos 42 e 43 juntos, 3 execuções seguidas estáveis) e a regressão
+SQL completa (`02_*` a `57_*`, rebuild limpo) permaneceu em 0 FAIL
+(exceto as mesmas 3 falhas pré-existentes não relacionadas). Nenhuma
+outra alteração foi necessária pra fazer o Gate real funcionar sob
+`service_role`.
+
+**10. Confirmação explícita**: a alteração foi revertida (`git checkout --`)
+antes de qualquer commit deste bloco — `git diff src/lib/intelligence/policy-gate-post/gate.ts`
+contra o HEAD commitado está vazio. O arquivo commitado é
+byte-idêntico ao estado anterior a esta auditoria.
+
+**Este continua sendo o risco residual mais importante do Runtime**:
+sem ele, nenhuma execução real do Post-model Gate com commercial root
+funciona — bloqueador do freeze final, aguardando autorização
+explícita pra um micro-patch isolado com seu próprio regression test.
+
+## 45. Micro-patch isolado: corrige o bug preexistente do Post-model Gate (seção 44)
+
+Autorizado explicitamente pelo usuário depois da auditoria do commit
+`b7b142c` ("Aprovado o commit `b7b142c`... Agora está autorizado o
+micro-patch isolado do bug preexistente do Post-model Gate"). Escopo
+estrito, tratado como correção de wiring/provenance — nenhum
+redesenho do Gate, nenhum workaround de auth, nenhuma RPC relaxada.
+
+### Causa raiz
+
+`evaluatePostModelGate` (`src/lib/intelligence/policy-gate-post/gate.ts`)
+chamava `is_commercial_root_terminal` passando só `p_commercial_root_id`.
+A migration 0051 estendeu essa function com um segundo parâmetro,
+`p_professional_id uuid default null`, **obrigatório no caminho
+`is_system_caller()`** (service_role — sem `auth.uid()` pra derivar o
+profissional automaticamente): sem ele, a function levanta
+`professional_id_required_for_system_caller` (fail-closed, nunca
+assume). `gate.ts` nunca foi atualizado pra passar esse parâmetro —
+todo caminho real do Runtime (sempre `service_role`) com commercial
+root e um draft não-vazio caía nessa exceção. Diagnóstico completo,
+com os 10 itens exigidos, na seção 44.
+
+### Confirmação da assinatura real antes de alterar
+
+Lida diretamente de `supabase/migrations/0051_runtime_orchestrator.sql:773-807`
+antes de qualquer edição:
+```sql
+create function public.is_commercial_root_terminal(
+  p_commercial_root_id uuid,
+  p_professional_id uuid default null
+)
+...
+if public.is_system_caller() then
+  if p_professional_id is null then
+    raise exception 'professional_id_required_for_system_caller' using errcode = '22023';
+  end if;
+  v_professional_id := p_professional_id;
+else
+  if auth.uid() is null then raise exception 'not_authorized' ...; end if;
+  v_professional_id := auth.uid();
+end if;
+
+if not public.commercial_root_belongs_to_professional(p_commercial_root_id, v_professional_id) then
+  raise exception 'not_authorized' using errcode = '42501';
+end if;
+```
+`commercial_root_belongs_to_professional(root, professional)` (0047)
+continua a ÚNICA fonte de verdade de ownership nos dois caminhos —
+o parâmetro novo só diz DE ONDE vem o `professional_id`, nunca pula
+essa checagem. `input.professionalId` (`PostModelGateInput`) é
+exatamente `actorContext.representedProfessionalId`, resolvido por
+`resolveSystemActorContext` (`src/lib/runtime/system-actor.ts`) — a
+MESMA provenance já usada, sem alteração, nas duas outras RPCs que
+`gate.ts` chama nesta função (`get_active_approvals` e
+`is_operationally_ready`). Não é um valor novo nem uma fonte nova de
+autoridade — é o campo que já circula por todo o resto da função,
+agora também alimentando esta terceira chamada.
+
+### Diff exato
+
+`src/lib/intelligence/policy-gate-post/gate.ts` — só a chamada RPC,
+nenhuma outra linha:
+```diff
+-    supabase.rpc('is_commercial_root_terminal', { p_commercial_root_id: commercialRootId }),
++    supabase.rpc('is_commercial_root_terminal', {
++      p_commercial_root_id: commercialRootId,
++      p_professional_id: input.professionalId,
++    }),
+```
+Nenhuma migration. Nenhuma alteração em `matcher.ts`, `extractor.ts`,
+`config.ts`, ou em qualquer outro arquivo de `policy-gate-post/`.
+
+Higiene de comentário (sem mudança funcional), pedida à parte:
+`src/lib/runtime/resumption.ts` tinha um comentário desatualizado
+dizendo que `freshChecksAddressPendingIdentities` era usada "no ramo
+'allowed'" — o código já a aplica antes dos dois ramos (`allowed` e
+`blocked`) desde o commit `b7b142c` (seção 43). Corrigido pra refletir
+isso.
+
+### Testes novos (10 requisitos, `/tmp/pgtest/59_gate_professional_id_fix_test.ts`)
+
+Integração real contra Postgres (via shim `pg-supabase-shim.ts`, sem
+PostgREST disponível), chamando `evaluatePostModelGate` (produção,
+sem cópia) e a RPC `is_commercial_root_terminal` diretamente, com
+fixture dedicado (`59_gate_professional_id_fixture.sql`: bookings
+`BK_A` não-terminal e `BK_A_TERMINAL` terminal, ambos de A; `BK_B`
+não-terminal, de OUTRO profissional B; approval real de R$5000 pra
+`BK_A`).
+
+| # | Requisito | Cenário | Resultado |
+|---|---|---|---|
+| 1 | `evaluatePostModelGate` (system caller) + root não lança mais `professional_id_required_for_system_caller` | `bookingId=BK_A`, sem compromisso | PASS — `allowed`, sem exceção |
+| 2 | profissional correto + root correto → RPC funciona normalmente | `is_commercial_root_terminal(BK_A, A)` direto | PASS — `data=false, error=null` |
+| 3 | `professional_id` errado nunca ganha acesso ao root de outro profissional | `is_commercial_root_terminal(BK_B[de B], p_professional_id=A)` e o inverso `(BK_A[de A], p_professional_id=B)` | PASS (3a/3b) — `not_authorized` nas duas direções, nunca sucesso |
+| 4 | ausência de `professional_id` continua fail-closed no nível da RPC | `is_commercial_root_terminal(BK_A)` sem o parâmetro, `service_role` | PASS — `professional_id_required_for_system_caller` |
+| 5 | commercial root terminal continua bloqueando corretamente | `bookingId=BK_A_TERMINAL` + compromisso real (R$5000) | PASS — `blocked/commercial_root_terminal` |
+| 6a | root não-terminal segue pras demais avaliações do Gate (nunca para no terminal check) | `bookingId=BK_A` + valor divergente do aprovado (R$9999,99) | PASS — `blocked/value_mismatch` (prova que passou do terminal check e chegou no matcher real) |
+| 6b | idem, pass-through completo com approval real | `bookingId=BK_A` + valor igual ao aprovado (R$5000) | PASS — `allowed` |
+| 7 | `pipeline.ts::runCycle` atravessa esse ponto | cadeia REAL de `pipeline.ts` até o Gate (`resolveSystemActorContext`, `ensureOpportunityForConversation`, `resolveEffectiveCommercialRoot`, `resolveRecipientType`, todas funções de produção, sem cópia) chamando `evaluatePostModelGate` no mesmo shape de `pipeline.ts:289-300` | PASS — chega no Gate sem lançar, `allowed` |
+
+**9/9 PASS**, estável em 3 execuções seguidas (itens 3 e 6 têm 2 sub-asserções cada).
+
+**Nota honesta sobre o item 7**: `pipeline.ts::runCycle` não expõe
+nenhum ponto de injeção de model call (diferente de `resumption.ts`,
+que ganhou `ResumptionModelCalls` no commit `b7b142c`) — `classifyIntent`/
+`planResponse` ali sempre usam `defaultModelCall` (rede real,
+indisponível neste sandbox). Adicionar injeção a `pipeline.ts`
+extrapolaria o escopo estrito deste micro-patch (seria uma mudança de
+testabilidade em um arquivo de produção, não wiring do Gate). Por
+isso o teste do item 7 reconstrói, com as FUNÇÕES REAIS de produção
+(nenhuma reimplementação), toda a cadeia de `runCycle` até a chamada
+do Gate — actor context, linking de commercial root, `recipientType`
+— e só fornece `proposedResponse` diretamente como stand-in pro que o
+Planner real produziria. Isso prova que o CALL SITE exato de
+`pipeline.ts` não lança mais, sem alegar cobertura de
+classificação/planejamento (que este patch não toca).
+
+**Item 8** (`resumption.ts::runResumptionCycle` atravessa esse ponto):
+reaproveitado o Red Team de 13 cenários já existente
+(`58_redteam_stale_context_integration_test.ts`, seção 43) — re-executado
+com o fix do Gate agora PERMANENTE (não mais revertido depois do
+teste, como nas rodadas 42/43). **13/13 PASS**, nenhuma exceção
+`professional_id_required_for_system_caller`, nenhuma mudança de
+comportamento nos 13 cenários.
+
+**Item 9** (nenhuma mudança nas regras de approval/matching/pending
+replies/outbound): o diff inteiro é a adição de um parâmetro numa
+chamada RPC — nenhuma linha de `matcher.ts`, `pending-replies*.ts`,
+`recipient.ts`, `outbound.ts` foi tocada. Provado empiricamente pelos
+cenários 6a/6b (matcher continua distinguindo `value_mismatch` de
+`allowed` exatamente como antes) e pelos 13/13 do item 8 (nenhum dos
+13 cenários de matching/pending-replies mudou de resultado).
+
+### Regressão completa (item 10)
+
+Rebuild limpo do zero (`dropdb`/`createdb` + `00_supabase_bootstrap.sql`
++ todas as 54 migrations, em ordem, + `01_seed_test_data.sql`, sem
+erro em nenhum passo) — necessário porque uma execução anterior,
+sobre o banco acumulado de rodadas passadas, mostrou falhas de
+`\gset`/`limit 1` sem `order by` em alguns arquivos adversariais
+(`51`/`53`/`57`) causadas por POLUIÇÃO DE DADOS entre sessões (múltiplas
+conversations acumuladas pro profissional A ao longo de várias
+rodadas, tornando "pega a primeira conversation de A" ambíguo) —
+**não relacionado a esta mudança**: confirmado revertendo pro estado
+limpo e reproduzindo o mesmo problema mesmo sem o fix aplicado.
+
+Sobre o rebuild limpo:
+- SQL (`02_*` a `57_*`, 31 arquivos): **227 PASS**, exatamente as
+  mesmas **3 falhas pré-existentes e não relacionadas** já documentadas
+  (`41_redteam_provenance_and_overflow.sql` — "0 candidatos" ×3,
+  concorrência/overflow), **0 falhas novas**, **0 problemas de `\gset`**.
+- TS puro (sem DB): `54_pending_replies_matching_test.ts` (31 PASS),
+  `55_commercial_root_resolution_test.ts` (4 PASS),
+  `56_retry_backoff_test.ts` (9 PASS), `gate-readiness-test.ts`,
+  `gate-no-root-test.ts`, `runtime-closing-scenarios-test.ts`,
+  `runtime-commercial-root-test.ts` — todos limpos, sem falha.
+- Integração real (Postgres): `58_redteam_stale_context_integration_test.ts`
+  13/13, `59_gate_professional_id_fix_test.ts` 9/9 (ambos com o fix
+  permanente, não revertido desta vez).
+- `tsc --noEmit`: limpo. `eslint src/`: limpo. `next build`: limpo,
+  32 rotas (mesma contagem de antes).
+
+### Confirmação: nenhuma regra/RPC relaxada
+
+`is_commercial_root_terminal` continua com a MESMA assinatura, o
+MESMO fail-closed quando `p_professional_id` está ausente no caminho
+`service_role` (item 4 acima prova isso continua acontecendo), e a
+MESMA checagem de ownership (`commercial_root_belongs_to_professional`)
+nos dois caminhos (itens 2/3 provam isso — `professional_id` errado
+nunca ganha acesso a root alheio). Nenhuma migration foi criada ou
+alterada. O patch só corrige QUEM chama a RPC (o caller TS estava
+omitindo um parâmetro obrigatório) — nunca o que a RPC exige ou
+verifica.
+
+### Confirmação: Blocos 1–4 e o mecanismo de resumption congelado (commit `b7b142c`) sem alteração funcional
+
+`freshChecksAddressPendingIdentities`, a regra de 4 ramos
+(diverged/diverged/resolve/still_blocked), o `every` sobre múltiplas
+identidades, e `supersede_runtime_pending_replies_for_terminal_root` —
+nenhum tocado. O único código de `resumption.ts` alterado nesta rodada
+foi um comentário (ver "Diff exato" acima). Os 13/13 do Red Team da
+seção 43 confirmam isso empiricamente: mesmos 13 resultados, agora sem
+precisar reverter o fix do Gate pra rodá-los.
+
+### Riscos residuais
+
+O risco antes classificado como "o mais importante, bloqueador do
+freeze final" (seção 44) — o call site real, exercitado por todo
+ciclo/retomada do Runtime — está fechado.
+
+**Achado novo durante a busca por outros call sites** (fora do escopo
+autorizado, NÃO corrigido nesta rodada): `evaluateToolCallGate`
+(`src/lib/intelligence/policy-gate-post/tool-gate.ts:65`) chama
+`is_commercial_root_terminal` com o MESMO padrão — só
+`p_commercial_root_id`, sem `p_professional_id` — e sofreria o mesmo
+`professional_id_required_for_system_caller` se fosse exercitada sob
+`service_role` com um commercial root real. Diferença crítica:
+`evaluateToolCallGate` é exportada (`policy-gate-post/index.ts:38`)
+mas **nunca chamada por nenhum caminho real** — nem `pipeline.ts`, nem
+`resumption.ts`, nem nenhum outro arquivo do projeto a invoca; o
+próprio comentário do arquivo confirma o motivo ("nenhuma tool de
+escrita/ação existe ainda no Tool Registry... não há nada real pra
+encadear agora"). Ou seja: mesmo bug estrutural, mas em código
+morto/inalcançável hoje — zero risco de produção atual, ao contrário
+do achado da seção 44. Não corrigido porque está fora do escopo
+estrito autorizado ("a chamada de `is_commercial_root_terminal` no
+Post-model Gate", entendido como `gate.ts`/`evaluatePostModelGate`) —
+fica registrado aqui como candidato a um micro-patch futuro, análogo a
+este, se/quando uma tool de escrita real passar a chamar
+`evaluateToolCallGate`. Fix seria idêntico em forma (mesmo parâmetro,
+mesma provenance — `input.professionalId`, já presente em
+`ToolCallGateInput`).
+
+🔒 **Confirmação**: **Blocos 1–4 intocados.** Mecanismo de resumption
+congelado (commit `b7b142c`) sem alteração funcional. Nenhuma
+migration. Nenhuma integração WhatsApp/Meta/Resend. Nenhum merge,
+nenhum PR. Nenhuma regra de segurança relaxada no banco.
+
+## 46. Auditoria mecânica de contratos TS → Postgres + micro-patch `log_ai_usage_event`
+
+Duas entregas separadas, ambas autorizadas explicitamente:
+
+**(a) Auditoria final mecânica** (só leitura — nenhum código/migration/teste
+alterado): percorridos os 37 `supabase.rpc(...)` distintos usados pelo
+Runtime/Intelligence, cada um comparado contra a assinatura vigente
+(migration mais recente que o define/substitui) — nome, parâmetros
+obrigatórios/opcionais, nomes exatos dos argumentos, provenance/ownership
+sob `service_role`/`is_system_caller()`, se houve migration posterior
+alterando a assinatura, se o call site TS acompanha, e se existe teste
+TS→RPC real ou só SQL direto. Achado principal: `log_ai_usage_event`
+exigia `auth.uid()` incondicionalmente (migrations 0041/0042, nunca
+estendida com `is_system_caller()` — não estava na lista de 8 RPCs que
+a migration 0051 lista explicitamente como boundary de sistema) — toda
+chamada real do Runtime (`service_role`) falhava com `not_authorized`,
+e os 4 call sites reais (`pipeline.ts` x2, `resumption.ts` x2) nunca
+checavam `{error}`, então a perda de telemetria de custo/uso nunca
+apareceu em lugar nenhum. Confirmado também: nenhum arquivo de
+`src/app` chama `processInboundEvent`/`runApprovalEngine`/
+`attemptResumptionsAfterApproval`/`reconcileDueRuntimePendingReplies`
+— zero infraestrutura de disparo (webhook/cron/worker) conectada hoje;
+`reconcileDueRuntimePendingReplies` só tem o entrypoint, sem cron real.
+`evaluateToolCallGate` (`tool-gate.ts`) confirmado como código morto —
+mesmo bug de `is_commercial_root_terminal` sem `p_professional_id`,
+mas sem nenhum caminho de produção capaz de alcançá-lo hoje (dívida
+classe B, bloqueador obrigatório antes de qualquer write tool).
+
+**(b) Micro-patch isolado**, autorizado depois da auditoria aceita —
+fecha o achado de `log_ai_usage_event`.
+
+### Causa raiz
+
+`log_ai_usage_event` (migration 0041, redefinida em 0042 só pra
+adicionar `p_run_id`) sempre exigiu `auth.uid()` — o próprio comentário
+original da function já dizia "Único caminho de INSERT em
+ai_usage_events **pra authenticated**". A migration 0051, que
+introduziu `is_system_caller()` e estendeu 8 RPCs com esse boundary
+(listadas explicitamente no comentário da própria migration), não
+incluiu esta function — 0041/0042 são anteriores ao conceito de
+Runtime/service_role, e ninguém revisitou esta function quando
+`pipeline.ts`/`resumption.ts` passaram a chamá-la. Reproduzido contra
+Postgres real antes de qualquer alteração:
+```sql
+set role service_role;
+select * from public.log_ai_usage_event(p_feature := 'intent_classification', p_model := 'gpt-5-mini', p_status := 'success');
+-- ERROR: not_authorized
+```
+Efeito em produção: nunca derrubava o ciclo (a exceção era descartada
+silenciosamente nos 4 call sites, que nunca checavam `{error}`), mas
+**100% da telemetria de custo/uso de IA do Runtime automatizado nunca
+era gravada**, sem nenhum sinal de erro em lugar nenhum.
+
+### Desenho de provenance escolhido
+
+Auditado antes de alterar: `profile_id` (a identidade registrada em
+`ai_usage_events`) é sempre `auth.uid()` no caminho authenticated —
+nunca um parâmetro, nunca deveria virar um. A RPC hoje não recebia
+`professional_id` nenhum; a mudança mínima e segura, seguindo o MESMO
+padrão já usado (e já auditado) em `is_commercial_root_terminal`
+(migration 0051) e em `commit_approval_resolution`/
+`try_classify_communicated_proposal`/etc.: adicionar
+`p_professional_id uuid default null` como último parâmetro
+(compatível com o caminho authenticated, que nunca precisa dele e
+nunca deve confiar nele) e, no corpo:
+- `is_system_caller()` **falso** (authenticated): `v_professional_id := auth.uid()`,
+  exatamente como antes — `p_professional_id` é sempre ignorado aqui,
+  mesmo que alguém tente passar o id de outro profissional (nunca uma
+  segunda fonte de identidade pra quem já tem sessão real).
+- `is_system_caller()` **verdadeiro** (Runtime real): exige
+  `p_professional_id` explícito, fail-closed sem ele
+  (`professional_id_required_for_system_caller`, mesmo texto de erro
+  já usado em `is_commercial_root_terminal` — vocabulário consistente
+  no projeto). `v_professional_id := p_professional_id`.
+- Nos dois caminhos, as checagens de ownership que já existiam
+  (`conversation_not_owned`/`run_not_owned`, comparando
+  `conversations.represented_professional_id`/
+  `orchestrator_runs.represented_professional_id` contra a identidade
+  do chamador) passam a comparar contra `v_professional_id` — nunca
+  mais hardcoded em `auth.uid()`. Isso fecha exatamente o vetor de
+  spoof nomeado: um system caller não pode declarar
+  `p_professional_id = A` e citar `conversation_id`/`run_id` de B —
+  a linha simplesmente não pertence a A, `conversation_not_owned`/
+  `run_not_owned` disparam antes do INSERT.
+
+Provenance real, na prática: `actorContext.representedProfessionalId`
+(resolvido por `resolveSystemActorContext`, nunca do texto da
+mensagem) — a MESMA identidade que `pipeline.ts`/`resumption.ts` já
+usam pra todas as outras RPCs desta chamada (Gate, pending replies,
+orchestrator run). Nenhuma fonte nova de autoridade.
+
+### Migration/diff
+
+`supabase/migrations/0055_log_ai_usage_event_system_caller.sql` — `drop
+function` explícito da assinatura antiga (7 args) antes do `create or
+replace` (mesmo achado de `is_commercial_root_terminal`: um parâmetro
+novo no fim faz `create or replace` criar um SEGUNDO overload em vez de
+substituir, já que Postgres distingue functions pela lista de tipos de
+argumento) + `create or replace function` com o parâmetro novo +
+`comment on function` atualizado + `grant execute` explícito a
+`authenticated, service_role`. Nenhuma tabela alterada, nenhuma RLS
+tocada, nenhuma outra function tocada.
+
+`src/lib/supabase/types.ts`: `log_ai_usage_event.Args` ganhou
+`p_professional_id?: string | null` (o único ponto deste projeto que
+mantém tipos do Supabase à mão, já que `is_commercial_root_terminal`
+nunca precisou — `gate.ts` usa `SupabaseClient<any>`, `observability.ts`
+usa `SupabaseClient<Database>` estrito).
+
+`src/lib/intelligence/observability.ts`: nova function
+`logAiUsageEvent(supabase, params)` — wrapper único, chamada pelos 4
+call sites reais. `pipeline.ts`/`resumption.ts`: os 2+2 call sites
+trocam `supabase.rpc('log_ai_usage_event', {...})` cru por
+`logAiUsageEvent(supabase, {..., professionalId: actorContext.representedProfessionalId})`.
+Diff mínimo confirmado via `git diff` — só import + corpo dos 4 call
+sites, nenhuma outra linha tocada em nenhum dos dois arquivos.
+
+### Tratamento explícito de erro (separação operação principal vs. observabilidade)
+
+`logAiUsageEvent()` **nunca lança**. Em erro, chama `console.error(...)`
+(observável nos logs do processo/plataforma — grep-ável, nunca
+silencioso) e devolve `{ ok: false, error }`; em sucesso, `{ ok: true }`.
+Os 4 call sites fazem `await logAiUsageEvent(...)` sem inspecionar o
+resultado — decisão deliberada: perder um evento de custo/uso não é
+motivo pra derrubar um ciclo client-facing (booking/resposta), e este
+módulo não reaproveita `orchestrator_runs.error`/`fallback_used`
+(campos que já representam um OUTRO tipo de degradação — fallback de
+contexto do Bloco 3 — conflar os dois seria confuso e exigiria tocar a
+assinatura congelada de `finishOrchestratorRun` nos 4 call sites, sem
+necessidade). Nenhuma razão arquitetural forte pra algo mais elaborado
+foi encontrada — `console.error` é observável, simples, e não introduz
+nenhum schema/tabela nova.
+
+### Testes
+
+**Contrato puro da RPC** (`60_log_ai_usage_event_provenance_test.sql`,
+Postgres real, 10 cenários, 10/10 conforme esperado, 3 execuções
+estáveis):
+1. authenticated (A) grava o próprio usage, sem/com a própria
+   conversation.
+2. authenticated (A) tentando citar conversation/run de B →
+   `conversation_not_owned`/`run_not_owned`, nunca grava.
+3. system caller com `p_professional_id=A` + conversation/run de A →
+   grava normalmente, `profile_id=A`.
+4. system caller sem `p_professional_id` → `professional_id_required_for_system_caller`,
+   nenhuma linha gravada (confirmado por contagem antes/depois).
+5. system caller com `p_professional_id=A` citando conversation/run de
+   B (e o inverso, B citando conversation de A) → `conversation_not_owned`/
+   `run_not_owned` nas duas direções, zero linha gravada pra B via spoof.
+
+**Wrapper + call sites + retomada real** (`60_log_ai_usage_event_test.ts`,
+integração real contra Postgres via `pg-supabase-shim.ts`, 5/5, 3
+execuções estáveis):
+1. `logAiUsageEvent` com provenance válida → `{ok:true}`, linha real.
+2. `logAiUsageEvent` sem `professionalId` (service_role) → nunca lança
+   (capturado em try/catch), `{ok:false}`, nada gravado.
+3. `logAiUsageEvent` com `professionalId=A` + conversation de B →
+   nunca lança, `{ok:false}`, sem spoof.
+4. Réplica exata do shape dos 4 call sites reais → grava evento real
+   pros dois (classificação + planejamento).
+5. `resumeOnePendingReply()` REAL (produção, sem cópia, só os 3 model
+   calls injetados por falta de OpenAI) → **prova end-to-end** que a
+   retomada de fato grava `ai_usage_events` (>= 2 linhas, uma por
+   feature, `profile_id`/`conversation_id`/`run_id` corretos).
+
+**Nota honesta sobre "pipeline normal gera `ai_usage_event`"**:
+`pipeline.ts::processInboundEvent` não expõe injeção de model call
+(mesma limitação já documentada no commit `4c0fba2`) — o cenário 4
+acima prova que os DOIS call sites de `pipeline.ts` (mesmo shape exato,
+mesmos parâmetros) gravam corretamente, mas não roda o Classifier/
+Planner reais (precisam de OpenAI, indisponível neste sandbox). A prova
+end-to-end completa (cenário 5) é da retomada, que já suporta injeção.
+
+### Regressão completa
+
+Rebuild limpo do zero (`dropdb`/`createdb` + `00_supabase_bootstrap.sql`
++ 54 migrations + `01_seed_test_data.sql`, sem erro) — SQL (`02_*` a
+`57_*`, 31 arquivos): **227 PASS**, exatamente as mesmas 3 falhas
+pré-existentes e não relacionadas (`41_redteam_provenance_and_overflow.sql`),
+0 falhas novas, 0 problemas de `\gset`. Sobre esse mesmo rebuild, na
+ordem correta (evita a poluição de dados entre fixtures já documentada
+no commit `4c0fba2`): Red Team de retomada (`58_*`) 13/13, micro-patch
+do Gate (`59_*`) 9/9, e os testes desta rodada (`60_*`) 10/10 + 5/5.
+`tsc --noEmit`: limpo. `eslint src/`: limpo (só o warning pré-existente
+de fonte em `layout.tsx`). `next build`: limpo, 32 rotas.
+
+### Outros silent failures encontrados (reportados, NÃO corrigidos — fora do escopo autorizado)
+
+Busca dedicada por qualquer chamada `await supabase.rpc(...)` do
+Runtime/Intelligence que descarta `{error}` sem checar:
+- **`src/lib/intelligence/test-call.ts` (3 call sites, dev-only)**:
+  as mesmas 3 chamadas a `log_ai_usage_event` da rota `/dev/intelligence-test`
+  nunca checavam `{error}` — mesmo padrão exato do bug original, mas
+  hoje **inofensivo**: roda sempre com client `authenticated` real
+  (`@/lib/supabase/server`, sessão do profissional logado via
+  `requireProfessional()`), nunca `service_role` — `auth.uid()` sempre
+  populado, a RPC sempre teve sucesso nesse caminho. Dormant, não
+  crítico.
+- **`src/lib/intelligence/approval/orchestrator.ts:140` e `:164`**:
+  `await supabase.rpc('release_approval_resolution_claim', {...})`
+  sem desestruturar `{error}` — chamado quando um claim precisa ser
+  liberado antecipadamente (rate limit ou F2 stale). `release_approval_resolution_claim`
+  JÁ tem `is_system_caller()` (migration 0051), então isto não é o
+  mesmo bug de auth — é só o mesmo PADRÃO de erro descartado. Efeito,
+  se a liberação falhar por outro motivo (rede, etc.): o claim fica
+  preso até o `lease_expires_at` vencer sozinho (mecanismo de TTL já
+  existente) — degradação temporária, não perda de dado, severidade
+  bem menor que o achado principal.
+
+Nenhum outro padrão equivalente encontrado nos 37 RPCs auditados. Não
+corrigido nesta rodada — fora do escopo autorizado ("apenas reporte
+outros achados; não amplie o patch automaticamente").
+
+### `evaluateToolCallGate` — não tocado
+
+Confirmado permanecer dívida classe B, bloqueador obrigatório antes de
+qualquer write tool — nenhuma linha de `tool-gate.ts` alterada nesta
+rodada, por instrução explícita.
+
+### Confirmação: Runtime Architecture congelada sem alteração funcional
+
+`freshChecksAddressPendingIdentities`, a regra de 4 ramos, o `every`
+sobre múltiplas identidades, `is_commercial_root_terminal` (commit
+`4c0fba2`), `supersede_runtime_pending_replies_for_terminal_root` —
+nenhum tocado. O único código de `pipeline.ts`/`resumption.ts`
+alterado nesta rodada foi a troca do `supabase.rpc('log_ai_usage_event', ...)`
+cru pelo wrapper `logAiUsageEvent(...)` — mesmos parâmetros
+(equivalentes, só renomeados pro shape TS) mais `professionalId` novo,
+nenhuma outra linha de lógica de negócio tocada. Os 13/13 do Red Team
+da retomada (seção 43) e os 9/9 do micro-patch do Gate (seção 45)
+confirmam isso empiricamente: mesmos resultados de sempre.
+
+🔒 **Confirmação**: **Blocos 1–4 intocados. Runtime Architecture v1
+FROZEN sem alteração funcional.** Nenhuma integração WhatsApp/Meta/
+Resend. Nenhum merge, nenhum PR. Nenhuma regra de segurança relaxada —
+`log_ai_usage_event` ficou MAIS restrita (agora exige provenance
+explícita e validada no caminho de sistema, onde antes simplesmente
+falhava sempre). Nenhum avanço pra webhook, cron ou outbound worker
+nesta rodada.
+
+## 47. Beta Runtime Integration — passo 2: entrypoint (`triggerInboundMessage`)
+
+Roadmap aprovado (baseline): 1. credenciais reais; 2. entrypoint; 3.
+smoke test real contra OpenAI; 4. painel; 5. reconciler/cron; 6.
+outbound sender/adaptadores de canal. Ordem por dependência técnica,
+não por preferência — painel só depois do smoke test provar o
+entrypoint confiável; cron/outbound só depois do painel provar o loop
+manual fechando.
+
+**Este commit entrega só o passo 2** (autorizado explicitamente a
+avançar em paralelo à configuração das credenciais do passo 1 — "as
+credenciais são bloqueadoras pra executar/validar o Runtime real, não
+necessariamente pra escrever o `trigger.ts`"). **Não validado contra
+execução real** — sem `OPENAI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY`
+configuradas neste ambiente, nada aqui foi de fato invocado. O passo 3
+(smoke test) continua pendente, condicionado às credenciais.
+
+### O que foi criado
+
+`src/lib/beta-integration/trigger.ts` (arquivo novo, único) —
+`triggerInboundMessage(params)`: monta um `InboundEvent` a partir de
+parâmetros mínimos (`conversationId`, `authorType`, `body`, e o que for
+específico de cada author type) e chama `processInboundEvent()` — o
+único entrypoint do Runtime (`runtime/index.ts`) — com
+`createServiceRoleClient()`. Nenhuma lógica de negócio nova: valida
+nada que `pipeline.ts` já não valide sozinho (author_mismatch,
+missing_external_participant_identifier continuam resolvidos lá,
+fail-closed, sem duplicação aqui). `channel` default `'painel'` —
+honesto sobre a origem real (simulador/painel), nunca finge um canal
+que não existe. `providerEventId` default gera um novo por chamada
+(sem "evento de provider" real pra um disparo manual); um chamador
+que precisar de proteção contra duplo-clique pode passar o seu.
+
+**Decisão de localização, deliberada**: vive em `src/lib/beta-integration/`,
+FORA de `src/lib/runtime/` e `src/lib/intelligence/` — o Runtime está
+congelado (seção 46), e este arquivo é código de integração que
+CONSOME o entrypoint congelado, nunca o modifica. `git status`
+confirma: nenhum arquivo existente tocado, só este um arquivo novo.
+Quando um adaptador de canal real (WhatsApp/Meta/Resend) existir, ele
+chama esta mesma function (ou `processInboundEvent` direto) — nenhuma
+mudança de contrato necessária no Runtime pra isso.
+
+### Credenciais necessárias pro passo 3 (smoke test) — ainda pendentes
+
+Já comunicado ao usuário fora deste arquivo (`OPENAI_API_KEY` via
+platform.openai.com → API keys; `SUPABASE_SERVICE_ROLE_KEY` via
+Supabase Dashboard → Project Settings → API → service_role secret) —
+ambas server-only, nunca `NEXT_PUBLIC_`, entram em `.env.local` neste
+ambiente (já com as duas linhas comentadas em `.env.local.example`) ou
+na configuração de env vars da plataforma de deploy real, nunca
+coladas em código nem commitadas (`.env*` já no `.gitignore`, exceto
+o `.example`).
+
+### Validação desta rodada
+
+`tsc --noEmit`: limpo. `eslint`: limpo. `next build`: limpo, 32 rotas
+(arquivo não é rota, contagem inalterada). Nenhum teste de execução
+real — não é possível nem correto simular sem as credenciais reais
+(simular aqui reintroduziria exatamente o risco que o passo 3 existe
+pra eliminar: validar contra fixtures em vez de contra o
+comportamento real da OpenAI).
+
+🔒 **Confirmação**: **Blocos 1–4 e Runtime Architecture v1 congelados,
+zero arquivo existente alterado** (só um arquivo novo, fora dos
+diretórios congelados). Nenhuma migration. Nenhuma integração
+WhatsApp/Meta/Resend. Nenhum merge, nenhum PR. Nenhum avanço pro passo
+3 (smoke test) sem as credenciais configuradas, nem pro passo 4
+(painel) sem o passo 3 validado.
+
+## 48. Beta Runtime Integration — passo 3: superfície do smoke test (`/dev/runtime-smoke-test`)
+
+Credenciais confirmadas configuradas no ambiente Vercel do usuário
+(não neste sandbox — este processo continua sem
+`OPENAI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY`, então nada aqui foi
+executado de verdade). Descoberto que a Vercel já está conectada a
+`eriosleite-dev/doopla` (confirmado via print de
+Project Settings → Git do usuário) — deploy automático por push já
+deve valer assim que as env vars forem salvas e um push acontecer.
+
+**Este commit entrega só a superfície necessária pra rodar o smoke
+test** — ainda NENHUMA execução real aconteceu, nem neste sandbox
+(sem credenciais) nem no Preview (depende do usuário configurar as env
+vars na Vercel, algo que não posso fazer nem verificar por aqui).
+
+### O que foi criado
+
+`src/app/dev/runtime-smoke-test/` (3 arquivos novos: `page.tsx`,
+`SmokeTestPanel.tsx`, `actions.ts`) — ferramenta interna, mesmo padrão
+de `/dev/intelligence-test` (auth real via Supabase, `getUser()` +
+redirect pra `/login`), mas chamando `triggerInboundMessage()`
+(`beta-integration/trigger.ts`, passo 2) em vez da chamada isolada de
+Blocos 1-4. Fluxo: criar/selecionar UMA conversa `external_inquiry`,
+mandar mensagem como cliente, mandar mensagem como profissional NA
+MESMA conversa (nunca uma `professional_self` separada — ver achado
+abaixo), exibindo o `RuntimeCycleOutcome` bruto de cada chamada.
+
+**Achado de design, antes de escrever o código** (evitou uma pegada
+real): `create_conversation` (RPC, migration 0039) não aceita
+`related_booking_id`/`related_opportunity_id` como parâmetro —
+`related_opportunity_id` só é setado por `ensure_opportunity_for_conversation`,
+e só na PRÓPRIA conversa que a chamou (migration 0051, linha 965). Uma
+segunda conversa `professional_self` criada à parte NUNCA herdaria o
+commercial root da conversa do cliente por nenhum caminho real — os
+fixtures deste projeto (58/59/60) só conseguiam fazer isso porque
+inseriam `related_booking_id` direto via SQL bruto, fora da RPC,
+válido pra fixture de teste mas não pra um fluxo real. A forma correta
+(e mais simples): o profissional responde na MESMA conversa/thread do
+cliente — exatamente como aconteceria de verdade num canal real
+(WhatsApp) — a conversa já carrega o commercial root criado pela
+primeira mensagem do cliente, `shouldRunApprovalEngine` já vê
+`hasCommercialRoot=true` na entrada seguinte. Corrigido no design antes
+de qualquer linha de `SmokeTestPanel.tsx`/`actions.ts`.
+
+**Revalidação de posse explícita** (`assertOwnsConversation` em
+`actions.ts`): `triggerInboundMessage`/`processInboundEvent` rodam com
+`service_role` e confiam no `conversationId` recebido (não é fronteira
+deles validar sessão de browser). Como esta é a PRIMEIRA superfície
+real chamando o Runtime a partir de uma sessão de profissional
+logado, a posse é revalidada aqui, com o client `authenticated` (RLS
+"conversations: select own"), antes de qualquer chamada ao Runtime —
+nunca confia no `conversationId` que o client alegou.
+
+### Validação desta rodada
+
+`tsc --noEmit`: limpo. `eslint`: achou e corrigiu 1 problema real antes
+do commit (`Date.now()` chamado direto no corpo do componente —
+`react-hooks/purity`; corrigido com lazy init `useState(() => ...)`).
+`next build`: limpo, 33 rotas (nova rota `/dev/runtime-smoke-test`
+aparece). `git status`: só arquivos novos, zero arquivo existente
+tocado — Blocos 1-4 e Runtime Architecture v1 seguem intocados.
+
+### Ainda pendente antes do resultado do smoke test
+
+1. Usuário configura `OPENAI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY` nas
+   Environment Variables do projeto Vercel (Preview, idealmente
+   restrito à branch `claude/new-session-3hdkui`).
+2. Push desta branch → Preview deployment.
+3. Usuário loga no Preview com sua própria sessão e roda os 2 passos
+   (cliente → profissional) na página nova.
+4. Resultado bruto (`RuntimeCycleOutcome` dos dois passos) volta pra
+   auditoria — só então o passo 3 do roadmap é considerado validado, e
+   só então o passo 4 (painel) começa.
+
+🔒 **Confirmação**: **Blocos 1–4 e Runtime Architecture v1 congelados,
+zero arquivo existente alterado.** Nenhuma migration. Nenhuma
+integração WhatsApp/Meta/Resend. Nenhum merge, nenhum PR. Nenhuma
+execução real ainda — nem neste sandbox, nem confirmada no Preview.
+
+**Atualização**: as duas credenciais foram confirmadas configuradas no
+projeto Vercel (`OPENAI_API_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, ambas
+escopadas a Preview + branch `claude/new-session-3hdkui`). O
+deployment do commit `27aebd1` (Preview, Ready) foi criado antes da
+`SUPABASE_SERVICE_ROLE_KEY` ser salva — este commit vazio força um
+deployment novo que já lê as duas, evitando depender da navegação de
+"Redeploy" na UI da Vercel (que apresentou travamentos de interface
+durante a tentativa manual).
+
+**Atualização 2**: primeira tentativa real (via deployment do commit
+`27aebd1`) retornou `{"kind": "action_error", "error":
+"claim_inbound_event falhou: Invalid API key"}` nos dois passos
+(cliente e profissional) — erro do próprio gateway do Supabase (não do
+Postgres/Runtime), indicando que o valor colado em
+`SUPABASE_SERVICE_ROLE_KEY` na Vercel não era a `service_role` secret
+correta. Sinal positivo apesar do erro: prova que
+`triggerInboundMessage`/a rota/a autenticação funcionam exatamente
+como desenhado, e que o tratamento de erro (nunca derruba a página,
+mensagem limpa) se comporta como esperado mesmo numa falha de
+infraestrutura real, não simulada.
+
+**Atualização 3**: segunda tentativa (deployment `dfc930e`, já Ready)
+repetiu o MESMO erro. Causa raiz real encontrada: ao tentar restringir
+`SUPABASE_SERVICE_ROLE_KEY` por branch, a UI da Vercel criou DUAS
+variáveis com o mesmo nome (uma "Preview" genérica + uma "Preview" +
+branch específica) — ambiguidade de qual valor o build de fato lia.
+Resolvido apagando as duas e recriando uma única, escopada só
+"Preview" (sem restrição de branch, mesmo escopo que `OPENAI_API_KEY`
+já tinha desde o início — mais simples e suficiente). Este commit
+força mais um deployment pra pegar essa versão, agora sem
+ambiguidade.
+
+**Atualização 4**: com as credenciais corretas, o primeiro erro real
+de Runtime foi `claim_inbound_event falhou: Could not find the
+function ... in the schema cache` — revelou que o banco Supabase real
+de produção nunca tinha recebido as migrations 0045-0055 (Approval
+Engine, Post-model Gate, Runtime/Orchestrator, Pending Replies,
+Durable Retry, fix do `log_ai_usage_event`) — elas só existiam como
+arquivo no repositório. Diagnóstico via `Table Editor` (nada entre
+`ai_usage_events` e `artist_availability` alfabeticamente — confirma
+ausência de tudo `approval_*`) e via `information_schema.columns` em
+`orchestrator_runs`, que revelou uma segunda lacuna mais funda: a
+migration 0044 (Bloco 4 — Response Planner) TAMBÉM nunca tinha sido
+aplicada, apesar da 0043 (classification) estar presente — por isso a
+primeira tentativa de aplicar só 0045+ falhou tentando apagar uma
+constraint (`orchestrator_runs_requires_professional_review_before_sen_check`)
+que não existia. Resolvido com um script único (0044 a 0055
+concatenadas, envolvidas em `begin;`/`commit;` — atômico, sem risco de
+deixar o banco pela metade) rodado pelo usuário no SQL Editor do
+Supabase (projeto `doopla`, branch `main`/**PRODUCTION** — único
+projeto Supabase existente). **Aplicado com sucesso.** Runtime
+Architecture v1 agora existe de fato no banco real, não só no
+repositório — bloqueador fechado, seguimos pro smoke test de verdade.
+
+**Atualização 5**: com o banco migrado e as credenciais corretas, os
+dois passos do smoke test rodaram de verdade pela primeira vez contra
+OpenAI + Postgres reais. O passo do cliente terminou
+`policyGateOutcome: "blocked", policyGateBlockReason:
+"extraction_unavailable"` (ainda não investigado — Classifier e
+Planner rodaram certo, só o extrator do Post-model Gate falhou; fica
+como ponta solta pra revisitar). O passo do profissional (`"Pode
+fechar por R$3000!"`) falhou com `try_acquire_approval_resolution_claim
+falhou: invalid_context_identity` — bug real do Approval Engine, nunca
+visto em nenhum teste anterior deste projeto inteiro.
+
+**Causa raiz**: `computeContextIdentity()`
+(`src/lib/intelligence/approval/canonicalize.ts`) devolve um `Buffer`
+do Node. `orchestrator.ts` passava esse `Buffer` direto como parâmetro
+`p_current_context_identity`/`p_inference_context_identity` (tipo
+`bytea`) nas chamadas RPC via `@supabase/supabase-js`. O client real
+fala com o Postgres via PostgREST (HTTP/JSON) — `JSON.stringify()` de
+um `Buffer` produz `{"type":"Buffer","data":[...]}`, que não é um
+literal `bytea` válido. A RPC (`try_acquire_approval_resolution_claim`,
+migration 0045) recusa fail-closed com `invalid_context_identity`
+assim que confere `octet_length(...) <> 32`. Nunca detectado antes
+porque TODO teste anterior do Approval Engine (as 10 Áreas, os testes
+adversariais, os cenários de fechamento — tudo) rodava contra
+`pg-supabase-shim.ts`, um shim que fala o protocolo binário nativo do
+`pg`, que serializa `Buffer` corretamente como `bytea` — mascarando um
+bug que só existe na fronteira HTTP/JSON do client real. Este é o
+PRIMEIRO teste de todo o projeto a exercitar o Approval Engine contra
+o `@supabase/supabase-js` de verdade em vez do shim.
+
+**Fix** (autorizado explicitamente pelo usuário via pergunta
+sim/não): isolado na fronteira de serialização, dentro do próprio
+`orchestrator.ts` (Bloco 5) — `computeContextIdentity()` continua
+devolvendo `Buffer`, nada muda em como F1/F2 são comparados
+internamente. Novo helper privado:
+
+```ts
+function contextIdentityToBytea(identity: Buffer): string {
+  return `\\x${identity.toString('hex')}`;
+}
+```
+
+Aplicado nos 2 únicos call sites que passam `f1`/`f2` pra uma RPC
+(`try_acquire_approval_resolution_claim` e
+`commit_approval_resolution`) — confirmado via grep que
+`computeContextIdentity` não é chamado em nenhum outro lugar do
+projeto. `\x<hex>` é o formato textual padrão que o parser de `bytea`
+do Postgres aceita; ao contrário de um `Buffer`, `JSON.stringify()` de
+uma string hex produz uma string plana — exatamente o que o transporte
+JSON do PostgREST consegue carregar sem ambiguidade.
+
+**Testes**: novo `61_context_identity_bytea_test.ts` (7 asserções) —
+confirma que o Buffer tem 32 bytes, que o formato `\x<hex>` bate a
+regex esperada, que `JSON.stringify(Buffer)` vira objeto (a causa
+raiz) enquanto `JSON.stringify(hex)` vira string plana (o fix), e via
+o shim `pg` que tanto o `Buffer` bruto quanto a string hex produzem o
+MESMO valor `bytea` de 32 bytes no Postgres (`octet_length` = 32 dos
+dois jeitos, `Buffer.compare(...) === 0`) — prova que o fix preserva o
+valor, só corrige a serialização.
+
+**Regressão**: re-rodados os testes que exercitam `orchestrator.ts`
+mais de perto — `55_commercial_root_resolution_test.ts` (4 PASS),
+`56_retry_backoff_test.ts` (9 PASS),
+`58_redteam_stale_context_integration_test.ts` (13 PASS),
+`59_gate_professional_id_fix_test.ts` (9 PASS),
+`60_log_ai_usage_event_test.ts`, `runtime-closing-scenarios-test.ts`
+(todos os cenários do fechamento do Runtime) — todos verdes, zero
+regressão. `tsc --noEmit` e `eslint` (projeto inteiro) limpos além dos
+2 achados pré-existentes e não relacionados (arquivos vendorizados
+`public/vendor/gsap/*.min.js` e o warning de custom font em
+`layout.tsx`).
+
+🔒 **Confirmação de escopo**: único arquivo alterado é
+`src/lib/intelligence/approval/orchestrator.ts` — mudança isolada na
+fronteira de serialização RPC, nenhuma migration tocada, nenhuma
+mudança de contrato/assinatura, `computeContextIdentity()` e toda a
+lógica de comparação F1/F2 continuam exatamente como estavam. Resto do
+Runtime Architecture v1 e Blocos 1-4 seguem congelados e intocados.
+
+Ainda pendente: usuário precisa disparar um novo deployment (push já
+força isso) e repetir o cenário `"profissional: Pode fechar por
+R$3000!"` no Preview real — é essa a validação que este fix realmente
+precisa, já que o sandbox não reproduz o transporte HTTP/JSON real do
+`@supabase/supabase-js`.
+
+## 49. Beta Runtime Integration — passo 3: bug real de Structured Outputs em 3 model calls (resolver/extrator/detector)
+
+Depois do fix do Buffer→bytea (item 48, Atualização 5), o usuário
+repetiu o smoke test no Preview real. A mensagem do profissional
+("Pode fechar por R$3000!") voltou `"approvalOutcome": "committed"` —
+sinal positivo (o RPC não falhou mais). A mensagem do cliente ("oi,
+queria orcamento...") voltou `"policyGateBlockReason":
+"extraction_unavailable"` — sinal de alerta, investigado por pedido
+explícito do usuário.
+
+### Causa raiz
+
+`policy-gate-post/extractor.ts` pede ao model um campo `value:
+z.record(z.string(), z.unknown()).nullable()` — um "objeto livre".
+Esse shape NUNCA é aceito pelo modo strict de Structured Outputs da
+OpenAI (`zodTextFormat`): um objeto sem propriedades fechadas não pode
+ser representado com `additionalProperties: false`. A própria
+construção do schema (`zodTextFormat(modelOutputSchema, ...)`) lança
+uma exceção — **antes de qualquer chamada de rede**, incondicionalmente,
+em qualquer ambiente, com qualquer input. `extractCommitments()`
+engole essa exceção (mesmo padrão fail-closed do resto do projeto) e
+devolve `unavailable: true` — daí o bloqueio.
+
+Reproduzido isolando exatamente essa construção de schema fora do
+projeto (`zodTextFormat` chamado com o schema real do extrator) — o
+erro exato: `Object schema at ".../value/anyOf/0" must set
+additionalProperties: false to be compatible with strict Structured
+Outputs`.
+
+**Achado mais sério, buscando o mesmo padrão no resto do projeto**: o
+IDÊNTICO shape (`z.record(z.string(), z.unknown()).nullable()`) existe
+em mais 2 lugares:
+
+1. `approval/resolver.ts` — `approvedValue`/`referredValue` do
+   Approval Resolver.
+2. `inbound-proposal/detector.ts` — `value` do detector de proposta
+   inbound.
+
+Ou seja: a chamada real ao model do Approval Resolver **também sempre
+lançava** essa mesma exceção, sempre caindo no fallback fail-closed
+(`resolveApproval()` retorna `outcome: 'inconclusive', reason:
+'model_ambiguous'` quando `!parsed`). O `"approvalOutcome": "committed"`
+do smoke test não significava "aprovação capturada" — `status:
+'committed'` só descreve que o COMMIT no Postgres teve sucesso; o
+`outcome` interno (`resolved` vs `inconclusive`) não é exposto em
+`RuntimeCycleOutcome.approvalOutcome` (`pipeline.ts:253`,
+`approvalOutcome = approvalResult.status`). Ou seja: o profissional
+dizer "Pode fechar por R$3000!" nunca tinha sido processado de
+verdade pela IA — o sistema, com segurança (fail-closed, nunca gravou
+nada errado), sempre tratava como inconclusivo.
+
+Confirmado que Classifier (`classification/classify.ts`) e Planner
+(`planner/plan.ts`) NÃO têm esse padrão — só usam campos com tipo
+fechado — por isso os dois sempre funcionaram de verdade nos smoke
+tests (o texto do profissional/draft do Planner sempre foi real).
+
+Nunca detectado antes pela mesma razão do bug do Buffer: toda a
+suíte de testes anterior (Bloco 5, Post-model Gate, inbound-proposal)
+sempre injetava `modelCall` — o `defaultModelCall()`/`zodTextFormat`
+real nunca foi exercitado antes desta rodada de smoke test contra
+infraestrutura real.
+
+### Fix
+
+Autorizado explicitamente pelo usuário (pergunta sim/não). Um único
+padrão aplicado nos 3 arquivos, isolado na fronteira model↔código —
+nenhuma regra de validação existente mudou:
+
+`approval/value-schemas.ts` ganha `MODEL_VALUE_OUTPUT_SCHEMA` — achata
+as 13 formas de `APPROVED_VALUE_SCHEMAS` num único objeto Structured-
+Outputs-compatível, com todo campo possível (`amountCents`, `date`,
+`time`, `durationMinutes`, `location`, `description`, `installments`)
+declarado e `nullable()` (nenhum campo "opcional" — o modo strict exige
+toda propriedade presente; nullable é como "opcional" se expressa
+aqui), e `.nullable()` no objeto inteiro (pra representar ausência de
+valor, ex.: `revocation`). `modelValueToRecord()` reduz essa saída de
+volta a um `Record<string, unknown> | null` — exatamente o shape que
+`validateApprovedValue()`/`resolveDateValue()` já esperavam nos 3
+chamadores, descartando campos null.
+
+- `resolver.ts`: `decisionSchema.approvedValue`/`referredValue` trocam
+  pra `MODEL_VALUE_OUTPUT_SCHEMA`; `toPendingDecisions()` converte via
+  `modelValueToRecord()` antes de qualquer outra checagem (incluindo o
+  `revocation` exige `approvedValue null`, agora conferido no valor JÁ
+  convertido).
+- `policy-gate-post/extractor.ts`: `value` troca pro mesmo schema;
+  conversão aplicada antes de `resolveDateValue()`.
+- `inbound-proposal/detector.ts`: idêntico.
+
+### Testes
+
+Novo `62_model_value_schema_test.ts` (9 PASS): reproduz a causa raiz
+isoladamente (o shape antigo lança, sempre); confirma que os 3 schemas
+REAIS exportados de `resolver.ts`/`extractor.ts`/`detector.ts` nunca
+lançam na construção; testa `modelValueToRecord()` nos casos
+representativos (null, tudo-null→`{}`, price, date, payment_condition
+com `dueDate` null omitido do item).
+
+### Regressão
+
+Achado colateral: 4 arquivos de teste existentes mockavam `modelCall`
+com o shape ANTIGO parcial (ex.: `value: { amountCents: 300000 }`, sem
+os outros campos) — inofensivo contra o código antigo (que aceitava
+qualquer `Record`), mas quebraria contra `modelValueToRecord()` (que
+espera todo campo presente, mesmo que null — um campo *ausente* vira
+`undefined`, e `undefined !== null` faria `modelValueToRecord`
+incluir uma chave extra indevida, rejeitada por `validateApprovedValue`
+que usa `.strict()`). Corrigido nos 4 arquivos de teste (nunca em
+código do projeto): `59_gate_professional_id_fix_test.ts`,
+`gate-no-root-test.ts`, `gate-readiness-test.ts`,
+`58_redteam_stale_context_integration_test.ts` — todos passados a
+preencher o objeto completo (campos irrelevantes `null`), mesmo
+contrato que o model real agora sempre satisfaz.
+
+Toda a suíte relevante re-rodada depois do fix: `55`, `56`, `58`
+(13/13), `59` (9/9), `60`, `61` (7/7), `gate-no-root-test.ts`,
+`gate-readiness-test.ts`, `runtime-closing-scenarios-test.ts` — 100%
+verde, zero regressão. `tsc --noEmit`, `eslint` (nos 4 arquivos
+tocados) e `next build` (33 rotas) limpos.
+
+🔒 **Confirmação de escopo**: 4 arquivos tocados —
+`approval/value-schemas.ts` (schema/helper novos, nada removido),
+`approval/resolver.ts`, `policy-gate-post/extractor.ts`,
+`inbound-proposal/detector.ts` — todos na fronteira model↔código,
+nenhuma migration, nenhuma mudança de contrato de tipo externo
+(`Record<string, unknown> | null` continua o shape final em todo
+lugar), nenhuma regra de `validateApprovedValue`/matcher/subject-key
+alterada.
+
+### Validação real no Preview (commit `7c68c28`)
+
+Usuário repetiu o smoke test no deployment do fix. Primeira rodada
+(cliente: "Oi, queria orçamento para meu casamento 20/12?", sem ano) —
+`policyGateOutcome: "blocked"`, `policyGateBlockReason:
+"invalid_extracted_value"`. Diferente do `extraction_unavailable` de
+antes: agora é o extrator rodando de verdade contra a OpenAI, e essa
+mensagem específica tem uma expressão de data AMBÍGUA ("20/12" sem
+ano) — exatamente o caminho documentado em `resolveDateValue()`
+(extractor.ts:181-197): expressão relativa sem candidato temporal
+correspondente vira `null`, `validateApprovedValue('date_change',
+null)` falha contra o schema (`z.object({date:...}).strict()` não
+aceita `null`), matcher bloqueia por `invalid_extracted_value` — fail-
+closed correto, nunca um bug novo.
+
+Confirmado pedindo um segundo teste, numa conversa nova, com data
+completa: "Oi, quanto custa tocar no meu casamento dia 20/12/2026?" —
+resultado: `policyGateOutcome: "allowed"`, `disposition:
+"auto_send_eligible"`, `outboundIntentId` real criado. Sem nenhuma
+ambiguidade de data, o pipeline completo (Classifier → Planner →
+extrator real → matcher → outbound intent) roda limpo, ponta a ponta,
+pela primeira vez contra infraestrutura real.
+
+🔒 **Passo 3 do roadmap (smoke test) considerado validado nos dois
+sentidos** (cliente e profissional, com os 2 bugs reais corrigidos e
+confirmados no Preview) — próximo passo do roadmap aprovado é o passo
+4 (painel), a começar só quando o usuário autorizar.
+
+## 50. Beta Runtime Integration — passo 3: fechamento da lacuna 3b (candidato circular no Approval Resolver)
+
+Auditoria pedida explicitamente pelo usuário antes de autorizar o
+passo 4 (painel): verificar no Supabase real se a última aprovação do
+profissional testada depois do fix `7c68c28` persistiu
+`outcome = 'resolved'`, não `'inconclusive'`. Consulta de leitura
+(`approval_resolutions`, filtrando por `professional_statement_message_id`
+= `conversationMessageId` do smoke test) devolveu **`outcome =
+'inconclusive'`, `inconclusive_reason = 'model_ambiguous'`** — por
+regra explícita do usuário, isso pausou o fechamento do passo 3 pra
+investigação, sem seguir pro painel.
+
+### Causa raiz encontrada (achado real, terceiro desta rodada)
+
+Investigação (só leitura: código + uma segunda consulta na tabela
+`communicated_proposal_candidates`) revelou que existia sim um
+candidato para o `commercial_root_id` da conversa — mas com
+`source_message_id` **idêntico** ao `professional_statement_message_id`
+que o resolver estava avaliando. Causa: `pipeline.ts` roda
+`detectInboundProposal`/`registerInboundProposal` (migration 0053) —
+que registra um candidato a partir da mensagem inbound corrente, de
+QUALQUER autor — **antes** de chamar `runApprovalEngine` sobre essa
+MESMA mensagem (`pipeline.ts:211-224` antes de `:243-244`). Quando o
+profissional propõe um valor novo na própria declaração ("Pode fechar
+por R$3000!"), `get_communicated_proposal_candidates` já devolve, na
+mesma chamada, um candidato circular — a mensagem confirmando a si
+mesma. O model, vendo esse candidato ambíguo (proposto pelo
+profissional, valor idêntico ao que ele acabou de dizer, mas sem
+sinal explícito de que é a MESMA mensagem), não conseguiu classificar
+com segurança como `professional_initiated` (decisão autocontida, que
+não exige nenhuma referência) nem como confirmação de um candidato
+real e anterior — caiu em `inconclusive/model_ambiguous`, fail-closed.
+
+Diferente dos 2 bugs anteriores desta rodada (aqueles impediam a
+chamada de sequer FUNCIONAR); este é um problema de **qualidade do
+contexto entregue ao model**, só visível agora que as chamadas reais
+funcionam de verdade.
+
+### Fix
+
+Autorizado explicitamente pelo usuário. Isolado em
+`approval/resolution-context.ts` — `buildResolutionContext()` agora
+filtra `candidateRows` (única origem dos 3 usos: `messageWindow`, teto
+per-chain, `communicatedProposalCandidates`) excluindo qualquer
+candidato cuja `source_message_id` seja igual ao
+`professionalStatementMessageId` recebido. Nenhuma mudança na RPC SQL
+(`get_communicated_proposal_candidates` continua igual, usada também
+por `proposal-classification.ts` — ali o problema não existe, porque
+aquele call site roda ANTES do candidato da mensagem corrente ser
+inserido). A mensagem corrente continua presente no `messageWindow`
+via `statementRaw` (fonte separada, nunca dependente de
+`candidateRows`) — só deixa de aparecer como "candidato comunicado".
+
+### Testes
+
+Novo `63_resolution_context_self_candidate_test.ts` (3 PASS, contra
+Postgres real): candidato circular (mesma `source_message_id` da
+mensagem em avaliação) é excluído de `communicatedProposalCandidates`;
+candidato legítimo (mensagem diferente) continua aparecendo
+normalmente; a mensagem corrente continua no `messageWindow` mesmo
+com o candidato filtrado.
+
+### Regressão
+
+Suíte completa re-rodada: `55`, `56`, `58` (13), `59`, `60`, `61` (7),
+`62` (9), `gate-no-root-test.ts`, `gate-readiness-test.ts`,
+`runtime-closing-scenarios-test.ts` — 100% verde, zero regressão.
+`tsc --noEmit`, `eslint` e `next build` (33 rotas) limpos.
+
+🔒 **Confirmação de escopo**: único arquivo de código tocado —
+`approval/resolution-context.ts`. Nenhuma migration, nenhuma mudança
+de contrato/tipo, nenhuma regra de `validateApprovedValue`/matcher
+alterada — filtro isolado na montagem do `ResolutionContext`.
+
+### Ainda pendente
+
+Repetir o cenário "profissional: Pode fechar por R$3000!" no Preview
+real (novo deployment) e confirmar via a mesma consulta SQL usada
+nesta auditoria que `approval_resolutions.outcome = 'resolved'` desta
+vez — é essa a validação final que fecha o passo 3 de verdade.
+
+## 51. Beta Runtime Integration — passo 3: correção estrutural do Approval Resolver (identidade canônica ≠ contexto legível pelo model)
+
+Continuação do item 50. O fix do candidato circular não resolveu o
+`inconclusive` — investigação mais funda (pedida explicitamente pelo
+usuário antes de tocar em código) revelou a causa raiz real, bem mais
+séria.
+
+### Achado
+
+`ResolutionContextV1.messageWindow` (Approval Resolver, Bloco 5) só
+carrega `contentDigest` — um **hash SHA-256** do conteúdo da mensagem,
+nunca o texto. `resolveApproval()` manda `JSON.stringify(context)`
+pro model — ou seja, **o Approval Resolver nunca recebeu, em nenhum
+momento, o texto real do que o profissional escreveu**. Confirmado
+ponta a ponta (`canonicalize.ts`, `resolution-context.ts`,
+`resolver.ts`, `structuralFacts`, candidatos) — nenhum outro campo
+carrega texto legível. Comparado com o resto do projeto: Classifier,
+Planner, extrator do Post-model Gate e detector de proposta inbound
+**todos** recebem texto real (`ContextPackage.MessageContextItem.text`,
+`proposedResponse`, `messageText`) — só o Approval Resolver era a
+exceção.
+
+Causa: o autor original usava `contentDigest` corretamente pra
+detectar mudança de conteúdo do mesmo `messageId` entre F1 e F2 (ex.:
+transcrição de áudio concluindo — achado da V3.5, documentado no
+próprio comentário do código), mas usou essa MESMA representação como
+o que é entregue ao model — nunca preservou o texto em paralelo. Duas
+responsabilidades diferentes (identidade estável vs. conteúdo legível)
+comprimidas numa única representação.
+
+### Design da correção (auditado antes de qualquer código, por pedido explícito do usuário)
+
+Separação: `contentDigest`/`MessageWindowEntry` continuam existindo
+exatamente como estavam, servindo só identidade/`context_identity`.
+Novo campo **irmão**, `messageContents: MessageContentEntry[]`, em
+`ResolutionContextV1` — populado com `computeUsableText()` (mesma
+fonte que já alimenta o digest, nunca uma segunda leitura divergente),
+truncado com `truncateText()`/`CONTEXT_MAX_MESSAGE_TEXT_CHARS` já
+existentes em `context-builder/budget.ts` (nenhuma política de
+truncamento nova). `canonicalizeV1()` **nunca** lê este campo — nem no
+objeto `normalized` nem em nenhum outro ponto — com comentário
+explícito nos dois lugares (na definição do tipo e dentro da própria
+function) pra impedir que uma refatoração futura misture as duas
+responsabilidades de novo. Nenhuma migration, nenhum `canonicalizeV2`,
+nenhuma persistência nova (o campo só existe em memória, dentro da
+chamada — nunca gravado em tabela nenhuma; `context_identity`
+continua sendo só o hash de 32 bytes, único artefato deste módulo que
+é persistido).
+
+### Arquivos alterados
+
+- `approval/canonicalize.ts`: `MessageContentEntry` (tipo novo) +
+  campo `messageContents` em `ResolutionContextV1`, com comentário
+  explícito de exclusão. `canonicalizeV1()` ganha comentário no ponto
+  exato onde `messageContents` é deliberadamente omitido do objeto
+  `normalized`.
+- `approval/resolution-context.ts`: `buildResolutionContext()` monta
+  `messageContents` no MESMO loop que já monta `messageWindow`
+  (reaproveita o `usableText` já calculado ali, zero leitura nova),
+  truncando via `truncateText(usableText, CONTEXT_MAX_MESSAGE_TEXT_CHARS)`
+  importado de `context-builder/budget.ts`.
+- `approval/resolver.ts`: `buildResolverInstructions()` — critério
+  explícito pra `professional_initiated` (proposto pelo usuário,
+  aplicado antes desta rodada, mantido): declaração autocontida com
+  termos materiais completos vira `professional_initiated` mesmo
+  soando como resposta/confirmação na superfície; menção/pergunta/
+  hipótese/hábito nunca vira decisão; aceite curto continua exigindo
+  referente inequívoco. Só passa a ter efeito real agora que o model
+  recebe texto de verdade pra aplicar o critério.
+- `approval/golden-suite.ts`: os 6 casos existentes ganham
+  `messageContents` correspondente ao texto já documentado em cada
+  um (antes, `contentDigest: 'dN'` era um placeholder nunca lido de
+  verdade). +9 casos adversariais novos, pedidos explicitamente:
+  3 decisões autocontidas esperando `professional_initiated`
+  ("Pode fechar por R$3.000.", "Fecha em R$3.000 então.", o caso
+  R$300 de deslocamento já existente), 4 menções-sem-decisão esperando
+  `inconclusive` ("R$3.000 é pouco.", "Ele ofereceu R$3.000?",
+  "Normalmente cobro R$3.000.", "Talvez R$3.000."), 2 casos de
+  referente ausente esperando `inconclusive` ("Pode usar aquele valor
+  combinado." sem candidato, "Pode." sem candidato).
+
+### Testes
+
+Novo `64_resolution_context_readable_text_test.ts` (4 PASS, Postgres
+real): `messageContents` carrega o texto real; texto longo é truncado
+exatamente no limite do Context Builder; `messageWindow`/`contentDigest`
+continuam intactos; **`computeContextIdentity()` é idêntico com
+`messageContents` populado, vazio, ou com texto completamente
+diferente** — a prova central de que a separação funciona (testado
+contra o código de produção real, não uma cópia).
+
+### Regressão
+
+Suíte completa re-rodada: `55`, `56`, `58` (13), `59`, `60`, `61` (7),
+`62` (9), `63` (3), `64` (4), `gate-no-root-test.ts`,
+`gate-readiness-test.ts`, `runtime-closing-scenarios-test.ts` — 100%
+verde, zero regressão. `tsc --noEmit`, `eslint` e `next build` (33
+rotas) limpos.
+
+🔒 **Confirmação de escopo**: 4 arquivos de código tocados, todos
+dentro de `intelligence/approval/`. Nenhuma migration, nenhum
+`canonicalizeV2`, nenhuma persistência nova, nenhum campo de texto em
+log/auditoria (confirmado: `ai_usage_events` só grava contagem de
+tokens, nunca corpo de request/response, em nenhum módulo do
+projeto). Todos os invariantes preservados: `context_identity`
+estável (provado no teste 4), fail-closed, closed-candidate-selection,
+aceite curto exige referente inequívoco.
+
+### Ainda pendente — validação real (só possível em Preview, `OPENAI_API_KEY` indisponível neste sandbox)
+
+1. Golden suite completa (`/dev/approval-golden-suite`) contra o
+   model real — inclui agora os 9 casos adversariais novos.
+2. Smoke test 3b real: repetir "Pode fechar por R$3000!" e confirmar
+   via SQL que desta vez `approval_resolutions.outcome = 'resolved'`
+   (não só `RuntimeCycleOutcome.status = 'committed'`, que nunca
+   provou isso sozinho).
+
+## 52. Beta Runtime Integration — passo 3: cobertura real de "pergunta do cliente + resposta decisiva" no Approval Resolver
+
+Continuação do item 51. Golden suite real (Preview) rodou 11/14 —
+zero aprovação indevida (todos os 8 casos adversariais continuaram
+`inconclusive` corretamente; achado registrado à parte, não bloqueou
+esta validação). "Pode fechar por R$3.000." isolado resolveu
+`professional_initiated` como esperado.
+
+Repetido o smoke 3b real (várias idas e vindas de infraestrutura —
+cache de navegador, conversa reaproveitada por engano — até isolar
+uma execução limpa, numa conversa nova, com o fluxo correto: cliente
+pergunta primeiro, profissional responde depois). Resultado:
+`approval_resolutions.outcome = 'inconclusive'` de novo, mesmo com o
+fix do passo 51 já validado (confirmado deployment certo, commit
+`9976102`, via tela de detalhes do deployment).
+
+### Causa raiz desta rodada
+
+Consulta ao histórico real da conversa (`conversation_messages`)
+mostrou exatamente 2 mensagens: a pergunta do cliente ("oi, quanto
+custa tocar no meu casamento 20/12?") imediatamente antes da resposta
+do profissional ("Pode fechar por R$3.000."). Nenhum caso da golden
+suite testava esse formato — todos os casos de `professional_initiated`
+tinham a frase do profissional ISOLADA no `messageWindow` (uma única
+mensagem, sem nada antes). No pipeline real, o `messageWindow` sempre
+inclui as mensagens recentes da conversa — a pergunta do cliente
+aparece ali, mesmo nunca tendo virado um candidato comunicado
+(pergunta não propõe valor). O model, vendo a pergunta logo antes,
+parece interpretar a resposta como precisando de um candidato pra
+confirmar — não achando nenhum, cai em `inconclusive` de novo, mesmo
+sendo estruturalmente o mesmo caso autocontido já provado isolado.
+
+Confirmado que o candidato circular (item 51) segue corretamente
+filtrado — não é regressão daquele fix; é uma forma real de contexto
+nunca testada.
+
+### Correção
+
+`buildResolverInstructions()` ganha uma linha explícita cobrindo esse
+padrão: pergunta do cliente sem valor concreto NUNCA gera candidato,
+então a resposta decisiva do profissional continua
+`professional_initiated` mesmo com a pergunta aparecendo antes no
+histórico — com exemplo literal usando o texto real do smoke test.
+`golden-suite.ts` ganha um caso novo reproduzindo fielmente o formato
+real (2 mensagens: pergunta do cliente + resposta do profissional,
+`structuralFacts` de opportunity — não booking, mesmos textos exatos
+da conversa real testada) — a única forma de provar a correção antes
+de gastar outro ciclo de deploy/teste real.
+
+### Testes e regressão
+
+Regressão completa re-rodada: `55/56/58/59/60/61/62/63/64` +
+`gate-no-root` + `gate-readiness` + `runtime-closing-scenarios` — 100%
+verde (nenhum destes depende de model real, então nenhum muda com
+ajuste de instrução/golden suite). `tsc`/`eslint`/`build` limpos.
+
+Ainda pendente (só validável em Preview): golden suite real
+confirmando o novo caso `resolved/professional_initiated`, e novo
+smoke 3b real com a MESMA consulta SQL de evidência
+(`approval_resolutions.outcome`/`approval_records.operation_type`/
+`approved_value`).
+
+## 53. Beta Runtime Integration — passo 4a: leitura real do painel sob RLS (runtime_pending_replies + outbound_intents)
+
+Primeira peça do passo 4 (painel) do roadmap aprovado. Escopo
+estritamente audit-then-implement, conforme autorizado: só prova que
+o profissional autenticado lê exclusivamente o próprio estado
+persistido pelo Runtime — nenhuma reinterpretação de produto, nenhuma
+UI ainda.
+
+### Auditoria (antes de qualquer código)
+
+- Nenhuma página/componente do painel lia `runtime_pending_replies`
+  ou `outbound_intents` antes desta rodada — só usados dentro de
+  `src/lib/runtime/*`.
+- `runtime_pending_replies` tinha RLS **habilitado mas sem nenhuma
+  policy** (migration 0053, deliberado: "estado interno do
+  Orchestrator") — leitura real do painel era estruturalmente
+  impossível até esta migration.
+- `outbound_intents` já tinha `"outbound_intents: select own"`
+  (migration 0051, `professional_id = auth.uid()` direto) — só
+  faltava o código de leitura.
+- Nenhum mock encontrado em nenhuma página do dashboard — toda a área
+  já lê dado real.
+- Padrão de autenticação único: `getSessionProfile()` via
+  `createClient()` (client autenticado, cookie-based) — nunca
+  `service_role` no painel.
+
+### Migration
+
+`0056_runtime_pending_replies_select_own.sql` — **só** a policy de
+SELECT, seguindo exatamente o padrão já estabelecido em
+`"conversation_messages: select via conversation"` (migration 0039):
+posse resolvida via `conversations.represented_professional_id`
+(única fonte de verdade de dono), nunca uma coluna
+`professional_id` duplicada em `runtime_pending_replies`.
+Deliberadamente **sem** policy de INSERT/UPDATE/DELETE pra
+`authenticated` — toda escrita continua exclusiva das functions
+security definer já existentes.
+
+### Leitura TS
+
+`src/app/dashboard/runtime-state-reads.ts` (novo arquivo, isolado da
+lógica de "attention items" pré-Runtime que já existe em
+`dashboard/data.ts`) — duas funções, `getRuntimePendingReplies()` e
+`getOutboundIntents()`, cada uma um `select('*')` puro, **sem**
+`.eq()` de profissional/conversation (a filtragem é 100% da RLS, de
+propósito — um filtro adicional no código mascararia uma RLS
+quebrada em vez de expor o problema). Nenhuma lógica de decisão,
+nenhuma inferência de "precisa de você" a partir de `status`, nenhuma
+reconstrução a partir de `policy_gate_decisions`/`approval_records`.
+Retornam exatamente as colunas das duas tabelas, tipadas.
+
+### Testes (prova de isolamento RLS)
+
+Novo `65_runtime_pending_replies_rls_test.ts` (7 PASS, Postgres
+real, dois profissionais reais A/B): A vê só o próprio
+`runtime_pending_replies`; A não vê o de B (e simétrico, B não vê o
+de A); `authenticated` não consegue INSERT/UPDATE/DELETE em
+`runtime_pending_replies` (RLS nega, zero linhas afetadas, sem
+exceção estranha — comportamento padrão de "sem policy de escrita");
+`outbound_intents` mantém o comportamento pré-existente intacto (A
+vê só o próprio) — confirma zero regressão da migration nova.
+
+### Regressão
+
+Suíte completa re-rodada: `55/56/58/59/60/61/62/63/64/65` +
+`gate-no-root` + `gate-readiness` + `runtime-closing-scenarios` —
+100% verde. `tsc --noEmit`, `eslint` (arquivo novo) e `next build`
+(34 rotas — nenhuma rota nova nesta etapa, o número não mudou desde
+o painel) limpos.
+
+🔒 **Confirmação de escopo**: 1 migration (só a policy), 1 arquivo TS
+novo (só leitura). Nenhuma mudança em Approval Engine/Planner/Gate/
+Orchestrator. Nenhuma UI nova. `/orcamento/[slug]` (achado da
+auditoria de "entrada de clientes" — legacy, `formulário →
+opportunities`, paralelo ao `conversa → Runtime`, precisará ser
+reconciliado quando o passo 6 conectar canal real) não foi tocado.
+Nenhum Código Doopla implementado (fica pro passo 6, por decisão
+explícita — "baixo risco" não é motivo pra antecipar).
+
+## 54. Beta Runtime Integration — passo 4b: ação real do profissional pelo painel, mesmo boundary do Runtime
+
+Segunda peça do passo 4 (painel). Auditoria read-only prévia (ver
+conversa) provou o contrato inteiro antes de qualquer código —
+implementação aqui é só a versão mínima já aprovada.
+
+### Conclusão arquitetural registrada
+
+Confirmado pela auditoria e vale registrar formalmente: **o profissional
+nunca precisa "aprovar" nada explicitamente pelo painel — ele só fala,
+igual falaria no WhatsApp.** `triggerInboundMessage(authorType='professional')`
+entra pelo mesmo `processInboundEvent`, o Approval Engine decide
+sozinho o que a declaração resolve, e `attemptResumptionsAfterApproval`
+(já dentro de `pipeline.ts`, automático) retoma qualquer
+`runtime_pending_reply` elegível — nenhuma lógica de "resolver
+pendência X" existe nem precisa existir em nenhuma superfície.
+WhatsApp/painel/app são só entradas diferentes pra mesma Doopla — a
+decisão e o estado operacional nunca mudam de lugar.
+
+### Arquivos alterados
+
+`src/app/dashboard/professional-reply-action.ts` (novo, único
+arquivo de código) — `sendProfessionalReplyAction()`, mesmo padrão de
+`requireProfessional()`/`assertOwnsConversation()` já usado em
+`/dev/runtime-smoke-test/actions.ts`, chamando
+`triggerInboundMessage({authorType:'professional', channel:'painel', ...})`.
+Nenhuma migration (não foi necessária).
+
+### Contrato da Server Action
+
+```ts
+sendProfessionalReplyAction(params: {
+  conversationId: string;
+  submissionId: string; // ver idempotência abaixo
+  body: string;
+}): Promise<RuntimeCycleOutcome | { kind: 'action_error'; error: string }>
+```
+
+Duas camadas de posse, nenhuma dependendo só da outra: (1) RLS,
+client `authenticated`, ANTES de qualquer chamada ao Runtime; (2)
+`persist_inbound_message` (dentro do Runtime) revalida
+`author_profile_id = conversations.represented_professional_id` de
+novo, fail-closed. **Nunca** usa a policy de INSERT direto em
+`conversation_messages` (ver dívida registrada abaixo).
+
+### Idempotência — submission identity
+
+`submissionId` é um identificador **gerado por quem chama a action**
+(o futuro componente de UI, uma vez por submissão real — ex.
+`crypto.randomUUID()` no momento em que o profissional inicia aquela
+resposta específica) e usado diretamente como `providerEventId`.
+Retry da MESMA submissão (falha de rede, duplo clique no mesmo
+estado) precisa reenviar o MESMO valor; uma nova submissão
+deliberada — mesmo texto idêntico, mesma conversa, segundos depois —
+precisa vir com um valor NOVO. A action nunca gera nem deriva esse
+valor sozinha (não seria capaz de distinguir retry de nova intenção
+só pelo conteúdo, exatamente a restrição pedida). A proteção real é
+`claim_inbound_event` (migration 0051, `unique(channel,
+provider_event_id)`) — nunca depende de UI desabilitar botão.
+
+**Achado da implementação, documentado explicitamente**: uma
+submissão cujo primeiro ciclo termina em `status='failed'`
+(qualquer erro real — não só falta de credencial) É reivindicável de
+novo pelo MESMO `providerEventId` (`claim_inbound_event`, ramo
+`processing_status = 'failed'` — comportamento correto e proposital,
+retry de falha transitória precisa poder progredir). A dedupe real
+("já processado, nunca reprocessa") só vale depois de um ciclo que
+terminou `status='processed'` — é exatamente esse contrato que o
+teste C prova diretamente.
+
+### Testes
+
+Novo `66_professional_reply_action_test.ts` (4 PASS, Postgres real,
+código de produção real — `processInboundEvent` importado direto de
+`runtime/index.ts`, nunca copiado):
+
+- **B (cross-tenant)**: a MESMA query de posse que a action usa nega
+  leitura da conversa de A quando quem pergunta é B (0 linhas) —
+  prova que a ação nunca chegaria a chamar o Runtime; e confirma o
+  caminho positivo (A lê a própria conversa).
+- **C (idempotência)**: `claim_inbound_event` → `finish_inbound_event('processed')`
+  → segunda `claim_inbound_event` do MESMO `providerEventId` →
+  `claimed=false, already_processed=true`, mesmo `event_id` — nunca
+  reprocessa. Testado direto no mecanismo (não pelo pipeline
+  completo — ver nota abaixo).
+- **D (nova submissão legítima)**: duas chamadas reais a
+  `processInboundEvent`, `providerEventId` diferente, mesma conversa,
+  texto IDÊNTICO — resultam em 2 `conversation_messages` distintas,
+  nunca deduplicadas entre si.
+
+**Nota sobre A (happy path) e E (resumption)**: exigem o Approval
+Engine resolvendo de verdade (OpenAI real) e, no caso de E, uma
+`runtime_pending_reply` sendo retomada por uma decisão nova — mesma
+limitação de todo o resto desta sessão (`OPENAI_API_KEY` indisponível
+neste sandbox). Só validáveis em Preview, mesma disciplina de
+evidência objetiva já usada no passo 3 (não só
+`RuntimeCycleOutcome.status`, conferir em `approval_resolutions`/
+`runtime_pending_replies.status` diretamente).
+
+### Regressão
+
+Suíte completa: `55` a `66` + `gate-no-root` + `gate-readiness` +
+`runtime-closing-scenarios` — 100% verde. `tsc`/`eslint`/`build`
+limpos.
+
+### Dívidas registradas (nenhuma resolvida agora, fora do escopo do 4b)
+
+1. **Policy `"conversation_messages: insert own professional message"`
+   (migration 0039) permite escrever uma mensagem do profissional
+   fora do Runtime, deixando-a órfã** — nunca aciona
+   `claim_inbound_event`/lease/Classifier/Planner/Approval Engine/
+   resumption. Precisa de decisão futura (fechar quando todas as
+   superfícies passarem pelo Runtime, ou confirmar alguma finalidade
+   legítima ainda existente) — não decidido agora, sem análise de
+   call sites.
+2. **`RuntimePendingReply.status` (TS) inclui `'needs_attention'`,
+   nunca alcançável** (CHECK constraint da tabela só permite
+   `'pending'|'completed'|'superseded'`) — divergência vestigial,
+   não bloqueia nada.
+3. **`evaluateToolCallGate`** — confirmado dead/unreachable, o 4b não
+   introduziu nenhum caminho de tool-calling. Continua dívida classe
+   B, autorizada só depois.
+4. **`revocation`/`counterproposal`/variação de `professional_initiated`
+   na golden suite** (achado dos itens 51/52) — mantido como dívida
+   conhecida, por decisão explícita do usuário.
+
+🔒 **Confirmação de escopo**: 1 arquivo de código novo. Nenhuma
+migration. Nenhuma mudança em Approval Engine/Planner/Gate/
+Orchestrator. Nenhuma UI. Nenhum sistema genérico de ações/tools.
+
+## 55. Beta Runtime Integration — passo 4b: preparação pra validação real em Preview (A e E)
+
+Usuário aprovou a estrutura do 4b mas não considera o passo fechado
+sem validar em Preview os dois comportamentos que dependem do model
+real (happy path e resumption) — mesma disciplina de evidência do
+passo 3. Nenhuma UI nova permitida.
+
+### Mudança mínima: `/dev/runtime-smoke-test` passa a exercitar o boundary do 4b
+
+`sendSmokeTestProfessionalMessageAction` (`/dev/runtime-smoke-test/actions.ts`)
+não chama mais `triggerInboundMessage` direto — delega inteiramente
+pra `sendProfessionalReplyAction` (`dashboard/professional-reply-action.ts`,
+passo 4b), gerando um `submissionId` novo por clique. **Zero UI
+nova** — a mesma página/formulário de sempre, só trocado o que o
+botão "enviar como profissional" chama por baixo. É exatamente o
+boundary que precisa ser validado (a mensagem do cliente continua
+simulada via `triggerInboundMessage` direto — fora do escopo do 4b).
+Nenhuma lógica de Runtime/Approval Engine tocada — mudança
+estritamente de wiring. `tsc`/`eslint`/`build` limpos; `66_professional_reply_action_test.ts`
+(4 PASS) reconfirmado sem alteração (não depende deste arquivo).
+
+### Pendente — validação real (só possível em Preview)
+
+A (happy path) e E (resumption) exigem Approval Engine real (OpenAI)
+— ver roteiro entregue ao usuário na própria conversa, com as
+consultas SQL de evidência objetiva (mensagem → resolução →
+approval_record; e, no caso E, `runtime_pending_reply` saindo de
+`pending` pelo mecanismo normal + `outbound_intent` correspondente,
+tudo correlacionado por IDs reais). Resultado será registrado aqui
+assim que confirmado.
+
+## 56. Beta Runtime Integration — passo 4b, teste A validado; achado #2 (loop de resposta ao cliente) investigado e corrigido
+
+### Teste A (happy path pelo boundary do 4b) — validado em Preview
+
+Mensagem do profissional passando por `sendProfessionalReplyAction`
+(não mais `triggerInboundMessage` direto) resultou em
+`approvalOutcome: 'committed'`. Evidência SQL objetiva confirmada:
+`outcome='resolved'`, `resolved_approval_record_ids` não-vazio,
+`operation_type='professional_initiated'`,
+`approved_value={"amountCents":300000}`.
+
+### Teste E (resumption via `runtime_pending_replies`) — 9 tentativas reais em Preview, não reproduzido organicamente
+
+Tentativas de reproduzir organicamente um `runtime_pending_reply`
+genuíno (sem resolver/inserir manualmente, por restrição explícita do
+usuário) esbarraram numa cadeia de precondições estruturais reais,
+cada uma diferente, nenhuma um bug:
+1. Caminho antecipado do Planner (`resolveRequiresProfessionalReviewBeforeSend`)
+   intercepta a maioria das frases de preço antes do Gate.
+2. `runtime_pending_replies` só é criável quando já existe commercial
+   root (`policy_gate_decisions.commercial_root_id` é `NOT NULL`).
+3. `time_change` exige formato estrito `HH:MM` (`value-schemas.ts`) —
+   valores como "14h" falham em `invalid_extracted_value`, motivo não
+   elegível pra pendência.
+4. `professional_not_operationally_ready` bloqueia qualquer commitment
+   antes mesmo de checar approval, se o profissional de teste não tem
+   dados de recebimento (Pix) configurados — precondição de dado, não
+   de código.
+5. Confusão de campo `location`/`description` no extrator pra
+   conteúdo com palavras de local.
+6. Auto-consistência do ciclo: quando a mesma mensagem da profissional
+   é origem do compromisso E o Approval Engine já o comete no mesmo
+   ciclo, o draft de saída sempre casa com a approval recém-criada
+   (nunca bloqueia).
+
+**Não reproduzido, registrado como achado empírico documentado — não
+bloqueia o restante do 4b.** Mecanismo (`shouldCreatePendingReply`/
+`attemptResumptionsAfterApproval`) permanece coberto pelos testes
+determinísticos/SQL já existentes (sessões anteriores); só a
+reprodução ponta-a-ponta via painel real não foi alcançada.
+
+### Achado #2 — profissional respondendo a pergunta interna da Doopla podia deixar o cliente sem retorno nenhum
+
+Durante a investigação do teste E, uma tentativa real revelou algo
+mais sério que uma dificuldade de reprodução: depois de
+`professional_action_required` (Doopla pergunta algo à profissional),
+a resposta decisiva da profissional podia resultar em **nenhuma**
+comunicação — nem ao cliente, nem pedindo revisão de novo — deixando
+o cliente sem retorno.
+
+**Causa raiz, provada deterministicamente** (`plan.ts`, sem depender
+de OpenAI — `modelCall` injetado): `draftStillValid` descartava o
+draft do model (`proposedResponse` viraria `null`) sempre que o piso
+de `resolveResponsePlan` mudava o plano final pra algo fora de
+`{clarify_ambiguity, acknowledge, plano original do model}`. O
+RÓTULO final nunca ficava silencioso (o piso já garantia isso), mas o
+TEXTO sim — e `pipeline.ts` só roda o resto do ciclo
+(Gate/outbound/`persist_ai_message`) quando há texto.
+
+**Investigação confirmou, via SQL real** (`approval_resolution_backoff`
+da mensagem em questão: `rate_tokens` 5→4, claim concedido, resolver
+rodou): o Approval Engine rejeitou corretamente essa resposta
+(`not_eligible`/`invalid_provenance`) porque a pergunta do cliente
+nunca foi um `communicated_proposal_candidate` real (pergunta aberta,
+não proposta de valor) — comportamento certo, fail-closed, não é o
+bug. A correlação pergunta interna ↔ pergunta original do cliente já
+existia estruturalmente (mesma `conversation_messages` thread,
+`buildPlannerContext` inclui até 2 mensagens anteriores) — funcionou
+no caso em que o draft sobreviveu.
+
+**Correção implementada** (`src/lib/intelligence/planner/invariants.ts`,
+`plan.ts`; nenhuma mudança em ordem Planner↔Approval Engine, nenhum
+tipo novo de resumption):
+1. `deterministicFallbackResponse()` — texto fixo, determinístico,
+   nunca inventa fato. Cobre os dois planos que o próprio piso pode
+   produzir sem o model ter escrito pra eles (`consult_professional`
+   rebaixado; `acknowledge` promovido de `no_response_needed`).
+2. `resolveResponsePlan()` — quando o gatilho é a própria profissional
+   respondendo decisivamente (`professionalDecisionSignal ===
+   'candidate_contextual'`, mecanismo existente e já ancorado numa
+   mensagem real — não alterado), o piso não rebaixa mais
+   `answer_with_known_information` pra `consult_professional` só por
+   existir uma categoria de decisão envolvida. Checagem de zero
+   evidência continua incondicional (nunca confia só no sinal bruto do
+   model). Post-model Policy Gate (Bloco 6) continua validando o
+   CONTEÚDO real antes de qualquer envio — a mudança só evita
+   perguntar de novo pra quem acabou de responder.
+
+`golden-suite.ts` (planner): caso existente ajustado (nova família de
+plano válida) + caso novo reproduzindo o padrão real.
+
+**Validação**: teste determinístico local (5 cenários, sem OpenAI)
+prova o bug original e confirma o fix; teste adversarial confirma que
+resposta sem referente/ancoragem real continua barrada
+(`candidate_ambiguous` → `clarify_ambiguity`, nunca vaza pro cliente);
+suíte de regressão de fechamento do Runtime (13 cenários) sem
+quebras; `tsc`/`eslint`/`build` limpos. **Validado em Preview
+end-to-end**: cliente pergunta sobre logística → profissional responde
+decisivamente → evidência SQL correlacionada (`conversation_messages`
++ `outbound_intents.content`) confirma que a resposta real ao cliente
+referencia corretamente a decisão da profissional
+(`delivery_state='policy_allowed'`), fechando o loop que antes ficava
+mudo. Commit `e10c9ab`.
+
+## 57. Beta Runtime Integration — passo 4b: teste E completo (achado #3 corrigido) — 4b formalmente fechado
+
+Depois do fix do achado #2 (seção 56), o usuário pediu uma nova
+rodada curta e controlada do teste E — os 9 testes anteriores foram
+feitos ANTES da correção que passou a deixar respostas decisivas da
+profissional chegarem ao Gate como draft real, então não provavam
+mais a alcançabilidade no código atual.
+
+### Achado #3 — extrator (Bloco 6) extraindo compromisso de frase de adiamento
+
+Reproduzindo o Cenário 1 (aceite de trabalho + logística), uma
+`runtime_pending_reply` real nasceu com identidade resolvida
+(`no_matching_approval`, `logistics_commitment`/`transport`), mas
+contaminada por um 4º check espúrio: `subject_key_unresolved`
+(`other_commitment_change`, extraído de "Assim que tivermos os dados
+solicitados, checamos os detalhes com a equipe e voltamos com a
+confirmação."). `isEligibleForAutoMatch()` desqualifica a pendência
+INTEIRA quando qualquer check tem `subject_key_unresolved` (por
+desenho — "nunca resume parcial") — mesmo havendo uma identidade
+válida noutro check.
+
+Investigação confirmou: não é bug de schema/código — o extrator já
+tinha a instrução certa ("diz que vai consultar... devolva
+commitments vazio"), o model só não seguiu numa variação de frase
+mais elaborada que a golden suite não cobria ainda. Fix: reforça
+`buildExtractorInstructions` (`policy-gate-post/extractor.ts`) com os
+dois exemplos literais reais que falharam — julgamento continua
+semântico, nunca virou blacklist de palavra-chave; nenhuma mudança em
+`matcher.ts`/`isEligibleForAutoMatch()`/`subject_key_unresolved` como
+mecanismo. `golden-suite.ts` (policy-gate-post) ganhou os dois casos
+reais. Commit `f5f2ace`.
+
+### Teste E — completo, ponta a ponta, evidência SQL correlacionada
+
+Repetindo o Cenário 1 pós-fix: pending nasceu limpa (`no_matching_approval`,
+`date_change`/`primary`, sem contaminação). `attemptResumptionsAfterApproval`
+disparou automaticamente após a profissional aprovar a data, mas
+caiu em `conversation_busy_retry_scheduled` — achado real: nesse
+desenho (cliente e profissional na MESMA conversa), a retomada no
+mesmo ciclo sempre esbarra na lease já em uso pelo ciclo externo,
+precisando de retry.
+
+`reconcileDueRuntimePendingReplies` (`resumption.ts`) já existia,
+escrito numa rodada anterior como "o ponto de entrada que um worker/
+trigger futuro chamaria periodicamente" — nunca fiado a nenhum
+cron/scheduler. Adicionado um botão dev-only no
+`/dev/runtime-smoke-test` (seção 4) pra chamar essa função UMA VEZ,
+manualmente — nenhuma infraestrutura de agendamento criada, nenhum
+`UPDATE` manual na pendência, nenhuma lógica paralela. **Isto não é o
+passo 5** — só expõe, pra teste, uma função já pronta. Commit
+`43d50a6`.
+
+Evidência final, tudo correlacionado por ID real:
+- `runtime_pending_replies`: `status: 'completed'`, `attempt_count: 2`
+  (1ª tentativa busy, 2ª via reconciler manual), `resolved_at` ==
+  `outbound_intents.created_at` exatamente.
+- `outbound_intents`: conteúdo referencia corretamente a decisão
+  aprovada ("a Eduarda informou que está disponível em 20/12/2026"),
+  `delivery_state: 'policy_allowed'`.
+- Zero duplicação: 1 único `outbound_intent` em todo o commercial
+  root.
+- Adversarial (resposta sem referente não escapa): já provado
+  deterministicamente antes do fix `e10c9ab` — mecanismo de grounding
+  (`resolveProfessionalDecisionSignal`) não foi alterado por nenhum
+  dos fixes desta rodada.
+
+**Passo 4b formalmente fechado**: teste A (validado, seção 55/56) +
+teste E (validado ponta a ponta, esta seção) + achados #2 e #3
+corrigidos e validados. Próximo: passo 5 (reconciler/cron) — agora
+com uma pista concreta de por que ele é necessário (retry de
+`conversation_busy` em pendências de conversas compartilhadas), não
+mais especulativo.
+
+## 58. Beta Runtime Integration — passo 5: reconciler/cron real (implementação técnica fechada, disparo automático da Vercel pendente de Production)
+
+### Auditoria e decisão de arquitetura
+
+Antes de implementar, auditoria read-only cobrindo: contrato atual do
+reconciler (`reconcileDueRuntimePendingReplies`, já existente desde a
+rodada anterior — nunca fiado a nenhum cron); infraestrutura disponível
+(Vercel Cron, zero fila/worker/serviço novo); frequência (backoff
+30s-1800s, safety net 900s → 1min aprovado, projeto confirmado em
+Vercel Pro); segurança (`CRON_SECRET`, mesma disciplina de
+`SUPABASE_SERVICE_ROLE_KEY`); concorrência/idempotência (provadas por
+código: `select...for update`, claims atômicos, heartbeat de
+segurança); falhas (`needs_attention` já alcançável desde a migration
+0054 — correção de uma nota de dívida desatualizada no PROGRESS.md,
+nunca foi blocker de verdade).
+
+### Achado arquitetural — `subject_key_unresolved` nunca era retomado, nem misto
+
+O teste E (seção 57) revelou que uma `runtime_pending_reply` real pode
+nascer com checks MISTOS (alguns com `subjectKey` resolvido, outros
+`subject_key_unresolved` na mesma pending) — `isEligibleForAutoMatch`
+desqualificava a pendência INTEIRA do fluxo automático nesse caso,
+mesmo quando parte dela tinha identidade real resolvível.
+
+Decisão do usuário, depois de rodada de confirmação técnica
+(`freshChecksAddressPendingIdentities` provada suficiente também no
+caminho `allowed`, via `matcher.ts`/`touchedIdentities`): extensão
+event-driven, nunca time-driven — uma approval nova na MESMA
+`decisionCategory` de um check `subject_key_unresolved` AUTORIZA uma
+nova tentativa (nunca decide resolução sozinha); a avaliação fresca
+(Planner+Gate) continua sendo a única autoridade real. Pending nunca
+ganha `next_attempt_at` por passagem de tempo só por estar
+`subject_key_unresolved` — só pelo evento de categoria.
+
+### Implementação
+
+- `src/lib/runtime/pending-replies-matching.ts`: `shouldAttemptResume`
+  ganha um segundo gatilho independente (categoria, sem exigir
+  `subjectKey`) ao lado do matching por identidade completa já
+  existente; `freshChecksAddressPendingIdentities` ganha a checagem
+  correspondente do lado "endereçado" — cada blocker (resolvido ou
+  não) avaliado independente, nunca resume parcial, nunca resolve uma
+  categoria implicitamente resolvendo outra. `isEligibleForAutoMatch`/
+  `shouldSupersedeOnCreation` intocados (fora do escopo desta rodada,
+  decisão do usuário).
+- `src/app/api/runtime/reconcile-pending-replies/route.ts` (novo): GET
+  autenticado por `CRON_SECRET` (`Authorization: Bearer`), chama
+  `reconcileDueRuntimePendingReplies` — nenhuma lógica de retomada
+  nova, só o disparo.
+- `vercel.json` (novo): cron `* * * * *` (1min) apontando pra rota
+  acima.
+- `.env.local.example`: `CRON_SECRET` documentado, mesma disciplina de
+  server-only.
+- Nenhuma migration necessária — toda a mecânica (claim/lease/backoff/
+  idempotência) já existia desde 0053/0054.
+
+### Testes
+
+- 14 casos determinísticos puros (sem I/O): regressão da pending pura
+  resolvida (comportamento original intocado), pending pura
+  `subject_key_unresolved`, pending MISTA, múltiplas categorias
+  independentes (resolver uma nunca resolve outra), adversarial
+  (ambiguidade que persiste no fresh check nunca conta como
+  endereçada), motivo não-elegível nunca entra em nenhum grupo,
+  `shouldSupersedeOnCreation` intocado.
+- 2 casos contra Postgres real provando a transição `needs_attention`
+  pela RPC de produção (`begin_runtime_pending_reply_attempt`), via
+  fixture (`attempt_count = MAX-1`), sem alterar
+  `RUNTIME_PENDING_REPLY_MAX_ATTEMPTS` nem esperar tempo real.
+- Regressão completa: 13 cenários de fechamento do Runtime + RLS de
+  `runtime_pending_replies` (7) + boundary do 4b (4), sem quebras.
+- `tsc`/`eslint`/`build` limpos.
+
+### Validação em Preview
+
+Achado de plataforma, sinalizado antes de validar: **Vercel Cron Jobs
+só disparam contra o deployment de Production, nunca Preview** —
+limitação documentada da própria Vercel, não configuração. Por decisão
+do usuário, validação em Preview feita chamando a rota real via
+`fetch`/`curl` com `Authorization: Bearer $CRON_SECRET` (mesmo código
+que o cron chamaria), cobrindo tudo exceto o agendamento automático em
+si:
+
+- 401 sem secret, 401 com secret errado, 200 com secret correto.
+- Cenário real recriado (cliente → orçamento; profissional → preço,
+  já nasce pending com 2 checks resolvidos, `date_change`/`primary` e
+  `price_or_cache`/`primary`; profissional confirma a data →
+  `attemptResumptionsAfterApproval` dispara, `conversation_busy_retry_scheduled`,
+  `attemptCount: 1`).
+- `fetch` na rota (secret correto) processou a pending:
+  `{"processed":1,"outcomes":[{"kind":"resolved","outboundIntentId":"cc83af97-..."}]}`.
+- SQL: `runtime_pending_replies.status = 'completed'`, `attempt_count = 2`,
+  `resolved_at` == `outbound_intents.created_at` exatamente. Conteúdo do
+  outbound referencia corretamente os DOIS blockers resolvidos (data
+  E preço), confirmando a extensão pra checks mistos funcionando de
+  ponta a ponta contra o model real.
+- Reprocessar (`fetch` de novo) devolveu `{"processed":0,"outcomes":[]}`
+  — zero duplicação. Total de `outbound_intents` no commercial root:
+  2 (o da resposta inicial ao cliente + o da resolução da pending,
+  ambos legítimos e distintos).
+
+**Fechamento**: implementação técnica do passo 5 fechável com essa
+evidência. Item restante, explicitamente não-bloqueante: confirmar,
+depois de um deploy de Production, que o Vercel Cron de fato dispara
+sozinho no intervalo configurado — **"Production verification
+pending"**, não impede considerar o passo 5 tecnicamente concluído
+agora.
+
+### "Production verification pending" fechado
+
+Auditoria antes de agir revelou um achado maior do que o esperado:
+Production nunca tinha recebido nenhum código de nenhuma sessão desde
+o "Bloco 4" (Structured Decision + Response Planner, dry-run) — nem
+Approval Engine, nem Policy Gate, nem o Runtime inteiro, nem nada do
+6A+6B. O branch configurado como produção
+(`claude/doopla-backend-login-db-fj5j3y`) tinha divergido do branch de
+trabalho atual há muito tempo (histórias com commits diferentes pro
+mesmo recurso — ex.: Bloco 3/4 num "dry-run" antigo vs. a versão madura
+e testada que já usamos esse tempo todo), então um `git merge` direto
+entre os dois foi descartado por risco de conflito real entre duas
+versões do mesmo recurso. Caminho adotado: **"Promote to Production"**
+na Vercel de um deployment já existente do branch atual
+(`claude/new-session-3hdkui`, commit `6af4490`), que força um build
+novo lendo as env vars de Production — sem tocar em git, sem merge.
+
+Pré-requisito resolvido antes de promover: `SUPABASE_SERVICE_ROLE_KEY`
+e `OPENAI_API_KEY` estavam faltando no environment Production da Vercel
+(só existiam em Preview) — a rota do reconciler quebraria em runtime
+sem a primeira, e o `resumption.ts` (classifyIntent/planResponse reais)
+sem a segunda. Ambas cadastradas em Production antes da promoção.
+
+Evidência real, pós-promoção:
+- `curl` manual autenticado contra
+  `https://doopla-zr9p.vercel.app/api/runtime/reconcile-pending-replies`
+  → `200 {"processed":0,"outcomes":[]}` (0 é o esperado, sem pendência
+  real vencida no momento).
+- **Log de Runtime da Vercel, filtrado por `requestPath:/api/runtime/reconcile-pending-replies`**,
+  janela de ~15 minutos: chamadas `GET 200` automáticas a cada 60
+  segundos exatos (`12:21:01`, `12:22:01`, `12:23:01`, ...,
+  `12:35:01`), batendo com o `* * * * *` do `vercel.json` — sem
+  nenhuma chamada manual nesse intervalo (a única exceção visível no
+  log, um `401` isolado às `12:30:30`, corresponde exatamente ao
+  momento do `curl` manual de teste feito com o `CRON_SECRET` antigo,
+  antes da troca+redeploy — explicado pela própria timeline, não é uma
+  falha real).
+
+**Passo 5 fechado por completo, incluindo a validação de Production.**
+
+## 59. Beta Runtime Integration — passo 6A+6B: primeiro canal real (WhatsApp) + sender de outbound_intents
+
+### Auditoria e decisão de arquitetura (antes de implementar)
+
+Auditoria read-only cobrindo os 15 pontos pedidos (infra existente,
+`outbound_intents`/`inbound_events`/`create_conversation`/
+`resolve_or_create_external_participant`, `profiles.slug`, boundary do
+Post-model Gate, etc.) confirmou: zero infra real de canal no repo
+(só enum values), toda a state machine de `outbound_intents`
+(migration 0051) e o dedup de `inbound_events` já existiam sem nenhum
+caller real.
+
+Investigação técnica decisiva (decisão do usuário, não invenção): link
+individual de clique-para-WhatsApp orgânico (não-anúncio) **não carrega
+identidade opaca/verificável até o webhook da Meta** — `ctwa_clid`/
+`referral` só existe pra Click-to-WhatsApp Ads pagos;
+`metadata.phone_number_id` identifica o número da Doopla, nunca o
+profissional, sob número compartilhado. Registrado como restrição real
+da plataforma (não dívida escondida) e usado para redesenhar o vertical
+mínimo do 6A: em vez de "cliente clica em link individual", o vertical
+mínimo passou a ser **"profissional compartilha o contato do
+cliente → Doopla inicia"** — a Doopla nunca depende de um mecanismo que
+a Meta não oferece pra correlacionar identidade.
+
+Confirmado também, por leitura direta do schema: `create_conversation`
+(migration 0039) só aceita chamada de uma sessão autenticada real
+correspondendo a `p_represented_professional_id` (sem bypass de
+`is_system_caller()`) — o webhook (service_role, sem sessão) **nunca
+pode criar conversa nova**, só reaproveitar uma existente; sem uma
+reaproveitável, falha fechado (loga, não processa). Isolamento
+cross-professional confirmado pelo desenho de
+`external_participant_channel_identities`, chave
+`(professional_id, channel, identifier)`: o mesmo telefone falando com
+dois profissionais produz duas linhas distintas por design — a
+correlação do webhook precisa lidar com 0/1/2+ matches, nunca advinhar
+no caso 2+.
+
+Três correções finais de produto/engenharia, todas aprovadas
+explicitamente antes de implementar:
+
+1. **Conversation reuse**: `conversations.current_state` ainda não tem
+   state machine real (comentário da própria
+   `advance_conversation_state`, migration 0039) — a regra de reúso
+   ancora no status terminal da raiz comercial
+   (`is_commercial_root_terminal`, RPC já existente), documentada como
+   regra operacional atual, não definitiva.
+2. **Matriz outcome HTTP → `delivery_state`**: 2xx+wamid →
+   `sent_confirmed`; qualquer ausência de resposta HTTP definitiva
+   (timeout, exceção de rede, 2xx sem wamid parseável) →
+   `sent_unknown`, nunca retry automático; erro HTTP definitivo
+   classificado pelo **código/semântica real de erro da Meta**
+   (`error.code`), nunca por status HTTP genérico — tabela fechada,
+   hand-curated (`classifyMetaSendError`), fail-closed pra
+   `failed_permanent` em qualquer código desconhecido.
+3. **Secret dedicado**: `OUTBOUND_SENDER_CRON_SECRET`, separado de
+   `CRON_SECRET` do passo 5 — processos com capacidades diferentes
+   (este fala com um provider externo) usam credenciais diferentes.
+
+### Migration 0057 — `outbound_intent_delivery_status`
+
+Três funções novas, todas `security definer` guardadas por
+`is_system_caller()` (mesma disciplina de defesa em profundidade do
+resto do Runtime, nunca depende só do client usado):
+
+- `mark_outbound_intent_delivered(p_provider_message_id)` — transição
+  `sent_confirmed → delivered`; replay do mesmo evento é idempotente
+  (`found=false`, nunca erro).
+- `mark_outbound_intent_read(p_provider_message_id)` — aceita a partir
+  de `sent_confirmed` OU `delivered` (o evento `delivered` pode nunca
+  chegar antes do `read`).
+- `list_claimable_outbound_intents(p_channel, p_limit)` — espelha os
+  critérios de elegibilidade de `claim_outbound_intent_for_send`,
+  somente leitura, fila global do sender por canal.
+
+### Módulo `src/lib/channels/whatsapp/`
+
+- `phone.ts` — `normalizeWhatsappPhone`/`toWhatsappApiRecipient` (E.164,
+  DDI 55 default).
+- `webhook-verify.ts` — verificação HMAC-SHA256 da assinatura
+  (`X-Hub-Signature-256`, `timingSafeEqual`) + handshake do
+  `hub.challenge`.
+- `error-classification.ts` — `classifyMetaSendError`, tabela fechada
+  de códigos transient/permanent da Cloud API, fallback sempre
+  `'permanent'` pra código desconhecido (decisão do usuário: nunca
+  força retry às cegas).
+- `client.ts` — `sendWhatsappTextMessage`, união discriminada
+  `sent_confirmed | sent_unknown | failed_transient | failed_permanent`
+  seguindo a matriz acima.
+- `conversation.ts` — `findReusableWhatsappConversation`, lógica de
+  seleção **compartilhada** (nunca duplicada) entre a Server Action de
+  outreach e o webhook — nenhum dos dois cria conversa nova por si.
+
+### Três entry points novos
+
+- **`whatsapp-outreach-action.ts`** (Server Action) — profissional
+  autenticada informa contato do cliente; boundary de posse idêntico ao
+  4b (`requireProfessional`), boundary de Runtime idêntico ao 3/4b
+  (`triggerInboundMessage` → `processInboundEvent`, texto passa pelo
+  Planner/Approval Engine/Gate normalmente). `resolve_or_create_external_participant`
+  → reusa ou cria conversa → dispara o ciclo.
+- **`api/whatsapp/webhook/route.ts`** — `GET` (handshake) + `POST`
+  (mensagens/status), sempre 200 após autenticação (nunca aciona o
+  retry agressivo em lote da Meta). Correlaciona por
+  `(channel='whatsapp', identifier)`; fail-closed em `!==1` match
+  (loga, não processa); nunca cria conversa (boundary do
+  `create_conversation`); usa o `wamid` como `provider_event_id` em
+  `inbound_events` (dedup reaproveitando o schema já preparado pra
+  replay de provider). `delivered`/`read` atualizam `outbound_intents`;
+  `sent`/`failed` explicitamente fora de escopo (documentado, não
+  ignorado por descuido).
+- **`api/runtime/send-outbound-intents/route.ts`** — cron autenticado
+  por `OUTBOUND_SENDER_CRON_SECRET`, `listClaimableOutboundIntents` →
+  `claimOutboundIntentForSend` (idempotência por `send_attempt`,
+  mesmo padrão de `begin_runtime_pending_reply_attempt`) → envia →
+  marca o resultado real. Executor puro: nunca decide o que enviar,
+  nunca é tool do Planner.
+- **`/dashboard/whatsapp`** — UI mínima aditiva (formulário de
+  outreach), sem redesenho do painel.
+
+### Testes
+
+- 21 testes puros (sem I/O): normalização de telefone (incl.
+  equivalência entre formatos), verificação de assinatura (incl. corpo
+  alterado, secret errado, header ausente/malformado), handshake,
+  classificação de erro (incl. fail-closed pra código desconhecido).
+  21/21 PASS.
+- 9 testes contra Postgres real (migration 0057 + isolamento): as 3
+  RPCs novas (transição, replay idempotente, `provider_message_id`
+  inexistente, `read` a partir de `sent_confirmed` OU `delivered`,
+  listagem por presença/ausência — nunca contagem exata, a tabela é
+  compartilhada entre fixtures da sessão) + prova de isolamento
+  cross-professional (mesmo telefone, dois profissionais → duas linhas
+  distintas, nunca merge; mesmo telefone, um profissional → resolve
+  exatamente 1; telefone sem profissional nenhum → 0, fora de escopo do
+  6A). 9/9 PASS.
+- Regressão completa re-executada (nada em 6A+6B toca estas tabelas/
+  funções, mas confirmado de novo por disciplina): 13 cenários de
+  fechamento do Runtime, RLS de `runtime_pending_replies` (7), boundary
+  do 4b (4), transição `needs_attention` (2), 32 asserções puras de
+  `pending-replies-matching.ts` — zero regressões reais.
+- **Achado (não-bloqueante, teste corrigido)**: 1 dos testes puros
+  pré-existentes de `shouldAttemptResume` (escrito antes da extensão do
+  passo 5) esperava `false` numa pendência MISTA (identidade batendo +
+  `subject_key_unresolved` ao lado). Isso ficou desatualizado pela
+  própria extensão do passo 5, aprovada e documentada em
+  `pending-replies-matching.ts:74-88`: `shouldAttemptResume` agora
+  autoriza uma TENTATIVA por qualquer um dos dois gatilhos
+  (identidade OU categoria), nunca decide sozinho completude — "nunca
+  resume parcial" é garantido do lado da completude, por
+  `freshChecksAddressPendingIdentities`. Corrigido o teste pra refletir
+  o comportamento atual e adicionado um novo caso comprovando que
+  `freshChecksAddressPendingIdentities` ainda recusa completar essa
+  mesma pendência mista quando só a identidade (não a categoria) foi
+  endereçada — o invariante real continua garantido, só não mais na
+  função que este teste antigo checava.
+- `tsc`/`eslint`/`build` limpos, todas as rotas novas listadas no build
+  (`/api/runtime/send-outbound-intents`, `/api/whatsapp/webhook`,
+  `/dashboard/whatsapp`).
+- **Gap fechado (autorizado após a auditoria de validação real)**: 8
+  testes novos de `client.ts` com `fetch` mockado/controlado (sem rede
+  real) — 2xx+wamid → `sent_confirmed`; 2xx sem wamid → `sent_unknown`;
+  código transient conhecido → `failed_transient`; código permanent
+  conhecido → `failed_permanent`; código desconhecido → `failed_permanent`
+  (fail-closed); exceção de rede (fetch rejeita) → `sent_unknown`;
+  corpo cortado no meio da leitura → `sent_unknown`; corpo de erro não-JSON
+  → `failed_permanent` com reason genérica, nunca lança. 8/8 PASS. Mais 1
+  teste novo contra Postgres real provando que `sent_unknown` nunca
+  aparece em `list_claimable_outbound_intents` (fixture SQL direta, mesma
+  técnica já aceita pra `needs_attention` — forçar um timeout real contra
+  a Meta de forma determinística não é possível, a garantia que importa é
+  estrutural). 10/10 PASS na suíte de outbound/isolamento.
+
+### Auditoria de configuração pra E2E real (Meta/Vercel) — achado bloqueante
+
+Antes de configurar qualquer coisa, auditoria read-only cobrindo os 12
+pontos pedidos (o que criar na Meta, credenciais, env vars/environments
+na Vercel, URL estável, registro do webhook, número de teste, preparo do
+cliente de teste, template/CSW, como testar sender/inbound/estado no
+banco, prova de fail-closed em timeout). **Achado bloqueante**: a Cloud
+API só aceita texto livre dentro de uma Customer Service Window (CSW) de
+24h aberta pelo CLIENTE — um contato que nunca falou com a Doopla não
+tem janela aberta, então a primeira mensagem de um outreach precisa ser
+um Message Template pré-aprovado, nunca texto livre. Isso bloqueia
+especificamente o entry path de produto do 6A ("profissional manda
+contato → Doopla inicia"), mas não bloqueia provar a infraestrutura
+(webhook/correlação/Runtime/sender/delivery) usando uma CSW aberta por
+outro meio (`hello_world` de teste, ou o cliente de teste mandando a
+primeira mensagem).
+
+**Decisão do usuário**: fechar 6A+6B em duas fases. Fase 1 — E2E de
+infraestrutura com CSW aberta por fora do fluxo de produto, explicitamente
+**não registrada como validação do entry path "profissional manda
+contato → Doopla inicia"**. Fase 2 — suportar esse entry path de verdade
+via template aprovado; proposta técnica entregue nesta rodada, sem
+implementação ainda (ver `PROGRESS.md` — pendente registrar a decisão
+final quando a Fase 2 for autorizada a implementar).
+
+### O que foi validado sem Meta real vs. o que ainda depende de URL estável + WhatsApp real
+
+**Validado sem Meta** (Postgres real + funções puras, evidência acima):
+toda a state machine de `outbound_intents` (incl. as 3 funções novas),
+isolamento cross-professional na correlação de identidade, replay/dedupe
+idempotente, verificação de assinatura HMAC, classificação de erro
+fail-closed, normalização de telefone.
+
+**Ainda depende de URL estável + credenciais reais da Meta** (não
+testável neste ambiente): o handshake real de verificação do webhook
+contra a Meta, o envio real de mensagem via Cloud API (incl. confirmar
+que a resposta 2xx+wamid chega no formato esperado), o recebimento real
+de eventos `delivered`/`read`, e o disparo automático do Vercel Cron em
+Production (mesmo "Production verification pending" registrado no
+fechamento do passo 5). Nenhum desses bloqueia o fechamento técnico do
+6A+6B — são a mesma classe de item que passo 5 já fechou como pendência
+não-bloqueante.
+
+### Fechamento (6A+6B Fase 1 — infraestrutura)
+
+Fase 1 fechada tecnicamente com a evidência acima.
+
+### Migrations 0056-0058 aplicadas ao projeto Supabase real (achado + correção)
+
+Auditoria pré-teste WhatsApp (independente da Meta) revelou que o
+projeto Supabase real tinha parado de receber migrations logo após a
+0055 — 0056, 0057 e 0058 nunca tinham sido aplicadas lá, só validadas
+contra o Postgres local (`doopla_rls_test`) o tempo todo. Verificado
+via consulta read-only (`pg_proc`/`pg_policies`/`information_schema`)
+no SQL Editor do Supabase antes de qualquer ação.
+
+**Achado mais sério que "feature faltando"**: a ausência de 0058
+significava que `create_outbound_intent` no banco real ainda tinha a
+assinatura ANTIGA (7 parâmetros, sem `p_send_as`) — e o código já em
+Production (`outbound.ts`) chama essa RPC sempre passando `p_send_as`.
+Ou seja, **todo ciclo do Runtime que tentasse criar um outbound_intent
+em Production estava quebrado** desde a promoção do deployment atual —
+não uma lacuna do 6A+6B, uma regressão no caminho que já funcionava.
+
+Aplicadas em ordem controlada (0056 → 0057 → 0058), cada uma
+confirmada individualmente antes da próxima:
+- **0056**: policy `runtime_pending_replies: select own` criada e
+  confirmada (`cmd=SELECT`, `roles={authenticated}`).
+- **0057**: `mark_outbound_intent_delivered`, `mark_outbound_intent_read`,
+  `list_claimable_outbound_intents` criadas, assinaturas confirmadas
+  batendo com o código.
+- **0058**: coluna `outbound_intents.send_as` confirmada (`text`,
+  default `'free_text'`); `create_outbound_intent` recriada com o
+  `drop function` explícito da assinatura antiga antes do `create` —
+  confirmado por query em `pg_proc` que existe **exatamente 1**
+  overload agora (8 parâmetros, `p_send_as text default 'free_text'`),
+  nunca as duas convivendo de forma ambígua; `get_last_whatsapp_inbound_at`
+  criada e confirmada.
+
+**Smoke test** (sem criar nenhum dado real em Production): chamada a
+`create_outbound_intent` com `p_send_as='template'` e um
+`p_conversation_id` propositalmente inexistente — resultado
+`ERROR P0002: conversation_not_found`, levantado na linha certa do
+corpo da function, ANTES do `insert`. Prova que a assinatura nova
+aceita `p_send_as` e executa corretamente, sem gravar nenhuma linha.
+
+**Regressão de Production identificada e corrigida.** As três
+migrations e o smoke test não alteraram nenhum arquivo do repositório
+(os arquivos de migration já estavam commitados desde o 6A+6B) — só o
+estado do banco real, que agora bate com o código já deployado.
+
+## 60. Beta Runtime Integration — passo 6A+6B Fase 2: primeiro outreach real ("profissional manda contato -> Doopla inicia" sem CSW aberta)
+
+### Achado bloqueante que motivou a Fase 2 (auditoria de validação E2E)
+
+Antes de configurar Meta/Vercel pra um E2E real, auditoria read-only
+dos 12 pontos pedidos (o que criar na Meta, credenciais, env vars,
+URL/webhook, número de teste, template/CSW, como testar cada peça)
+revelou um achado bloqueante: a Cloud API só aceita texto livre dentro
+de uma Customer Service Window (CSW) de 24h aberta pelo CLIENTE — um
+contato que nunca falou com a Doopla não tem janela aberta, então a
+PRIMEIRA mensagem de um outreach frio precisa ser um Message Template
+pré-aprovado, nunca texto livre. Isso bloqueava especificamente o
+entry path de produto do 6A, mas não a prova de infraestrutura (que
+usa uma CSW aberta por outro meio). Decisão do usuário: fechar em duas
+fases — Fase 1 (infraestrutura, já fechada) e Fase 2 (este outreach
+real).
+
+### Decisão de arquitetura (opção b, escolhida pelo usuário)
+
+Duas opções foram propostas pra onde viveria a decisão determinística
+do template: (a) pular Planner/Gate inteiramente numa Server Action
+separada, ou (b) manter tudo dentro da pipeline/Runtime normal, com um
+curto-circuito interno reconhecendo "cold start, sem CSW". O usuário
+escolheu (b) explicitamente: **um único boundary, uma única trilha de
+auditoria**, mesmo quando não há necessidade de inteligência
+generativa — nunca um `create_outbound_intent` paralelo fora do
+Runtime.
+
+Duas correções obrigatórias, incorporadas antes de implementar:
+
+1. **`send_as` nunca substitui a revalidação da CSW no envio.** O
+   sender SEMPRE revalida a condição legal imediatamente antes de
+   chamar a Meta — `send_as='template'` sempre pode mandar (não
+   depende de CSW); `send_as='free_text'` + CSW ainda aberta manda
+   texto, sem mudança; `send_as='free_text'` + CSW fechada faz fail
+   closed, usando o MESMO estado/function já existentes
+   (`failed_permanent` via `markOutboundIntentFailed`) — nunca
+   converte automaticamente pra template (o texto livre aprovado pelo
+   Runtime pode ter semântica completamente diferente do template fixo
+   de introdução).
+2. **`outbound_intents.content` precisa representar o que foi REALMENTE
+   comunicado.** Como não há Planner neste ramo, `content` é gerado
+   deterministicamente (template + nome da profissional), nunca um
+   draft descartado. O payload técnico enviado à Meta (nome do
+   template + idioma + `components`) continua separado — `content` é a
+   representação humana, nunca a segunda fonte de verdade sobre o quê
+   foi decidido comunicar.
+
+### Migration 0058 — `cold_outreach_template`
+
+Confirmada como mínima pela auditoria (nenhum dado adicional necessário
+pra reproduzir/entender um envio):
+
+- `outbound_intents.send_as` (`'free_text' | 'template'`, default
+  `'free_text'` — zero mudança de comportamento pra qualquer chamador
+  existente). A ÚNICA coluna nova.
+- `create_outbound_intent` estendida com `p_send_as default 'free_text'`
+  — precisou de `drop function` explícito antes do `create` (adicionar
+  parâmetro muda a assinatura; sem o drop, o Postgres cria um SEGUNDO
+  overload ambíguo em vez de substituir).
+- `get_last_whatsapp_inbound_at(p_external_participant_id)` — leitura
+  pura, `is_system_caller()` guardada, deriva CSW de
+  `conversation_messages` REAL (`channel='whatsapp' and direction='inbound'`,
+  `max(created_at)`) escopada por `external_participant_id` (não por
+  `conversation_id` — a CSW é do par número-Doopla↔número-cliente,
+  atravessa qualquer conversation nova que a raiz comercial terminal
+  force criar). Nenhum estado de CSW persistido à parte.
+
+### Fluxo determinístico cold-start (`pipeline.ts`)
+
+Novo branch em `runCycle`, avaliado logo após intake (mensagem da
+profissional já persistida, contexto da conversation já atualizado) e
+**antes** de `buildContextPackage`/`classifyIntent`/`ensureOpportunityForConversation`/
+`detectInboundProposal`/`planResponse`/`runApprovalEngine`/
+`evaluatePostModelGate` — nenhuma dessas peças tem o que fazer com um
+template fixo pré-aprovado pela Meta (conteúdo não é gerado nem
+negociável). Elegibilidade (`shouldSendColdOutreachTemplate`, pura):
+autor profissional + canal whatsapp + `conversation_type='external_inquiry'`
++ `external_participant_id` presente + CSW fechada (`isCswOpen`,
+derivada de `get_last_whatsapp_inbound_at`). Quando elegível, o ramo
+(`runColdOutreachTemplateBranch`) resolve o nome de exibição real da
+profissional (`resolveProfessionalDisplayName` — mesma precedência
+`stage_name ?? full_name` já usada por `get-professional-profile.ts`,
+fatorada num módulo novo pra nunca ter duas implementações da mesma
+regra), renderiza o `content` humano-legível determinístico
+(`renderColdOutreachTemplateContent`), cria o `outbound_intent`
+(`send_as='template'`) e produz o MESMO par `start_orchestrator_run`/
+`finish_orchestrator_run` de qualquer outro ciclo (com
+`classification`/`plan` ausentes — já suportado, `finishOrchestratorRun`
+grava `null` nesses campos sem exigir nada extra) — trilha de auditoria
+uniforme mesmo sem Planner. Novo outcome dedicado no tipo
+`RuntimeCycleOutcome` (`kind: 'cold_outreach_template'`), nunca
+sobrecarregando `'completed'` com campos de classificação/plano que não
+fazem sentido aqui.
+
+**Nota de arquitetura, sinalizada explicitamente**: `pipeline.ts`
+(historicamente 100% channel-agnostic ao longo de toda a sessão) passa
+a importar `renderColdOutreachTemplateContent` de
+`channels/whatsapp/cold-outreach-template.ts` — uma exceção estreita e
+deliberada, já que o próprio ramo só existe quando `event.channel==='whatsapp'`.
+Constantes/renderização do template continuam fora de `runtime/`
+(mesmo padrão de `channels/whatsapp/` já estabelecido no 6A), só a
+DECISÃO de quando usá-las vive dentro da pipeline.
+
+### Revalidação de CSW no sender (`send-outbound-intents/route.ts`)
+
+`resolveSendAction(sendAs, cswOpen)` — função pura, único lugar que
+decide entre os 3 ramos fechados — chamada a cada envio, nunca confia
+no `send_as` congelado na criação:
+`getLastWhatsappInboundAt`+`isCswOpen` são recalculados NA HORA do
+envio. `send_as='template'` → `sendWhatsappTemplateMessage` (nome/
+idioma fixos em código, `components` com o nome da profissional
+resolvido de novo no momento do envio — nunca duplicado como coluna,
+já é derivável de `professional_id`, já presente no outbound_intent).
+`send_as='free_text'` + CSW aberta → `sendWhatsappTextMessage`, sem
+mudança. `send_as='free_text'` + CSW fechada →
+`markOutboundIntentFailed(permanent:true, reason:'csw_fechada_antes_do_envio_de_texto_livre')`,
+NUNCA chama a Meta, NUNCA converte pra template.
+
+### Testes
+
+- 17 testes puros novos (`shouldSendColdOutreachTemplate`/`isCswOpen`/
+  `resolveSendAction`/renderização do template) — incl. limite exato de
+  24h (23h59 ainda aberta, exatamente 24h já fechada), os 7 motivos de
+  inelegibilidade, e os 3 ramos de `resolveSendAction`. 17/17 PASS.
+- `client.ts` estendido com `sendWhatsappTemplateMessage` — 5 testes
+  novos de `fetch` mockado (2xx+wamid → `sent_confirmed`; código
+  transient conhecido → `failed_transient`; código permanent conhecido
+  (template não existe/não aprovado) → `failed_permanent`; exceção de
+  rede → `sent_unknown`; payload real enviado usa `type:"template"`
+  com nome/idioma/components corretos, nunca `type:"text"`) — suíte
+  completa de `client.ts` (texto + template) em 13/13 PASS.
+- Integração real contra Postgres (via `processInboundEvent`, shim) —
+  **prova central pedida pelo usuário**: nenhuma model call ocorre no
+  ramo cold-outreach. Prova em duas camadas: (1) o teste roda até o
+  fim sem lançar mesmo com `OPENAI_API_KEY` ausente do ambiente
+  (`getOpenAIClient()` só lança quando CHAMADO — se `classifyIntent`/
+  `planResponse` tivessem sido alcançados, o teste teria falhado
+  imediatamente); (2) prova definitiva, não só inferida: `select ...
+  from ai_usage_events where run_id = <o run deste ciclo>` retorna
+  ZERO linhas, e `orchestrator_runs.primary_intent`/`response_plan`
+  ficam `null` pra esse run — nunca um valor forçado/inventado.
+  Confirma também: `outbound_intent` com `send_as='template'` e
+  `content` exatamente igual à renderização determinística
+  (`renderColdOutreachTemplateContent('Profissional A')`, fixture
+  real); mensagem inbound da profissional persistida normalmente;
+  dedupe de `providerEventId` intacto (replay → `duplicate_event`,
+  sem outbound_intent duplicado).
+- Revalidação de CSW no sender, **janela expirando entre criação e
+  envio** (o cenário pedido explicitamente): fixture com uma mensagem
+  inbound real de 25h atrás (CSW fechada por dado real, nunca
+  suposição) + um `outbound_intent` criado como `send_as='free_text'`
+  já em estado `queued` (claimable de verdade). Prova, contra Postgres
+  real, as MESMAS functions que a rota do sender chama:
+  `getLastWhatsappInboundAt` reflete a mensagem real;
+  `resolveSendAction('free_text', false)` → `fail_closed_csw_expired`;
+  aplicar o fail-closed real (`claim` + `markOutboundIntentFailed`)
+  resulta em `delivery_state='failed_permanent'`,
+  `send_as` PRESERVADO como `'free_text'` (nunca reescrito pra
+  `'template'`), `provider_message_id` continua `null` (nunca chegou a
+  mandar nada), e o intent nunca mais aparece em
+  `list_claimable_outbound_intents` (nunca reenviado automaticamente).
+- Regressão completa re-executada (13 cenários de fechamento, RLS de
+  `runtime_pending_replies`, boundary do 4b, `needs_attention`, 32
+  asserções de `pending-replies-matching.ts`, 10 de outbound/isolamento
+  do 6A+6B Fase 1): zero regressões — `outbound.ts`/`pipeline.ts`/
+  `types.ts`/`index.ts` mudaram, nenhum comportamento anterior mudou.
+- `tsc`/`eslint`/`build` limpos, incl. as rotas já existentes
+  (`/api/runtime/send-outbound-intents`, `/dashboard/whatsapp`) e a
+  migration aplicada com sucesso ao banco de teste local.
+
+### Fechamento (6A+6B Fase 2)
+
+Implementação e testes aprovados. Ainda depende de Meta real (template
+aprovado de verdade, credenciais, URL estável) pra validação E2E
+completa — mesma classe de pendência não-bloqueante já registrada na
+Fase 1; checklist operacional exata pra essa validação entregue
+separadamente ao usuário (não repetida aqui). Por instrução explícita
+do usuário, **não avançar para 6C (identidade profissional + OTP) nem
+6D (demais entry paths — link individual, Código Doopla, onboarding)
+sem nova autorização.**
+
+### Dívida arquitetural consciente (registrada, não-blocker)
+
+`pipeline.ts` — historicamente 100% channel-agnostic — passou a
+importar `channels/whatsapp/cold-outreach-template.ts` (ver nota da
+Fase 2 acima). Aceito pelo usuário PARA ESTE VERTICAL, explicitamente
+**não generalizável**: antes de adicionar qualquer canal novo (email,
+outro provider), avaliar uma abstração de capability/policy de canal
+que evite acoplamento crescente do Runtime a módulos de canal
+específicos — decisão de arquitetura a discutir no momento de um
+próximo canal, nunca decidida por inércia/repetição do padrão atual.
+
+### `OUTBOUND_SENDER_CRON_SECRET` cadastrado em Production — segunda pendência independente da Meta fechada
+
+Segundo item aprovado na auditoria pré-teste WhatsApp: a variável nunca
+tinha sido cadastrada em nenhum environment (nem Preview, nem
+Production) — sem ela, `/api/runtime/send-outbound-intents` ficaria
+inacessível mesmo depois do desbloqueio da Meta. Cadastrada em
+Production na Vercel.
+
+**Achado operacional durante a validação**: um `Redeploy` disparado a
+partir da lista de Deployments nem sempre substitui o deployment
+"Current" de Production de fato — em pelo menos uma tentativa, o
+deployment que continuou servindo `doopla-zr9p.vercel.app` ficou
+marcado **"Ready Stale"** (Vercel sinalizando explicitamente que as env
+vars mudaram desde aquele build), mesmo depois de múltiplos cliques em
+"Redeploy" em linhas da lista. Resolvido disparando o Redeploy de
+**dentro da página de detalhes do deployment confirmado como
+"Environment: Production, Current"** — o resultado, `WvzVRPBUn`, veio
+sem o aviso "Stale" ("Ready Latest"). Registrado como nota operacional
+pra qualquer próximo redeploy manual: sempre confirmar "Current" +
+ausência de "Stale" na página de detalhes antes de considerar uma
+mudança de env var como propagada.
+
+Evidência: `curl` autenticado contra
+`https://doopla-zr9p.vercel.app/api/runtime/send-outbound-intents` →
+`200 {"processed":0,"results":[]}` (sem pendência real de outbound no
+momento, comportamento esperado).
+
+**As duas pendências independentes da Meta aprovadas nesta rodada
+estão fechadas.** Sem mais nenhum item técnico bloqueando o primeiro
+teste real assim que a Meta liberar a conta.
+
+---
+
+**Nota de manutenção (03/09/2026, atualizada 04/09/2026)**: as seções
+61-67 abaixo cobrem os blocos entregues entre o fechamento da seção 60
+e agora. Marcadas `[DELIVERED]` (implementado, testado e commitado —
+fonte de verdade vigente), `[CURRENT]` (estado vigente hoje, sem
+necessariamente ter uma migration/commit de fechamento próprio),
+`[SUPERSEDED]` (existiu, foi substituído por decisão posterior — nunca
+ressuscitar sem nova instrução), `[REMOVED]` (fluxo histórico que não
+existe mais no produto e não deve orientar implementação nova) ou
+`[REJECTED]` (proposto, avaliado, descartado antes de implementar) onde
+relevante.
+
+## 61. Conversas Bloco 1 — RPC read-only de fatos operacionais (migration 0060) — `[CURRENT]`
+
+Commit `36ff446`. Auditoria de Conversas/Precisa-de-você/negotiation
+intelligence (formato A-K) revisada e aprovada com uma correção: em
+vez dos 5 estados de UX propostos originalmente na auditoria
+(`[SUPERSEDED]` — nunca implementados), o Bloco 1 expõe **fatos
+operacionais brutos** — última mensagem+autoria, `runtime_pending_reply`
+existente, último `outbound_intent`+estado de entrega, aberta/fechada,
+mandate, timestamps, booking/root relacionado. `get_conversation_operational_facts`
+é `SECURITY INVOKER` deliberadamente (herda RLS das tabelas
+subjacentes, zero lógica de ownership nova) — padrão arquitetural
+citado depois em blocos seguintes. UX que a Doopla "está cuidando"
+sozinha, sem sinal real por trás — `[REJECTED]`, nunca implementar sem
+evidência real de que algo está em andamento.
+
+## 62. Fecha bypass de insert direto em `conversation_messages` (migration 0061) — `[CURRENT]`
+
+Commit `815b397`. Fechamento do blocker de segurança identificado no
+Bloco 1: `conversation_messages` aceitava INSERT direto de
+`authenticated` fora do boundary do Runtime. Investigação prévia de
+quais RPCs precisavam de privilégio de INSERT antes de escolher entre
+`DROP POLICY` e `REVOKE` — decisão registrada e testada, sem quebrar
+nenhum caminho existente (Runtime, `professional-reply-action.ts`,
+`persist_ai_message`).
+
+## 63. WhatsApp Inbound Foundation (migrations 0062 + 0063) — `[DELIVERED]`
+
+Commits `95068f0` (schema+RPCs+TS+webhook+CTA `/orcamento/[slug]`) e
+`aaa18db` (lineage 1:1). Primeiro canal real de entrada por WhatsApp:
+`channel_inbound_intakes`/`channel_inbound_intake_messages` (sessão de
+roteamento, 1 pendente por `channel+from_identifier`, nunca perde
+mensagem — múltiplas mensagens da mesma sessão são preservadas e
+reavaliadas antes de reperguntar). Algoritmo `evaluateWhatsappRouting`
+(`intake-routing.ts`, congelado desde então — nenhum bloco posterior
+alterou): prioridade (1) identidade profissional verificada
+(com sub-caso de token de outro profissional), (2) token da mensagem
+atual, (3) menção de nome só com histórico concordante/ausente, (4)
+histórico sozinho, (5) confirmação em caso de ambiguidade real.
+Lineage 1:1 garantida por constraint física (não só lógica de RPC):
+`conversation_messages.origin_intake_id` → `channel_inbound_intake_messages.id`
+→ `inbound_events.id`, bidirecional, `UNIQUE` nos dois sentidos.
+Retenção/purge de dados do canal: deliberadamente adiado, timestamps já
+suportam quando for priorizado.
+
+## 64. Professional WhatsApp Identity (migration 0064) — `[DELIVERED]`
+
+Commit `a5efc30`. Vínculo confiável `professional_id ↔ verified_whatsapp_number`
+via OTP (código hash+salt via `sha256()`, nunca texto puro persistido,
+expiração 10min, cooldown 45s, teto 5/hora, zero RLS na tabela de
+challenges — só alcançável via retorno das RPCs). Princípio central
+preservado em todo bloco seguinte: **identidade verificada responde
+"quem fala", nunca "em que papel"** — o webhook resolve o
+`professional_id` pelo número verificado, mas o algoritmo de roteamento
+(congelado, seção 63) continua decidindo `professional_self` vs.
+`external_inquiry` quando a mensagem carrega o token de outro
+profissional. `create_conversation` ganhou o branch `professional_self`
+(advisory lock, mesmo padrão do `external_inquiry`). UI de
+configurações para o profissional inserir o número/código: **não
+construída** — boundary Server-Action-only, gap preservado (ver
+roadmap).
+
+## 65. Professional Intelligence Context — `[DELIVERED]`, sem migration nova
+
+Commit `dff30b3`. Duas novas seções no Context Builder existente —
+`professionalBusinessContext` (preferências já declaradas em
+`/dashboard/perfil`) e `professionalCommercialHistory` (histórico real
+de bookings do profissional, retrieval V1 determinístico por recência,
+contrato (`retrievalStrategy`) já preparado pra evoluir pra relevância
+sem redesenho) — reaproveitando 100% as fontes de verdade existentes
+(`artist_profiles`/`bookings`), zero tabela nova. Introduziu a
+separação de evidência em duas camadas em `planner/invariants.ts`,
+mantida por todo bloco seguinte:
+
+- **Camada A** (context/reasoning evidence) — toda citação validada e
+  grounded, inclui as 2 novas fontes; nunca decide autorização sozinha.
+- **Camada B** (commitment-authorizing evidence) — só as 5 fontes
+  originais (`professional_profile`/`opportunity`/`booking`/
+  `external_participant`/`conversation_message`); é a única que
+  influencia `resolveCommitmentNature`/`resolveResponsePlan`/
+  `professionalDecisionSignal`.
+- **Camada C** (autorização) — Mandate/Approval/Policy Gate,
+  inalterados, nunca leem `ContextPackage`.
+
+Preferência declarada e precedente histórico **nunca** autorizam nada
+sobre o compromisso atual, mesmo citados e grounded — regra estrutural,
+não convenção de prompt. `authorized_collaborator` (Booker) continua
+com capabilities vazias — nenhuma concedida neste bloco, arquitetura
+deixada pronta pra evoluir sem redesign quando o produto decidir.
+
+## 66. Beta Instrumentation (migration 0065) — `[DELIVERED]`
+
+Commit `023172a`. 5 tabelas: `product_events` (envelope único
+Product+Value Events; `category` restrita por CHECK — `'product'|'value'|'lifecycle'`,
+essa última reservada sem uso ainda; `event_type` livre no banco,
+validado só pelo registry canônico em código,
+`src/lib/beta-instrumentation/event-types.ts`), `intervention_moments`
++ `intervention_moment_reason_events` (append-only), 
+`professional_feedback_checkins`, `orchestrator_run_context_evidence`
+(persistência detalhada da camada A, com snapshot de
+`is_commitment_authorizing` no momento da escrita — nunca recalculado
+depois).
+
+Contratos semânticos fixados, válidos daqui pra frente:
+- `product.*` = fato operacional; `value.*` = valor atribuível à
+  atuação da Doopla por critério determinístico, nunca por inferência.
+- **`value.meaningful_client_action`** (nome revisado —
+  `value.client_request_advanced` `[SUPERSEDED]` antes de qualquer
+  commit, nunca chegou a existir em produção) prova só **execução**
+  client-facing validada, nunca avanço/resultado/sucesso.
+- `intervention_type` V1 = `correction|edit|rejection|undo|takeover` —
+  **`approval` nunca pertence aqui** `[REJECTED]`: aprovação positiva é
+  behavioral feedback derivável de `approval_records`/
+  `approval_resolutions`, nunca duplicado. **Ausência de intervenção
+  NUNCA é lida como sinal positivo** — premissa explicitamente
+  corrigida antes de implementar (não há lógica em lugar nenhum do
+  código que infira isso).
+- Career Signals: nenhuma tabela nova — deriváveis das tabelas já
+  existentes quando Career Intelligence existir.
+- `onboarding_completed` como marco de TTV: **`[REJECTED]`** usar
+  `artist_profiles.created_at` como proxy — fica `UNKNOWN`/não
+  instrumentado até existir um evento real de conclusão de onboarding.
+
+Gaps explicitamente preservados (não resolvidos, não escondidos):
+detecção automática de Intervention Moments (schema/RPC prontos, sem
+trigger — depende de Conversas Bloco 2 existir); scheduling de feedback
+check-ins (schema/RPC prontos, sem gatilho); classificação assíncrona
+de `probable_reason` (arquitetura pronta via `reason_status`, job não
+construído); custo de canal WhatsApp (proveniência preservada em
+`outbound_intents`, cálculo adiado); granularidade futura de Product
+Events além do core wireado (`demand_received`/`booking_closed`/
+`booking_cancelled`) quando necessária; capabilities reais de Booker;
+`external_participant`↔`bookings` sem FK (recorrência de cliente
+indisponível); golden suites Planner/Classification pendentes de
+ambiente com `OPENAI_API_KEY` real.
+
+## 67. Conversas — Bloco 2 (migration 0066) — `[DELIVERED]`
+
+Commit `9d22034`. Revisado adversarialmente e fechado em 04/09/2026
+(reforço do teste de retry/proveniência + auditoria de `Encerrada`,
+ambos sem alteração de código — ver abaixo). Entrega Web **e** Mobile,
+nunca só um dos dois:
+
+- **Acesso contextual, nunca aba primária** — "Ver conversa" a partir
+  do Booking (rota real `bookings/[id]/conversa/[conversationId]` +
+  modal intercepting no Web, mesmo padrão de `avaliar/`; seção no
+  detalhe do booking + tela modal própria no Mobile). A aba placeholder
+  "Conversas" do Mobile (`(tabs)/conversas.tsx`, nunca teve dado real)
+  foi **removida** da navegação — volta a 4 abas (Início/Bookings/
+  Agenda/Mais).
+- **4 estados CURRENT**, derivação pura e determinística
+  (`deriveConversationState()`, duplicada deliberadamente em
+  `src/lib/conversations/state.ts` e
+  `mobile/src/lib/conversation-state.ts` — bundlers/módulos separados,
+  sem grafo de import compartilhado nesta base de código):
+  `needs_you` (Precisa de você) / `waiting_client` (Aguardando
+  cliente) / `in_progress` (Em andamento) / `closed` (Encerrada).
+  "Você respondeu"/"Você editou o rascunho antes de enviar" **não são
+  estados** — são fato de mensagem individual
+  (`prepared_response_outcome`), exibido por bolha no thread.
+- **`Encerrada` deriva EXCLUSIVAMENTE de `conversations.status IN
+  ('closed','archived')`** — `conversations.mandate` (coluna
+  `text not null default 'active'`, sem CHECK constraint nenhum no
+  banco) **não participa** dessa derivação hoje, nem é lido por
+  `deriveConversationState()`. Auditado em 04/09/2026: `mandate` nunca
+  é escrito com outro valor além do default `'active'` em nenhum
+  código da aplicação (a RPC `set_conversation_mandate`, migration
+  0039, existe mas nunca é chamada) — não há hoje nenhum
+  pausa/suspensão/transferência real que `mandate` represente. **Gap
+  futuro registrado**: se `mandate` algum dia ganhar semântica
+  operacional real (pausa, transferência de mandato etc.),
+  `deriveConversationState()` precisa ser revisada explicitamente
+  nesse momento — ela vai continuar ignorando mudanças de `mandate`
+  até essa revisão acontecer, de propósito (nunca inventar semântica
+  pra um mecanismo que hoje não é usado).
+- **Boundary único** `submitProfessionalReply()`
+  (`src/lib/beta-integration/professional-reply.ts`), compartilhado
+  por Web (Server Action com sessão de cookie) e Mobile (rota de API
+  `src/app/api/mobile/conversations/reply/route.ts`, sessão via Bearer
+  token → `src/lib/supabase/token-client.ts` resolve um client
+  Supabase **autenticado como o usuário real do token**, nunca
+  service_role) — os dois caminhos convergem pro MESMO
+  `triggerInboundMessage()`/Runtime já existente, nunca uma
+  implementação paralela semanticamente diferente pro Mobile.
+  Ownership (conversation + outbound_intent) é revalidada
+  server-side, com leitura ao vivo no momento da chamada (nunca um
+  flag vindo do cliente); idempotência via `submissionId` →
+  `providerEventId` → dedupe real em `claim_inbound_event`.
+- **Proveniência factual draft × resposta enviada**
+  (`conversation_messages.replied_to_outbound_intent_id` +
+  `prepared_response_outcome` `'sent'|'edited'`, migration 0066) —
+  calculada e persistida no MESMO INSERT dentro de
+  `persist_inbound_message` (nunca recomputada depois), por comparação
+  determinística com normalização MÍNIMA
+  (`normalize_prepared_response_text()`: só line endings + espaço de
+  borda — nunca semântica, lowercase, pontuação ou IA). Isto NÃO cria
+  Intervention Moment, NÃO classifica `probable_reason`, NÃO significa
+  approval/satisfação/takeover — é só proveniência factual pra
+  Learning/Beta Instrumentation futuro. **Retry preserva
+  imutavelmente** o fato originalmente persistido — provado
+  adversarialmente com o caso `edited` (o mais importante: um retry
+  nunca pode fazer um fato `edited` virar `sent` depois): primeira
+  submissão grava o fato, retry com a mesma identidade idempotente é
+  recusado por `claim_inbound_event` ANTES de qualquer novo
+  `persist_inbound_message`, e a releitura do banco confirma UMA única
+  mensagem com `replied_to_outbound_intent_id`/`prepared_response_outcome`
+  idênticos aos gravados na primeira vez.
+- **Takeover: não inferido neste bloco** — fora de escopo, especificação
+  futura explícita (nunca inferir de `has_pending_runtime_reply=false`
+  ou qualquer outro sinal indireto).
+- **Nenhum Intervention Moment nem `probable_reason` automático** foi
+  disparado por este bloco — o wiring de Intervention Moments/Feedback
+  continua `[FUTURE]` (depende deste bloco existir, mas não foi feito
+  aqui).
+
+Gaps explicitamente preservados: takeover; wiring de Intervention
+Moments/`probable_reason`; gap de `mandate` acima.
+
+## 68. Professional Product UI — Foundation (migration 0067) — `[DELIVERED]`
+
+Bloco técnico de fundação — **nunca produz a nova interface final**,
+só contratos/boundaries pra Web+App consumirem depois. Escopo
+completo, nenhum item pulado.
+
+**Tipagem** (`src/lib/supabase/types.ts`): tabelas/RPCs que faltavam
+ficaram tipadas — `outbound_intents`, `runtime_pending_replies`,
+`approval_records`, `policy_gate_decisions`, `product_events`,
+`professional_whatsapp_identities` (+`_events`), toda a Comunidade
+(`community_categories/tags/profiles/topics/topic_tags/posts/
+mentions/saved_topics/notifications` + a view `community_profiles_public`),
+mais as RPCs de WhatsApp Identity e Comunidade no `Database.Functions`.
+`ConversationMessage` ganhou `replied_to_outbound_intent_id`/
+`prepared_response_outcome` (migration 0066, nunca tipados antes).
+Estratégia daqui pra frente: sem projeto Supabase linkado neste
+sandbox pra `supabase gen types`, a sincronização continua manual,
+seguindo exatamente as `CREATE TABLE`/`CHECK` das migrations (nunca um
+tipo inventado) — recomendado rodar `supabase gen types` num ambiente
+com acesso real e diffar contra este arquivo antes de qualquer UI
+nova. Efeito colateral positivo: `src/app/dashboard/whatsapp-identity-actions.ts`
+perdeu os 3 casts `as SupabaseClient<any>` que só existiam por falta
+desses tipos.
+
+**Home** (`get_professional_home_facts()`, migration 0067, `SECURITY INVOKER`
+sobre RLS já testada — mesmo padrão de `get_conversation_operational_facts`):
+único read model canônico dos fatos objetivamente contáveis (contas de
+booking por status, próximo booking, contagem de conversas
+`needs_you` — mesmo critério exato de `deriveConversationState()`,
+identidade WhatsApp, referral, plano). Consumido por
+`src/lib/professional-home/data.ts` (Web) e
+`mobile/src/lib/data/home-facts.ts` (Mobile), mesmo mapeamento.
+**Nunca inclui a lista completa de "Precisa de você"**
+(`getAttentionItems`, `src/app/dashboard/data.ts` continua sendo a
+fonte — reimplementar aquela lógica em SQL seria arriscar divergência,
+gap registrado, não escondido).
+
+**Decisões/Approvals** (`src/lib/decisions/data.ts` + espelho Mobile):
+contrato `DecisionItem` (`pending_reply`/`prepared_draft`) compondo
+`runtime_pending_replies`+`policy_gate_decisions`+`outbound_intents`+
+`conversations` já existentes — nenhuma lógica nova de aprovação,
+nenhuma segunda fonte de verdade. `runtime-state-reads.ts` (passo 4a)
+parou de duplicar `RuntimePendingReplyRow`/`OutboundIntentRow` — agora
+reexporta os tipos canônicos.
+
+**WhatsApp Identity** (RPCs 0064 já `[DELIVERED]`, zero UI antes
+deste bloco): leitura (`src/lib/whatsapp-identity/data.ts` +
+`mobile/.../whatsapp-identity.ts`) somada aos 3 boundaries de escrita
+já existentes. **Achado de segurança real, corrigido nesta rodada**:
+o desenho original do Mobile chamaria `request_whatsapp_verification`
+direto via RPC — isso devolveria o código OTP em texto puro pro
+dispositivo sem ninguém nunca mandar pelo WhatsApp de verdade (ou
+exigiria o app carregar `WHATSAPP_ACCESS_TOKEN`, segredo de servidor).
+Corrigido extraindo a lógica pra um boundary compartilhado
+(`src/lib/whatsapp-identity/request-verification.ts`) — Web continua
+via Server Action, Mobile passou a ir por uma rota de API nova
+(`src/app/api/mobile/whatsapp-identity/request`, Bearer→
+`resolveUserFromToken`, mesmo padrão de Conversas). `confirm`/`revoke`
+não expõem segredo nenhum — Mobile chama essas duas RPCs direto.
+
+**"Falar com minha Doopla"** (`src/lib/professional-doopla-cta.ts` +
+espelho Mobile): documentado que o mecanismo já existe por inteiro
+(mesmo número público `NEXT_PUBLIC_WHATSAPP_NUMBER`, `professional_self`
+resolvido pelo algoritmo CONGELADO de roteamento via identidade
+verificada, prioridade 1 desde WhatsApp Inbound Foundation) — só
+faltava o helper de URL + a documentação do contrato, nunca um sistema
+de identidade paralelo. Pré-condição: `whatsappIdentityStatus === 'verified'`.
+
+**Comunidade** (`src/lib/community/data.ts` + espelho Mobile): boundary
+completo sobre o schema real já pronto (migration 0059, commitado
+02/09/2026, achado da auditoria: estava sentado sem nenhuma UI
+conectada) — perfil/privacidade, categorias/tags, tópicos/posts,
+menções estruturadas, reply-to, salvos, notificações da Comunidade.
+Sem busca por texto (0059 nunca teve tsvector, gap explícito, não
+inventado agora). O Fórum mobile (`app/forum/*`) continua 100% mock
+(`forumMock.ts`) — este bloco não tocou nele, só deixou o boundary
+real pronto pra quando a reconexão acontecer.
+
+**Booker do ponto de vista do profissional** (`src/lib/professional-booker/data.ts`
++ espelho Mobile): `getMyBookerFacts` devolve LISTAS (ativos + pendentes
+com direção `incoming`/`outgoing`) sobre `representations`/
+`representation_requests` já reais — nunca um estado singular
+"o booker", porque o schema já permite múltiplos (carteira, dos dois
+lados). `authorized_collaborator` capabilities continuam vazias, nada
+ativado. Gap registrado: não existe hoje uma action pra cancelar um
+convite que o PRÓPRIO profissional enviou (`respondRepresentationRequestAction`
+bloqueia explicitamente o iniciador).
+
+**Plano/entitlement**: `hasDooplaPro()` (Web, já existia) ganhou
+espelho Mobile (`mobile/src/lib/subscription.ts`) — só o gate do
+artista, `hasProAccess`/`isArtistBlockedForBooker` (booker) ficam de
+fora de propósito (fora do escopo profissional deste macrobloco).
+
+**Notificações**: só mapeado, nenhuma central criada (instrução
+explícita — reconciliar com Lifecycle Messaging antes). Produtor único
+hoje: `community_notifications` (0059), escopo estreito, nunca a
+central genérica do produto.
+
+**Doopla Verified — resíduo removido**: `isDooplaVerified()`/
+`verifyBadgeClass` (definições + os 2 usos no detalhe do booking: o
+badge e o botão desabilitado "Reenviar link de validação") removidos —
+`validated_at` comprovadamente nunca é escrito em nenhum código
+(auditado), então essas 2 UI eram sempre-falsas, mortas, sem
+dependência real. **Não removido, registrado como gap** (removê-lo
+seria mexer em layout, não só código morto): o item "Validado" dentro
+de `getBookingCheckpoints()`/`Checkpoint[]` (a fileira de 5 checkpoints
+no detalhe do booking) — mesma coluna `validated_at`, mas entrelaçado
+num componente de 5 itens, remoção arriscaria redesenho fora do
+escopo desta Foundation.
+
+**Segurança**: `get_professional_home_facts()` testado adversarialmente
+(isolamento cross-professional + `anon`/`service_role` sem EXECUTE — 4
+cenários, todos OK). Decisões/Booker/Comunidade reaproveitam RLS/RPCs
+já testadas nos blocos originais (Approval Engine, Policy Gate,
+Runtime, migration 0059) — não re-testadas do zero aqui, só as novas
+leituras TS sobre elas, sem `.eq()` de posse adicional (mesma
+filosofia de `get_conversation_operational_facts`). Nenhuma migration
+alterou RLS existente.
+
+**Migration**: só uma, `0067_professional_home_facts.sql` (RPC nova,
+justificada — nenhum contrato existente compunha esses fatos num só
+lugar; sem ela, "mesmo fato, mesma definição" entre Web e Mobile não
+seria garantido, já que os dois códigos não compartilham grafo de
+import). Nenhuma alteração de schema/RLS existente.
+
+**Testes**: 4 asserções SQL novas (`get_professional_home_facts`,
+isolamento + anon/service_role bloqueados) + regressão completa (0062-0067,
+todas as suites SQL anteriores + as 88 asserções TS de PIC/Beta
+Instrumentation/Conversas Bloco 2/estado de conversa) — tudo verde.
+`tsc`/`eslint`/`next build` limpos nos dois projetos.
+
+**Explicitamente NÃO implementado** (fora de escopo, sem UI/redesign/
+migration nova além da listada): novo visual Web/App; Materiais Pro;
+Career Intelligence; Analytics final; Minha Doopla/Treinar final;
+Booker Dashboard/App; Booker capabilities; billing coverage/PSP;
+Lifecycle/Transactional/Operational Messaging; central global de
+notificações; referral financeiro final; qualquer feature "Em breve"
+nova.
+
+## Roadmap pré-beta revisado (03/09/2026)
+
+Substitui qualquer leitura anterior de ordem de blocos. Career
+Intelligence **não** é assumido como próximo automaticamente só por ter
+sido citado como "passo 3" em blocos anteriores — depende de volume
+real de uso via Beta Instrumentation, não de outro bloco de código.
+
+1. **Conversas — Bloco 2** — `[DELIVERED em 04/09/2026, ver seção 67]`.
+   Spec vigente confirmada como implementada: acesso **secundário** a
+   partir do Booking ("Ver conversa") — **Conversas como aba primária
+   segue `[SUPERSEDED]`, nunca ressuscitar** sem nova instrução
+   explícita.
+2. **WhatsApp Identity UI + "Falar com minha Doopla" real** `[FUTURE]`
+   — boundary já existe (seção 64), falta só a tela e o deep link real.
+3. **Lifecycle + Transactional + Operational Messaging V1** `[FUTURE,
+   pré-beta]` — revisado 03/09/2026: **não é mais integralmente
+   pós-beta.** A Doopla é WhatsApp-first; o profissional não pode
+   depender de abrir o painel pra saber que uma decisão está pendente.
+   V1 precisa cobrir pelo menos `DECISION`/`RISK`/`RESOLVED` e
+   compromissos temporais relevantes, respeitando `why_now`,
+   revalidação de estado, dedup, suppression/cancellation e smart
+   silence. A versão completa (todos os `signal_type`, todo o vocabulário
+   `scheduled/due/suppressed/sent/delivered/responded/resolved/cancelled/escalated`)
+   pode evoluir depois do beta. `product_events.why_now`/`signal_type`
+   (seção 66) já nasceram reservados pra isso.
+4. **Wiring de Intervention Moments + Feedback/check-ins** `[FUTURE]` —
+   onde houver trigger real (depende principalmente do item 1 existir).
+5. **QA/E2E/readiness do beta** `[FUTURE]`.
+
+**Depois do beta rodar com dado real**: Career Intelligence V1
+(Pattern/Insight/Recommendation Engine sobre os sinais já capturados
+pelo Beta Instrumentation).
+
+**Decisão de produto em aberto, não classificada como definitivamente
+pós-beta**: Booker — não bloqueia o primeiro fluxo mono-profissional,
+mas sua entrada no beta comercial é uma decisão de produto ainda não
+tomada. Todo o modelo já definido (carteira multi-profissional,
+permissões, cobertura de assinatura) precisa continuar preservado sem
+implementação até essa decisão vir.
+
+**Gaps que não bloqueiam beta, mas seguem em aberto**: `external_participant`↔`bookings`
+sem FK; golden suites pendentes de ambiente real.
+
+## Checkpoint de documentação — reconciliação de roadmap e superfícies (04/09/2026)
+
+Checkpoint só documental — nenhum código mudou nesta rodada. Reconcilia
+este arquivo e `DECISOES.md` com o estado real depois do fechamento de
+Conversas — Bloco 2 (seção 67). A partir daqui, a ORDEM numerada 2-5 da
+seção "Roadmap pré-beta revisado (03/09/2026)" acima deixa de ser lida
+como sequência de implementação — os itens continuam válidos como
+DESCRIÇÃO de escopo, mas a ordem entre eles (e entre eles e o restante
+da lista PENDING/FUTURE abaixo) ainda não foi decidida. **A ordem dos
+próximos grandes blocos será definida depois de uma auditoria de
+dependências e das superfícies finais — esta lista não é uma fila.**
+
+### Superfícies do profissional/booker — 4 blocos distintos, não confundir
+
+Correção de nomenclatura: o painel web que já existe e já é usado em
+produção/teste em todo bloco até aqui (`src/app/dashboard/` —
+bookings/agenda/dinheiro/conversas/etc., real, não mock) **não é** o
+"Professional Web Dashboard final". São coisas diferentes:
+
+- **Professional Web Dashboard final** — `[NÃO IMPLEMENTADO, bloco
+  próprio pendente]`. O design final está sendo produzido externamente
+  e ainda será fornecido — não inventar nem implementar esse painel
+  antes do design chegar. O `src/app/dashboard/` atual segue sendo a
+  superfície funcional usada pra validar cada bloco de backend, mas
+  não é a versão final do painel do profissional.
+- **Professional App** — superfície própria (`/mobile`), parcialmente
+  existente e evolutiva (Home/Bookings/Agenda/Dinheiro/Indique e
+  ganhe/Configurações/Conversas já têm dado real — seções 73-89 e 67
+  deste arquivo). Nunca confundir com Professional Web.
+- **Booker Web Dashboard** — `[NÃO IMPLEMENTADO]`, superfície própria
+  futura. Hoje o booker só enxerga fatias específicas dentro do MESMO
+  `src/app/dashboard/` (ex.: a própria tela de um booking em que
+  participa) — nunca um painel dedicado à experiência do booker.
+- **Booker App** — `[NÃO IMPLEMENTADO]`, superfície própria futura. Não
+  existe hoje em nenhuma forma.
+
+### PENDING/FUTURE — grandes frentes registradas, sem ordem implícita
+
+Registro, não fila — nenhum item abaixo deve ser lido como "próximo" só
+por estar mais acima na lista:
+
+- Professional Web Dashboard final
+- Professional App final
+- WhatsApp Identity UX + CTA "Falar com minha Doopla" (boundary já
+  existe, seção 64 — falta a tela/deep link real)
+- Lifecycle + Transactional + Operational Messaging V1 (pré-beta — ver
+  seção 66 e `DECISOES.md`; o vocabulário completo continua pós-beta)
+- Intervention Moments + Feedback/Learning wiring (schema/RPC prontos
+  desde Beta Instrumentation, seção 66, sem trigger; Conversas Bloco 2
+  agora existe como pré-requisito de origem do sinal, mas o wiring em
+  si não foi feito neste bloco — ver seção 67)
+- Conversas — Bloco 3
+- Booker capabilities/arquitetura (decisão de produto em aberto — ver
+  `DECISOES.md`, "Booker: não classificado como definitivamente
+  pós-beta")
+- Booker Web Dashboard
+- Booker App
+- Onboarding/Representation Profile
+- Planos/trial/billing/NF e cobertura Booker
+- Pro representation email
+- Materiais Pro
+- Community/Fórum
+- Notifications
+- Referral/afiliados
+- QA/E2E/Beta Readiness
+- Legal/LGPD/retention/security
+- Career Intelligence (depende de volume real de uso via Beta
+  Instrumentation, não de outro bloco de código — ver seção 66)
+
+### SUPERSEDED/REMOVED — fluxos históricos que não orientam implementação nova
+
+- **Doopla Verified** (selo por booking, `isDooplaVerified()`/
+  `booking.validated_at` em `src/app/dashboard/data.ts`) —
+  `[REMOVED, de fato inerte]`. Auditado 04/09/2026: nenhum código
+  escreve `validated_at` hoje (zero INSERT/UPDATE em todo `src/`), o
+  selo nunca aparece na prática. O código de leitura continua
+  fisicamente presente no painel atual — não removido nesta rodada
+  (fora de escopo, checkpoint é só documental) — mas não representa um
+  fluxo vivo e não deve ser usado como referência de design.
+- **Confirmação de booking por link do cliente** (o mecanismo que
+  preencheria `validated_at`) — `[REMOVED]`. Nunca chegou a ser
+  construído; era o "falta o link de validação do cliente" registrado
+  antigamente na seção 9. O modelo de identidade/confirmação do
+  produto atual é outro (WhatsApp verificado por OTP, seção 64;
+  Runtime/Conversas, seções 61-67) — não ressuscitar o modelo de link.
+- **Copy "Você recebeu uma mensagem da Doopla? Precisa confirmar o
+  link..."** e qualquer reenvio automático desse link de confirmação —
+  `[REMOVED]`. Auditado 04/09/2026: nenhuma ocorrência em `src/` — não
+  deve orientar copy/fluxo novo nenhum.
+- **Estados antigos dependentes de Verified/link de confirmação** —
+  `[REMOVED]`, mesma razão acima.
+- **Modelo antigo de Booker/marketplace** (bookers, matching, comissão
+  como eixo central do produto — ainda vivo só nas páginas públicas de
+  marketing não revisadas, `/login`/`/sobre`/`/cadastro`/`/seguranca`,
+  gap já registrado antes deste checkpoint, fora de escopo aqui) —
+  `[SUPERSEDED]` sempre que conflitar com o modelo Booker atual
+  (carteira multi-profissional, permissões por `professional_id`,
+  cobertura de assinatura — ver `DECISOES.md`, "Booker: não
+  classificado como definitivamente pós-beta"). O modelo atual
+  prevalece em qualquer conflito.
+
+**Atualização (04/09/2026, mesmo dia — Professional Product UI Foundation,
+seção 68 `[DELIVERED]`)**: os contratos/boundaries pra Web+App das
+áreas listadas acima como PENDING/FUTURE foram preparados (tipos,
+read models, boundaries de escrita seguros) — isso NÃO promove nenhuma
+dessas áreas pra DELIVERED como PRODUTO. Continuam PENDING/FUTURE como
+superfície de UI: WhatsApp Identity UX, Community/Fórum (Web + App
+real), Minha equipe (Web + App), Analytics, Materiais, Minha Doopla/Treinar,
+Booker Web/App. A Foundation só reduz o trabalho de UI que falta,
+nunca antecipa o próprio UI.
+
+## 69. Professional Product UI — Shell + Home (Web + App) — `[TECHNICAL IMPLEMENTATION READY, VISUAL QA PENDING]`
+
+**Status explícito, review 04/09/2026**: implementação técnica pronta
+pra revisão (`tsc`/`eslint`/`build` limpos). **Aceitação visual segue
+PENDENTE** — este sandbox não tem projeto Supabase real linkado, então
+não há como autenticar e renderizar `/dashboard` de verdade aqui pra
+comparar contra o HTML de referência. Nenhuma sessão/dado falso foi
+criado só pra viabilizar screenshot. Validar em Preview autenticado
+antes de tratar este bloco como visualmente fechado.
+
+Primeiro bloco visual do novo Professional Product UI. Escopo exato:
+novo Shell Web (sidebar/topbar dark), nova Home Web, nova Home App
+(mesma tela já existente, rewired pros contratos da Foundation) — só
+isso. **Nunca** o Professional Web Dashboard final completo, nunca
+Bookings/Agenda/Decisões/Financeiro/Community/Booker como telas
+próprias. Nenhuma migration nova — 100% sobre os contratos já
+preparados na Foundation (seção 68).
+
+**Escopo por role**: o novo Shell/Home dark é exclusivo de
+`role !== 'booker'` (a superfície "profissional"/artista, incluindo o
+legado `role='agencia'`, que já era tratado como "não-booker" no
+código antigo). Booker segue 100% no shell/Home legado (bege,
+`legacy-shell.tsx`/`booker-home-view.tsx`, extraídos de
+`layout.tsx`/`page.tsx` sem NENHUMA mudança de comportamento, só pra
+isolar o narrowing de tipos do branch novo) — Booker Web Dashboard
+segue fora de escopo (DECISOES.md "Quatro superfícies distintas").
+
+**Web Shell** (`src/app/dashboard/pro-shell.tsx` +
+`pro-sidebar-nav.tsx`/`pro-sidebar-referral-link.tsx`/`pro-forum-panel.tsx`):
+sidebar dark fixa com a arquitetura de informação completa e aprovada
+— Início/Bookings/Agenda/Decisões/Financeiro/**Materiais/Analytics**
+(badges reais nos 4 primeiros: `bookingsAwaitingResponseCount`/
+`conversationsNeedingYouCount` de `get_professional_home_facts()`) +
+grupo secundário Minha equipe/Configurações + "Indique e ganhe" (abre
+o `ReferralModal` já existente via contexto, nunca uma rota nova).
+**"Conversas" não entra na sidebar** (SUPERSEDED, seção 4 do pedido
+original). **Materiais/Analytics permanecem visíveis** (review
+04/09/2026 pediu explicitamente pra não removê-los silenciosamente) —
+marcados `comingSoon: true` em `ProNavLink`: renderizam como `<div>`
+não-clicável, ícone apagado, badge "Em breve" em vez de contador, sem
+`href` de navegação real — nenhuma página fabricada em
+`/dashboard/materiais`/`/dashboard/analytics` (essas rotas não
+existem). Mesmo padrão já usado em `PlaceholderScreen` no App. Topbar
+com sino (mesmo `getAttentionItems` de sempre, só restyled), Fórum
+(painel lateral, ver Community abaixo) e Configurações
+(`/dashboard/perfil`).
+
+**Web Home** (`src/app/dashboard/professional-home-view.tsx`):
+hero com mascote (`pro-mascot.tsx`, eye-tracking client-side,
+`prefers-reduced-motion` respeitado) + saudação dinâmica por
+`conversationsNeedingYouCount`; 4 stat cards 100% de
+`get_professional_home_facts()` (aguardando resposta/conversas que
+precisam de você/confirmados/concluídos — **nenhum valor monetário
+mock**, o protótipo tinha "valor negociado" que não existe como fato
+real hoje, omitido de propósito); accordion "Precisa de você" (id
+`precisa-de-voce`, nasce fechado) sobre `listActionableDecisions()`
+(Foundation), cada card só lê/leva pra conversa real, nenhuma escrita
+nova; accordion "Próximos bookings" sobre bookings reais
+(`aceita`/`aguardando_pagamento`, nunca inferido de agenda livre);
+accordion "Atividade da Doopla" — **gap real encontrado**: on
+`getRecentActivity()` (`src/app/dashboard/data.ts`) só popula itens
+pra `role === 'booker'`, nunca pra artista — accordion sempre honesto
+("Nenhuma atividade registrada ainda.") pro público-alvo desta Home,
+gap registrado, não inventado; "Sua Doopla em ação" virou um resumo
+sem gráfico (sem série temporal real disponível — decisão explícita
+de não fabricar tendência, gap registrado em vez de simular). Coluna
+direita: canais de booking (link de orçamento real via
+`getOrcamentoLinkInfo`, número WhatsApp da Doopla via
+`whatsappPublicNumber()`, indicador discreto de Booker via
+`getMyBookerFacts()` só quando existe relação — nunca card grande);
+"Indique e ganhe" (`referralTotalCount`/`referralQualifiedCount` da
+Foundation + `ReferralModal` real); "Falar com minha Doopla" via
+`buildTalkToYourDooplaUrl()` — sempre abre WhatsApp, com aviso honesto
+quando `whatsappIdentityStatus !== 'verified'` (nunca bloqueia o
+clique, nunca modal intermediário).
+
+**App Home** (`mobile/app/(tabs)/index.tsx` — já estava praticamente
+pronta visualmente de um bloco anterior, dark/mascote/carrossel já
+existiam): rewired pra `fetchProfessionalHomeFacts()`/
+`fetchActionableDecisions()`/`fetchMyBookerFacts()` (Foundation) em vez
+de só bookings/referral ad hoc; adicionado accordion "Precisa de você"
+(`DecisionCard.tsx` novo) e "Atividade da Doopla" (mesmo gap honesto
+do Web); `FalarComDooplaCard` deixou de ser mock (`onPress` fake) e
+abre `Linking.openURL(buildTalkToYourDooplaUrl(...))` de verdade, com
+o mesmo aviso de identidade não verificada do Web. 4 tabs confirmadas
+intactas (`Início`/`Bookings`/`Agenda`/`Mais` — a 5ª aba "Conversas"
+já tinha sido removida num bloco anterior, confirmado por auditoria,
+nada a fazer aqui). Carrossel horizontal (`StatsCarousel.tsx`) já
+implementado corretamente sem scroll-snap (bug documentado no próprio
+código) — reutilizado sem alteração.
+
+**Logo — corrigido na review de 04/09/2026**: auditoria completa do
+repositório (`public/`, `mobile/assets/`, favicons) confirmou que
+**nenhum asset de logo oficial reutilizável existe** — só ícones
+default do Expo nunca customizados (`icon.png`/`splash-icon.png` são
+literalmente o template genérico do Expo, sem nenhuma referência
+visual à marca Doopla), e `EyeLogo` (`src/app/_home/EyeLogo.tsx`) tem
+CSS escopado só a `#home-marketing`/`#site-chrome` (marketing),
+renderizando sem estilo nenhum fora dali. A primeira versão deste
+bloco tinha desenhado um wordmark novo em Anton pro Shell — **isso foi
+revertido por instrução explícita**: nem o Shell Web nem o
+`LogoPlaceholder` do App (que estilizava o "o" de "doopla" como ponto
+colorido, imitando a geometria dos olhos do logo real) podem inventar
+um wordmark. Tratamento honesto atual nos dois: texto simples "doopla"
+sem tipografia/cor de marca, só um link funcional de volta pra Início
+— **asset dark oficial reutilizável segue como pendência registrada**,
+nada inventado.
+
+**Community/Fórum**: só o affordance (ícone + painel lateral Web /
+`/forum` já existente no App) — nenhum dado de tópico/post fabricado,
+`forumMock.ts` **não foi usado nem tocado** no lado Web (painel novo
+não busca dado nenhum de Community). **Resíduo confirmado**: a tela
+`/forum` do App (bloco anterior, pré-Foundation) ainda usa dado mock
+— não foi meu escopo mexer nisso (não aprofundar Community é regra
+explícita deste bloco), fica registrado pro subbloco Community
+dedicado consumir `src/lib/community/data.ts`/mirror Mobile.
+
+**Segurança/RLS**: nenhuma policy alterada. Todas as leituras novas
+passam pelos boundaries da Foundation (RLS já testada) ou por queries
+diretas já usadas em produção (`getOrcamentoLinkInfo`/
+`getMyBookerFacts`). Nenhum novo write boundary criado.
+
+**Testes**: `tsc --noEmit` limpo (Web + Mobile), `eslint` limpo (Web),
+`next build` limpo (Web, todas as 39 rotas geradas, incluindo
+`/dashboard` como rota dinâmica). Regressão: nenhum arquivo do Runtime/
+Approval/Policy Gate/Conversas foi tocado — só consumo de leitura via
+Foundation. Smoke test do dev server (`curl` local): `/` e `/login`
+200, `/dashboard` sem sessão redireciona 307 pro login sem crash.
+
+**Visual QA — limitação honesta**: este sandbox não tem projeto
+Supabase real linkado (`NEXT_PUBLIC_SUPABASE_URL=placeholder.supabase.co`),
+então não há como autenticar e renderizar `/dashboard` de verdade
+neste ambiente pra comparar pixel a pixel com o HTML de referência —
+só a árvore JSX/CSS foi validada, mais o smoke test acima. Recomendado
+validar visualmente em Preview antes de dar essa entrega como
+visualmente fechada.
+
+**Correções pós-QA autenticado (04/09/2026, mesmo dia — Part A da
+review)**: 3 bugs reais confirmados no Preview autenticado, 2
+corrigidos, 1 investigado/reportado (não é bug de código):
+
+1. **Nav ativo errado** (`pro-sidebar-nav.tsx`) — "Decisões"
+   (`href='/dashboard#precisa-de-voce'`) acendia como ativo sempre que
+   a Home estava aberta, mesmo sem clique. Causa: o cálculo de `active`
+   fazia `link.href.split('#')` e comparava só a parte do path — como
+   "Decisões" e "Início" têm o MESMO path (`/dashboard`), os dois
+   caíam no mesmo ramo do ternário. Corrigido: link com hash nunca
+   recebe estado de nav ativa (é uma âncora de página, não uma rota
+   própria) — estado de atenção/pendência continua exclusivamente no
+   badge numérico, nunca no highlight de fundo.
+2. **Flash branco na navegação** (`loading.tsx`) — o boundary de
+   loading só substitui o slot `{children}` (conteúdo da página); o
+   Shell (sidebar/topbar) é `layout.tsx`, que fica FORA dessa
+   fronteira de Suspense e nunca desmonta entre navegações do mesmo
+   segmento. O bug real: o fallback pintava um retângulo
+   `min-h-screen` sólido em `var(--paper)` (bege) dentro da área de
+   conteúdo — como essa área é a maior parte da tela (sidebar tem só
+   250px), lia como "a tela inteira ficou em branco". Corrigido: fundo
+   transparente (deixa o fundo do Shell já pintado por trás aparecer)
+   + spinner em `currentColor` (herda a cor certa de qualquer um dos
+   dois shells) + sem `min-h-screen`.
+3. **Home mostrando "Não conseguimos carregar seus dados agora"** —
+   investigado, NÃO é bug de código. `getProfessionalHomeFacts()`
+   chama `get_professional_home_facts()` (migration 0067) e retorna
+   `null` quando a RPC erra — o erro real do Postgrest estava sendo
+   engolido em silêncio (nenhum log). Causa mais provável: este
+   sandbox nunca teve um projeto Supabase real linkado — todas as
+   migrations desde a Foundation foram validadas SÓ contra o Postgres
+   de teste local (`doopla_rls_test`), nunca aplicadas a um projeto
+   hospedado; não existe automação de deploy de migration no repo
+   (sem `supabase/config.toml` de push, sem workflow de CI pra isso).
+   Hipótese mais provável: a migration 0067 (e possivelmente outras
+   recentes) nunca foi aplicada ao projeto Supabase real que a Preview
+   usa — a RPC simplesmente não existe lá, e `get_professional_home_facts()`
+   volta um erro tipo "function not found". Correção aplicada: só
+   parar de engolir o erro (`console.error` antes de retornar `null`
+   em `src/lib/professional-home/data.ts`) — nenhum dado fake, nenhuma
+   mudança de contrato/comportamento pro usuário. **Ação real
+   pendente, fora do escopo de código**: aplicar as migrations 0059+ a
+   0067 no projeto Supabase real (`supabase db push` ou equivalente) e
+   conferir os logs da função no painel do Vercel/Supabase pra
+   confirmar a causa exata.
+
+## 70. Professional Product UI — Shell + Home, auditoria read-only de superfícies legadas (Part B) — `[AUDIT ONLY, NENHUM REDESIGN EXECUTADO]`
+
+Auditoria pedida junto com a correção dos 3 bugs da seção 69 — o novo
+Shell (`pro-shell.tsx`) troca só o CHROME (sidebar/topbar); todo
+conteúdo das rotas legadas continua sendo os componentes/páginas de
+sempre, renderizados intactos dentro de `{children}`. Isso já era
+esperado (nunca foi escopo redesenhar telas internas), mas esta foi a
+primeira vez que a divergência visual entre o tema novo (`--pro-*`,
+dark) e o tema legado (`--paper`/`--ink`/`--accent`, bege) ficou visível
+de verdade num Preview autenticado. Nenhum arquivo de superfície legada
+foi alterado nesta rodada — só leitura/classificação.
+
+### Bookings (`/dashboard/trabalhos` + `bookings/[id]` + subrotas avaliar/conversa)
+
+- **Rotas/componentes**: `trabalhos/page.tsx` → `trabalhos-list.tsx` →
+  `bookings-list.tsx`; `bookings/[id]/page.tsx` →
+  `contract-section.tsx`/`counter-form.tsx`/`review-panel.tsx`/
+  `cancel-booking-form.tsx`/`reschedule-form.tsx`/`invoice-term-form.tsx`;
+  `bookings/[id]/avaliar/page.tsx`; `bookings/[id]/conversa/[conversationId]/page.tsx`.
+- **Conteúdo**: lista com filtro, detalhe com stat grid, 5 checkpoints,
+  painel "O que fazer agora", timeline de eventos, formulários inline
+  via Server Action.
+- **Backend**: `getUserBookings`/`getBookingDetail`/`getBookingCheckpoints`/
+  `getBookingReviews` (`data.ts`), `respondBookingAction`/`markCompletedAction`/
+  `markPaidAction`/`markInCollectionAction`/`markDisputeAction`/4x
+  `markInvoice*Action` (`actions.ts`); tabelas `bookings`/`booking_events`/
+  `reviews`/`booking_contracts`.
+- **Reusável/válido**: toda a state machine de status, fluxo de nota
+  fiscal, disputa/chargeback, remarcação, cálculo de vencimento — 100%
+  real e desacoplado da visual.
+  - **Legacy-visual-only**: `cardClass`/`statusPillClasses`/`avatarClass`
+  (cartão branco, `--ink`/`--accent`/`--musgo`/`--alert`, fontes
+  `font-doopla-*`).
+- **Conflito com decisão superseded — achado real**: `getBookingCheckpoints()`
+  (`data.ts` linha 62) ainda inclui `{ key: 'validado', label: 'Validado',
+  done: booking.validated_at != null }`, renderizado na fileira de
+  Checkpoints do detalhe do booking — resíduo direto do fluxo "Doopla
+  Verified"/confirmação por link já `[REMOVED]` (Foundation, seção 68).
+  Preservado deliberadamente até aqui só porque removê-lo mexeria no
+  layout de um componente de 5 itens (fora do escopo da Foundation) —
+  agora reconfirmado como pendência real a resolver num redesign.
+  "Doopla Verified" como texto literal só aparece em `dashboard-footer.tsx`,
+  que só renderiza no shell legado do Booker (não nestas telas).
+- **Dependências pra redesign**: `ui.ts` é importado por todas essas
+  telas (mudar cascata); `bookings-list.tsx`/`BookingRow` é
+  compartilhado com o preview de bookings da Home legada do Booker.
+
+### Agenda (`/dashboard/agenda`)
+
+- **Rotas/componentes**: `agenda/page.tsx`, `agenda/agenda-entry-form.tsx`,
+  `agenda/calendar.ts` (grid puro).
+- **Sistema de cor mostarda/dourado — confirmado e rastreado**: vem de
+  `globals.css` `:root` — `--accent:#c79a4b` (mostarda) / `--accent-ink:#7a5620`.
+  "AGENDA"/"TIPO"/"DE"/"ATÉ"/"NOTA" usam `eyebrowClass` (`ui.ts`):
+  `text-[var(--accent-ink)]`. "+ MARCAR" usa `accentButtonClass`:
+  `bg-[var(--accent)] ... text-[var(--ink)]`. Cabeçalho do mês:
+  `text-[var(--accent-ink)]`. Legenda usa `agendaTagClass()`:
+  `bg-[var(--accent)]/15 text-[var(--accent-ink)]`. **Não é a paleta
+  amarela default do Tailwind** — é o token `--accent` do tema legado
+  inteiro, não algo exclusivo da Agenda.
+- **Quão espalhado**: 78+ arquivos em `src/app/dashboard/` referenciam
+  `var(--accent)`/`var(--ink)`/`font-doopla-*` — é o design system
+  legado inteiro (`ui.ts` + todas as páginas exceto as 9 que já usam
+  `pro-*`: `pro-shell.tsx`, `pro-ui.tsx`, `professional-home-view.tsx`,
+  `pro-sidebar-nav.tsx` e afins). Só o Shell/Home novos migraram.
+- **Contraste ruim da legenda — causa raiz identificada**: o cabeçalho
+  da Agenda (onde fica a legenda) NÃO está dentro de um `cardClass`
+  (`bg-white`) como o calendário/eventos abaixo dele — fica direto
+  sobre o fundo `.pro-shell` (`--pro-bg:#0c0b0b`, quase preto), mas o
+  texto da legenda continua usando a cor legada
+  `text-[var(--ink)]/55` (preto a 55% de opacidade) — preto sobre
+  quase-preto, daí "quase ilegível". Isso é um efeito colateral direto
+  do Shell novo (dark) ter passado a envolver conteúdo que assume fundo
+  claro — não um bug isolado da Agenda, é sistêmico em qualquer tela
+  legada cujo topo não esteja dentro de um card branco.
+- **Backend**: `getAgendaEvents`/`getArtistAgendaEntries`/
+  `getBookerArtistRelationships` (`data.ts`) + `addAgendaEntryAction`/
+  `removeAgendaEntryAction` (`actions.ts`) sobre tabela real
+  `agenda_entries` com RLS — real e reusável, desacoplado da visual.
+- **Outros achados visuais legados**: título "Sua agenda" em
+  `font-doopla-display` (Fraunces, serifada); painéis grandes brancos
+  via `cardClass`; inputs `rounded-full border ... bg-white` no
+  formulário de marcação.
+- **Conflito de decisão**: nenhum além do choque de paleta/contraste —
+  sem resíduo "Booker"/"Doopla Verified" nos arquivos da Agenda.
+
+### Financeiro (`/dashboard/dinheiro`)
+
+- **Rotas/componentes**: `dinheiro/page.tsx`, `payment-details-card.tsx`,
+  `payment-details-actions.ts`, `payout-form.tsx`.
+- **Conteúdo**: hero de saldo (`bg-[var(--ink)]`), `PayoutForm` de
+  saque (desabilitado — decisão documentada, espera integração
+  Pagar.me), `PaymentDetailsCard` (chave Pix, RPC `set_payment_details`),
+  lista de solicitações de saque, créditos de indicação (artista).
+- **Backend**: `computeArtistStats`/`computeBookerStats`/`getPayoutBalance`/
+  `getReferralSummary`/`getUserBookings` (`data.ts`); RPC
+  `set_payment_details` (migration 0046, SECURITY DEFINER) sobre tabela
+  `payment_details`. Tudo real, nada mock.
+- **Visual**: já usa o mesmo tema legado (`--paper`/`--ink`/`--accent`,
+  Fraunces) — **nenhum resíduo mostarda isolado aqui além do que já é
+  sistêmico no tema inteiro**; nenhum conflito de decisão de produto
+  encontrado.
+- **Preservar**: toda a lógica de saldo/Pix/referral — nenhuma UI fake,
+  nada a esconder.
+
+### Minha equipe (`/dashboard/bookers` + `[id]`)
+
+- **Rotas/componentes**: `bookers/page.tsx`, `booker-row.tsx`,
+  `discover-bookers.tsx`, `incoming-requests.tsx`, `[id]/page.tsx`,
+  `[id]/booker-profile-view.tsx`, `../favorite-button.tsx`.
+- **Modelo canônico atual (representations/representation_requests/
+  invites) — confirmado correto e presente**: `getArtistBookerRelationships`/
+  `getIncomingRepresentationRequests`/`getOutgoingRepresentationRequestsForArtist`/
+  `getSentInvites`/`getPendingInvites` + `confirmInviteAction`/
+  `respondRepresentationRequestAction`. Isso é exatamente o modelo
+  vigente (vínculo explícito, convite bidirecional, múltiplos
+  professional_id por Booker) — **nada a corrigir na lógica**.
+- **Conflito real confirmado — modelo antigo de marketplace/favoritos
+  ainda exposto na UI atual**:
+  - `id="favoritos"` ("Meus favoritos") em `page.tsx` — lista salva
+    separada, SEM relação nenhuma com `representations` (comentário no
+    próprio `data.ts`: *"Favoritar é uma lista salva própria, sem
+    relação nenhuma com representations"*).
+  - `id="descubra"` ("Encontrar bookers") + `discover-bookers.tsx` —
+    browsing paginado/buscável de TODOS os bookers da plataforma,
+    exatamente o padrão de descoberta/marketplace que a decisão atual
+    de Booker (vínculo explícito, nunca discovery como UX primária)
+    substitui.
+  - `favorite-button.tsx` (coração) usado em `booker-row.tsx` e
+    `[id]/booker-profile-view.tsx`, escrevendo numa tabela `favorites`
+    real e independente (`user_id`/`favorited_user_id`).
+  - Nenhum "match"/"bookers pra você" com razão de recomendação
+    encontrado (isso já não existe nesta base de código).
+- **O que preservar mesmo escondendo da UI**: a tabela `favorites` em
+  si é simples e desacoplada de `representations` — pode continuar
+  existindo como dado (ex.: "lista de observação" futura) mesmo que o
+  conceito de descoberta/favoritos suma da UI atual. Toda a pilha de
+  `representations`/`representation_requests`/convites e o bloco de
+  avaliação/review do perfil do booker são código atual, preservar sem
+  discussão.
+- **Dependências pra redesign**: `page.tsx` (remover as duas seções +
+  chamadas `getFavoriteBookers`/`getFavoriteIds`/`getDiscoverBookers`),
+  `booker-row.tsx` (tirar `FavoriteButton`), `discover-bookers.tsx`
+  (aposentar ou repropor), `[id]/booker-profile-view.tsx` (tirar
+  favorito), `actions.ts` (`toggleFavoriteAction`) — decisão de produto
+  pendente sobre manter `favorites` como dado morto ou repropor.
+
+### Configurações (`/dashboard/perfil`)
+
+Inventário completo por seção, classificado:
+
+| Seção | Classificação | Nota |
+|---|---|---|
+| Cabeçalho (nome/e-mail) | CURRENT | Só leitura de `getSessionProfile()` |
+| "Conta" (tipo de conta) | NEEDS REVALIDATION | Usa `ROLE_LABELS` que ainda inclui `agencia: 'Agência'` |
+| PlanCard (Booker) | CURRENT | `getSubscription()` real |
+| Foto (avatar) | CURRENT | `uploadAvatarAction` real, Storage + `profiles.avatar_url` |
+| Formulário de perfil (Artista/Booker) | CURRENT | `updateArtistProfileAction`/`updateBookerProfileAction`, campos estruturados reais |
+| "Preferências de matching" | CURRENT | Mesma action do formulário acima |
+| "Meu perfil público" (artista) | CURRENT | `enable/disablePublicProfileAction`, `updatePublicLinksAction` |
+| "Seu link de orçamento" (artista) | CURRENT | `updateLinkRoutingAction`, valida contra `representations` |
+| "Sua rede" (Booker) | CURRENT | Texto estático + link pra convites |
+| **"Respostas do cadastro" (`RoleDetails`)** | **NEEDS REVALIDATION** | Duplica dado já editável nos formulários acima, mostrado read-only com copy antiga do onboarding — provável resíduo do fluxo de cadastro |
+| **Branch `role === 'agencia'` inteiro (`AgencyDetails`)** | **LEGACY / HIDE FROM CURRENT UI** | `ROLE_LABELS.agencia`, query/tipo `AgencyDetails`, seção mostrando "Agência"/"Nº de artistas"/"Nº de agentes"/"Principal mercado" — DECISOES.md já registra que "agência" não é mais um conceito à parte, é só um Booker; este branch é código morto exposto pra qualquer conta `role='agencia'` remanescente |
+
+- **Nenhum resíduo encontrado** de Doopla Verified/`validated_at`/
+  confirmação por link/WhatsApp Identity UI/pills de
+  autonomia-conservador nesta tela especificamente.
+- **Visual**: LEGACY-VISUAL-ONLY — mesmo tema bege (`cardClass`,
+  `--paper`, `--ink`, `--accent`) dentro do Shell novo dark; nenhuma
+  mistura indevida de controles Booker↔Artista (o branch `agencia` é
+  um terceiro caminho morto, não vazamento entre os dois papéis reais).
+- **Backend a preservar**: todas as Server Actions listadas na tabela
+  são reais e continuam válidas mesmo que a apresentação mude —
+  exceto o branch `agencia`, que é candidato a remoção completa (dado
+  e UI) numa decisão de produto separada, já que `role='agencia'` é
+  legado de cadastro que não é mais criado.
+
+### Decisões (nav item → `/dashboard#precisa-de-voce`)
+
+Sem superfície legada exposta — o item da sidebar aponta pra uma âncora
+dentro da própria Home nova (`professional-home-view.tsx`), não existe
+rota dedicada `/dashboard/decisoes` no Shell novo. Nada a auditar aqui
+além do que a seção 69 já cobre.
+
+### Achados transversais (itens G–J do pedido)
+
+- **G. Materiais/Analytics — contraste**: itens `comingSoon` usam
+  `text-[var(--pro-tx-30)]` (off-white a 30% sobre `--pro-bg` quase
+  preto) tanto pro texto quanto pra borda da tag "Em breve" — contraste
+  estimado bem abaixo de WCAG AA (~2:1). Aceitável como "esmaecido de
+  propósito" pra indicar item desabilitado, mas vale revisão futura
+  (não corrigido nesta rodada — Part B é só leitura).
+- **H. Logo**: confirmado — "doopla (logo pendente)" é só texto de
+  desenvolvimento (`pro-shell.tsx`), sem nenhum wordmark/tipografia de
+  marca. Nenhum asset oficial existe no repositório (já auditado na
+  rodada anterior). Nada a mudar aqui até o asset real chegar.
+- **I. Botão circular flutuante à direita**: **não encontrado em
+  nenhum arquivo do repositório** — busca por `fixed`/`floating`/`FAB`/
+  "Falar com minha Doopla" em `src/` não encontrou nenhum componente
+  próprio que renderize um botão circular fixo sobreposto ao conteúdo
+  (o CTA "Falar com minha Doopla" real vive dentro do card da coluna
+  direita da Home, nunca como elemento `position: fixed`). **Hipótese
+  específica verificada e descartada**: não é um resíduo de tentativa
+  incompleta do assistente flutuante já desenhado pro protótipo do
+  Booker — não existe esse componente em lugar nenhum do código,
+  completo ou incompleto. Explicação mais provável, dado que só
+  aparece na Preview (nunca visto em `next build`/`tsc` nem em
+  inspeção de código): é injetado pela própria Vercel (barra de
+  feedback/comentários de Preview deployment) ou é um indicador nativo
+  de dev/preview do Next.js — ferramenta externa, não código do
+  produto. **Não removível/identificável a partir do repositório** —
+  precisa confirmação via inspecionar elemento na Preview real (nome
+  da classe/atributo `data-*` vai dizer a origem exata).
+- **J. Topbar (3 controles)**: bell → `/dashboard#precisa-de-voce`,
+  badge de `getAttentionItems` (mesmo mecanismo de sempre), sem
+  tooltip visível (só `aria-label`, sem atributo `title`). Fórum →
+  abre painel lateral local (`pro-forum-panel.tsx`), sem navegação, sem
+  badge (deliberado — nenhum fato Community real barato o bastante
+  ainda). Configurações (engrenagem) → `/dashboard/perfil`. **Achado
+  real: duplicação confirmada** — o gear do topbar e o item
+  "Configurações" da sidebar levam pro MESMO destino exato
+  (`/dashboard/perfil`), controle redundante. Nenhum dos 3 tem tooltip
+  visível pra mouse (só `aria-label` pra leitor de tela).
+
+CURRENT: Professional Product UI — Shell + Home.
+STATUS: Implementação técnica passou por 2 rodadas de correção (bugs
+de nav/flash corrigidos; erro de dados investigado, causa é ambiente).
+Auditoria de superfícies legadas concluída, NENHUM redesign executado.
+NÃO FECHADO.
+
+## 71. Professional Product UI — Shell + Home, QA closure pass (3ª rodada) — `[VISUAL QA — NÃO FECHADO]`
+
+**Confirmação do erro de dados da Home — permanece hipótese, sem
+acesso a infra real**: este ambiente não tem `.vercel/`,
+`supabase/config.toml` nem nenhuma referência a um projeto Supabase
+real em nenhum arquivo do repositório — `.env.local` é literalmente o
+template (`NEXT_PUBLIC_SUPABASE_URL=placeholder.supabase.co`, comentário
+"copie este arquivo... e preencha com os dados do seu projeto"). Não
+existe ferramenta de acesso ao dashboard do Vercel/Supabase disponível
+nesta sessão. **Não é possível confirmar a partir daqui** qual projeto
+Supabase a Preview autenticada usa, se a migration 0067 existe lá, ou
+qual é o erro exato do PostgREST — só o código que engolia o erro em
+silêncio foi corrigido (seção 69/70), o resto continua hipótese.
+**Ação que só o founder pode fazer**: no dashboard do Vercel, abrir o
+projeto → Settings → Environment Variables → conferir
+`NEXT_PUBLIC_SUPABASE_URL` da Preview; no dashboard do Supabase desse
+projeto → Database → Migrations (ou rodar `supabase migration list`
+localmente apontando pro projeto real) → conferir se `0067_professional_home_facts`
+consta como aplicada; se não, aplicar `supabase/migrations/0059` a
+`0067` nesse projeto (`supabase db push` ou equivalente); depois, nos
+logs de função do Vercel (Functions → `/dashboard`) ou nos logs do
+Supabase (Logs → Postgrest), procurar a linha
+`getProfessionalHomeFacts: RPC get_professional_home_facts falhou`
+(adicionada nesta revisão) pra ver o erro exato.
+
+**Mascote "sumido" — causa raiz encontrada, é o MESMO incidente do
+item acima, não um bug novo**: `ProMascot` só é renderizado dentro de
+`ProHero`, que só é renderizado dentro do branch `if (!homeFacts) {
+return (...) } return (&lt;div&gt;&lt;ProHero .../&gt;...` de
+`professional-home-view.tsx` (linhas 63-73). Enquanto
+`get_professional_home_facts()` falhar no ambiente real, a Home INTEIRA
+cai no fallback de erro e `&lt;ProHero&gt;`/`&lt;ProMascot&gt;` nunca chegam a
+montar no DOM — não é um bug de CSS/visibilidade/z-index no
+`ProMascot` em si (o componente foi lido de novo, ponto a ponto: sem
+`display:none`, sem `opacity:0`, sem z-index conflitante, glow +
+bola + 2 olhos pretos + pupilas brancas centralizadas corretamente,
+tracking de mouse e `prefers-reduced-motion` implementados como
+documentado). **Nenhuma alteração de código foi feita no
+`pro-mascot.tsx`/`ProHero` nesta rodada** porque não há nada errado
+neles pra corrigir — resolver o item acima (aplicar as migrations)
+resolve os dois ao mesmo tempo.
+
+**Correções de identidade/copy aplicadas** (só `pro-*.tsx`/
+`professional-home-view.tsx`/`globals.css` no Web, só os 4 arquivos da
+Home no App — nenhum token `--accent` legado tocado):
+- Contraste dos itens "Em breve" (Materiais/Analytics): novo token
+  `--pro-tx-45` (off-white a 45%, antes 30%) — label e badge "Em breve"
+  ficam visivelmente mais legíveis sem perder a aparência de item
+  desabilitado.
+- Nenhuma classe Tailwind default (`text-yellow-*`/`bg-amber-*`/etc.)
+  encontrada em nenhum arquivo `pro-*` — confirmado por busca; o
+  sistema de cor do Shell/Home novo é 100% `--pro-*`.
+- Tipografia confirmada 100% `font-pro-display`(Anton)/`font-pro-sub`
+  (Familjen Grotesk)/`font-pro-body`(Inter) + `font-doopla-mono`(IBM
+  Plex Mono, compartilhada de propósito) — zero uso de
+  `font-doopla-display`(Fraunces, serifada/legada) dentro do Shell/Home
+  novo.
+- **6 ocorrências de travessão (—) em copy voltada ao usuário
+  removidas** (Web: `aria-label` do link do logo, texto do painel do
+  Fórum, "resposta preparada" do card de Decisão, saudação da Home com
+  contagem de conversas, aviso de WhatsApp não verificado, e o
+  placeholder `'—'` de data ausente num booking; App: os mesmos 3 textos
+  espelhados + o placeholder de data em 2 lugares) — travessões dentro
+  de comentários de código (não voltados ao usuário) foram
+  deliberadamente preservados, fora do escopo do pedido.
+
+**Duplicação do topbar (Configurações no gear × Configurações na
+sidebar) — recomendação, NÃO implementada**: do ponto de vista de
+UX/IA, manter os dois é redundante mas não incorreto — padrão comum em
+produtos com sidebar fixa é o ícone do topbar ser um atalho rápido pra
+quem está numa tela profunda sem sidebar visível (ex.: mobile/tela
+estreita) ou pra ações contextuais (notificações/busca), nunca
+duplicar 1:1 o mesmo destino da sidebar. Recomendação: quando o
+Shell ganhar um destino genuinamente distinto pra Configurações
+rápidas (ex.: um dropdown com "Sair"/tema/idioma em vez de navegar pra
+`/dashboard/perfil`), o ícone do topbar passa a fazer sentido como
+algo além de um atalho puro; até lá, a opção mais simples é remover o
+ícone de engrenagem do topbar e deixar só sino+fórum ali, com
+Configurações vivendo exclusivamente na sidebar — mas isso é uma
+mudança de IA e não foi executada aqui, só recomendada.
+
+**Segurança/autonomia**: nenhum arquivo de `src/lib/runtime/`,
+`src/lib/intelligence/approval/`, `src/lib/intelligence/policy-gate-post/`
+ou qualquer lógica de autonomia foi tocado nesta rodada — confirmado
+por `git status` (só arquivos do Shell/Home novo + `globals.css`
+mudaram).
+
+## 72. Migrations pendentes aplicadas + bug de fronteira client/server + revisão completa do Professional Web Dashboard — `[DELIVERED]`
+
+**Parte A — desbloqueio da Home (infraestrutura + bug real, 06/09/2026).**
+As 11 migrations identificadas como ausentes no banco real da Preview
+(`0014`, `0030`, `0059`-`0067`) foram todas confirmadas aplicadas
+(guiadas passo a passo pelo usuário via SQL Editor do Supabase, sem
+nenhuma alteração de schema por parte do agente). Depois disso a Home
+carregou, mas quebrou com um erro novo (React #441, "Server Components
+render error", digest visível só no cliente). Causa raiz real,
+encontrada nos Runtime Logs do Vercel: `formatRelativeTime`/
+`proStatusPillClass` viviam em `pro-ui.tsx` (`'use client'`, por causa
+de `ProAccordion`/`ProCopyButton`), e `professional-home-view.tsx`
+(Server Component) as chamava diretamente — Next.js proíbe chamar uma
+função exportada de um módulo client-only a partir do servidor (só
+pode ser renderizada como componente). Nunca dava erro antes porque
+`homeFacts` era sempre `null` (bloqueador da Parte A) e a Home saía
+cedo, sem nunca alcançar esse código. Corrigido movendo as duas
+funções puras pra `pro-format.ts` (sem `'use client'`).
+
+**Parte B — revisão de produto/UX do Professional Web Dashboard inteiro
+(mesmo dia).** Depois que a Home carregou de verdade pela primeira vez
+com dados reais, o usuário identificou que Bookings/Agenda/Financeiro/
+Minha equipe/Configurações ainda estavam no visual e nos conceitos do
+painel legado (Booker), nunca alinhados à Home nova. Escopo: só a
+superfície profissional (artista) — Booker/Agência mantidos 100%
+intocados nas mesmas rotas compartilhadas, via o mesmo padrão de branch
+por `profile.role` já usado em `layout.tsx`/`dashboard/page.tsx`.
+
+Antes de implementar, 3 confirmações explícitas do usuário (registradas
+em DECISOES.md): (1) fonte única de métricas incluindo o sidebar —
+nunca duas implementações espelhadas; (2) `/dashboard/decisoes` nasce
+só com Pendentes, sem aba "Resolvidas" fake (não existe leitura real de
+decisões resolvidas hoje); (3) remoção de `payout_requests`/
+`getPayoutBalance`/`PayoutForm`/`requestPayoutAction` só depois de
+confirmar por grep que não são consumidos por nenhuma superfície
+vigente — migrations históricas nunca alteradas, a tabela pode
+continuar fisicamente no schema.
+
+Entregue:
+- **Fonte única de métricas**: `getCachedConversationStateSummary`
+  (`pro-home-cache.ts`) chama `listConversationOperationalFacts` +
+  `summarizeConversationStates` (`src/lib/conversations/summary.ts`,
+  nova, pura) — layout.tsx (badge do sidebar), Home (cards + accordion)
+  e `/dashboard/decisoes` chamam literalmente a mesma função. Achado
+  confirmado da divergência 17≠20: `decisions.length` contava LINHAS de
+  decisão (uma conversa podia gerar 2: um `pending_reply` + um
+  `prepared_draft`), enquanto o badge contava CONVERSAS distintas.
+  Corrigido com `groupDecisionsByConversation`/`sortDecisionsByPriority`
+  (`src/lib/decisions/data.ts`, novas, puras) — "Precisa de você" agora
+  sempre mostra o mesmo número em todo lugar, por construção.
+- **Home**: 4 cards (Precisa de você / Aguardando cliente — novo,
+  mesma taxonomia de `deriveConversationState` / Bookings confirmados /
+  concluídos, removida a antiga "Aguardando sua resposta" duplicada);
+  "Precisa de você" limitado a 5 itens + "Ver todas as decisões →";
+  Booker integrado dentro de "Seus canais de booking" (3 estados:
+  nenhum/pendente/ativo, com nome real via extensão de
+  `getMyBookerFacts`). "Falar com minha Doopla" já estava correto
+  (`buildTalkToYourDooplaUrl`, contrato profissional_self — não
+  reconstruído, só verificado).
+- **`/dashboard/decisoes`** (rota nova): lista completa de "Precisa de
+  você", mesma fonte de dados, sem inventar aprovação nova.
+- **Bookings/Agenda**: re-skin completo (`pro-trabalhos-view.tsx`,
+  `pro-agenda-view.tsx`, `pro-agenda-entry-form.tsx`) sobre a MESMA
+  lógica/Server Actions de sempre — Booker vê exatamente as telas
+  antigas nessas mesmas rotas compartilhadas.
+- **Financeiro**: reescrita conceitual — nunca mais consulta
+  `payout_requests` (para nenhum papel). `getActivePaymentDetails`
+  substitui `getPayoutBalance`; `payout-form.tsx`/`requestPayoutAction`
+  deletados (confirmado sem uso em nenhuma superfície antes da
+  remoção). Vira resumo de valores de bookings + "Dados de
+  recebimento" (Pix, já existente) — nunca saldo/saque da Doopla.
+- **Minha equipe**: reescrita conceitual completa — removidos
+  favoritos/busca/descoberta/ranking (`booker-row.tsx`,
+  `discover-bookers.tsx`, `incoming-requests.tsx` deletados, sem uso
+  restante). Só relacionamento real (`representations`/
+  `representation_requests`), mesmas Server Actions de sempre.
+- **Configurações**: separada conceitualmente de Perfil pela primeira
+  vez. Perfil profissional (formulário real, intocado) move pra
+  `/dashboard/perfil/editar`. Configurações ganha Plano/WhatsApp (
+  primeira UI real do fluxo OTP da migration 0064, nunca exposta antes
+  — `pro-whatsapp-identity-card.tsx`)/Conta/Notificações (honesto,
+  "em breve")/Segurança (honesto)/Privacidade (honesto)/links pra
+  Perfil profissional e Dados de recebimento.
+
+Pendências reais, não escondidas: Notificações/Segurança/Privacidade
+não têm backend de preferências ainda (nenhum toggle falso criado);
+não existe hoje upgrade in-app de Doopla Básico -> Pro pro artista
+(CTA "Conhecer o Pro" leva pra `/precos`, nunca um fluxo fake); Perfil
+profissional (`/dashboard/perfil/editar`) manteve o visual legado —
+re-skin dele fora de escopo desta rodada.
+
+Validado: `tsc --noEmit`, `eslint` (dashboard inteiro +
+`src/lib/conversations`/`decisions`/`professional-booker`) e
+`next build` limpos após cada bloco.
+
+CURRENT: Professional Product UI — Shell + Home + Professional Web
+Dashboard completo (Bookings/Agenda/Decisões/Financeiro/Minha
+equipe/Configurações).
+STATUS: implementado e validado (tsc/eslint/build). Aguardando nova
+rodada de QA visual autenticada do usuário na Preview antes de
+considerar o bloco fechado.
+
+## 73. Professional Web Dashboard — rodada de correção e consistência (Configurações/Minha equipe/Decisões/Canais de booking/Falar com minha Doopla) — `[DELIVERED]`
+
+Depois da revisão completa (§72), o usuário testou o painel redesenhado
+na Preview e apontou regressões/gaps concretos, escopados só a 5
+superfícies (nunca um redesign indiscriminado de novo): Configurações,
+Minha equipe → Gerenciar, Decisões, Canais de booking, Falar com minha
+Doopla. Antes de codar, inspeção completa registrada e 2 forks
+confirmados pelo usuário (ver DECISOES.md): (a) sem migration nova pra
+autoria de decisão — hoje só o profissional resolve, então "Resolvida
+por você" é um rótulo estático, não uma coluna; quando o Booker ganhar
+capability de decisão, autoria/auditoria entra junto daquele bloco; (b)
+"Editar informações públicas" NÃO migra pra Canais de booking — essa
+área é só entrada/roteamento (link de orçamento, WhatsApp da Doopla,
+código), nunca uma porta nova pro antigo "Perfil profissional".
+
+Entregue:
+- **Configurações**: removido o card "Perfil profissional"
+  (`pro-configuracoes-view.tsx`) — descontinuada como SUPERFÍCIE DE
+  NAVEGAÇÃO do profissional. `artist_profiles` e o formulário real
+  (`/dashboard/perfil/editar`, `ArtistProfileForm`/`AvatarUploader`/
+  `PublicProfileCard`/`LinkRoutingCard`) continuam existindo intocados
+  — só deixaram de ter link de entrada no painel. Nenhuma nova entrada
+  genérica criada agora, por instrução explícita — a superfície futura
+  de edição é um bloco separado.
+- **Bug de `revalidatePath` corrigido** (`actions.ts`, 6 Server
+  Actions): `enablePublicProfileAction`/`disablePublicProfileAction`/
+  `updatePublicLinksAction`/`updateArtistProfileAction`/
+  `updateLinkRoutingAction` (todas artista-only) revalidavam
+  `/dashboard/perfil`, rota que esses formulários já não habitam desde
+  o redesign do §72 — corrigido pra `/dashboard/perfil/editar`.
+  `uploadAvatarAction` (compartilhada Booker/Artista) passa a revalidar
+  os dois paths, já que o componente é usado nas duas rotas.
+  `updateBookerProfileAction` (booker-only) conferido e mantido — já
+  apontava pro lugar certo.
+- **Minha equipe → Gerenciar** (`bookers/[id]/booker-profile-view.tsx`
+  + `page.tsx`): re-skin completo pro sistema `--pro-*` (era a última
+  tela do painel artista ainda 100% legada — `--ink`/`--paper`/
+  `eyebrowClass`/`font-doopla-display`). Puramente visual: mesmas
+  queries (rating, reviews, representação, favorito), mesma lógica,
+  nenhuma coluna/ação nova.
+- **Decisões** (`decisoes/page.tsx` + novo `pro-decisoes-view.tsx`):
+  duas VISÕES PRIMÁRIAS em abas — "Precisa de você" (mesma lógica de
+  sempre, prioridade > idade) e "Resolvidas" (nova), nunca um dropdown
+  escondendo essa separação. "Resolvidas" lê só fatos já gravados por
+  Runtime/Approval Engine/Policy Gate, nunca reinterpreta:
+  `runtime_pending_replies` com `status IN ('completed','superseded')`
+  + `conversation_messages` com `replied_to_outbound_intent_id`
+  preenchido (migration 0066, `prepared_response_outcome`) —
+  `listResolvedDecisions` (`src/lib/decisions/data.ts`, nova). Cards de
+  "Resolvidas" são compactos e não-acionáveis (sem CTA de aprovar/
+  rejeitar), com rótulo estático "Resolvida por você". Controle de
+  ordenação (recentes/antigas) vive só dentro da aba Resolvidas — é
+  onde faz sentido (histórico cronológico); "Precisa de você" mantém a
+  ordenação por prioridade, nunca substituída por ordenação crua. O
+  badge da sidebar e o "Precisa de você (N)" continuam vindo do MESMO
+  `getCachedConversationStateSummary`/`groupDecisionsByConversation` de
+  sempre — "Resolvidas" nunca entra nessa contagem.
+- **Canais de booking**: nova linha "Seu código" em "Seus canais de
+  booking" (`professional-home-view.tsx`), usando `profile.slug` —
+  aprovado como fonte canônica por já ser o token real de roteamento
+  (`extractDooplaSlugToken`/`evaluateWhatsappRouting`), nunca um campo
+  novo nem `referral_code`. Estado ausente honesto quando `slug` é
+  nulo, nunca um valor de exemplo hardcoded.
+- **Falar com minha Doopla**: 3 estados agora explicitamente separados
+  no mesmo bloco — (i) canal + identidade OK → CTA ativa só; (ii) canal
+  existe mas WhatsApp do profissional não verificado → CTA continua
+  ativa, mas com aviso + link real pro fluxo de verificação já
+  existente (`/dashboard/perfil` → `ProWhatsappIdentityCard`), nunca um
+  atalho que ignore OTP/WhatsApp Identity; (iii) sem `talkUrl`
+  (`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente) → "Canal da Doopla
+  indisponível no momento", nunca um número fake. O código/lógica já
+  existia desde o §72 (`buildTalkToYourDooplaUrl`) — o que faltava era
+  só a variável de ambiente configurada, não código; ver pendência
+  abaixo.
+- Como pedido separadamente (item 2, spec do header/sidebar): topbar
+  (`pro-shell.tsx`) — os 3 ícones globais (Notificações/Comunidade/
+  Configurações) movidos pro canto superior direito do conteúdo
+  principal via `justify-end` no container existente, sem duplicar
+  componente.
+
+Dois estados externos, conferidos e explicitamente NÃO tratados como
+pendência deste bloco (nem bloqueiam seu fechamento):
+- **Logo real da sidebar**: investigado a fundo (agente de exploração,
+  06/09/2026) se o app mobile já tinha um asset real reaproveitável,
+  por hipótese do usuário. Resultado: NÃO tem. `mobile/src/components/
+  home/HomeTopbar.tsx` renderiza só `<Text>doopla</Text>` em
+  tipografia de corpo — mesmo texto puro sem estilo de marca, com
+  comentário no próprio código registrando que uma tentativa anterior
+  de imitar os "olhos" do wordmark ali foi removida por review
+  explícita por ser um wordmark inventado. `mobile/assets/*.png` são
+  ícones padrão do Expo (nunca customizados pra marca). O único
+  componente que parece o logo real é `EyeLogo.tsx` (site de
+  marketing) — um `<span>` de texto estilizado por CSS escopado
+  (`home.css`), não uma imagem portável, e não usado pelo mobile. Ou
+  seja: web e mobile têm o MESMO gap (nenhum asset real de imagem
+  existe em lugar nenhum do repo), não uma duplicata evitável. Fica
+  como um gap de asset de marca conhecido em ambas as plataformas —
+  não fabricado/redesenhado por este agente, não perseguido além desta
+  verificação, e não pendência deste patch.
+- **`NEXT_PUBLIC_WHATSAPP_NUMBER` ausente em Production/Preview**:
+  estado ESPERADO, não uma pendência de configuração — o número
+  oficial da Doopla ainda está em análise no WhatsApp/Meta. O código já
+  trata a ausência corretamente (`whatsappPublicNumber()` retorna
+  `null` sem fallback; todo consumidor mostra "canal
+  indisponível/ainda não configurado", nunca um número real ou
+  temporário hardcoded — auditado por grep em todo o repo, 06/09/2026,
+  sem achados). Quando o número for aprovado, a env var é configurada
+  na Vercel sem exigir mudança de código nenhuma. Teste visual no
+  Preview, se necessário, deve usar só um valor de teste/fixture
+  isolado do Preview, nunca um número real nem algo promovido pra
+  Production.
+
+Validado: `tsc --noEmit`, `eslint` (arquivos alterados) e `next build`
+limpos.
+
+CURRENT: Professional Web Dashboard — Foundation + revisão completa
+(§72) + rodada de correção/consistência (§73).
+STATUS: `[DELIVERED]` — implementado e validado (tsc/eslint/build).
+Nenhuma pendência de código em aberto neste bloco; os dois pontos
+acima são estados externos (asset de marca ainda não desenhado /
+número oficial em aprovação externa), não itens deste patch.
+
+## 74. Comunidade — Fase 1 da rodada search-first (busca FTS + loop central + salvos) — `[DELIVERED — Fase 1 de 3]`
+
+Antes de codar: inspeção completa e paralela de Web (`pro-forum-panel.tsx`
+era só um placeholder "em construção", zero dado real), App (`app/forum/*`
+era 100% mock via `forumMock.ts`, com um data layer real
+(`mobile/src/lib/data/community.ts`) já pronto e nunca chamado) e
+schema (`0059_community_core.sql` — único gap real: nenhum tsvector,
+busca de texto nunca existiu). Achado principal: não havia UX pra
+corrigir, era preciso construir a Comunidade do zero nas duas
+plataformas sobre um backend já pronto.
+
+Decisões confirmadas com o usuário antes de implementar: full-text
+search nativo do Postgres (nunca embeddings/pgvector); moderação/report
+fora de escopo (já era gap explícito desde a 0059); fases sequenciais
+com paridade obrigatória em cada uma, nunca uma plataforma na frente da
+outra.
+
+Entregue nesta fase:
+- **Migration 0068**: `community_topics.search_tsv` (tsvector gerado,
+  peso A pro título / B pro corpo) + índice GIN + RPC
+  `search_community_topics(p_query, p_category_id, p_tag_id, p_limit)`
+  — `language sql stable`, SEM `security definer` (roda como invoker,
+  reaproveita a RLS "select visible" já existente, nunca duplica a
+  regra). Ranking soma `ts_rank` (peso título > corpo) + boost quando a
+  categoria/tag do tópico bate com a busca (ex.: buscar "casamento"
+  acha um tópico sem essa palavra no corpo, só porque está taggeado
+  "Casamentos") — "taxonomia por baixo, linguagem natural por cima".
+  Validada com 8 testes adversariais no `doopla_rls_test` local: título
+  vs corpo, boost de tag sem match textual, query vazia/whitespace/null
+  (nunca erro), tópico removido nunca aparece, filtro de categoria,
+  `limit` clamped, injeção/caracteres hostis não derrubam a função,
+  grants (`authenticated` sim, `anon` não).
+- **Data layer** (`src/lib/community/data.ts` + espelho
+  `mobile/src/lib/data/community.ts`): `searchCommunityTopics`,
+  `listCommunityTopicsByIds`/`fetchCommunityTopicsByIds` (base do
+  "Salvos"), `ensureCommunityProfileActivated` (entrar na comunidade
+  fica invisível — chamado em toda página, idempotente).
+- **Web** (`src/app/dashboard/comunidade/*`, rota nova): Home (busca +
+  "Salvos por você" preview + "Recentes"), detalhe do tópico (ler +
+  responder + salvar), criar tópico, `/salvos` dedicada. `ProForumPanel`
+  (painel lateral placeholder) removido — o ícone de Comunidade no
+  topbar agora é um link real pra `/dashboard/comunidade`.
+- **App** (`mobile/app/forum/*`): `forumMock.ts` deletado — as 2 telas
+  existentes (lista, conversa) passaram a consumir
+  `mobile/src/lib/data/community.ts` de verdade; 2 telas novas
+  (`novo.tsx`, `salvos.tsx`); chips de categoria trocados de array
+  hardcoded pra `community_categories` real, reposicionados como filtro
+  secundário (nunca a navegação principal); ícone de bookmark novo em
+  `Icons.tsx` (único ícone deste arquivo que não veio do protótipo
+  original — não existia "Salvar" nele).
+- **Salvar**: fonte única `community_saved_topics` (migration 0059, já
+  existia) — nenhum estado local/paralelo, mesma tabela/RLS consumida
+  direto pelas duas plataformas.
+
+Matriz de paridade (Fase 1):
+
+| Feature | Web | App | Fonte canônica | Status |
+|---|---|---|---|---|
+| Busca em linguagem natural | ✅ | ✅ | `search_community_topics` (0068) | Paridade |
+| Listar tópicos (recentes) | ✅ | ✅ | `community_topics` via `listCommunityTopics`/`fetchCommunityTopics` | Paridade |
+| Filtro por categoria (secundário) | — (busca cobre) | ✅ chips | `community_categories` | App só; web decidiu não duplicar chip quando a busca já filtra — ver nota |
+| Abrir tópico / ler respostas | ✅ | ✅ | `community_topics`/`community_posts` | Paridade |
+| Criar tópico | ✅ | ✅ | `create_community_topic` RPC | Paridade |
+| Responder (post simples, sem reply-to/mention) | ✅ | ✅ | `create_community_post` RPC | Paridade |
+| Salvar/remover dos salvos | ✅ | ✅ | `community_saved_topics` | Paridade |
+| Área "Salvos" dedicada | ✅ `/comunidade/salvos` | ✅ `/forum/salvos` | mesma fonte acima | Paridade |
+| Preview de salvos na Home | ✅ | ✅ | mesma fonte acima | Paridade — entregue no §78 (commit `fbfadf1`) |
+| Mentions, reply-to (UI) | ✅ | ✅ | `create_community_post`/`community_mentions` (0059) | Paridade — entregue logo após esta fase (commits `67b6140`/`b241466`), com desambiguação progressiva de homônimos adicionada depois (§78, commit `1fc1cad`) |
+| Filtro por categoria | ✅ `<select>` discreto | ✅ chips | `community_categories` | Paridade — web entregue no §78 (commit `c5ca052`), como `<select>` (nunca chip, ver nota abaixo) |
+| Report/moderação | — | — | não existe nem no schema | Fora de escopo (decisão do usuário) |
+| "Em alta"/"Para você" | — | — | — | Fase 2 — decisão de produto própria ainda não tomada (critério de ranking), fora de qualquer rodada até ser definida explicitamente |
+| Notificações de Comunidade (UI) | ✅ | ✅ | `community_notifications` (0059) | Paridade — entregue no §78 (commit `c5ca052`) |
+| Posição de leitura (pousar onde parou) | ✅ | ✅ | `community_topic_reads` (0077) | Paridade — entregue no §78 (commit `40d1af5`) |
+
+Nota sobre o filtro de categoria na web (atualizada no §78): mesmo após
+virar `<select>` real, deliberadamente nunca um grid de chips — a busca
+continua sendo o mecanismo principal de descoberta (comentário original
+em `pro-comunidade-home-view.tsx`: "nunca chips de categoria/profissão
+fixos dominando a tela"), categoria é filtro subordinado.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos nos dois lados.
+
+CURRENT: Comunidade — Fase 1 de 3 (Foundation + descoberta principal).
+STATUS: `[DELIVERED]`. Reconciliado no §78 (08/09/2026): dos gaps
+listados abaixo como "Fase 2/3" quando esta seção foi escrita, só "Em
+alta"/"Para você" (Fase 2, ranking) segue de fato pendente — todo o
+resto (mentions/reply-to UI, notificações, filtro de categoria web,
+preview de salvos no app, posição de leitura) já foi entregue em
+rodadas posteriores e está marcado acima. Fase 2 continua não iniciada,
+aguardando decisão de produto sobre critério de ranking.
+
+## 75. Rodada de correções pontuais (Canais de booking, WhatsApp CTA, copy de Decisões, Minha equipe, UX de Decisões, Agenda, Home hero, Sino/Notificações) — `[DELIVERED]`
+
+Lote de correções explicitamente marcadas como válidas "web - app" pelo
+usuário, entregues nesta ordem. Todas comparadas nas duas plataformas
+antes de fechar; gaps reais foram registrados, nunca escondidos.
+
+- **Canais de booking**: Booker removido do cartão (pertence só a
+  "Minha equipe", nunca duplicado aqui); "WhatsApp da Doopla" volta a
+  aparecer sempre — número ausente mostra "Em configuração" honesto, em
+  vez de sumir a linha; "Seu código" renomeado pra "Seu código ID".
+  Corrigido também um bug real de paridade achado na auditoria: o App
+  usava `profile.referral_code` (errado — é de outro programa) em vez
+  de `profile.slug`, e nunca tinha a linha de WhatsApp da Doopla.
+  "Falar com minha Doopla" não foi tocado (função diferente).
+- **Botão do WhatsApp**: conferido — já era verde (identidade da marca)
+  quando o canal existe, e mostra só o estado indisponível quando não
+  existe. Nenhuma mudança necessária.
+- **Copy de Decisões**: subtítulo trocado pra "O que precisa da sua
+  decisão e o que você já resolveu." Lógica da página intocada.
+- **Minha equipe**: causa raiz real era o modal `AddConnectionModal`
+  compartilhado com o Booker legado, nunca skinado pro novo visual —
+  isso vazava botão dourado/card branco/título serifado toda vez que
+  abria, e era renderizado 2x (header + empty state), daí o CTA
+  duplicado. Corrigido com um `variant?: 'legacy' | 'pro'` no mesmo
+  componente (zero lógica duplicada) e um empty state novo (card
+  compacto, 1 CTA só, mesmo idioma visual do ícone-em-círculo da Home).
+  Gap registrado, não resolvido nesta rodada: o App nunca teve "Minha
+  equipe" de verdade — é um `PlaceholderScreen` puro hoje. Decisão de
+  quando construir fica com o usuário.
+- **UX de Decisões** (Web + App): dois problemas reais confirmados
+  antes de codar. (1) "Resolver"/"Ver conversa" caía num fallback
+  genérico (`/dashboard/trabalhos`) sempre que a conversa não tinha
+  booking — a única rota de conversa exigia (mas nunca lia) um
+  bookingId. Corrigido no Web com uma rota nova
+  (`/dashboard/conversas/[conversationId]` + modal intercepting
+  equivalente, mesmo `ConversaView`, zero lógica paralela); o App já
+  não tinha esse bug (a rota `/conversas/[conversationId]` nunca
+  exigiu bookingId). (2) Cards lideravam com estado genérico de
+  conversa em vez do que precisa ser decidido — reestruturados nas duas
+  plataformas pra liderar com o motivo real da decisão, nome do
+  cliente resolvido de verdade (via `external_participants` quando não
+  há booking, nunca fabricado), grade de 2 colunas trocada por lista
+  vertical compacta, e um controle de ordenação real adicionado
+  (Prioridade/Recentes/Antigas em Precisa de você; Recentes/Antigas em
+  Resolvidas). App: tela "Decisões" (`mais/decisoes.tsx`), que era um
+  `PlaceholderScreen` puro, virou real nesta rodada — mesma fonte
+  canônica e agrupamento/prioridade do Web
+  (`groupDecisionsByConversation`/`sortDecisionsByPriority`,
+  espelhados em `mobile/src/lib/data/decisions.ts`).
+- **Agenda** (Web): formulário (Tipo/De/Até + Nota/"+Marcar") e os
+  cards abaixo (Calendário, Eventos) passaram a usar o MESMO CSS Grid
+  (`display: contents` no `<form>` pra virar 2 grupos-filhos diretos do
+  grid) — garante boundary de coluna idêntico por construção, nunca
+  aproximado por cálculo de largura separado. Mobile não usa esse grid
+  (empilha por instrução explícita), sem mudança.
+- **Home hero**: nome normalizado com `capitalizeName()` (mesma função
+  nas duas plataformas) — corrige "Oi, eduarda" → "Oi, Eduarda"
+  preservando acentos. Web: hero reestruturado (`items-start`, mais
+  padding/spacing) pra tirar o bloco de texto do "sufocamento" sem
+  aumentar o card. App: ajuste de espaçamento equivalente (o problema
+  original era menor lá, por ser stack vertical).
+- **Sino/Notificações** (Web + App): inspeção obrigatória feita antes
+  de codar (achados completos e decisão do usuário registrados acima,
+  nesta mesma sessão) — não existia sistema geral de notificações (o
+  "sino" era só um atalho pra `/dashboard#precisa-de-voce`);
+  `community_notifications` (0059) já existe, já é populada de
+  verdade, mas nunca tinha consumidor. Aprovado: sino V1 = só
+  Comunidade; Decisões continua só nas suas superfícies já corretas
+  (nunca duplicado dentro do sino, nenhuma notificação sintética
+  criada). Web: popover ancorado no ícone (nunca navega a página
+  embaixo), fecha em clique fora/Esc/novo clique, loading/empty/error
+  próprios, rolável, badge de não lidas, marca como lida ao abrir o
+  tópico. App: o sino da Home (puramente decorativo até aqui — badge
+  sempre zerado, sem `onPress`) virou um bottom sheet real com a mesma
+  lógica. Atualiza a linha "Notificações de Comunidade (UI)" da matriz
+  do §74 (Fase 2/3) — entregue adiantada, fora do escopo de fases da
+  Comunidade, por ser uma correção de UX pontual pedida separadamente.
+
+Pendências reais desta rodada, não escondidas:
+- Migration `0068_community_search.sql` (§74) — aplicada em produção
+  pelo usuário em 07/09/2026, depois de validada no `doopla_rls_test`
+  local. Busca da Comunidade está live nas duas plataformas.
+- App nunca teve uma tela real de "Minha equipe" — decisão de quando
+  construir isso fica pendente com o usuário.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos em cada commit desta rodada.
+
+## 76. Comunidade Web volta a ser painel lateral (correção de desvio técnico da Fase 1) — `[DELIVERED]`
+
+Achado antes de mexer (pedido explícito do usuário: não alterar nada
+sem primeiro explicar quando/por que isso mudou): a Comunidade virar
+página inteira no Web na Fase 1 (commit `4f2aa7d`) foi uma escolha
+técnica minha, não uma decisão de UX revisitada. A UX original aprovada
+(bloco Shell+Home, commit `8d2a9f5`) já era um painel lateral deslizante
+(`ProForumPanel`, "protótipo aprovado" citado no próprio comentário do
+componente) — deletado na Fase 1 sem nunca reconfirmar a mudança de
+arquitetura com o usuário. Registrado em DECISOES.md.
+
+Corrigido: `src/app/dashboard/@modal/(.)comunidade/` — mesmo mecanismo
+de intercepting route já usado por `(.)artistas`, `(.)bookers`,
+`(.)bookings`, `(.)conversas`:
+- `layout.tsx` (client component, novo): painel deslizante da direita
+  — backdrop, fechamento por X/Escape/clique fora via `router.back()`
+  (mesmo padrão do `ProfileModal`), scroll do body travado, entrada
+  animada. Largura decidida por `usePathname()` (compartilhado por
+  todas as rotas internas, não recebe o param dinâmico das rotas
+  irmãs): 460px pra Home/Salvos/Criar tópico, 760px ao entrar num
+  tópico — mesmo painel (nunca um segundo modal), `transition-[width]`
+  suave porque o layout nunca desmonta entre essas navegações.
+- `page.tsx`, `[topicId]/page.tsx`, `novo/page.tsx`, `salvos/page.tsx`:
+  cada um só `export { default } from '<rota real>'` — 100% dos dados/
+  Server Actions/regras de negócio da Fase 1 reaproveitados, zero
+  lógica duplicada. As rotas reais (`/dashboard/comunidade/*`)
+  continuam existindo intactas por baixo, pra acesso direto por URL/
+  deep link — só a apresentação diverge quando a navegação é
+  client-side (via o ícone de Comunidade no topbar, `pro-shell.tsx`,
+  não alterado — a interceptação é automática).
+
+App mobile: intocado, por decisão explícita — continua com a
+navegação nativa full-screen que já tinha desde a Fase 1.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` limpos — as 4 rotas
+interceptadas aparecem corretamente ao lado das reais no build. Gap
+conhecido, não escondido: as rotas reais reaproveitadas usam classes
+`sm:grid-cols-2`/larguras pensadas pra `<main>` full-bleed; como
+Tailwind `sm:` reage à largura do VIEWPORT (não do container), esse
+breakpoint pode ativar mesmo dentro do painel de 460-760px, deixando
+alguma grade um pouco mais apertada que o ideal — decisão deliberada de
+não reescrever esses componentes internos pra não extrapolar "corrigir
+container", como pedido explicitamente.
+
+Não foi possível fazer o click-through E2E completo (abrir Comunidade
+→ buscar → Salvos → criar tópico → entrar em tópico → responder →
+voltar → fechar/reabrir) porque este ambiente não tem uma sessão
+autenticada real — mesma limitação já registrada em blocos anteriores
+("não achei nenhuma conta de teste documentada no repo"). Precisa da
+validação manual do usuário no Preview.
+
+## 77. Entitlements Doopla Pro — limite de bookings, gate de Minha equipe e ProUpgradeModal canônico — `[DELIVERED]`
+
+Fecha o plano de entitlement/gaps aprovado nesta rodada (07/09/2026):
+limite real de bookings no Básico, gate backend de Minha equipe como
+Pro, e o novo padrão canônico de upgrade contextual (`ProUpgradeModal`)
+substituindo os dois destinos antigos ("Conhecer o Pro" → `/precos` ou
+`/dashboard/perfil`, ambos descontinuados como destino de upgrade).
+Commits: `31b2071`, `7773433`, `d0df3cb`.
+
+**Limite de 5 novos bookings/mês no Básico (migration `0073`).**
+Definição aprovada: consumo acontece na criação (`created_at`), conta
+no mês-calendário correspondente, sem carry-over, `recusada`/
+`cancelada` continuam consumindo (senão recusar/cancelar de propósito
+viraria forma de resetar o contador), Pro sem limite. Auditados antes
+de implementar: só existem 2 pontos reais de INSERT em `bookings` em
+todo o código (`proposeBookingAction`, `selectBookerForOpportunityAction`,
+ambos em `dashboard/actions.ts`) — nenhum insert de seed/dev/teste em
+nenhuma migration. Em vez de duplicar o check nos dois Server Actions,
+a decisão fica centralizada numa function SQL (`assert_artist_booking_
+monthly_limit`) chamada por uma trigger `BEFORE INSERT ON bookings` —
+autoridade incondicional sobre qualquer entry point, presente ou
+futuro, mesmo padrão já usado em `enforce_booker_artist_limit`
+(migration 0032) e `enforce_representation_request_limit` (migration
+0018). `pg_advisory_xact_lock` fecha a corrida de concorrência (dois
+inserts simultâneos pro mesmo artista disputando a última vaga).
+Testado no `doopla_rls_test`: 9 cenários adversariais (0-4/5º/6º
+bookings, recusada, cancelada, virada de mês, Pro ilimitado, os dois
+entry points, sem bypass via RPC) + teste de concorrência real (2
+transações simultâneas, exatamente 1 vence) — todos passaram.
+
+**Gate de Minha equipe como Pro.** Helper centralizado
+`artistHasDooplaPro()` (consulta `subscriptions` real, delega pra
+`hasDooplaPro()`) usado nos dois pontos de criação de vínculo
+artista→booker — `inviteBookerAction` e o branch artista de
+`requestRepresentationAction`. Direção booker→artista (a original)
+continua sem gate. UI reconhece a falta de entitlement ANTES de abrir
+qualquer formulário (nunca erro só depois de tentar): artista Básico
+vê badge PRO ao lado do título "Minha equipe" e, ao clicar em
+"Adicionar um Booker", abre o `ProUpgradeModal` em vez do formulário
+de convite.
+
+**`ProUpgradeModal`** (`src/app/dashboard/pro-upgrade-modal.tsx`) —
+componente único reutilizável pro produto inteiro: `context` só adapta
+título/descrição (`'equipe' | 'geral'`), nunca preço/features/
+entitlement/comportamento de CTA, que vêm sempre de `@/lib/plans`
+(`PLAN_CARDS`, extraído de `PlanPicker.tsx` do onboarding pra virar
+fonte única — antes cada um tinha sua própria cópia) e `@/lib/market`.
+Integrado em Minha equipe e em Configurações → Plano e assinatura →
+"Conhecer o Pro" (mesmo componente, contexto diferente, nenhuma
+navegação pra `/precos`). Backdrop/ESC/scroll-lock/`role="dialog"`
+seguem o mesmo mecanismo já usado em `referral-modal.tsx`. Achado ao
+mexer: `PLAN_CARDS` (Pro) já listava "Inteligência sobre cachês..." e
+"Materiais profissionais..." como disponíveis hoje — divergia da
+própria classificação PENDING já aprovada (nenhuma das duas tem gate
+real). Corrigido em `plans.ts` e no mesmo card em `home.html`; "Booker
+/ Minha equipe" entra no lugar por ser real nesta rodada.
+
+**CTA "Fazer upgrade para Pro" — comportamento temporário honesto.**
+Sem Real Billing/Stripe ainda: o clique nunca finge upgrade, nunca
+navega, nunca grava nada (nem subscription fake, nem "interesse
+registrado" — o usuário rejeitou explicitamente essa versão por
+prometer um acompanhamento que não existe). Mostra, dentro do próprio
+modal, um estado curto ("Upgrade para Pro em breve" + Voltar) que
+reseta ao fechar. Centralizado em `handleUpgradeClick()` — único ponto
+a trocar quando Real Billing existir (Stripe Checkout), sem redesenhar
+o modal.
+
+Gap conhecido, registrado explicitamente pelo usuário como não
+fechado (não invalida o código entregue): não foi possível fazer
+QA visual das integrações reais em "Minha equipe" e "Configurações"
+(modal abrindo a partir das duas páginas de verdade, logadas) — este
+ambiente não tem sessão autenticada real nem Preview. As screenshots
+enviadas foram do componente `ProUpgradeModal` isolado, numa rota
+`/dev` temporária criada só pra validação visual e removida antes de
+cada commit (nunca ficou no diff). Precisa de validação manual do
+usuário no Preview quando disponível.
+
+Fora do escopo desta rodada, por decisão explícita do usuário — não
+esquecido, não implementado de propósito: Stripe/checkout/cobrança
+real, `/precos` real (registrado como GAP/PENDING, continua
+`StubPage`), e-mail de representação, analytics avançados, materiais,
+automações avançadas, Minha equipe no App (placeholder), padrão de
+upgrade pro produto Booker Web/App.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` limpos em cada
+commit desta rodada. SQL adversarial + teste de concorrência real
+descritos acima, rodados no Postgres local (`doopla_rls_test`).
+
+## 78. Comunidade — correção do fundo preto, desambiguação de @menções, 3 migrations destravadas e 4 itens do roadmap (Notificações, filtro por categoria, preview de Salvos no App, posição de leitura) — `[DELIVERED]`
+
+Sequência de trabalho na Comunidade nesta sessão (08/09/2026), registrada
+retroativamente porque nenhum destes itens tinha entrada própria ainda.
+
+**Bug do fundo preto (Comunidade Web, painel lateral).** Causa raiz:
+`experimental.staleTimes.dynamic = 0` (Segment Cache do Next.js) forçava
+refetch desnecessário do slot `children` a cada navegação interna da
+Comunidade, criando uma corrida em que o painel podia renderizar antes
+do conteúdo real chegar. Corrigido subindo `staleTimes.dynamic` pra 30
+em `next.config.ts` (commit `c4675ad`), depois estendido pra cobrir toda
+a rajada de prefetch da sidebar (`f08cee2`). Toda a instrumentação
+temporária de debug usada pra isolar a causa (probes, `DebugFetchLog`,
+logs server-side em `DashboardLayout`/`ProfessionalShellGate`, páginas
+`error.tsx` de diagnóstico) foi removida depois de confirmado (`1315c71`)
+— nada disso ficou no código.
+
+**Desambiguação de homônimos no autocomplete de @menções** (commit
+`1fc1cad`, migration `0076_community_profiles_public_id.sql`).
+Identidade técnica da menção continua sendo `profile_id`; a UI ganhou
+desambiguação progressiva quando dois+ candidatos, no mesmo conjunto
+mostrado, ficam visualmente idênticos: 1º nível é o nome, 2º nível é
+profissão+cidade, 3º nível (só quando ainda colide) usa
+`profiles.slug` como identificador público estável — nunca UUID
+exposto. `buildMentionCandidateDisplay` implementado uma vez em
+`src/lib/community/data.ts` e espelhado em
+`mobile/src/lib/data/community.ts`, mesmo padrão de cópia deliberada já
+usado no resto do módulo.
+
+**Migrations 0074/0075/0076 destravadas em produção.** Ao aplicar a
+0076, descobriu-se que 0074 (`artist_pro_entitlement_canonical`) e 0075
+(`subscriptions_write_authority`) nunca tinham sido aplicadas no
+Supabase real — só testadas localmente — apesar do código TypeScript já
+depender das RPCs da 0075 (upgrade/cancelamento Pro do booker, seleção
+de plano do artista no cadastro). Ou seja, esses fluxos estavam
+quebrados em produção sem que nenhum código novo tivesse causado isso.
+Diagnosticado com uma query adversarial rodada pelo usuário
+(confirmando função ausente, view desatualizada), as 3 migrations foram
+lidas por completo pra confirmar que eram idempotentes/auto-contidas, e
+entregues ao usuário via `SendUserFile` (não colado em chat — uma
+tentativa anterior por texto resultou no usuário colando o comando
+`cat` do shell por engano em vez do SQL) pra aplicação manual no SQL
+Editor do Supabase. As 3 foram aplicadas e validadas pelo usuário.
+Regra permanente combinada nesta sessão: toda migration necessária que
+eu não conseguir aplicar diretamente vira, sem exceção, SQL exato +
+instrução entregues ao usuário (nunca uma pendência silenciosa) — ele
+tem acesso ao SQL Editor do Supabase.
+
+**Os 4 itens do roadmap, decididos e executados nesta ordem, sem pausa
+entre eles** (o usuário pediu explicitamente só os itens com escopo já
+claro no roadmap — recusei propor um 5º/6º item pra "fechar o número"):
+
+1. **Notificações da Comunidade — UI Web + App** (commit `c5ca052`).
+   `community_notifications` (0059) já existia e já era populada, mas
+   nunca tinha consumidor de UI. Web: sino com badge no header da
+   Comunidade, popover com lista/marcar-como-lida otimista. App:
+   `mobile/app/forum/notificacoes.tsx`, tela dedicada espelhando o
+   padrão já usado em `/forum/salvos`. Mesma função `notificationCopy()`
+   duplicada nas duas plataformas (convenção do repo), mesmo texto por
+   tipo (`reply_to_topic`/`reply_to_post`/`mention`).
+2. **Filtro por categoria na Web** (commit `c5ca052`, mesmo checkpoint).
+   Fechou a paridade que já existia no App — reaproveita
+   `search_community_topics` (0068): passar `p_query` vazio faz a RPC
+   ignorar o filtro de texto e aplicar só `p_category_id` +
+   `last_activity_at desc`, sem RPC nova. Implementado como `<select>`
+   discreto, nunca chip — respeita a decisão de produto já registrada no
+   código (busca é o mecanismo principal, categoria é subordinada).
+3. **Preview de Salvos na Home do App** (commit `fbfadf1`). Fechou o gap
+   inverso ao do item anterior: Web já tinha preview de salvos na Home,
+   App só tinha a tela dedicada. `SAVED_PREVIEW_LIMIT = 3` +
+   `savedPreview`/`savedPreviewAuthorsById`, sincronizados nos dois
+   pontos que já mexiam em salvos (`toggleSave`, `handleDeleteTopic`).
+4. **Item 12 — posição de leitura** (commit `40d1af5`, migration
+   `0077_community_topic_reads.sql`). Tabela nova
+   `community_topic_reads` (par `profile_id`/`topic_id`, RLS direta sem
+   RPC, mesmo padrão de `community_saved_topics`) guarda só um marcador
+   de apresentação — nunca usado em regra de autorização. Extensão
+   exatamente como o próprio código já previa desde o Item 5
+   (`ComunidadeScrollAnchor`, comentário em `navigation-guard.tsx`:
+   "terceiro caso chegará como `{ messageId }`"). Web: captura via
+   medição de `getBoundingClientRect()` no `useLayoutEffect` de
+   desmontagem da tela do tópico (cleanup síncrono, DOM ainda intacto);
+   guarda explícita contra salvar `last_read_post_id = topic.id` — a
+   mensagem de abertura do tópico (`messages[0]` no Web) nunca é uma
+   linha de `community_posts`, e a FK rejeitaria silenciosamente esse
+   valor. App: captura via `onViewableItemsChanged`/`viewabilityConfig`
+   da própria `FlatList` (arquitetura já separa o header do tópico dos
+   posts — o problema estrutural do Web nem existe lá), persistida no
+   unmount; `viewabilityConfig`/callback como `useState` com
+   inicializador preguiçoso (nunca `.current` de `useRef` lido durante o
+   render — proibido pela regra `react-hooks/refs`). Nos dois lados,
+   escrita é fire-and-forget/silenciosa: falha nunca bloqueia navegação,
+   pior caso é a posição não avançar dessa vez.
+
+`PROGRESS.md` também foi reconciliado nesta rodada (ver matriz
+atualizada no §74 acima): "mentions/reply-to (UI)" e "Notificações de
+Comunidade (UI)" estavam registradas como adiadas pra Fase 3 desde que
+o §74 foi escrito, mas já tinham sido entregues em rodadas posteriores
+— corrigido pra não deixar uma dívida técnica falsa registrada.
+
+Validado a cada item (checkpoint separado por item, nunca um commit
+único): `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos. Migration 0077 entregue ao usuário via
+`SendUserFile` com instrução de aplicação + query de validação, mesma
+regra da 0074-0076 — **aplicada no Supabase real e validada pelo
+usuário em 08/09/2026** (`community_topic_reads` existe, 3 policies,
+RLS ativo). Os 4 itens desta rodada (Notificações, filtro por
+categoria na Web, preview de Salvos no App, posição de leitura) estão
+`DELIVERED` em nível de implementação e migration aplicada — usuário
+sinalizou que o QA visual/funcional fica pra uma rodada de lapidação
+geral da Comunidade, feita separadamente.
+
+Gaps conhecidos, não escondidos: "Em alta"/"Para você" (ranking da Home
+da Comunidade) segue fora de qualquer rodada até virar uma decisão de
+produto própria — usuário pediu explicitamente pra não inventar
+critério baseado só em respostas/recência, e para não começar esse item
+ainda. Nenhum click-through E2E autenticado foi possível neste ambiente
+(mesma limitação já registrada em blocos anteriores); QA visual/
+funcional dos 4 itens (incluindo confirmar que a posição de leitura
+pousa onde parou, não no topo, nas duas plataformas) fica pendente pro
+usuário, junto da lapidação geral já combinada.
+
+## 79. Reconciliação dos 8 blocos salvos + Auditoria do onboarding/cadastro (Bloco 4) — `[AUDIT DELIVERED]`, zero implementação
+
+Sessão dedicada a reconciliar 8 especificações/blocos salvos pelo
+usuário (escritas em momentos diferentes, algumas já entregues, outras
+superadas por decisões posteriores) antes de continuar a execução —
+pedido explícito: nada de código nesta rodada, só auditoria.
+
+**Reconciliação dos 8 blocos** (estado real levantado contra codebase +
+PROGRESS.md + DECISOES.md + `git log`, sem inventar pendência nem
+reabrir bloco fechado sem evidência concreta):
+
+| # | Bloco | Status final |
+|---|---|---|
+| 1 | Doopla Professional Settings V2 | PARTIAL — canônica é progressive disclosure (Settings → detalhe → ação) sobre a baseline já consolidada em `pro-configuracoes-view.tsx`. Dados de recebimento já faz parte dela. |
+| 2 | Doopla Professional Dashboard | PARTIAL (quase DELIVERED p/ artista) — implementação existente (§68-77) é baseline; spec salva vira régua de UX pra achar/refinar só gaps reais (Perfil profissional re-skin, `/precos`, asset de logo), nunca redesign do zero. |
+| 3 | Comunidade — redesign visual da Home | PENDING — bloco funcional CLOSED (§74-78); só resta lapidação visual, preservando 100% da funcionalidade. |
+| 4 | Auditoria onboarding/cadastro | **AUDIT DELIVERED nesta sessão** — ver abaixo. |
+| 5 | Configurações — Dados de recebimento | DELIVERED + ABSORBED pelo Bloco 1 — não existe mais como bloco independente (já integrado em `pro-configuracoes-view.tsx` desde §73). |
+| 6 | Nova Home Pública | PENDING / AUDIT-ONLY antes da implementação — bloco real e separado do Dashboard (confirmado pelo usuário: refere-se à Home pública/marketing, não à Home do painel). Baseline funcional a preservar = correções já entregues no Bloco 7. Implementação só começa com mockup aprovado que o usuário vai fornecer quando chegar a vez deste bloco. |
+| 7 | Home pública — UX/navegação | DELIVERED — commits `8fba1f9` (menu unificado, fim do hard-reload, logo global), `51e5e3c`/`fca76f6` (login em modal, Home e institucionais), `4097041`/`2a654a2`/`2d93c60` (criar conta em modal, funil inteiro preservado, `/cadastro` intacto pra acesso direto), `d0ec4a3` (bug de overlay opaco achado no caminho). Não volta como tarefa independente de implementação — vira baseline funcional que o Bloco 6 deve preservar. Estava implementado mas nunca documentado no PROGRESS.md até agora — lacuna de rastreabilidade fechada por este registro. |
+| 8 | Sistema de Notificações | PARTIAL, por decisão explícita de escopo (não esquecimento) — V1 = só Comunidade (sino/popover Web, bottom-sheet App, §75+§78), decisão já registrada em DECISOES.md ("Decisões continua só nas suas superfícies já corretas, nunca duplicado dentro do sino"). Extensão pra outros domínios preservada como está — não é pendência ativa. |
+
+Fora dos 8: **6A+6B WhatsApp Outreach** segue com tarefas reais em
+aberto no tracker interno (testes determinísticos/regressão/tsc/eslint/
+build + commits finais), sem relação com nenhum dos 8. **"Em alta/Para
+você"** (Home da Comunidade) continua fora de execução até o usuário
+definir critério de ranking — não inventado.
+
+---
+
+### Bloco 4 — Auditoria do onboarding/cadastro atual da Doopla — `[AUDIT DELIVERED]`
+
+Auditoria estritamente read-only (nenhuma alteração de código/schema),
+mapeando o onboarding real a partir do código — não de documentação
+antiga. Evidência completa (mapa de fluxo, tabela campo a campo,
+consumidores, duplicações) foi produzida e aprovada pelo usuário na
+íntegra; este registro preserva as conclusões que orientam o próximo
+trabalho.
+
+**Mapa do fluxo real**: dois fluxos coexistem, roteados por
+`src/app/cadastro/page.tsx` (`useNewFlow = !isBooker && !params.invite`).
+**Fluxo 1** ("funil novo", caminho padrão pra artista sem convite): 6
+etapas, conta criada já na Etapa 1 (`createAccountAction` →
+`handle_new_user`), etapas seguintes fazem UPDATE incremental
+(`savePrepareAction`, `savePlanAction`) — sobrevive a refresh/fechar o
+navegador. **Fluxo 2** ("wizard antigo", `signup-form.tsx`, 1114
+linhas): usado por booker (sempre) e artista convidado por agência
+(versão curta, `ARTISTA_INVITED_STEPS` — só nome+plano); conta só é
+criada na última etapa. App mobile confirmado sem nenhuma superfície
+de cadastro/onboarding — só `signInWithPassword`, nunca `signUp`; 100%
+das contas nascem no Web.
+
+**Achado de maior impacto**: o Fluxo 1 (caminho padrão hoje) nunca
+coleta `regions`/`careerStage`/`helpAreas`/`workTypes`/`clientTypes`/
+`temBooker` — campos que a tool de Runtime `get_professional_business_
+context` (`src/lib/intelligence/tools/`) já foi construída pra ler.
+Esses campos só existem no Fluxo 2, hoje praticamente inalcançável por
+artista (só via um caminho residual: chegar por link `?tipo=booker` e
+trocar pra "Artista" no seletor de papel dentro do wizard). Na
+prática, pra maioria dos artistas cadastrados hoje essa parte do
+contexto de negócio da IA fica vazia — não por bug, por divergência
+não reconciliada entre os dois fluxos.
+
+**"Emite nota fiscal?" (`artist_profiles.issues_invoice`, migration
+0037)**: coletado só na Etapa 3 do Fluxo 1 (`savePrepareAction`),
+opcional, sem CHECK. Consumidor real confirmado: a tool
+`get_professional_business_context` expõe `issuesInvoice` como
+contexto declarado pro Runtime — nunca autorização, nenhuma regra de
+negócio ramifica por causa dele. **Sem nenhuma superfície de edição
+depois do onboarding** (grep em todo `src/app/dashboard` não achou
+nenhuma ocorrência) — write-once, achado que motivou a decisão #2
+abaixo.
+
+**Dados de recebimento**: confirmado que `payment_details` (migration
+0046) nunca fez parte de nenhuma etapa do cadastro — decisão já
+correta e preexistente —, mas participa de uma regra real:
+`is_operationally_ready()` (consultada pelo Post-model Policy Gate)
+retorna `true` só quando existe uma linha `active` em `payment_details`.
+É a única informação do onboarding/pós-onboarding que efetivamente
+bloqueia operação real hoje.
+
+**Duplicações/dívida técnica registradas, sem ação**: `booker_profiles.
+specialties` substituída por `specialty_areas` (a antiga já documentada
+no próprio schema como não lida/escrita); nomenclatura duplicada sem
+necessidade técnica (`local` no artista vs. `cidades` no booker, mesmo
+propósito); `artist_profiles.category` só é escrito de verdade pelo
+UPDATE da Etapa 2 (via `profession`) — o caminho da trigger lendo
+`meta->>'categoria'` é código morto alcançável só por metadata manual;
+`temBooker`/`intencao`/`pontualDetalhe`/`jaRepresenta`/`roster`
+(booker)/`clientTypes`/`specialtyAreas`/`feeRange` (booker) coletados
+sem consumidor de regra/Runtime/exibição encontrado. Nenhum vira tarefa
+agora — só registro, por instrução explícita do usuário (achado
+técnico normal, nunca decisão de produto).
+
+#### Decisões de produto tomadas em resposta à auditoria (detalhe completo em DECISOES.md)
+
+1. **Reconciliação dos dois fluxos de artista via progressive
+   profiling** — o Fluxo 1 continua curto (conta → contexto mínimo →
+   canal → plano); `regions`/`careerStage`/`helpAreas`/`workTypes`/
+   `clientTypes`/contexto comercial adicional NÃO viram etapas novas
+   obrigatórias do cadastro. Pertencem ao enriquecimento progressivo do
+   conhecimento da Doopla sobre o profissional, reaproveitando as
+   fontes canônicas já existentes (`artist_profiles`, já lido pelas 2
+   tools de Runtime) — nunca uma segunda fonte de verdade. A superfície
+   de UI pra esse enriquecimento ainda não existe (ver nota abaixo);
+   posicioná-la é trabalho do próximo bloco de implementação, não desta
+   auditoria.
+2. **"Emite nota fiscal?" deixa de ser write-once** — continua sendo
+   coletado no onboarding, mas precisa ganhar uma superfície de edição
+   depois, na mesma área de conhecimento/contexto comercial do item 1
+   (nunca tratado como dado de Conta). Reaproveita `artist_profiles.
+   issues_invoice` como fonte — a menos que uma auditoria técnica do
+   bloco de implementação encontre motivo concreto pra uma fonte
+   diferente.
+3. **Dados de recebimento continuam fora do onboarding** — Configurações
+   segue sendo a superfície de edição. Como `payment_details` participa
+   de `is_operationally_ready()`, a experiência de ativação (bloco de
+   implementação futuro) deve orientar o profissional a completar esses
+   dados antes do primeiro momento operacional real, sem virar etapa
+   pesada obrigatória de criação de conta.
+4. **Princípio canônico**: conta → contexto mínimo → produto →
+   enriquecimento progressivo → prontidão operacional. A Doopla não
+   tenta aprender tudo antes de deixar o profissional entrar; reduz
+   fricção de entrada sem deixar o Runtime permanentemente sem o
+   contexto que já está preparado pra consumir.
+5. **Wizard antigo não é removido nem reescrito agora** — convite de
+   booker/agência continua existindo; dados finais e modelo de
+   enriquecimento devem convergir pras mesmas fontes canônicas quando o
+   próximo bloco de implementação for desenhado, mas mapear dependências
+   de convite/booker vem antes de qualquer remoção.
+
+**Nota de arquitetura relevante pro próximo bloco de implementação**:
+"Minha Doopla/Treinar" aparece no roadmap já registrado (§68 e
+adjacências) como superfície `[FUTURE]`, nunca construída — não existe
+hoje nenhuma tela de "Treinar sua Doopla". O precedente mais próximo é
+`ArtistProfileForm.tsx` (`/dashboard/perfil/editar`), que já edita
+`regions` (um dos campos de enriquecimento), mas está sem link de
+navegação no painel desde §73 ("Perfil profissional descontinuado como
+SUPERFÍCIE DE NAVEGAÇÃO... a superfície futura de edição é um bloco
+separado"). Ou seja: o gap já registrado em §73 e a necessidade de
+posicionar o enriquecimento progressivo desta auditoria apontam pro
+mesmo lugar — decisão de ONDE/COMO construir essa superfície fica pro
+bloco de implementação, nunca decidida ou antecipada por esta auditoria
+read-only.
+
+**Validado**: nenhum código/schema alterado nesta auditoria — só leitura
+(grep, `Read`, migrations) e este registro. Nenhum `tsc`/`eslint`/`build`
+necessário.
+
+STATUS do Bloco 4: `[AUDIT DELIVERED]`. Implementação (se/quando
+decidida) é trabalho de um bloco futuro separado, não desta auditoria.
+
+## 80. Doopla Professional Settings V2 + gaps reais do Professional Dashboard (migration 0078) — `[DELIVERED]`
+
+Substitui a execução separada dos antigos Blocos #1 (Settings V2), #2
+(Dashboard) e #5 (Dados de recebimento — já `DELIVERED + ABSORBED` na
+reconciliação do §79). Baseline: implementação existente classificada
+como `PARTIAL, quase DELIVERED pra artista` — preservada, nunca
+redesenhada do zero. Escopo continua só artista (Booker/Agência fora
+desta rodada, por decisão já registrada).
+
+**Settings V2 (Web)** — `pro-configuracoes-view.tsx` deixa de ser uma
+página flat de cards sequenciais e vira uma lista navegável agrupada
+(Assinatura e cobrança / Sua conta / Doopla / Privacidade e suporte),
+cada linha uma rota própria sob `/dashboard/perfil/*`
+(`assinatura`, `conta`, `seguranca`, `preferencias`, `notificacoes`,
+`canais`, `recebimento`, `privacidade`, `privacidade/excluir`,
+`suporte`), sempre com resumo curto só quando há dado real (nunca
+placeholder). `settings-ui.tsx` (novo) fornece o cabeçalho/linha/grupo
+compartilhados — nenhuma subpágina reimplementa a navegação.
+
+- **Plano e assinatura**: estados reais auditados (trial/ativo/
+  cancelado); troca de plano só durante trial, via `select_artist_plan`
+  já existente (nova Server Action `updateArtistPlanAction`, mesma
+  RPC); "Pagamento" mostra estado honesto — sem processador real, nunca
+  UI de cartão/histórico inventada.
+- **Dados de recebimento**: reposicionado pra rota própria, mesmo
+  `PaymentDetailsFields`/`set_payment_details` de sempre — zero segunda
+  implementação, `is_operationally_ready()` intocado.
+- **Informações da conta**: nome/telefone editáveis (nova
+  `updateAccountInfoAction`); alterar e-mail via
+  `supabase.auth.updateUser({ email })` (fluxo de confirmação real do
+  GoTrue, nenhum e-mail "fantasma" fora de `auth.users`).
+- **Segurança e acesso**: trocar senha (reautenticação com a senha
+  atual antes de aceitar a nova) e "sair dos outros dispositivos"
+  (`supabase.auth.signOut({ scope: 'others' })`, API real do GoTrue) —
+  auditado antes de codar: 2FA e lista de sessões/dispositivos não
+  existem, nenhum toggle falso criado pra preencher a tela.
+- **Preferências da Doopla**: `attention_channel` (etapa 4/6 do
+  onboarding) deixa de ser write-once — nova `updateAttentionChannelAction`.
+  Link pra "Perfil profissional" (`/dashboard/perfil/editar`) como
+  superfície de contexto comercial/profissional, nunca duplicado dentro
+  de Configurações.
+- **"Emite nota fiscal?" deixa de ser write-once** (decisão de produto
+  fechada na reconciliação do §79) — campo novo em `ArtistProfileForm.tsx`
+  (`issues_invoice`, mesma coluna da migration 0037), nunca em Conta.
+- **Notificações/Canais e conexões**: estado honesto do que existe hoje
+  (sino V1 = só Comunidade; WhatsApp Identity reposicionado de dentro
+  de Configurações pra cá) — nenhuma seção vazia forçada, nenhuma
+  notificação de Bookings/Decisões inventada.
+- **Ajuda e suporte**: `SUPPORT_EMAIL` centralizado em novo
+  `src/lib/support.ts` (elimina duplicação em `contato/ContactForm.tsx`,
+  `contato/page.tsx`); "Falar com minha Doopla" (IA) explicitamente
+  distinguido de "Falar com o suporte" (produto/conta).
+- **Privacidade e dados + Excluir minha conta**: account closure flow
+  completo — ver detalhe abaixo.
+
+**Account closure (migration `0078_account_closure.sql`)** — decisão de
+produto já fechada, implementada como estado terminal
+(`profiles.status`), nunca hard delete. `close_own_account()`
+(SECURITY DEFINER) encerra toda representação ativa nos dois sentidos
+reaproveitando `terminate_representation` (migration 0033, zero lógica
+duplicada), desativa `artist_profiles.public_enabled` e
+`community_profiles.available_for_referrals`, marca
+`status='closed'`. **Nunca `DELETE` em `auth.users`**: `profiles.id`
+referencia `auth.users(id) ON DELETE CASCADE`, e `bookings` referencia
+`profiles(id) ON DELETE CASCADE` — apagar a linha de auth cascatearia
+até apagar bookings/contratos da OUTRA parte, o oposto do que o fluxo
+promete preservar. `community_profiles_public` (view) passa a devolver
+"Usuário removido" e todo campo de apresentação como `null` quando
+`profiles.status='closed'`, independente de `visibility_status`
+(moderação e encerramento de conta nunca se misturam) — tópicos/posts
+continuam existindo intactos, sem cascade-delete de discussão coletiva.
+
+Boundary do server (`account-closure-actions.ts`, Web;
+`/api/mobile/account/close`, App — mesmo padrão de
+`whatsapp-identity/request`, Admin API é segredo de servidor): reauth
+por senha (`signInWithPassword` contra a própria sessão) → RPC →
+`auth.admin.updateUserById` trocando o e-mail por um valor sintético
+(`closed-<uuid>@closed.doopla.internal`, libera o e-mail original pra
+um cadastro novo) + `ban_duration` (bloqueia login/refresh futuros) →
+`signOut()`. Defesa em profundidade em `session.ts`
+(`getSessionProfile`): qualquer access token ainda válido é barrado no
+próximo carregamento do painel (`profiles.status==='closed'` →
+signOut + redirect pra `/conta-encerrada`, página neutra sem sessão).
+
+**Web**: 10 rotas novas sob `/dashboard/perfil/*` + `/conta-encerrada`.
+**App**: "Excluir minha conta" adicionado a `mais/configuracoes.tsx`
+(mesma copy/regras do Web — reauth, checkbox, sem dark pattern),
+consumindo a rota `/api/mobile/account/close` nova.
+
+**Gap residual do Dashboard fechado**: `/precos` (StubPage órfã)
+removida — auditada antes (`grep` em todo o repo, incluindo
+`home.html`): zero referência real em qualquer superfície do produto,
+só um comentário histórico em `pro-upgrade-modal.tsx` confirmando que
+já era destino de upgrade descontinuado desde 07/09. Decisão técnica
+normal (rota sem função real, eliminável com segurança), não altera
+nenhuma oferta comercial.
+
+**Gaps residuais reconfirmados, não fechados nesta rodada** (dependência
+externa, sem ação de código possível): asset de logo real (auditado em
+04/09 e 06/09, continua não existindo em nenhuma plataforma — não
+redesenhado, não inventado); `NEXT_PUBLIC_WHATSAPP_NUMBER` (número
+oficial ainda em aprovação no WhatsApp/Meta).
+
+**Fora de escopo desta rodada, por instrução explícita**: Nova Home
+pública (#6), redesign visual da Comunidade (#3), "Em alta/Para você",
+mudanças de onboarding/progressive profiling além do mínimo (`issues_invoice`
+editável, `attention_channel` editável — ambos reaproveitando colunas
+já existentes, sem schema novo), sistema amplo de Notificações V2,
+Booker/Agência UI completa, 6A+6B WhatsApp Outreach.
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (web) e `tsc --noEmit`,
+`eslint` (mobile) limpos em cada checkpoint. Migration 0078 entregue ao
+usuário via `SendUserFile` (este ambiente não tem acesso a um Postgres
+real) — **aplicada no Supabase real e validada pelo usuário em
+08/09/2026** (`profiles.status` existe, `close_own_account()` existe,
+`community_profiles_public` existe: `coluna_status=1`,
+`funcao_existe=1`, `view_existe=1`). Bloco #1/#2 (Settings V2 + gaps do
+Dashboard) considerado `DELIVERED` e operacional em produção.
+
+Commits: `6db70b9` (migration 0078), `9064a01` (Settings V2 Web),
+`7f675ef` (account closure App + remoção de `/precos`), `14e710e`
+(documentação).
+
+## 81. Fechamento técnico e documental do bloco 6A+6B — WhatsApp Outreach — `[DELIVERED/CLOSED]`
+
+Rodada de fechamento, não de implementação: reconciliação de trackers
+#71/#72 contra o código e a documentação atuais (§59/§60), sem reabrir
+arquitetura, sem alterar comportamento já entregue.
+
+**Achado**: a implementação, os testes originais e a documentação de
+6A (primeiro canal real WhatsApp + sender de `outbound_intents`) e 6B
+(Fase 2 — outreach frio "profissional manda contato -> Doopla inicia")
+já estavam completos e commitados em sessões anteriores (`8c88dca`,
+`f4eb371`, `47a5eb1`, `0384263`, `25b98b1`, todos já em `origin` antes
+desta rodada). Trackers #71/#72 estavam desatualizados (`in_progress`/
+`pending`) em relação ao estado real — mesmo padrão de tracker
+desatualizado já visto na Comunidade.
+
+**Reverificação feita nesta rodada** (sem mudança de comportamento):
+
+- Releitura de `pipeline.ts` (ramo `shouldSendColdOutreachTemplate`/
+  `runColdOutreachTemplateBranch`) — intacto, ainda posicionado antes
+  de qualquer etapa que chama o model, sem interação com o bloco de
+  Beta Instrumentation (`product.demand_received`) adicionado depois
+  (condições de `authorType` mutuamente exclusivas).
+- Confirmado que as migrations 0056/0057/0058 continuam como arquivos
+  e que `send-outbound-intents/route.ts` ainda usa `resolveSendAction`.
+- Busca por TODOs específicos de 6A/6B/outreach/outbound: nenhum real
+  encontrado.
+- **Testes determinísticos**: script `tsx` efêmero (não commitado, mesma
+  convenção do resto do projeto) reexercitando as 44 asserções
+  documentadas em §59/§60 contra a implementação atual —
+  `normalizeWhatsappPhone`/`toWhatsappApiRecipient` (E.164, DDI BR
+  implícito, formatos inválidos), `verifyWhatsappWebhookSignature`
+  (válida/corpo adulterado/secret errado/header ausente/hex de tamanho
+  diferente) e `verifyWhatsappWebhookChallenge`, `classifyMetaSendError`
+  (código transient/permanent conhecido, código desconhecido e
+  `null`/`undefined` — todos fail-closed pra `permanent`) e
+  `isKnownPermanentMetaErrorCode`, `renderColdOutreachTemplateContent`/
+  `buildColdOutreachTemplateComponents` (determinístico, mesmo conteúdo
+  humano-legível e payload da Meta), `isCswOpen` (fronteira exata das
+  24h — 23h59 aberta, exatamente 24h e além fechada), `shouldSendColdOutreachTemplate`
+  (5 condições de elegibilidade, uma por uma) e `resolveSendAction` (3
+  ramos: `send_template` sempre quando `sendAs='template'`,
+  `send_free_text` com CSW aberta, `fail_closed_csw_expired` com CSW
+  fechada — nunca converte `free_text` em template sozinho). **44/44
+  passaram** — zero desvio do comportamento documentado.
+- **Regressão**: `npx tsc --noEmit` limpo; `eslint` limpo em
+  `src/lib/channels/whatsapp/`, `src/lib/runtime/pipeline.ts`,
+  `src/lib/runtime/cold-outreach.ts`, `src/app/api/whatsapp/`,
+  `src/app/api/runtime/send-outbound-intents/`,
+  `src/app/dashboard/whatsapp/`; `next build` limpo, com
+  `/api/whatsapp/webhook`, `/api/runtime/send-outbound-intents` e
+  `/dashboard/whatsapp` presentes na listagem de rotas. Nenhuma
+  superfície compartilhada com Mobile neste bloco (canal WhatsApp
+  Outreach é só Web/cron) — sem necessidade de checks de Mobile aqui.
+- **Nenhum gap objetivo encontrado** — nenhuma correção de código foi
+  necessária nesta rodada.
+
+**Banco/migrations**: nenhuma migration nova criada. 0056/0057/0058 já
+documentadas em §59/§60 como aplicadas e validadas no Supabase real em
+sessão anterior; `OUTBOUND_SENDER_CRON_SECRET` já confirmado registrado
+em Vercel Production (evidência de `curl` em §60). Nenhuma ação minha
+no Supabase pendente para este bloco.
+
+**Nenhuma decisão de produto nova** — rodada estritamente técnica e
+documental, sem entrada nova em `DECISOES.md`.
+
+Commits preservados como evidência de 6A+6B: `8c88dca`, `f4eb371`,
+`47a5eb1`, `0384263`, `25b98b1` (implementação/testes/config, sessões
+anteriores). Trackers #71 e #72 fechados nesta rodada.
+
+Bloco 6A+6B WhatsApp Outreach considerado `DELIVERED/CLOSED`.
+
+## 82. Comunidade V2 — lapidação visual + descoberta + ranking V1 (migration 0079) — `[DELIVERED]`
+
+Bloco #3 canônico. Baseline: funcional já `DELIVERED/CLOSED` (§74/§75/
+§76/§78) — preservado por completo (tópicos, respostas, timeline,
+paginação, busca, criação, salvar, exclusão própria, mentions,
+desambiguação de homônimos, notificações V1, posição de leitura,
+scroll restoration, deep links, RLS/RPCs). Nenhum bug encontrado na
+auditoria de baseline — rodada de lapidação/descoberta, não
+reconstrução.
+
+**Ranking V1 (migration `0079_community_ranking.sql`)** — duas
+functions SQL determinísticas, `security invoker`, sem LLM/ML:
+
+- `get_community_trending_topics(p_limit)` — "Em alta agora": soma
+  decaída (half-life 24h, janela 72h) de eventos recentes (abertura do
+  tópico + respostas), multiplicada por fator de diversidade
+  (participantes únicos / total de eventos — protege contra inflação
+  artificial sem sistema anti-fraude), mais um boost pequeno de saves.
+  Threshold: score ≥ 0.6 e ≥ 2 participantes únicos — sem isso, a
+  seção fica vazia (nunca "Em alta" com 1 resposta).
+- `get_community_for_you_topics(p_limit)` — "Para você": categoria/tag
+  de afinidade a partir de tópicos que o profissional salvou ou em que
+  participou (auth.uid() interno, nunca parâmetro). Profissão/
+  localização/buscas recentes avaliadas e descartadas como sinal (ver
+  DECISOES.md — sem mapeamento real profissão↔categoria, sem
+  telemetria de busca armazenada). Cold start devolve `[]` de
+  propósito.
+
+Índice novo: `community_posts_created_at_idx` (trending precisa
+filtrar por `created_at` recente, gap real — nenhum índice cobria essa
+coluna). Parâmetros do ranking documentados só dentro de cada function
+— nunca duplicados em TS.
+
+**Testes determinísticos** — script SQL efêmero
+(`psql`, transação com `ROLLBACK`, nunca commitado) rodado direto no
+`doopla_rls_test` (Postgres local deste ambiente — mesmo banco de
+sessões anteriores, trazido a par das migrations 0068 e reconciliado
+com grants base ausentes na cópia local, achado do ambiente, não do
+produto). 6 cenários adversariais, todos passaram:
+
+1. diversidade de participação — tópico com 12 participantes únicos
+   (1 msg cada) venceu tópico com 30 msgs entre só 2 pessoas
+   (11.45 vs 1.74);
+2. threshold — tópico com 1 evento/1 participante nunca apareceu;
+3. decay/janela — tópico com 200 respostas históricas, mas nada nas
+   últimas 72h, nunca apareceu em "Em alta";
+4. relevância pessoal — candidato com categoria+tag de afinidade
+   venceu candidato sem relação nenhuma (irrelevante ficou de fora,
+   não só em posição inferior);
+5. cold start — profissional sem nenhum salvo/participação recebeu
+   `for_you` vazio;
+6. empate determinístico — dois tópicos com score idêntico ordenaram
+   de forma estável por `id asc`, nunca por acaso.
+
+Confirmado também: `anon` recebe `permission denied` nas duas
+functions (revoke explícito, mesmo idioma de `activate_community_profile`
+etc.).
+
+**Home Web** (`pro-comunidade-home-view.tsx`) — reestruturada:
+Busca → Suas comunidades (accordion renomeado de "Salvos por você",
+trilho horizontal compacto `TopicRail`, nunca grid de cards) → Para
+você → Em alta agora (ambas condicionais, somem quando vazias) →
+Recentes (sempre presente, camada neutra). Grid de cards 2 colunas
+substituído por `TopicRowList` (linhas densas com `divide-y`, título
+> metadado, sem caixa por item) — menos "admin dashboard", mais
+tipografia/hierarquia fazendo o trabalho. Deduplicação de apresentação
+via `useMemo` client-side (Suas comunidades → Para você → Em alta →
+Recentes, nunca mexe nos datasets). Busca continua substituindo tudo
+por resultado quando ativa (comportamento preexistente, intocado).
+
+**Home App** (`mobile/app/forum/index.tsx`) — mesma hierarquia
+conceitual, adaptada ao paradigma mobile já existente (`ForumTopicRow`,
+já uma linha densa, não um card — nenhuma redundância pra remover
+aqui). "Suas comunidades"/"Para você"/"Em alta agora" só aparecem na
+navegação neutra (sem busca/categoria ativos, mesma regra da Web).
+Mesma dedup de apresentação via `useMemo`.
+
+**Tela de tópico (Web+App)** — auditada, classificada `KEEP`: já usa a
+mesma linguagem tipográfica/hierarquia que a Home lapidada adotou
+(aliás, `TopicRowList` foi modelada a partir do padrão já existente em
+`pro-comunidade-topic-view.tsx`) — sem card-dentro-de-card, metadado
+já discreto, sem estilo legado. Nenhuma mudança funcional ou visual
+necessária.
+
+**Backend** — zero duplicação Web/App: as duas plataformas chamam as
+mesmas duas RPCs (`get_community_trending_topics`/
+`get_community_for_you_topics`), wrappers finos em
+`src/lib/community/data.ts`/`mobile/src/lib/data/community.ts`
+(mesmo padrão de `searchCommunityTopics`).
+
+Validado: `tsc --noEmit`, `eslint`, `next build` (Web) e `tsc --noEmit`,
+`eslint` (Mobile) limpos — nenhum erro/warning em arquivo tocado por
+este bloco (varredura completa do repo feita pra confirmar: os únicos
+achados de `eslint .` sem escopo são pré-existentes e não relacionados
+— bundles vendorizados do GSAP em `public/vendor/` e 8 arquivos
+mobile nunca tocados nesta rodada, como `MascotBall.tsx`/`useAuth.tsx`,
+já achados/registrados como dívida em sessões anteriores).
+
+Migration 0079 entregue ao usuário via `SendUserFile` (migration +
+query de validação) — **aplicada no Supabase real e validada pelo
+usuário em 08/09/2026** (`get_community_trending_topics` existe,
+`get_community_for_you_topics` existe, `community_posts_created_at_idx`
+existe: `trending_existe=1`, `for_you_existe=1`, `indice_existe=1`).
+Ranking V1 considerado operacional em produção.
+
+Fora de escopo desta rodada, por instrução explícita: Nova Home
+pública, Professional Settings, Professional Dashboard fora desta
+integração, onboarding, WhatsApp Outreach, sistema geral de
+Notificações, Booker/Agência, pricing, account closure.
+
+Commits: `8df5036` (migration 0079 + data layer Web/Mobile), `4265bbe`
+(Home Web), `1e7af71` (Home App), `33dd13e` (documentação).
+
+## 83. Bloco 4 — nudge progressivo de prontidão (dados de recebimento + contexto comercial) — `[DELIVERED/CLOSED]`
+
+Implementação da reconciliação de progressive profiling decidida no
+§79 (auditoria do onboarding). Escopo fechado, aprovado antes de
+codar: nunca banner genérico/persistente — reaproveitar a arquitetura
+visual já existente da Home (linha label+descrição+CTA, mesmo idioma
+de `BookingChannelsCard`/`TalkToDooplaCard`), progressivo e nunca
+bloqueante, cada pendência desaparece sozinha quando resolvida, zero
+backend novo, zero campo novo, wizard antigo intocado, Settings V2 e
+Comunidade não reabertas, Booker não implementado.
+
+**Achado que definiu a implementação**: `getArtistMatchingCompletion`
+(`{filled, total}` sobre `regions`/`career_stage`/`fee_range`/
+`help_areas`) e o card `CompletePreferencesCard` já existiam —
+construídos antes do split Shell+Home, mas só alcançáveis hoje via
+`BookerHomeView` (legado, role='booker' gerenciando artista). Desde
+que `ProfessionalHomeView` passou a ser a Home exclusiva de
+`role='artista'`, esse branch em `booker-home-view.tsx` ficou morto
+pra artista — o profissional nunca via seu próprio card. Mesmo padrão
+de `getActivePaymentDetails` (já usado em `/dashboard/perfil/recebimento`)
+pro sinal de recebimento. **Zero função nova criada no Web** — as duas
+já existentes (nunca alteradas) foram só chamadas de um novo lugar.
+
+**Web** (`professional-home-view.tsx`) — novo `ReadinessCard` no topo
+da coluna direita da Home, antes de `BookingChannelsCard`. Duas linhas
+independentes (recebimento → `/dashboard/perfil/recebimento`; contexto
+profissional → `/dashboard/perfil/editar#preferencias-matching`, mesma
+âncora já usada em Preferências da Doopla desde Settings V2), cada uma
+some sozinha quando resolvida; o card inteiro não renderiza nada
+(nem título) quando as duas estão completas — zero ruído visual no
+estado "tudo pronto".
+
+**App** — só a linha de recebimento (`ReadinessCard.tsx` novo,
+`mobile/app/(tabs)/index.tsx`), reaproveitando `fetchActivePaymentDetails`
+já existente (mesma fonte de `mais/financeiro.tsx`), mesmo idioma
+visual de `ChannelsCard`. `undefined` (ainda carregando) nunca mostra
+linha — evita falso positivo piscando antes do fetch resolver.
+
+**Assimetria mobile — `[DEFERRED]`, não pendência ativa deste bloco**:
+o App não tem NENHUMA superfície de edição pra `regions`/`career_stage`/
+`help_areas`/`work_types` hoje (confirmado por grep — zero ocorrência
+em `mobile/app`). Construir essa tela seria inventar uma arquitetura
+nova de navegação, explicitamente fora do escopo aprovado — por isso a
+linha de "contexto comercial" só existe no Web nesta rodada. Assimetria
+deliberada e documentada (ver DECISOES.md), não um esquecimento e não
+um bloqueio pro fechamento do Bloco 4: fica registrada como item futuro
+de paridade Professional App, sem reabrir este bloco quando for
+endereçada.
+
+**Validado**: 4 estados (tudo incompleto / só recebimento pronto / só
+contexto pronto / tudo completo) testados via fixture SQL efêmero
+(`doopla_rls_test`, transação com `ROLLBACK`) contra as MESMAS queries
+de `getActivePaymentDetails`/`getArtistMatchingCompletion` — todos os
+4 distinguidos corretamente. Lógica de visibilidade (quando cada linha
+aparece/some, Web e Mobile) validada via script `tsx` efêmero — 11
+asserções, incluindo desaparecimento individual de cada pendência
+sem afetar a outra. Nenhum estado impede navegação/uso do resto do
+painel (nudge nunca é gate — `is_operationally_ready()`/Policy Gate
+continuam a única fonte de bloqueio real, inalterados).
+
+`tsc --noEmit`, `eslint`, `next build` (Web) e `tsc --noEmit`, `eslint`
+(Mobile) limpos nos arquivos deste bloco — achados pré-existentes de
+`eslint` em `ChartCard.tsx`/`DecisionCard.tsx` (Mobile, nunca tocados
+aqui) confirmados fora de escopo.
+
+Migrations: nenhuma. Zero RPC nova, zero tabela nova — reuso total de
+`is_operationally_ready()`/`payment_details`/`artist_profiles`/
+`getActivePaymentDetails`/`getArtistMatchingCompletion`.
+
+## 84. Bloco 6 — Nova Home pública, redesign a partir do mockup aprovado — `[IMPLEMENTED / VISUAL QA PENDING]`
+
+**Status corrigido em 08/09/2026**: o baseline técnico/funcional
+descrito abaixo está aprovado e não será revertido (fluxos reais de
+cadastro/login/referral, preços/planos dinâmicos, remoção do GSAP,
+`IntersectionObserver`, breakpoint da nav, comportamento das pupilas,
+acessibilidade, responsividade, checks tsc/eslint/build). Porém a
+fidelidade VISUAL da implementação atual em relação ao mockup aprovado
+não foi validada com rigor suficiente — a regra do bloco é mockup
+aprovado = fonte de verdade visual, código atual = fonte de verdade
+funcional, e por ora só o segundo lado está confirmado. Bloco NÃO está
+DELIVERED/CLOSED. Próximo passo, quando o mockup for reenviado:
+comparação explícita mockup×implementação (grid, largura máxima,
+proporções, posicionamento, alinhamentos, espaçamentos, hero, escala/
+quebra da headline, tipografia, phone-mockup, mascote, elementos
+editoriais, header, CTA, faixa de profissões, divisores, ritmo
+vertical, densidade, transição entre seções, desktop/tablet/mobile),
+correção do que divergir sem reinterpretar/melhorar por preferência
+própria, e só então nova rodada de QA visual/responsivo/funcional/
+checks antes de fechar como DELIVERED/CLOSED.
+
+**Rodada de correção de fidelidade visual (mockup original reenviado)**:
+comparação explícita mockup×implementação feita (grid, tipografia,
+hero, phone-mockup, mascote, "Como funciona", CTA final, footer,
+desktop/tablet/mobile). Achados reais confirmados e corrigidos, todos
+preservando o baseline técnico/funcional intocado:
+1. **Caixa alta indevida** — `text-transform:uppercase` removido de
+   `.hero-copy h1` e `section h2` (`home.css`). O mockup usa caixa de
+   frase nos headings principais, maiúsculas só em eyebrows/labels
+   pequenos — isso já estava certo e continua.
+2. **Quebra de linha do H1** — consequência direta do item 1; ao tirar
+   as maiúsculas, "Cliente chamou? Manda pra doopla." volta a quebrar
+   em 2 linhas como no mockup (era 3).
+3. **Phone-mockup do Hero** — adicionado notch/câmera no topo da
+   moldura, seta de voltar + ícones de busca/menu na barra do chat,
+   rótulo "doopla" com mini-avatar acima do balão de saída, e ícones
+   de câmera/anexo na barra de mensagem (antes só um campo vazio).
+4. **Corpo do mascote** — patas/braços adicionados via `::before`/
+   `::after` em `.mascot` (percentuais relativos ao próprio tamanho de
+   cada instância, nunca px fixo — funciona igual nas 3 instâncias:
+   Hero, Sempre com você, CTA final). **Olhos permanecem canônicos**
+   (preto+pupila branca redonda, seguindo o cursor) — decisão explícita
+   do usuário overridando a leitura literal do mockup nesse ponto
+   específico (ver DECISOES.md).
+5. **Ícones do "Como funciona"** — círculo com ícone (pessoa/balão de
+   chat/documento/check) acima de cada número 01-04, confirmados no
+   mockup e ausentes na implementação anterior.
+6. **CTA final** — layout trocado de pilha vertical centralizada para
+   composição horizontal (mascote+texto à esquerda, botão+legenda à
+   direita), igual ao mockup; empilha de volta em telas estreitas
+   (breakpoint de 820px, botão vira full-width).
+
+QA pós-correção: `tsc`, `eslint`, `next build` limpos; screenshots
+completos (scroll real disparando o reveal, não só `fullPage` do
+Playwright — capturar sem isso deixa seções em branco por não disparar
+o `IntersectionObserver`, achado de metodologia, não bug de produção)
+em desktop (1280), tablet (834) e mobile (390) revisados um a um, zero
+erro de console real; revalidação funcional completa (`?plano=pro` e
+`?plano=doopla` abrindo o modal com o plano certo, `?ref=` direto sem
+interceptação, login modal, Tab); checklist do mascote (4 cantos,
+`prefers-reduced-motion`) repetido — pupila nunca excede ~16% do raio
+do olho, zero jitter, zero erro. Sem mockup mobile/tablet dedicado
+disponível nesta sessão — responsividade nesses breakpoints segue a
+adaptação já aprovada (reorganiza a composição do desktop preservando
+linguagem/hierarquia), não uma comparação pixel a pixel.
+
+Aguardando validação visual final do usuário (screenshots enviados)
+antes de qualquer fechamento como DELIVERED/CLOSED.
+
+Implementação do bloco que estava bloqueado por "aguardando mockup da
+Eduarda". Mockup recebido e usado como source of truth VISUAL; o
+codebase/decisões vigentes seguiram como source of truth
+FUNCIONAL/conteúdo — nunca o contrário. Auditoria/reconciliação
+completa foi feita ANTES de qualquer código (site×mockup×diff×ação,
+sem implementar), aprovada em seguida por 9 decisões explícitas mais
+um adendo sobre os mascotes (registradas em DECISOES.md). Commit único
+`9e8cba1` (home.html/home.css/home.js/page.tsx + remoção de
+`public/vendor/gsap`) — não foi possível dividir em commits menores
+sem deixar um estado intermediário quebrado: os três arquivos da Home
+(HTML/CSS/JS) são mutuamente dependentes (classes, IDs, seletores) e
+qualquer subconjunto isolado deles produziria erro de console ou
+layout quebrado num commit revisável isoladamente.
+
+**Removido como seção independente** (absorvido/descontinuado
+conforme decisão #2): "Manda" (as 6 situações + os olhos) — conceito
+absorvido pela nova seção "Chega de perder tempo com o operacional".
+"Feita com quem entende de booking". Marquee antigo.
+
+**Mantido, só com adaptação visual** (decisão #2): Planos — lógica de
+preço dinâmico (`market.pricing`, mesmos placeholders `__PRICE_*__`) e
+entitlements intactos, cards restilizados pro fundo dark. FAQ — todos
+os 8 itens preservados, só restilizado. Segurança — deixou de ter
+seção in-page duplicada; o item "Segurança" do header agora aponta
+direto pra `/seguranca` (página já existente, conteúdo não tocado).
+
+**Novo, do mockup**: seção "Para profissionais independentes" (ícones
+DJs/Fotógrafos/Beauty/Músicos/Palestrantes/Freelancers/e muito mais —
+copy editorial de marketing, explicitamente NÃO uma mudança na
+taxonomia canônica de `professions`, migration 0037, nunca tocada).
+Phone-mockup com a conversa transcrita do mockup na seção Hero. Seção
+"Sempre com você" com mascote grande. "Como funciona" reescrito com os
+4 passos canônicos do mockup (Cadastre seu perfil / Receba as
+conversas / Acompanhe e decida / Trabalho feito), preservando o
+`.human-layer` (escalonamento pra time humano) sem alteração de
+conteúdo.
+
+**Decisão técnica tomada durante a implementação, não pedida no
+mockup**: remoção completa de GSAP/ScrollTrigger. O hero pinado que
+justificava GSAP não existe mais no novo design contínuo; o que sobrava
+era só um fade-in decorativo por seção, que expôs um bug real de
+produção durante o QA visual — `ScrollTrigger` com
+`start:"top 85%"` aplicado a um elemento que já nasce dentro do
+viewport (o hero, sempre acima da dobra) nunca dispara `onEnter`,
+deixando esse elemento preso em `opacity:0` pra sempre (mesma classe de
+incidente "tela em branco ao rolar" já documentada no histórico do
+arquivo antigo). Substituído por `IntersectionObserver` puro
+(`initSectionReveal`), hero explicitamente fora do reveal (sempre
+visível de imediato), zero cálculo de posição de scroll.
+`public/vendor/gsap/*.min.js` removido junto (nunca deixado órfão).
+
+**Mascotes/olhos interativos preservados como identidade dinâmica
+obrigatória** (adendo explícito do usuário): pupila segue o cursor
+(`initMascotEyes`, portado pra vanilla JS a partir do mesmo algoritmo
+de `pro-mascot.tsx` — clamp de distância, easing suave, wander ocioso
+quando parado), generalizado pra qualquer instância de `.mascot`/
+`.nav-logo`/`.foot-logo` na página (nunca um "olho mestre" clonado como
+no sistema antigo). Um único timer de ociosidade global evita dois
+mecanismos escrevendo em `pupil.style.transform` ao mesmo tempo
+(jitter). `prefers-reduced-motion` desliga o tracking inteiro (pupilas
+ficam paradas). Mascote do Hero sem os 3 "riscos" acima da cabeça
+(regra já aprovada); mascote do CTA final os mantém.
+
+**Achado e corrigido durante o QA de responsividade** (não previsto na
+auditoria): a nav completa (5 links + Entrar + Criar conta grátis)
+ainda renderizava "aberta" em 834px (viewport de tablet), sem espaço
+suficiente — texto quebrando em 2-3 linhas e colidindo com o logo.
+O breakpoint de colapso da nav estava em 820px, 14px abaixo do
+necessário. Corrigido isolando o colapso da nav num breakpoint próprio
+em 900px (antes compartilhava os 820px do resto do layout de seção).
+
+**QA executado** (Playwright, Chromium real): screenshots em 4
+viewports (1600×1000 desktop amplo, 1280×900 laptop, 834×1112 tablet,
+390×844 mobile) × 3 posições de scroll, revisados visualmente um a um
+— hero, ícones de profissão, Recursos, Sempre com você, Como funciona,
+Planos, FAQ, CTA final e footer renderizam corretamente com a nova
+paleta em todos os breakpoints. Zero erro de console real em qualquer
+viewport — o único erro presente (`net::ERR_CONNECTION_RESET` do
+Google Fonts) é confirmado pré-existente/limitação deste ambiente
+sandboxed (mesmo `<link>` em `layout.tsx`, usado no site inteiro, nunca
+tocado aqui). Checklist de mascote pedido explicitamente: cursor nos 4
+cantos da tela, perto do mascote do Hero, longe dele, e com
+`prefers-reduced-motion` ativo — pupila nunca excedeu ~16% do raio do
+olho em nenhum caso, zero jitter, zero erro. `?plano=doopla`/
+`?plano=pro` continuam abrindo o `CreateAccountModal` com o plano
+correto; `/cadastro?ref=` (rota direta, nunca interceptada pela Home)
+continua funcionando; `#home-login-trigger` abre o `LoginModal`; Tab
+percorre logo → links → Entrar → CTA na ordem esperada.
+`HomeMenuOverlay` (trigger `#home-menu-trigger`, que não existe mais no
+novo nav inline) já era defensivo (`if (!trigger) return`) — vira
+no-op seguro, sem erro, consequência aceita da decisão #5 (nav inline
+substitui o antigo gatilho de menu na Home; `SiteMenuOverlay`
+continua servindo as páginas institucionais normalmente).
+
+`tsc --noEmit`, `eslint` e `next build` limpos (`/` prerenderizada como
+estática). Migrations: nenhuma. Zero tabela/RPC nova.
+
+**Gap real, fora de escopo por decisão explícita**: `SiteHeader`
+(páginas institucionais — Sobre/Segurança/Termos/Privacidade/Contato)
+não foi tocado, continua com o padrão "Menu" hamburger antigo, visualmente
+distinto do nav inline da Home (decisão #7 — evitar expandir esse
+bloco pra não arriscar regressão/escopo). Ícones de rede social do
+footer omitidos por não existirem URLs oficiais reais (decisão #6) —
+quando existirem, é um acréscimo pontual, não uma reabertura deste
+bloco.
+
+## 85. Professional Product UI — auditoria de fechamento + correção dos 4 achados P0 (Web + App) — `[P0 DELIVERED, P1 DELIVERED/CLOSED — ver bloco 93]`
+
+Com o Bloco 6 (Home pública) congelado aguardando nova direção
+criativa externa a esta sessão, o trabalho seguiu no produto
+autenticado. Auditoria read-only completa de 11 superfícies
+(Home do profissional, Decisões, Bookings/Conversas, Agenda,
+Financeiro, Minha equipe/Booker, Canais de booking, Falar com minha
+Doopla, Notificações, Comunidade, Configurações) via 5 agentes de
+investigação em paralelo, cruzando implementação real × PROGRESS.md ×
+DECISOES.md × migrations. Entregou uma matriz de paridade Web↔App e
+uma lista priorizada (P0/P1/P2) de achados — só os P0 (risco real de
+produto/dado) foram corrigidos nesta rodada; P1/P2 ficam registrados
+como trabalho futuro, não implementados.
+
+**P0.1 — App: fluxo "Solicitar saque" removido por completo.**
+`mobile/app/(tabs)/mais/financeiro.tsx` tinha um formulário de saque
+100% funcional gravando direto em `payout_requests` (bypassando até o
+padrão de RPC usado no resto do produto) — a mesma feature que a
+revisão de 06/09/2026 já tinha removido do Web inteiro (`DECISOES.md`,
+"nenhum papel usa saque/carteira") mas que nunca tinha sido removida
+do App. Removidos: `RequestPayoutForm`, os states/handlers de saque, a
+seção "Solicitações de saque", o stat "Disponível" (dependia do
+cálculo de saldo pós-saque), e as funções `fetchPayoutRequests`/
+`requestPayout`/`computeAvailableToWithdraw` de
+`mobile/src/lib/data/payments.ts`. Tipo `PayoutRequest`/
+`PayoutRequestStatus` removido de `mobile/src/types/payment.ts` (sem
+uso restante em lugar nenhum, confirmado por grep). Campo vestigial
+`availableToWithdrawCents` (sempre igual a `netReceivedCents`, nunca
+lido por ninguém) removido de `ArtistStats`/`computeArtistStats`
+(`mobile/src/lib/data/bookings.ts`). Nenhum substituto criado — tela
+Financeiro do App agora reflete exatamente o mesmo modelo do Web
+(sem saque/carteira). Tabela `payout_requests` em si não foi tocada
+(fora de escopo desta correção — igual ao que o Web já aceitou desde
+06/09).
+
+**P0.2 — App Home: botões "Copiar link"/"Copiar código" agora copiam
+de verdade.** Antes só disparavam um toast de sucesso sem nenhum
+side-effect (`show('Link copiado.')` direto, sem `Clipboard`).
+Corrigido reaproveitando exatamente o padrão já usado em
+`mais/indique-e-ganhe.tsx` (`Clipboard.setStringAsync` do
+`expo-clipboard`, já uma dependência do projeto, nenhum pacote novo) —
+toast só dispara depois do `await` da escrita real no clipboard.
+Comentário desatualizado em `mobile/src/components/shared/Toast.tsx`
+("ações mockadas nesta fase") corrigido, já que deixou de ser verdade
+pros dois lugares que o usam.
+
+**P0.3 — Web Home: navegação de "Precisa de você" corrigida.** O
+accordion da Home ainda caía em `/dashboard/trabalhos` (lista de
+Bookings) quando a decisão não tinha `related_booking_id` — o exato
+bug que a página `/dashboard/decisoes` já tinha corrigido em
+06/09/2026 (rota `/dashboard/conversas/[id]` dedicada,
+`conversationHref()` em `decisoes/format-cards.ts`), mas que nunca
+tinha sido replicado na Home. Corrigido importando e reusando
+`conversationHref()` diretamente em `professional-home-view.tsx` —
+zero lógica de rota nova, mesma fonte canônica que a tela de Decisões
+já usa. (O link não relacionado "Atividade da Doopla → Ver todas", que
+aponta pra `/dashboard/trabalhos` de propósito, não foi tocado —
+pertence a outro conceito.)
+
+**P0.4 — App Home: contagem de decisões unificada com a tela de
+Decisões.** A Home contava `decisions.length` sobre a lista crua
+(`fetchActionableDecisions()`, uma linha por evento — uma conversa
+pode gerar tanto uma linha `pending_reply` quanto `prepared_draft`),
+enquanto o stat card ao lado usava a contagem já agrupada por
+conversa (`homeFacts.conversationsNeedingYouCount`). Reproduzia a
+mesma classe de bug "17≠20" já corrigida no Web em 06/09/2026, mas só
+no Web. Corrigido aplicando `groupDecisionsByConversation`/
+`sortDecisionsByPriority` (já existentes em
+`mobile/src/lib/data/decisions.ts`, espelho deliberado do
+`src/lib/decisions/data.ts` do Web, mas nunca chamadas antes desta
+correção) direto no retorno de `fetchActionableDecisions()` antes de
+guardar no state — `decisions` na Home do App agora é sempre a lista
+já deduplicada, tanto pra contagem quanto pra renderização da lista.
+
+**QA**: `tsc --noEmit` e `eslint` limpos em Web e App nos arquivos
+tocados (Web: `professional-home-view.tsx`; App: `index.tsx`,
+`mais/financeiro.tsx`, `src/lib/data/payments.ts`,
+`src/lib/data/bookings.ts`, `src/types/payment.ts`,
+`src/components/shared/Toast.tsx` — um erro de lint pré-existente e
+não-relacionado em `financeiro.tsx`, linha `load()` dentro de
+`useEffect`, confirmado presente antes desta rodada via `git stash`,
+fora de escopo). `next build` (Web) limpo. Script determinístico
+efêmero validou as duas funções puras centrais da correção
+(`conversationHref` e `groupDecisionsByConversation`+
+`sortDecisionsByPriority`) contra uma fixture reproduzindo o cenário
+exato do bug 17≠20 (4 linhas cruas → 3 conversas deduplicadas, ordem
+de prioridade correta, href nunca cai em `/dashboard/trabalhos` sem
+booking) — 4/4 asserções passaram. Confirmado por grep: zero
+referência restante a `payout_requests`/`PayoutRequest`/
+`fetchPayoutRequests`/`requestPayout`/`computeAvailableToWithdraw`/
+`availableToWithdrawCents` em `mobile/`. Migrations: nenhuma.
+
+**P1/P2 — não implementados nesta rodada**, permanecem como lista
+priorizada (auditoria completa, não repetida aqui): re-skin do
+detalhe de booking/conversa (Web, ainda 100% tema legado), clash de
+shell escuro+conteúdo claro em `perfil/page.tsx` pra `agencia`, "Perfil
+profissional" ainda no tema antigo dentro do Settings V2, promessa de
+tela de privacidade da Comunidade que não existe em código nenhum,
+App Agenda perdendo o estado "indisponível", divergência de
+cores/vocabulário de status entre Web e App, paginação/limite real na
+query de notificações (hoje ilimitada), cache compartilhado entre os
+2 sinos do Web, e outros itens menores. Bloco 6 (Home pública)
+permanece `[IMPLEMENTED / VISUAL QA PENDING]`, congelado, não tocado
+nesta rodada.
+
+## 86. Bloco 7, P1 (item 1/N) — re-skin Web de Booking Detail + Conversa pro Professional Product UI — `[DELIVERED]`
+
+Primeiro item do P1 da auditoria do bloco 85: Booking Detail
+(`/dashboard/bookings/[id]`) e a tela de Conversa associada
+(compartilhada por 4 rotas: página normal, página standalone
+`/dashboard/conversas/[id]`, e as 2 variantes `@modal` intercepting)
+ainda estavam 100% no tema legado `--ink`/`--paper`, mesmo já sendo
+acessadas normalmente a partir das listas novas (Bookings, Decisões,
+Home). Escopo estritamente visual — zero mudança em dados, estados,
+ações, permissões, navegação ou mensagens, salvo um bug real corrigido
+durante a extração (abaixo). Home pública, App, Professional Profile,
+Agency Profile, Privacy, Agenda e Notificações não foram tocados
+nesta rodada.
+
+**Arquitetura**: `bookings/[id]/page.tsx` foi reduzido a só buscar
+dados (idêntico ao original) e escolher a view por role — mesmo padrão
+já usado em `trabalhos/`, `agenda/`, `dinheiro/`, `perfil/`
+(`role === 'booker'` → `LegacyBookingDetailView`, tema antigo
+intocado; `artista`/`agencia` → `ProBookingDetailView`, tema `--pro-*`
+novo). As duas views agora são componentes puramente apresentacionais
+(recebem props já resolvidas, nenhuma leitura própria). Lógica de
+negócio pura que as duas views precisam (política de pagamento, estado
+de vencimento, rótulos de disputa, estágios de fatura) foi extraída
+verbatim pra `booking-detail-shared.ts`, usada por ambas — evita que
+Legacy e Pro divirjam silenciosamente no futuro (mesma lição do bug
+17≠20 corrigido no bloco 85). Seis componentes de formulário puxados
+pro tema Pro (`ProCancelBookingForm`, `ProCounterForm`,
+`ProInvoiceTermForm`, `ProRescheduleForm`, `ProContractSection` +
+`ProGenerateContractForm`, `ProReviewPanel`), cada um espelhando
+exatamente as mesmas Server Actions, nomes de campo e validação do
+original — só classe/token visual muda.
+
+`ConversaView`/`ReplyForm` foram re-estilizados diretamente (sem fork
+Legacy/Pro) porque essa tela só é alcançável por quem a Doopla
+representa — `getConversationOperationalFacts` é RLS-scoped ao
+profissional dono, nunca ao booker (comentário já existente no código
+original confirma: "'Ver conversa' só existe pra quem a Doopla
+representa"). Fundo escuro arredondado passou a viver dentro do
+próprio `ConversaView` (não nos 4 wrappers de rota), pra funcionar
+igual dentro do `ProfileModal` (que tem fundo claro próprio, fora de
+escopo — usado também por Professional/Agency Profile) e das 2 páginas
+normais, sem duplicar estilo em cada `page.tsx`.
+
+**Bug real encontrado e corrigido**: durante a extração do Legacy
+view, o cálculo de `isProposer` passado pro `RescheduleForm` estava
+confundindo dois conceitos diferentes — o `isProposer` da proposta do
+booking (prop já existente) com "quem propôs o reagendamento"
+(`booking.reschedule_proposed_by`), que o código original calculava
+separadamente como `user.id === booking.reschedule_proposed_by`.
+Corrigido adicionando `userId` como prop e usando
+`userId === booking.reschedule_proposed_by` nos 3 pontos de uso
+(Legacy e nos 2 status onde o Pro view também renderiza
+`RescheduleForm`/`ProRescheduleForm`) — comportamento agora idêntico
+ao original em todos os branches.
+
+**Estados de conversa**: os 4 estados canônicos (`needs_you`/
+`waiting_client`/`in_progress`/`closed`) continuam usando o mesmo mapa
+`CONVERSATION_STATE_LABELS` (`ui.ts`) sem nenhuma cópia nova — só a
+pilula que os exibe ganhou tom por estado (vermelho/âmbar/neutro) nos
+dois lugares onde aparecem (card de conversa dentro do Booking Detail,
+header da própria tela de Conversa). Nenhum uso novo do termo "Precisa
+de você" foi introduzido.
+
+**Fora de escopo, deliberado**: a rota `bookings/[id]/avaliar/` (fluxo
+de avaliação pós-booking) não é literalmente Booking Detail nem
+Conversa — não foi tocada. O botão "X" branco e redondo do
+`ProfileModal` nas 2 rotas `@modal` de Conversa permanece claro (alto
+contraste de qualquer forma, mas fora do tema `--pro-*`) — mudar isso
+exigiria tocar `ProfileModal`, componente compartilhado com
+Professional/Agency Profile, explicitamente fora de escopo.
+`ProCard` ganhou uma prop opcional `id?: string` (aditiva,
+retrocompatível) só pra preservar a âncora `id="avaliacao"` que o
+Legacy já tinha.
+
+**QA**: `tsc --noEmit`, `eslint` e `next build` limpos (os 44
+problemas que o eslint aponta no repo inteiro são 100% pré-existentes
+em `mobile/` — fora de escopo deste bloco — e um warning de fonte em
+`src/app/layout.tsx` não tocado por este diff; confirmado por
+`git status` que nenhum arquivo com finding pertence a este diff).
+Verificação visual via rota `/dev/booking-detail-preview` — efêmera,
+dev-only, deletada antes do commit — que renderizava
+`ProBookingDetailView`/`LegacyBookingDetailView` direto com props de
+fixture (sem Supabase real, ambiente sandboxed sem projeto live: as
+duas views são puramente apresentacionais, então isso cobre o re-skin
+inteiro), screenshotada em desktop (1440px), tablet (834px) e mobile
+(390px) cobrindo 4 status de booking diferentes (aceita c/
+checkpoints+contrato, proposta_enviada recipient, aguardando_pagamento
+c/ vencimento, cancelada) lado a lado com o Legacy inalterado. Tema
+`--pro-*` aplicado sem vazamento de classe legada, hierarquia/
+composição consistente com o resto do produto atual, checkpoints/
+pilulas/botões responsivos e sem quebra em nenhuma largura, formulários
+empilham corretamente em mobile. `ConversaView`/`ReplyForm` NÃO foram
+verificados por render ao vivo — são Server Components que buscam os
+próprios dados via Supabase autenticado (diferente do Booking Detail,
+que virou puramente apresentacional), e montar um mock completo de
+Supabase Auth+REST só pra isso foi julgado desproporcional pro escopo
+desta rodada (tentativa abandonada). Verificados por revisão de código
++ reuso literal dos mesmos tokens/classes já confirmados nos
+screenshots do Booking Detail (`proStatusPillClass`, `proInputClass`,
+`proPrimaryButtonClass`/`proGhostButtonClass`, mesmo padrão de foco
+`outline-none`+`focus:border-*` já usado em todo o sistema Pro
+existente, não introduzido por este bloco). Fluxos de entrada
+verificados por rastreamento de código (não click-through ao vivo,
+mesma limitação de ambiente): `bookings-list.tsx` linka pra
+`/dashboard/bookings/${booking.id}` (mesma rota, branch por role
+intocado); `professional-home-view.tsx` e `decisoes/format-cards.ts`
+usam a mesma `conversationHref()` compartilhada, que já roteava pras 2
+rotas re-estilizadas antes desta mudança — nenhuma lógica de
+navegação foi alterada, só o visual do destino. Migrations: nenhuma.
+
+**Não avançar pro resto do P1 sem aprovação explícita** — próximo item
+da lista priorizada do bloco 85 fica pendente de instrução.
+
+## 87. Bloco 7, P1 (item 2/N) — re-skin Web de Agency Profile + Professional Profile pro Professional Product UI — `[DELIVERED]`
+
+Segundo item do P1 do bloco 85 — os dois itens que a rodada anterior
+tinha reservado explicitamente ("Não mexer neste bloco em: ...
+Professional Profile; Agency Profile"). Escopo estritamente visual —
+zero mudança em dados, campos, validação, permissões, uploads,
+redirects ou fluxo, salvo um bug real de CSS encontrado e corrigido
+durante o próprio re-skin (abaixo). Booker não foi tocado.
+
+**Agency Profile — `perfil/page.tsx` ganhou branch próprio pra
+`agencia`.** O shell escuro (`layout.tsx`, `role !== 'booker'`) já
+valia pra agencia, mas ela caía no mesmo JSX legado (`cardClass`,
+card branco) do Booker por baixo — clash confirmado antes de codar
+(shell escuro + card claro). Corrigido dando a `agencia` uma saída
+antecipada própria, no mesmo padrão que `artista` já tinha
+(`ProConfiguracoesView`): novo componente `ProAgenciaPerfilView`
+recebendo `fullName`/`email`/`avatarUrl`/`details` já resolvidos —
+mesma estrutura de sempre (Conta, Foto, dados da agência, "Respostas
+do cadastro"), incluindo a duplicação pré-existente dessas mesmas
+respostas nas duas seções (achado registrado, não corrigido por não
+ser bug funcional nem ter sido pedido — só reestilizado igual estava).
+O branch do Booker em `perfil/page.tsx` não foi alterado, só deixou de
+ser alcançável por `agencia` (early return antes dele).
+
+**Professional Profile — `perfil/editar/` inteiro (5 arquivos)
+reestilizado.** Rota artista-only (guard/redirect intocado), até aqui
+100% legada mesmo já sendo linkada por páginas do Settings V2 que já
+estavam no tema Pro (`perfil/preferencias`, `perfil/privacidade`,
+Home) — um clash de navegação escuro→claro real. Componentes: novos
+forks Pro `pro-artist-profile-form.tsx`, `pro-avatar-uploader.tsx`,
+`pro-chip-checkbox-group.tsx`, `pro-matching-summary.tsx` (mesma
+lógica/campos/validação/Server Actions dos originais, preservando o
+anchor `id="preferencias-matching"` que `perfil/preferencias` já
+linka via `#preferencias-matching`); `public-profile-card.tsx` e
+`link-routing-card.tsx` editados no próprio lugar (únicos consumidores
+são artista-only, sem contraparte Booker a preservar — mesma lógica
+do bloco 86 pra `ConversaView`/`ReplyForm`). Um novo fork
+`pro-link-routing-form.tsx` (dashboard raiz) foi necessário porque o
+componente interno `LinkRoutingForm` é compartilhado com
+`orcamento-link-card.tsx`, que serve a Home do Booker — o original
+continua intocado lá.
+
+**Bug de CSS real, encontrado e corrigido durante o QA visual (não
+estava na auditoria original)**: o modal "Editar preferências de
+matching" de `ArtistProfileForm` usa `position: fixed` pra cobrir a
+tela inteira. Ao envolver o formulário num `ProCard` (que usa
+`backdrop-blur-xl`, igual a todo card do sistema Pro), o modal parou
+de cobrir a viewport — `backdrop-filter` cria containing block pra
+descendentes `fixed` no Chromium (mesma regra de `filter`/`transform`/
+`perspective`), então o overlay ficava preso dentro dos limites do
+`ProCard` em vez de cobrir a tela. O legado nunca teve esse problema
+porque `cardClass` (`bg-white`, sem `backdrop-filter`) não cria esse
+containing block. Corrigido com `createPortal` pro `document.body`
+(gate de montagem via `useSyncExternalStore`, não `useEffect`+
+`setState`, que a régua de lint do projeto proíbe) — e, como
+consequência direta de mover o conteúdo pra fora da árvore DOM do
+`<form>`, os campos portados (5 `ProChipCheckboxGroup`, 3 `<select>`,
+botão "Salvar preferências") precisaram de associação explícita via
+atributo `form` (HTML nativo: um controle de formulário associado por
+`form="id"` funciona independente de nesting no DOM) pra continuarem
+submetendo com o formulário certo — sem isso, esses campos parariam
+de ser enviados silenciosamente. `ProChipCheckboxGroup` ganhou uma
+prop opcional `form?: string` pra isso.
+
+**QA**: `tsc --noEmit`, `eslint` e `next build` limpos (mesma
+confirmação de sempre: os 44 problemas do eslint no repo inteiro são
+100% pré-existentes em `mobile/`, fora de escopo). Visual via rota
+`/dev/perfil-preview` efêmera (deletada antes do commit) — os
+componentes deste bloco já nasceram puramente apresentacionais
+(`ProAgenciaPerfilView`, e as peças de `perfil/editar/` não têm fetch
+próprio), então cobriu o re-skin inteiro sem mock de Supabase:
+screenshotado em desktop (1440px), tablet (834px) e mobile (390px),
+cobrindo Agency Profile com dados/sem dados/com avatar, e Professional
+Profile com avatar/sem avatar, perfil público ativo/desativado,
+com/sem bookers conectados. O modal de preferências foi verificado
+aberto (clique real via Playwright) antes e depois da correção do
+bug de `backdrop-filter`, confirmando a cobertura de tela inteira
+depois do portal. Estados de avatar (sem avatar → iniciais; com
+avatar; upload/crop) e mensagens de erro/validação do formulário
+preservados verbatim do original, só o tema. Navegação Settings V2 →
+Professional Profile → voltar verificada por rastreamento de código:
+`perfil/preferencias/page.tsx` e `perfil/privacidade/page.tsx` linkam
+pra `/dashboard/perfil/editar` (agora Pro dos dois lados, sem clash),
+e o link de volta "← Preferências da Doopla" continua apontando pro
+mesmo destino (`/dashboard/perfil/preferencias`), só restilizado.
+Confirmado por grep que `pro-shell.tsx`/`professional-home-view.tsx`
+linkam pra `/dashboard/perfil` sem nenhuma mudança de rota — só o
+conteúdo do destino mudou pra `agencia`. Booker: confirmado por
+leitura do diff de `perfil/page.tsx` que seu branch (JSX, `RoleDetails`,
+`BookerProfileForm`, `getRoleDetails`) não foi alterado em nenhuma
+linha, só deixou de ser alcançável por `agencia`/`artista` (que já
+retornavam cedo antes desta rodada, no caso do artista). Migrations:
+nenhuma.
+
+**Não avançar pro resto do P1 sem aprovação explícita.**
+
+## 88. Privacidade na Comunidade — feature nova (Web + App), não re-skin — `[DELIVERED/CLOSED]`
+
+Terceiro item da lista priorizada do bloco 85, mas o primeiro que não
+é re-skin: a auditoria tinha achado "promessa de tela de privacidade
+da Comunidade que não existe em código nenhum" —
+`perfil/privacidade/page.tsx` dizia "sua privacidade dentro da
+Comunidade... tem uma tela própria" e linkava por engano pro editor
+de perfil profissional geral (`perfil/editar`). Investigação
+confirmou: os 7 campos `show_*` de `community_profiles` (migration
+0059) e a RPC `update_community_profile` já existiam prontos desde
+sempre, e a camada de dados (`getMyCommunityProfile`/
+`updateCommunityProfile`/`ensureCommunityProfileActivated`) já existia
+tanto em `src/lib/community/data.ts` (Web) quanto em
+`mobile/src/lib/data/community.ts` (App) — só nenhuma tela em nenhuma
+plataforma jamais os chamava. Decisão de produto do usuário: construir
+a superfície faltante (não só corrigir a copy), com paridade Web+App,
+reaproveitando banco/RPC/RLS/data layer existentes sem alteração.
+
+**Web**: nova subpágina `/dashboard/perfil/privacidade/comunidade`
+(`page.tsx` + `community-privacy-form.tsx`), Server Action dedicada
+(`community-privacy-actions.ts`, mesmo padrão de arquivo isolado já
+usado por `account-closure-actions.ts`). Artista-only — mesmo escopo
+do resto da Comunidade V1 (`activate_community_profile` recusa
+`role != 'artista'` internamente) — redirect silencioso pro hub de
+privacidade pra quem não é artista, sem link morto. Ativação invisível
+ao entrar na subpágina (`ensureCommunityProfileActivated`, mesma
+convenção já usada em toda superfície de Comunidade — nenhum passo
+explícito de "entrar"), o que torna o estado "usuário sem
+community_profile inicial" não-alcançável por design nesta tela
+(sempre existe uma linha antes do form renderizar). O hub
+(`perfil/privacidade/page.tsx`) ganhou um novo grupo "Comunidade" com
+`ProSettingsRow` linkando pra subpágina, com resumo (`"N de 7
+visíveis"`/`"Nada visível ainda"`, omitido se nunca ativado — nunca um
+placeholder), visível só pra `role === 'artista'`; a frase que
+prometia "uma tela própria" foi reescrita e o botão errado
+("Editar perfil público" → `perfil/editar`) removido do card "Seus
+dados", que agora só fala de exportação de dados.
+
+**App**: nova linha "Privacidade na Comunidade" em
+`mobile/app/(tabs)/mais/configuracoes.tsx`, abrindo um `BottomSheet`
+novo (`CommunityPrivacySheet`) com os mesmos 7 `Switch`, reaproveitando
+`mobile/src/lib/data/community.ts` já existente (zero data layer
+nova). Busca (`ensureCommunityProfileActivated` +
+`fetchMyCommunityProfile`) só acontece quando o sheet abre, não no
+`load()` da tela toda — abrir Configurações não deve ativar
+silenciosamente a participação na Comunidade; só entrar neste sheet
+especificamente é uma ação relacionada a ela. Refaz a busca toda vez
+que reabre (nunca mostra valor desatualizado depois de
+fechar/reabrir). Sem role check no App (confirmado por auditoria: o
+App inteiro não tem branch de role nenhum, é artista-only por
+construção).
+
+**UX**: rótulos em linguagem comum nas duas plataformas, idênticos
+palavra por palavra ("Mostrar minha cidade", "Mostrar minha foto",
+"Mostrar minha bio", "Mostrar minhas especialidades", "Mostrar tipos
+de trabalho", "Mostrar meu Instagram", "Mostrar meu portfólio") — nunca
+o nome da coluna. Subtítulo deixa explícito que afeta só o perfil
+público da Comunidade, não o Perfil profissional geral. Edição de
+conteúdo (Instagram/bio/portfólio em si) continua só em `perfil/editar`
+— aqui é exclusivamente visibilidade.
+
+**`available_for_referrals` — achado relacionado, fora de escopo,
+preservado**: a RPC `update_community_profile` exige os 8 parâmetros
+juntos (sem update parcial) — o 8º campo, `available_for_referrals`
+("disponível pra indicações"), é um sinal de produto diferente dos 7
+pedidos e também está sem UI em qualquer lugar (mesmo achado que os 7,
+mas fora do escopo desta rodada — não é um dos campos listados). Nunca
+exposto como toggle nesta tela; nas duas plataformas, o valor atual é
+lido junto com o resto do snapshot e reenviado sem alteração a cada
+save, pra nunca ser resetado silenciosamente. Candidato a rodada
+futura, registrado, não implementado.
+
+**Verificação de segurança/integridade solicitada**: revisão completa
+da migration 0059 (schema, RLS, as duas RPCs, a view
+`community_profiles_public`) não encontrou nenhuma divergência entre a
+view e os 7 toggles — cada campo opcional só é exposto quando
+`visibility_status = 'active' AND show_x = true`, exatamente como os
+nomes prometem. Nenhuma mudança de schema/RPC/RLS/semântica nesta
+rodada.
+
+**QA**: `tsc --noEmit`/`eslint`/`next build` limpos nas duas
+plataformas. Visual via rota `/dev/community-privacy-preview` efêmera
+(deletada antes do commit) — `CommunityPrivacyForm` é puramente
+apresentacional (só invoca a Server Action real no submit), cobriu
+todos-falso/todos-verdadeiro/misto em desktop/tablet/mobile, e o novo
+grupo do hub isolado com 3 variações de summary. Interação real via
+Playwright: toggle individual de um checkbox confirmado (estado
+`false→true`); submit clicado sem sessão Supabase real (limite deste
+ambiente sandboxed, mesmo já documentado nos blocos 86/87) —
+confirmado que a Server Action falha seguro (`redirect('/login?...')`
+via `if (!user)`), nunca um crash ou comportamento indefinido. Estados
+não verificáveis ao vivo neste ambiente (round-trip real de
+persistência, refletir em `community_profiles_public` pra outro
+usuário, App num simulador) confirmados por revisão de código: (1)
+"usuário sem community_profile inicial" — não-alcançável por design
+via `ensureCommunityProfileActivated`, explicado acima; (2) "perfil
+público refletindo cada opção" — lógica da view auditada e confirmada
+correta, não alterada por este bloco; (3) App — sem simulador/device
+neste ambiente, validado por `tsc`/`eslint` limpos + paridade de
+lógica linha a linha com o Web (mesmos nomes de campo, mesma
+sequência de chamadas `ensure→fetch→update`, mesmo tratamento de erro
+try/catch). Nenhuma regressão em Professional Profile — confirmado
+por `git status`: nenhum arquivo de `perfil/editar/`,
+`artist-profile-form.tsx` ou correlatos aparece no diff deste bloco.
+Nenhuma divergência de nomenclatura Web↔App — os 7 rótulos são texto
+idêntico nas duas plataformas (comparação direta dos arrays
+`TOGGLES`/`COMMUNITY_TOGGLES`). Migrations: nenhuma (reaproveita
+0059 integralmente).
+
+**Fechado como feature própria** — não é mais parte da lista de
+re-skin do P1; o item #6 (divergência de cores/vocabulário de status
+Web↔App) fica como o próximo, aguardando instrução.
+
+## 89. Divergência de vocabulário/cor de status Web×App — auditoria + correções técnicas + unificação de "Precisa de você" (D1-D6, C1-C6) — `[DELIVERED]`
+
+Item #6 da lista priorizada do bloco 85. Auditoria read-only prévia
+(4 seções: matriz Web×App, fonte de verdade, correções técnicas
+seguras, decisões de produto pendentes) foi aprovada pelo usuário, que
+deu instruções detalhadas D1-D6 + C1-C6. Ver `DECISOES.md` (entrada
+"Divergência de vocabulário/cor Web×App (D1-D6)", 09/09/2026) pro
+racional completo — aqui só o inventário do que mudou.
+
+**Modelo semântico de cor unificado (D1/D2)**: novo módulo
+`src/app/dashboard/booking-attention.ts` (Web) —
+`wasBookingProposedByViewer`, `classifyBookingAttention`,
+`BOOKING_ATTENTION_FILTERS` — espelhando
+`wasProposedByViewer`/`classifyBookingForChip`/`BookingChip` já
+existentes em `mobile/src/lib/data/bookings.ts`. `pro-format.ts`
+ganhou `bookingStatusTone(booking, viewerId)` (substitui o mapa
+estático `PRO_BOOKING_PILL_TONE`) e `PRO_CONVERSATION_STATE_TONE`;
+`proStatusPillClass`/`StatusPillTone` (Web e App,
+`mobile/src/components/shared/StatusPill.tsx`) ganharam o tom
+`'neutral'`. `bookingStatusTone` equivalente adicionado a
+`mobile/src/lib/data/bookings.ts`. Call sites atualizados nas duas
+plataformas: Web —
+`bookings/[id]/pro-booking-detail-view.tsx`,
+`bookings/[id]/pro-contract-section.tsx` (labels),
+`bookings/[id]/conversa/[conversationId]/conversa-view.tsx`,
+`professional-home-view.tsx`, `trabalhos/pro-trabalhos-view.tsx`
+(+ `userId` novo prop, plumbado de `trabalhos/page.tsx`); App —
+`components/bookings/BookingListRow.tsx` (+ `viewerId` novo prop,
+plumbado de `app/(tabs)/bookings/index.tsx`), `app/(tabs)/index.tsx`.
+
+**D4 — Bookings Web ganhou os grupos de filtro do App**
+(`Todos`/`Precisa de você`/`Em negociação`/`Confirmados`/
+`Concluídos`/`Cancelados`) via `BOOKING_ATTENTION_FILTERS` +
+`classifyBookingAttention` em `pro-trabalhos-view.tsx`, substituindo
+`BOOKING_STATUS_FILTERS` (que continua existindo e em uso só no
+`TrabalhosList` legado do Booker, intocado).
+
+**D3/D5 — "Precisa de você" unificado sem tocar schema/RPC**:
+investigação confirmou `conversations.related_booking_id` nunca é
+escrito com valor não-nulo em nenhum caminho de código atual
+(`proposeBookingAction`/`selectBookerForOpportunityAction` não tocam
+`conversations`; `ensure_opportunity_for_conversation`, migration
+0051, só grava `related_opportunity_id`; nenhuma tool de IA escreve em
+`bookings`) — bookings aguardando resposta e conversas "precisa de
+você" são conjuntos disjuntos hoje, então somá-los nunca duplica o
+mesmo bloqueador. Home (Web e App) passou a expor um `attentionCount`
+canônico (bookings aguardando resposta + conversas needs_you) no hero,
+no stat card e no header do accordion "Precisa de você" — o corpo do
+accordion agora lista os dois tipos, então o número do header sempre
+bate com o que está listado. Achado incidental corrigido junto: no
+App, o stat card "Conversas que precisam de você" estava com tom
+âmbar (errado — needs_you é sempre vermelho no modelo semântico);
+corrigido pra vermelho.
+
+**D6**: apresentação de Conversation State (pill preenchido no Web,
+ponto+texto no App) documentada como divergência intencional de
+plataforma em `DECISOES.md` — nenhuma mudança de código necessária
+além da paridade de cor já obtida via C3.
+
+**C1-C6**: removidas as duplicações locais de `STATUS_LABELS`
+(`pro-booking-detail-view.tsx`) e `CONTRACT_STATUS_LABELS`
+(`pro-contract-section.tsx`) no Web (agora importam de `ui.ts`);
+consolidados os 3 mapas de tom de conversa locais divergentes em
+`PRO_CONVERSATION_STATE_TONE` (Web); exportadas
+`pendingReplyOutcomeLabel`/`preparedDraftOutcomeLabel` de
+`mobile/src/lib/data/decisions.ts`, removendo a reimplementação
+idêntica em `app/(tabs)/mais/decisoes.tsx`, e `decisionBlockReasonLabel`
+reaproveitada em `DecisionCard.tsx` (removida sua própria cópia local);
+consolidada a declaração duplicada de `ConversationState` no App
+(`mobile/src/types/conversation.ts` agora reimporta/reexporta de
+`mobile/src/lib/conversation-state.ts`); corrigido o ternário
+simplificado de 2 tons da Home do App (linha 217 de
+`app/(tabs)/index.tsx`) pra usar `bookingStatusTone` completo.
+
+**Gap de paridade funcional Professional App — registrado, não
+implementado nesta rodada** (são superfícies faltando, não divergência
+de vocabulário): status de **Contrato** (anexar/gerar,
+`contractStatus`/`CONTRACT_STATUS_LABELS`), **Payment due** derivado
+(`paymentDueState`/`PAYMENT_DUE_LABELS` — a_vencer/vencido/
+em_cobrança) e status de **Disputa** (`DisputeStatus`/
+`DISPUTE_LABELS`) só existem no Web
+(`src/app/dashboard/bookings/[id]/booking-detail-shared.ts` +
+`pro-contract-section.tsx`) — o App não tem UI nenhuma pra nenhum dos
+três hoje. Candidatos explícitos a um bloco futuro de paridade
+funcional Web↔App; não esquecer.
+
+**Limites respeitados**: nenhum valor real de `bookings.status`/
+`disputes.status`/etc. alterado — só leitura/apresentação; nenhuma
+migration/RPC/RLS tocada; nenhuma regra comercial alterada; a lógica
+de `deriveConversationState()` (Web e App) não foi tocada, só
+apresentação de cor (D6); Booker Legacy (`bookings-list.tsx`
+`BookingRow`/`BookingsPreview`, `contract-section.tsx`,
+`TrabalhosList`) sem nenhuma mudança.
+
+**QA**: `tsc --noEmit` limpo nas duas plataformas (Web zero erros;
+App tinha 3 erros de `ConversationState` fora de escopo do `export
+type {} from` re-export-only — corrigidos trocando por `import
+type` + `export type {}` explícito). `eslint` escopado aos arquivos
+tocados: zero erros novos (os 2 achados — `set-state-in-effect` em
+`app/(tabs)/bookings/index.tsx:42` e `radii` não usado em
+`DecisionCard.tsx` — confirmados pré-existentes via diff, não
+introduzidos por este bloco). `next build` (Web) verde, 59 rotas
+geradas. Visual: rota efêmera `/dev/booking-attention-preview`
+(deletada antes do commit) renderizou os 7 casos de
+`bookingStatusTone` + os 6 filtros de `BOOKING_ATTENTION_FILTERS` + os
+4 tons de `PRO_CONVERSATION_STATE_TONE` com dados mockados — cores
+confirmadas visualmente batendo com o modelo semântico D1 (vermelho
+pra "outra parte propôs"/needs_you/cancelada, âmbar pra "eu
+propus"/aguardando_pagamento/waiting_client, verde pra
+aceita/concluída, contorno neutro pra recusada/in_progress/closed).
+App sem simulador neste ambiente (mesma limitação já documentada nos
+blocos anteriores) — validado por `tsc`/`eslint` limpos + paridade
+linha a linha com as funções Web equivalentes.
+
+## 90. Bloco 7, P1 — App Agenda perdendo o estado "indisponível" — `[DELIVERED]`
+
+Item (e) da lista priorizada do bloco 85, próximo da fila após o
+checkpoint solicitado pelo usuário. Investigação objetiva confirmada:
+o estado `indisponivel` (`AgendaEntryType`, `entry_type` em
+`agenda_entries`, migration 0030 — `check (entry_type in
+('disponivel', 'indisponivel', 'viagem', 'outro'))`) nunca foi perdido
+em criação, edição, exclusão ou leitura no App — só na **cor do
+marcador** da lista de eventos do dia. Causa raiz: em
+`mobile/app/(tabs)/agenda.tsx`, o ponto colorido de cada evento usava
+só 2 cores (`event.kind === 'confirmado' ? styles.dotConfirmado :
+styles.dotEntry`) — `disponivel`, `indisponivel`, `viagem` e `outro`
+caíam TODOS no mesmo âmbar (`dotEntry`). Como `disponivel` e
+`indisponivel` são opostos semânticos (mesmo modelo do bloco 89:
+âmbar = atenção sem caráter negativo, vermelho = evento
+negativo/ação), o profissional não conseguia distinguir visualmente
+"estou disponível" de "estou indisponível" olhando só a cor — só lendo
+o texto do título do evento. Web nunca teve esse bug:
+`AGENDA_DOT_COLOR`/`AGENDA_TAG_COLOR` (`src/app/dashboard/ui.ts`)
+sempre tiveram uma entrada própria pros 5 kinds (`confirmado`/
+`disponivel`/`indisponivel`/`viagem`/`outro`).
+
+**Rastreamento completo confirmou que o resto do App está correto**:
+tipo (`mobile/src/types/agenda.ts`, `AgendaEntryType` espelha o CHECK
+do banco 1:1), fetch (`fetchArtistAgendaEntries`, sem filtro por
+tipo), criação (`AddAgendaEntrySheet.tsx` — os 4 tipos como chips
+selecionáveis, `indisponivel` inclusive é o valor default do form),
+exclusão (`deleteAgendaEntry`, sem tipo envolvido), transformação
+(`buildAgendaEvents`/`expandAgendaEntry` em
+`mobile/src/lib/data/agenda.ts` preservam `entry_type` como `kind` em
+cada `AgendaEvent`, sem descartar nenhum), e o label de texto no
+BottomSheet de detalhe do evento (`AGENDA_ENTRY_TYPE_LABELS[entry.
+entry_type]`, sempre correto). `MonthCalendar.tsx` (a grade mensal
+pequena) usa um único marcador genérico "tem atividade nesse dia" pra
+QUALQUER kind (incluindo `confirmado`) — não foi tocado: é uma
+simplificação de densidade já existente que trata todos os tipos
+igualmente, não uma perda específica de `indisponivel`, e mudar isso
+seria uma decisão de design de calendário compacto, fora do escopo de
+um bug de paridade.
+
+**Correção**: novo mapa `EVENT_DOT_COLOR` em `agenda.tsx`, espelhando
+`AGENDA_DOT_COLOR` do Web (`confirmado`=verde, `disponivel`=âmbar,
+`indisponivel`=vermelho, `viagem`/`outro`=neutro/`colors.tx30`) —
+mesmo significado/regra do backend, só a cor do marcador muda por
+`kind`. `styles.dotConfirmado`/`styles.dotEntry` removidos (mortos
+depois da mudança).
+
+**Antes**: lista de eventos do dia mostrava um ponto âmbar idêntico
+pra `disponivel`, `indisponivel`, `viagem` e `outro` — só o texto do
+título diferenciava. **Depois**: ponto vermelho pra `indisponivel`,
+âmbar pra `disponivel`, cinza neutro pra `viagem`/`outro`, verde pra
+`confirmado` — mesma paleta semântica do Web, mesma regra/backend,
+nenhum dado alterado.
+
+**Sem gate acionado**: nenhuma decisão de produto, mudança de modelo
+de Agenda, schema/RPC/RLS foi necessária — Web e App já compartilham
+exatamente o mesmo conceito (`AgendaEntryType`/`entry_type`), a
+correção foi só de apresentação. Booker Legacy (`agenda/page.tsx`,
+branch `role === 'booker'`, `agenda-entry-form.tsx`) não foi tocado.
+
+**QA**: `tsc --noEmit` limpo (Web e App). `eslint` no arquivo alterado
+sem erros novos — o único erro reportado
+(`react-hooks/set-state-in-effect` em `load()` dentro do `useEffect`,
+linha 69) é pré-existente, confirmado por `git show HEAD:...` que a
+linha não faz parte deste diff. Visual: sem simulador/device neste
+ambiente (mesma limitação documentada em blocos anteriores) — a
+mudança é uma constante de 5 entradas mapeando 1:1 pros mesmos tokens
+de cor (`colors.red`/`colors.amber`/`colors.green`/`colors.tx30`) já
+usados e visualmente confirmados no bloco 89 (`StatusPill`/
+`bookingStatusTone`), então o risco de regressão visual é mínimo;
+confirmado por leitura de código que a lógica de renderização (dot →
+cor por `kind`) é a única mudança, sem tocar layout/tamanho/posição.
+Migrations: nenhuma.
+
+**Achado registrado, não implementado (fora deste P1)**: `MonthCalendar.tsx`
+não diferencia visualmente os tipos de evento no grid mensal (um só
+marcador genérico por dia, independente do `kind`) — diferente do Web,
+que colore os pontinhos do calendário por tipo. Isso não é a mesma
+classe de bug (não confunde `disponivel` com `indisponivel`, porque
+não distingue NENHUM tipo, incluindo `confirmado`) — é uma
+simplificação de densidade de UI mobile já existente. Se algum dia
+vier a ser corrigido, é uma decisão de design de calendário compacto
+(quantos pontos cabem numa célula de 40×40), não um bug de paridade
+Web×App — registrado aqui só pra não ser confundido com o item que
+este bloco resolveu.
+
+## 91. Bloco 7, P1 — paginação/limite real na query de notificações da Comunidade — `[DELIVERED]`
+
+Item (g) da lista priorizada do bloco 85. O checkpoint já tinha
+confirmado que Web e App consultavam `community_notifications` com
+`select('*').order(...)` sem `.limit()`/`.range()` — crescimento
+ilimitado de payload por request. Antes de corrigir, mapeou-se o fluxo
+completo (pedido explícito do usuário): resultado teve mais
+consumidores e uma superfície real de histórico completo do que o
+checkpoint sozinho sugeria — a correção não podia ser um `.limit(N)`
+cego na função compartilhada sem quebrar essa superfície.
+
+**Consumidores mapeados (Web)**: dois sinos independentes, os dois
+popovers/preview (max-height com scroll, sem "carregar mais", sem
+rota "Ver todas" — nenhuma existe hoje no Web): `NotificationBell`
+(`src/app/dashboard/notification-bell.tsx`, no `pro-shell.tsx`,
+visível em toda página do painel Pro) e `CommunityNotificationsBell`
+(`src/app/dashboard/comunidade/community-notifications-bell.tsx`,
+só dentro de `/dashboard/comunidade`) — **este é exatamente o achado
+"2 sinos" já registrado no checkpoint anterior como item (h) pendente,
+agora confirmado em código**: dois componentes de sino totalmente
+independentes, cada um fazendo sua própria busca da mesma tabela, sem
+nenhum cache compartilhado entre eles. (h) continua fora de escopo
+deste item — não implementamos cache compartilhado aqui, só limitamos
+cada consulta.
+
+**Consumidores mapeados (App)**: três leituras de
+`fetchCommunityNotifications` — o preview do sino da Home
+(`fetchNotificationCards`, `NotificationsSheet`, bottom sheet
+max-height 360, mesmo padrão preview do Web), o badge de não lidas do
+header do Fórum (`mobile/app/forum/index.tsx`), e **uma tela dedicada
+"Ver todas" que o Web não tem equivalente**:
+`mobile/app/forum/notificacoes.tsx` (`ForumNotificacoesScreen`,
+alcançada pelo botão de notificações do Fórum) — só ali o produto
+promete histórico completo. Um `.limit(N)` cego na função
+compartilhada teria truncado essa tela silenciosamente, exatamente o
+risco que o usuário pediu pra evitar.
+
+**Estratégia adotada — dois tratamentos diferentes pra dois problemas
+diferentes, sem RPC/schema/RLS novos**:
+1. **Previews/popovers (2 sinos do Web + sino da Home do App)**:
+   `.limit(20)` direto na query compartilhada (mesma convenção já
+   usada em Decisões/Comunidade pra "uma página razoável" — nenhum
+   número novo inventado). Nenhuma dessas superfícies jamais prometeu
+   histórico completo (scroll dentro de uma caixa pequena, sem "ver
+   mais"), então isso é comportamento equivalente ao que sempre existiu
+   na prática — nunca visível pro usuário como corte.
+2. **Tela dedicada "Ver todas" do App**: paginação real via
+   `.range(offset, offset+limit-1)` (recurso puro do query builder do
+   Supabase — mesma tabela, mesma RLS `recipient_profile_id =
+   auth.uid()` já existente desde a migration 0059, zero mudança de
+   backend) + botão "Carregar mais" (heurística padrão: some quando uma
+   página vem menor que o tamanho da página — sem contagem total, sem
+   RPC nova, mesmo espírito simples já usado noutros "carregar mais"
+   do produto). A tela também ganhou `ScrollView` (antes era uma `View`
+   fixa sem rolagem — bug pré-existente e independente, mas que
+   precisava ser corrigido pra "Carregar mais" fazer sentido:
+   sem scroll, itens adicionais simplesmente ficariam fora da tela).
+3. **Badge de não lidas (as 5 superfícies que mostram contador — 2
+   sinos Web, sino da Home do App, badge do header do Fórum)**: nunca
+   mais derivado de `items.filter(n => unread)` sobre a lista agora
+   limitada — um profissional pode ter uma notificação não lida mais
+   antiga que as 20 mais recentes (ex.: ignorou uma antiga enquanto N
+   novas chegaram e foram lidas), e o preview de 20 nunca deveria fazer
+   o badge subcontar. Nova função `countUnreadCommunityNotifications`
+   (Web: `src/lib/community/data.ts`; App:
+   `mobile/src/lib/data/community.ts`) — `select('id', {count:'exact',
+   head:true}).is('read_at', null)`, mesmo padrão já usado no resto do
+   produto pra contadores de badge (`layout.tsx`, `data.ts`,
+   `pipeline.ts`), index `community_notifications_recipient_unread_idx`
+   já existente desde a migration 0059 cobre a query. Cada consumidor
+   com badge agora busca a contagem exata em paralelo com a lista
+   limitada, e decrementa localmente (nunca recomputa do zero) quando
+   o próprio usuário marca um item do preview como lido.
+
+**Arquivos alterados**:
+- Web: `src/lib/community/data.ts` (`listCommunityNotifications` +
+  `.limit(20)`, nova `countUnreadCommunityNotifications`),
+  `src/app/dashboard/notifications-actions.ts` (`listNotificationsAction`
+  agora devolve `{items, unreadCount}`),
+  `src/app/dashboard/notification-bell.tsx` (consome o novo formato,
+  unreadCount em state próprio, decremento local),
+  `src/app/dashboard/comunidade/page.tsx` (busca
+  `countUnreadCommunityNotifications` em paralelo, novo prop),
+  `src/app/dashboard/comunidade/pro-comunidade-home-view.tsx` (repassa
+  `notificationsUnreadCount`), `src/app/dashboard/comunidade/community-notifications-bell.tsx`
+  (mesmo tratamento do NotificationBell).
+- App: `mobile/src/lib/data/community.ts`
+  (`COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT`, `fetchCommunityNotifications`
+  agora aceita `{limit, offset}` via `.range()`, nova
+  `countUnreadCommunityNotifications`), `mobile/src/lib/data/notifications.ts`
+  (`fetchNotificationCards` agora devolve `{items, unreadCount}`),
+  `mobile/app/(tabs)/index.tsx` (consome o novo formato, unreadCount em
+  state próprio, decremento local), `mobile/app/forum/index.tsx` (badge
+  do header via `countUnreadCommunityNotifications`, nunca mais
+  derivado da lista), `mobile/app/forum/notificacoes.tsx`
+  (paginação real com "Carregar mais" + `ScrollView` adicionado).
+
+**Antes**: as duas plataformas buscavam a tabela inteira
+(`select('*')` sem limite) em toda leitura — sino, badge e a tela "Ver
+todas" do App, todos crescendo o payload de request pra sempre
+conforme o histórico de notificações de cada profissional aumentava.
+**Depois**: previews limitados a 20 (nunca visível como corte pro
+usuário, mesmas superfícies pequenas de sempre); tela "Ver todas" do
+App pagina de verdade (nunca trunca histórico, "Carregar mais"
+visível quando há mais); todo badge de não lidas usa contagem exata
+via `count:'exact', head:true` (nunca subconta uma não lida fora do
+preview).
+
+**Limites respeitados**: nenhuma migration/RPC/RLS nova — `.limit()`/
+`.range()`/`count:'exact'` são recursos do query builder do Supabase já
+usados extensivamente no resto do produto, sobre a mesma tabela e a
+mesma policy "select own" existente desde a migration 0059; nenhum
+"Notification Center" genérico foi criado (o escopo Comunidade-only
+continua o mesmo, decisão já registrada); nenhuma "Ver todas" nova foi
+criada pro Web (aumentaria escopo pra funcionalidade nova — Web nunca
+prometeu isso, então não há superfície a "consertar" lá); nenhuma
+mudança de RLS/schema.
+
+**QA**: `tsc --noEmit` limpo (Web e App). `eslint` em todos os 10
+arquivos tocados (Web + App) sem erros novos. `next build` (Web) verde.
+Visual: sem simulador/device neste ambiente pro App (mesma limitação
+documentada nos blocos anteriores) — validado por `tsc`/`eslint`
+limpos + rastreamento completo de tipo/consumo. Web: `next start` local
++ `curl` em `/dashboard` e `/dashboard/comunidade` confirmou 307
+(redirect de auth esperado, nunca 500/crash) nas rotas que tocam os
+componentes alterados — sem sessão Supabase real neste ambiente
+sandboxed (mesma limitação já documentada em blocos anteriores) pra
+click-through completo dos popovers/badge.
+
+**Findings novos, registrados sem alterar prioridade**:
+- **(h) confirmado em código**: os "2 sinos" do Web
+  (`NotificationBell`/`CommunityNotificationsBell`) são de fato dois
+  componentes totalmente independentes, sem cache compartilhado —
+  cada um faz sua própria busca. Este item permanece pendente na fila
+  original, agora com a causa raiz já mapeada (útil pra quando for a
+  vez dele).
+- **Bug de scroll pré-existente e independente, corrigido como
+  pré-requisito**: `mobile/app/forum/notificacoes.tsx` não tinha
+  `ScrollView` — a lista inteira vivia numa `View` fixa. Historicamente
+  pouco visível (histórico curto), mas se tornaria um bug real e
+  óbvio assim que a paginação real trouxesse mais itens. Corrigido
+  junto por ser pré-requisito funcional da própria correção deste
+  item, não escopo novo.
+
+**Restam pendentes da lista original do bloco 85**: (h) cache
+compartilhado entre os 2 sinos do Web (achado confirmado acima) e
+"outros itens menores" (nunca enumerados) — (e) e (g) já entregues
+(blocos 90 e 91).
+
+## 92. Bloco 7, P1 — fonte compartilhada entre os 2 sinos de notificações do Web — `[DELIVERED]`
+
+Item (h) da lista priorizada do bloco 85, confirmado em código no
+bloco 91. Investigação (pedida explicitamente antes de codar) mapeou
+`NotificationBell` (topbar global, `pro-shell.tsx`, visível em toda
+página não-booker) e `CommunityNotificationsBell` (só dentro de
+`/dashboard/comunidade`) — os dois ficam **visíveis ao mesmo tempo**
+na tela quando o usuário está em `/dashboard/comunidade` (topbar
+global + header da própria página). Confirmado: mesma fonte canônica
+(`community_notifications`, mesma RLS, mesmos `listCommunityNotifications`/
+`countUnreadCommunityNotifications` do bloco 91 — nenhuma diferença
+semântica real), mesmo mecanismo de mark-as-read (mesma RPC
+`mark_community_notification_read`, só por dois Server Actions finos
+diferentes até este bloco), mesmo limite de 20/mesma contagem exata —
+a única diferença real era arquitetural: cada um buscava e guardava
+seu próprio estado React, sem nenhuma sincronização entre eles.
+Diferenças legítimas de apresentação preservadas: `NotificationBell`
+inclui o título do tópico na mensagem e nunca usa âncora de post;
+`CommunityNotificationsBell` omite o título e usa `#msg-{postId}`
+quando a notificação aponta pra uma mensagem específica — texto/link
+diferentes por design, nunca por bug.
+
+**Causa raiz**: `NotificationBell` buscava via `listNotificationsAction()`
+num `useEffect` próprio (fetch client-side ao montar, estado local
+`items`/`unreadCount`). `CommunityNotificationsBell` recebia dados já
+resolvidos via SSR (`comunidade/page.tsx` chamando
+`listCommunityNotifications`/`countUnreadCommunityNotifications`
+direto, passados como props `initialNotifications`/`initialUnreadCount`).
+Marcar uma notificação como lida num sino só atualizava o estado
+LOCAL daquele componente — o outro, com seu próprio estado
+independente, continuava mostrando a mesma notificação como não lida
+(e a contagem desatualizada) até a página inteira recarregar. Em
+`/dashboard/comunidade`, isso era visível ao vivo: os dois sinos na
+tela podiam mostrar números diferentes pro mesmo conjunto de dados.
+
+**Arquitetura antes**: 2 componentes → 2 buscas independentes → 2
+estados React independentes → nenhuma sincronização.
+**Arquitetura depois**: 1 fonte (`NotificationsProvider`, novo
+`src/app/dashboard/notifications-context.tsx`, mesmo padrão já
+estabelecido no projeto — `ProModalProvider`/`ReferralModalProvider`
+em `layout.tsx`, Context do React, sem lib nova — confirmado que este
+projeto não usa SWR/React Query) → estado único (`items`/`unreadCount`/
+`phase`) → mutação única (`markRead`) → os dois sinos são só
+consumidores (`useNotifications()`) que formatam sua própria
+apresentação em cima do mesmo dado. `listNotificationsAction` (em
+`notifications-actions.ts`) passou a devolver dados CRUS enriquecidos
+(`NotificationEntry`: actorName/topicTitle/postId já resolvidos, sem
+mensagem/link formatados) — cada sino monta sua própria mensagem/link
+com uma função pura local, preservando exatamente o texto/link que já
+tinha antes.
+
+**Montagem do provider**: dentro de `ProfessionalShellGate`
+(`layout.tsx`), envolvendo `<ProfessionalShell>` — escopado à árvore
+não-booker (Booker não tem sino nenhum, evita busca desperdiçada),
+cobre os dois pontos de consumo (`NotificationBell`, dentro do próprio
+`ProfessionalShell`; `CommunityNotificationsBell`, dentro de
+`{children}` quando a rota é `/dashboard/comunidade`).
+
+**Comportamento de sincronização entre os dois sinos**: garantido
+pela semântica do React Context — os dois componentes leem do MESMO
+objeto de estado (`useContext` no mesmo Provider), então qualquer
+`setState` dentro do provider (via `markRead`/`refresh`) causa
+re-render de AMBOS os consumidores na mesma atualização, nunca em
+momentos diferentes. Marcar como lida em qualquer um dos dois sinos
+agora atualiza o outro instantaneamente — não é uma garantia de
+convenção/disciplina de código, é uma garantia do próprio mecanismo do
+React (a mesma classe de bug não pode reaparecer por um sino
+"esquecer" de notificar o outro, porque não existem mais dois estados
+pra ficarem dessincronizados).
+
+**Freshness preservada como comportamento intencional**:
+`CommunityNotificationsBell` chama `refresh()` no próprio mount (`useEffect`
+vazio) — como esse componente é remontado a cada visita a
+`/dashboard/comunidade` (conteúdo de `page.tsx`, diferente do layout
+persistente), isso preserva o comportamento de sempre desta tela
+(dado fresco a cada visita) e, por ser a MESMA fonte compartilhada,
+deixa `NotificationBell` já atualizado depois, sem ele precisar buscar
+nada. `NotificationBell` continua com a mesma cadência de sempre (uma
+busca ao montar o provider, sem refetch por navegação — mesmo
+comportamento que já tinha antes deste bloco).
+
+**Arquivos alterados**:
+- Novo: `src/app/dashboard/notifications-context.tsx`
+  (`NotificationsProvider`/`useNotifications`).
+- `src/app/dashboard/notifications-actions.ts` (`listNotificationsAction`
+  devolve `NotificationEntry[]` cru em vez de mensagem/link formatados).
+- `src/app/dashboard/notification-bell.tsx` (consome `useNotifications()`,
+  formata sua própria mensagem/link, sem busca/estado próprio).
+- `src/app/dashboard/comunidade/community-notifications-bell.tsx`
+  (idem, sem props — `refresh()` no mount preserva freshness por
+  visita).
+- `src/app/dashboard/comunidade/page.tsx` (removida toda busca/
+  enriquecimento de notificações — `CommunityNotificationsBell` não
+  recebe mais props; autores buscados só pros tópicos, não mais pros
+  atores de notificação).
+- `src/app/dashboard/comunidade/pro-comunidade-home-view.tsx`
+  (removidos os props `notifications`/`notificationsUnreadCount`).
+- `src/app/dashboard/comunidade/actions.ts` (removidos
+  `CommunityNotificationCard`/`markCommunityNotificationReadAction`,
+  agora mortos — a mutação passou a ser só `markNotificationReadAction`,
+  compartilhada via o provider).
+- `src/app/dashboard/layout.tsx` (`NotificationsProvider` montado
+  dentro de `ProfessionalShellGate`, envolvendo `ProfessionalShell`).
+
+**Preservado, nada alterado**: limite de 20/`countUnreadCommunityNotifications`
+do bloco 91 (reaproveitados sem mudança — a fonte compartilhada É a
+mesma função, só chamada uma vez agora); mark-as-read (mesma RPC
+`mark_community_notification_read`, mesmo comportamento otimista);
+comportamento visual/textual de cada sino (mensagem/link
+inalterados); RLS/backend (nenhuma migration, nenhuma RPC, nenhuma
+policy tocada); a App do App não foi tocada (este item é
+explicitamente Web-only, os 2 sinos são um achado só do Web).
+
+**QA**: `tsc --noEmit` limpo. `eslint` nos 8 arquivos tocados (7
+alterados + 1 novo) sem erros novos. `next build` verde. Visual: rota
+efêmera `/dev/notifications-sync-preview` (deletada antes do commit)
+montou os dois sinos dentro do mesmo `NotificationsProvider` (igual
+`layout.tsx` real) — sem sessão Supabase real neste ambiente, o
+`fetch` inicial cai no fail-safe já estabelecido em blocos anteriores
+(`redirect('/login')` dentro de `getSessionProfile()`, confirmado
+visualmente pela navegação real pra tela de login, nunca um crash) —
+mesma limitação de sempre pra testar click-through autenticado neste
+sandbox. A garantia de sincronização em si não depende de teste
+visual: os dois componentes leem do mesmo objeto React Context, então
+divergência de estado entre eles deixa de ser possível por construção
+(garantia do próprio React), não por disciplina de código.
+
+## 93. Bloco 7, P1 — fechamento consolidado do bloco 85: item (i) "outros itens menores" é irrecuperável — `[P1 CLOSED]`
+
+Com (a)-(h) todos `[DELIVERED]` (blocos 86-92), o único item restante
+da lista priorizada do bloco 85 era (i) — "e outros itens menores",
+citado no texto original sem nenhuma enumeração. Antes de considerar
+o P1 fechado, investigação read-only pra recuperar o que esse item
+representava de fato, em vez de simplesmente descartá-lo.
+
+**O que a investigação encontrou**: o bloco 85 descreve a auditoria
+original como 5 agentes de investigação em paralelo que "entregou uma
+matriz de paridade Web↔App e uma lista priorizada (P0/P1/P2) de
+achados", explicitando na própria frase que "auditoria completa, não
+repetida aqui" — ou seja, o texto do bloco 85 sempre foi um resumo
+condensado do output real dos 5 agentes, nunca o output em si. Os 4
+achados P0 foram transcritos com detalhe total (commit `645ca84`); os
+achados P1 viraram a lista de 8 itens (a)-(h), também com detalhe;
+tudo que sobrou de P2/observações menores foi comprimido na frase "e
+outros itens menores", sem nenhum item nomeado.
+
+**Busca por qualquer rastro do conteúdo real**:
+- `git log -S"outros itens menores" -- PROGRESS.md`: um único commit
+  (`d636fba`, o que criou o bloco 85) — a frase nunca foi expandida
+  em nenhum commit posterior.
+- Nenhuma entrada em `DECISOES.md` documenta a matriz P0/P1/P2 além
+  da correção pontual sobre `payout_requests` (já parte do P0.1).
+  Nenhuma entrada com data 08/09/2026 cobre "outros itens menores".
+- `git log --diff-filter=D --all`: nenhum arquivo de auditoria/matriz
+  deletado do repositório em nenhum momento.
+- O transcript desta sessão (que já registrou o checkpoint de
+  09/09/2026) começou depois do bloco 85 ter sido escrito — os 5
+  agentes daquela auditoria rodaram numa sessão anterior, cujo
+  contexto/output não é acessível a partir daqui.
+- Revisão de toda anotação "fora de escopo"/"achado"/"pendente"
+  registrada nos blocos 86-92 (o próprio trabalho de entregar (a)-(h),
+  que naturalmente encontrou pontos adjacentes menores): todos os
+  achados reais encontrados já são explicitamente os itens que o
+  usuário mandou NÃO absorver aqui — `available_for_referrals`
+  (bloco 88), Contract status/Payment due/Dispute no App (bloco 89),
+  `MonthCalendar.tsx` (bloco 90), Home pública congelada (bloco 84).
+  O único achado remanescente fora dessa lista de exclusão (botão "X"
+  do `ProfileModal` fora do tema `--pro-*`, bloco 86) já está
+  registrado como decisão deliberada de não mexer em componente
+  compartilhado com Professional/Agency Profile — não é um item
+  esquecido do bloco 85, é uma decisão de escopo já tomada e já
+  documentada no próprio bloco 86.
+
+**Conclusão factual**: (i) não tem conteúdo recuperável. Não é um
+item pendente com implementação adiada — é uma frase-resumo cujo
+conteúdo original nunca foi persistido em nenhum artefato (arquivo,
+commit, ou contexto de sessão) acessível hoje. Não existe lista
+oculta pra reconstruir, e inventar itens novos sob o rótulo (i)
+violaria a instrução explícita de não criar um roadmap novo. Esta
+sessão já vinha sinalizando essa mesma constatação desde o bloco 92
+(`"outros itens menores" (nunca enumerados)`), antes mesmo deste
+pedido de fechamento — não é uma descoberta nova desta rodada, é a
+confirmação formal de um gap de documentação já suspeitado.
+
+**Decisão de fechamento**: como todo o conteúdo verificável do bloco
+85 (P0 + P1 a-h) está `[DELIVERED]`, e (i) não representa nenhum
+trabalho concreto identificável, o bloco 85/P1 é declarado
+`[P1 CLOSED]`. Se um item pequeno e real surgir no futuro (visual,
+paridade, etc.), ele entra como um achado novo, registrado com seu
+próprio contexto — nunca como "parte do (i)", rótulo que não carrega
+mais nenhum significado operacional.
+
+**Nenhum código alterado neste bloco** — é puramente documental/de
+investigação, sem correção porque não havia nenhum alvo concreto de
+correção identificado. QA: `tsc --noEmit` e `eslint` re-executados no
+estado atual do repositório (pós-bloco 92) só pra confirmar que a
+árvore segue limpa antes do fechamento — sem diffs de código neste
+bloco, então nada novo a validar além disso.
+
+## 94. Bloco 6 — Nova Home pública V2, redesign a partir do doopla-home-mockup.html — `[DELIVERED / APPROVED / CLOSED — ver bloco 97]`
+
+Substitui a Home V1 (§84) por completo: auditoria pré-implementação
+(bloco anterior, sem número próprio — mapa do site institucional) foi
+aprovada e um novo mockup (`doopla-home-mockup.html`, anexado pelo
+usuário) virou a nova fonte de verdade visual, junto de uma
+especificação de implementação extensa (logo oficial, olhos
+interativos, piscada dos mascotes, reaproveitamento da seção
+"sempre com você"/WhatsApp da Home anterior, label de CTA, Menu em
+overlay). `src/app/page.tsx` continua lendo `home.html`/`home.css`/
+`home.js` do disco sem nenhuma mudança de arquitetura.
+
+**Logo (header/footer)**: a fonte de verdade não é nenhum PNG — depois
+de duas rodadas de esclarecimento, o usuário confirmou que a
+implementação real já existente no produto (`EyeLogo.tsx`: "d" + dois
+olhos + "pla", fonte `Familjen Grotesk`) é a identidade oficial, e o
+logo desenhado dentro do mockup deve ser ignorado como desenho (só
+posição/proporção como referência). `EyeLogo.tsx` em si **não foi
+alterado** — continua idêntico, usado sem mudança em `SiteHeader`/
+`SiteFooter`/`SiteMenuOverlay`/`LoginModal`/`CreateAccountModal`/
+`/login`. Pra Home (`home.html`, HTML cru, não pode montar um
+componente React inline no meio do fluxo do header/footer), o mesmo
+desenho foi reproduzido em marcação estática com as classes já
+existentes (`nav-logo`/`foot-logo`/`eye-slot`/`mascot-pupil`) —
+byte-idêntico em estrutura ao que `EyeLogo.tsx` renderiza. Tracking de
+cursor nas pupilas do logo reaproveita `initMascotEyes()` de
+`home.js` **sem nenhuma mudança de código**: a função já escaneia
+`.nav-logo`/`.foot-logo`/`.mascot-pupil` desde a Home V1 — bastou usar
+essas classes na marcação nova.
+
+**Seção "Sempre com você" (a seção que fala de WhatsApp)**: por
+instrução explícita, o card/mascote do mockup nessa seção foi
+substituído pelos dois "olhos grandes" já existentes e aprovados na
+Home anterior — mesma implementação (`.mascot`/`.mascot-eye`/
+`.mascot-pupil`, mesmo tracking + "pulinhos" de `initMascotEyes()`,
+zero reinterpretação), só sem o corpo vermelho/pernas do mascote
+(classe nova `.mascot-eyes-only`, que zera `background`/`box-shadow`/
+`::before`/`::after` do `.mascot` — **não são olhos novos**, é o
+mesmo elemento com um modificador CSS). Fundo da seção trocado pro
+vermelho Doopla sólido (`--red:#e2291c`, token já existente); legenda
+trocada de "Mais que automação. Representação." (Home antiga) para
+"Sua Doopla sempre com você." (única ocorrência dessa frase agora).
+Conteúdo do lado esquerdo é o do mockup, sem reescrita.
+
+**3 mascotes novos (hero + CTA final)**: desenho vem do mockup (corpo
+redondo, olhos, sorriso, "mãos"), usando os tokens de cor já
+existentes (nunca a paleta aproximada do mockup, `#ff2b34` etc.).
+Ganham **piscada** (`initMascotBlink()`, novo em `home.js`) — nunca
+tracking de cursor, grade de animação explícita do usuário ("o logo
+olha, os mascotes piscam"). Cada mascote tem seu próprio
+`setTimeout` (delay inicial + intervalo 2.4–6s, ambos aleatórios) —
+nunca sincronizados entre si. `scaleY` só no `.mascot-eye` (nunca na
+pupila), squash rápido (~110ms), sem alterar layout/dimensões.
+Respeita `prefers-reduced-motion` (desliga tracking E piscada). O
+mascote da seção "sempre com você" **não pisca** — só tem os olhos
+grandes reaproveitados, tracking apenas, por instrução explícita
+("não adicionar piscada se ela não existir atualmente").
+
+**Menu em overlay de tela cheia**: `HomeMenuOverlay.tsx` reescrito —
+deixou de delegar pro `SiteMenuOverlay` compartilhado (usado por
+Sobre/Segurança/Termos/Privacidade/Contato, explicitamente fora de
+escopo desta rodada: "não re-skinar... páginas institucionais
+compartilhadas"). Passou a renderizar seu próprio overlay escuro,
+exclusivo da Home, reaproveitando o MESMO padrão de interação (trigger
+nativo `#home-menu-trigger`, Escape fecha, scroll trava, foco volta
+pro trigger) sem tocar em `SiteMenuOverlay.tsx`/`site-chrome.css`. 6
+itens conforme pedido: Como funciona (`#como-funciona`), O que a
+Doopla faz (`#o-que-a-doopla-faz`, id novo na seção "Você cuida do seu
+trabalho"), Planos (`#planos`), Segurança (`/seguranca`, rota real),
+FAQ (`#faq`), Sobre (`/sobre`, rota real) — sem repetir "Entrar".
+Rodapé do overlay: "Quero minha Doopla" como copy de apoio (nunca
+label do botão) + CTA "Começar agora" → `/cadastro`.
+
+**CTA de aquisição padronizado como "Começar agora"** — header, hero,
+seção WhatsApp, 2 cards de plano, CTA final, overlay do menu. "Criar
+conta" preservado só onde descreve literalmente a ação dentro do
+fluxo de cadastro (não tocado). Todos os CTAs continuam apontando pro
+mesmo destino real de sempre (`/cadastro`, interceptado por
+`HomeCreateAccountModal` dentro de `#home-marketing`, exatamente como
+antes — nenhuma lógica de aquisição nova).
+
+**Achados/decisões registrados durante a implementação** (conflitos
+entre mockup e instruções, resolvidos e documentados, não decididos
+em silêncio):
+- **FAQ**: o novo mockup não tem seção de perguntas, mas a
+  especificação de Menu pede um item "FAQ" com destino. Mantida a
+  seção da Home anterior (8 perguntas, cópia idêntica), restilizada
+  pro novo sistema de cor — sem essa seção o item do menu não teria
+  pra onde apontar.
+- **Bullets de features dos planos**: o mockup mostra só nome/preço/
+  nota/CTA, sem lista. A Home anterior tinha bullets reais (Bookings
+  ilimitados, Booker/Minha equipe etc. — informação funcional sobre
+  diferença de entitlement, não só estética). Mantidos, restilizados.
+- **Header do mockup**: mostra links inline (Como funciona/Recursos/
+  Planos/Segurança/Sobre) sem nenhum botão "Menu" nem navegação
+  alternativa no mobile (nav simplesmente some abaixo de 760px, sem
+  substituto). A especificação escrita pede explicitamente um botão
+  "Menu" persistente abrindo overlay, com checklist de QA dedicado.
+  Resolvido a favor da especificação escrita (mais detalhada,
+  intencional, com critério de aceite próprio) — header final é
+  logo + Menu + Entrar + Começar agora, nunca os 5 links soltos do
+  mockup.
+- **Cor**: o mockup usa `--red:#ff2b34` (aproximação); a especificação
+  do logo/seção WhatsApp usa `#e2291c` — o mesmo valor que já era
+  `--red` no `home.css` desde a Home V1. Resolvido usando o token já
+  existente (`#e2291c`) em toda a Home, nunca a cor aproximada do
+  mockup.
+- **Parágrafo "Tem coisa que pede uma pessoa..."** (escalonamento
+  humano, presente na Home anterior dentro de "Como funciona"): não
+  existe no novo mockup e não tem nenhuma dependência funcional
+  (diferente da FAQ, que tem destino de menu) — removido, seguindo o
+  mockup à risca.
+
+**Achado técnico real, corrigido durante o QA** (bug de CSS Grid, não
+um achado de produto): `.hero-grid`/`.two-col`/`.with-you` usavam
+`grid-template-columns:1fr` no breakpoint mobile, mas sem
+`min-width:0` nos itens de grid o track nunca encolhe abaixo do
+min-content do conteúdo (badges/telefone/texto) — causava overflow
+horizontal real em 390px (texto do hero cortado saindo da tela,
+confirmado visualmente e via `getBoundingClientRect`). Corrigido
+adicionando `min-width:0` nos itens desses 3 grids — clássico "grid
+blowout bug", não estava previsto no mockup estático porque mockups
+não expõem esse tipo de bug sem teste real de viewport.
+
+**QA**: `tsc --noEmit` e `eslint` limpos nos 5 arquivos tocados. `next
+build` verde (`/` prerenderizada como estática). QA funcional real via
+Playwright contra `next start` (rota pública, sem limitação de sessão
+Supabase deste sandbox): screenshots completos em desktop (1440),
+tablet (834) e mobile (390) — sem overflow horizontal após a correção
+do grid; preço dinâmico confirmado renderizando `R$29,90`/`R$69,90`
+via `market.pricing` (não hardcoded); Menu overlay abre/fecha por
+clique e por Escape, navegação real pra `/seguranca` confirmada; modal
+de login abre pelo `#home-login-trigger`; piscada dos mascotes
+observada programaticamente (classe `.blink` aplicada dentro da janela
+esperada); olhos grandes reaproveitados da seção WhatsApp renderizando
+corretamente (2 círculos pretos + pupilas off-white sobre fundo
+vermelho) em desktop e mobile. Único erro de console em todas as
+capturas: `net::ERR_CONNECTION_RESET` do Google Fonts — limitação de
+proxy deste sandbox já documentada em blocos anteriores, não
+relacionada ao código.
+
+**Preservado, nada alterado**: autenticação, fluxo de aquisição/
+cadastro (`HomeCreateAccountModal`/`CreateAccountModal`), login
+(`HomeLoginModal`/`LoginModal`), `market.pricing` como única fonte de
+preço, rotas reais (`/sobre`, `/seguranca`, `/termos`, `/privacidade`,
+`/contato`, `/cadastro`, `/login`), dados legais/CNPJ no footer,
+`SiteHeader`/`SiteFooter`/`PageShell`/`SiteMenuOverlay`/páginas
+institucionais (zero alteração), `legal-page.tsx`/`legal.css`
+(continuam órfãos, não removidos nem reativados), débito
+`/seguranca#pagamento`/`#verified` (não tocado, fora de escopo por
+instrução explícita), `EyeLogo.tsx` e todas as suas outras aparições
+no produto (Professional Web, App, Booker — nenhuma tocada, escopo
+desta rodada é só header/footer da Home).
+
+**Arquivos alterados**: `src/app/_home/home.html` (reescrito),
+`src/app/_home/home.css` (reescrito), `src/app/_home/home.js`
+(`initMascotBlink()` novo + chamada no `boot()`, resto intocado),
+`src/app/_home/HomeMenuOverlay.tsx` (reescrito, próprio overlay em vez
+de delegar pro `SiteMenuOverlay`), `src/app/layout.tsx` (pesos de
+fonte `Inter 800`/`IBM Plex Mono 700` adicionados ao `<link>` do
+Google Fonts já existente — necessários pros headings/eyebrows do
+novo desenho, nenhum link novo).
+
+**Status atualizado (09/09/2026, mesmo dia)**: aprovado pela fundadora
+após a rodada de ajuste do bloco 96 (olhos legados da seção "sempre com
+você"). Ver bloco 97 para o fechamento formal.
+
+## 95. Onboarding/cadastro — fechamento: remove "Você emite nota fiscal?" da Etapa 3, mantém resto do Fluxo 1 já minimalista — `[DELIVERED]`
+
+Fechamento pontual do onboarding (Fluxo 1 — `CreateAccountForm` →
+`PrepareForm`/Etapas 2-5 → `PlanForm`/Etapa 6, o caminho padrão hoje
+pra artista sem convite, tanto standalone quanto no modal da Home).
+Auditoria já feita em sessão anterior (Bloco 4, 08/09/2026); esta
+rodada implementa direto, sem repetir a auditoria.
+
+**Fluxo final, etapa por etapa** (inalterado em número/ordem — só a
+Etapa 3 perdeu um campo):
+1. Criar conta — nome, e-mail, WhatsApp, senha (obrigatórios). Já era
+   mínimo antes desta rodada — nenhuma mudança.
+2. Preparar sua Doopla — nome profissional, o que você faz, cidade-base,
+   bio (todos obrigatórios, validados no servidor); link profissional
+   (opcional). Já era exatamente o "contexto mínimo" pedido — nenhuma
+   mudança.
+3. Como você trabalha — **"Você emite nota fiscal?" removida.** Só
+   resta "Tem algo que sua Doopla sempre deve saber antes de negociar
+   por você?", já opcional (nunca bloqueava o avanço, `canAdvance()`
+   já não checava esse sub-passo) — só ganhou "(opcional)" explícito no
+   label, que antes não deixava isso claro pra quem via a tela.
+4. Como sua Doopla fala com você — WhatsApp/Painel/Ambos, obrigatório.
+   Mapeia pra `attention_channel` (arquitetura de identidade/WhatsApp
+   já existente) — não tocado, fora do escopo desta rodada.
+5. Conclusão — tela de resumo, sem campos.
+6. Escolha de plano — `PlanPicker`, preço via `market.pricing`
+   (`TRIAL_DAYS` idem), sem Stripe/checkout real — já era assim, não
+   tocado.
+
+**O que foi removido/movido**: só a pergunta "Você emite nota fiscal?"
+saiu da tela — a coluna (`artist_profiles.issues_invoice`, migration
+0037) não foi tocada, `savePrepareAction` simplesmente parou de
+ler/escrever nela (nunca mais sobrescreve pra `null` um valor que já
+exista). **Achado que já resolvia a "superfície apropriada" pedida
+pela tarefa**: essa informação já é editável desde 08/09/2026 em
+`/dashboard/perfil/editar` (Settings V2 — `artist-profile-form.tsx`/
+`pro-artist-profile-form.tsx`, ver comentário em `dashboard/actions.ts:
+1324`) — não foi preciso criar nada novo, a superfície já existia.
+
+**Dependências preservadas, confirmadas por grep antes da remoção**:
+`issues_invoice` continua lido por
+`get-professional-business-context.ts` (tool do Runtime) e exposto em
+`context-builder/sections.ts` — nenhum dos dois foi tocado, só deixa de
+receber um valor novo vindo do cadastro (continua podendo receber via
+`/dashboard/perfil/editar`). `negotiation_notes`/`attention_channel`
+continuam coletados normalmente na Etapa 3/4 — também lidos pela mesma
+tool, sem nenhuma mudança de contrato.
+
+**Preservado, nada alterado**: autenticação (`createAccountAction`,
+`auth/actions.ts`), `attention_channel`/identidade de WhatsApp,
+`market.pricing`/`TRIAL_DAYS` como fonte de preço, RPC
+`select_artist_plan` (sem Stripe, sem checkout falso), dados de
+recebimento (continuam fora do onboarding, já era assim), RLS/RPCs/
+schema (nenhuma migration), Mandate/Policy/Approval Gate (nenhuma
+mudança de autonomia), `/dashboard/perfil/editar`.
+
+**Web + App**: o App mobile não tem nenhuma superfície de
+cadastro/onboarding própria (confirmado por auditoria anterior, Bloco
+4 — só `signInWithPassword`, contas nascem 100% no Web) — não há
+"dois modelos de onboarding" pra reconciliar; item 9 da especificação
+já estava trivialmente satisfeito.
+
+**Fora de escopo desta rodada, registrado como achado, não
+implementado**: o Fluxo 2 (`signup-form.tsx`, wizard de booker/artista
+convidado por agência) tem um caminho residual onde um booker sem
+convite pode trocar pra "Artista" dentro do próprio wizard e cair em
+`ARTISTA_CARREIRA_STEPS` — uma sequência bem mais longa, com perguntas
+de estágio de carreira, faixa de cachê, tipos de trabalho/cliente,
+regiões etc. (exatamente a lista de coisas que esta rodada pede pra
+não pedir no cadastro). Não foi tocado: reescrever o wizard antigo
+contraria a decisão já registrada ("wizard antigo não é removido nem
+reescrito agora") e o próprio pedido desta rodada de não abrir uma
+nova rodada de redesign. Fica registrado pra quando for a vez desse
+bloco.
+
+**QA**: `tsc --noEmit`, `eslint` (4 arquivos tocados) e `next build`
+limpos. Etapa 1 (`/cadastro`, não exige sessão) verificada visualmente
+via Playwright contra `next start` — inalterada, indicador de 6 etapas
+intacto. Etapas 2-6 exigem sessão Supabase real (`requireArtist()`
+redireciona pra `/login` sem uma) — mesma limitação de sandbox já
+documentada em blocos anteriores; validado por revisão de código que
+`PrepareForm`/`preparar/page.tsx`/`CreateAccountModal.tsx`/
+`cadastro/actions.ts` ficaram mutuamente consistentes (nenhuma
+referência solta a `initialIssuesInvoice`/`issuesInvoice` restante,
+confirmado por grep).
+
+**Arquivos alterados**: `src/app/cadastro/preparar/PrepareForm.tsx`,
+`src/app/cadastro/preparar/page.tsx`, `src/app/cadastro/actions.ts`,
+`src/app/_home/CreateAccountModal.tsx` (mesmo formulário usado no modal
+de cadastro da Home). **Migrations**: nenhuma.
+
+## 96. Nova Home V2 — ajuste exato da seção "sempre com você": olhos grandes REAIS recuperados do histórico + correções de cor/CTA — `[DELIVERED]`
+
+Correção de um erro real do bloco 94: a primeira tentativa de
+reaproveitar "os olhos da Home anterior" usou o sistema errado
+(`.mascot`/`.mascot-eye` de 56px, tracking por cursor) — não a
+implementação que o usuário pedia, que é a dos "pulinhos" (jump/hop
+com sombra, GSAP) da era "Mais que automação. Representação.". Esta
+rodada localizou a implementação real no histórico do git e portou
+sem aproximação.
+
+**1. De qual commit/arquivo histórico recuperou os olhos**: commit
+`ad897c0` ("fix(home): reconecta GSAP/ScrollTrigger ao remontar a Home
+— header sumindo"), a última versão de `src/app/_home/home.css`/
+`home.html`/`home.js` antes do GSAP ser removido do projeto
+(08/09/2026). Seção `.manda` (`id="o-que-sua-doopla-faz"`), texto
+`"Mais que automação. Representação."`, classes `.manda-eyes`/
+`.eyes-stage`/`.eyes-col`/`.eyes-eye`/`.eyes-pupil`/`.eyes-shadow`.
+
+**2. Qual código de animação foi reutilizado**: a função
+`makeEyesMotion()` de `git show ad897c0:src/app/_home/home.js`,
+instância `mandaEyes` (a que roda nos olhos da seção, não a do hero).
+GSAP não foi reintroduzido como dependência (removido deliberadamente
+em 08/09/2026 por um bug real de `ScrollTrigger`, documentado no topo
+de `home.js` — reintroduzir a lib só pra esta seção reabriria esse
+risco). Portado pra Web Animations API vanilla em `initLegacyEyesMotion()`
+(novo, `home.js`): mesma sequência (`entrance()` com 3 pulos
+convergindo pro descanso, `settledLoop()` com looks/hops/blink e pausa
+de 0.7s entre repetições, hover reinicia a entrada), mesmas durações e
+valores-alvo (spans, `MAX = eyeSize*0.24`, offsets de look em frações
+de `MAX`, durações de cada fase do pulo). Única aproximação real: as
+curvas de easing nomeadas do GSAP (`power1/power2/elastic`) não existem
+na Web Animations API — usei equivalentes `cubic-bezier`/`ease-in-out`
+mais próximos (documentado no código); a coreografia (o que se vê) é
+idêntica, a curva exata de aceleração é uma aproximação, não uma
+reprodução bit a bit — impossível sem a biblioteca em si.
+
+**3. Onde estão definidos os pulinhos**: função `jumpTo()` dentro de
+`initLegacyEyesMotion()` (`home.js`) — replica exatamente as 4 fases do
+original (antecipação/agachar, subida com sombra encolhendo, descida
+com sombra voltando, pouso com pequeno overshoot elástico), usadas
+tanto por `entrance()` (pulos com deslocamento lateral) quanto por
+`hopSelfInPlace()` (pulo sem deslocamento, usado no loop assentado).
+
+**4. Qual CSS histórico da legenda foi reutilizado**: a classe `.mono`
+de `git show ad897c0:src/app/_home/home.css` (`font-family:'IBM Plex
+Mono', monospace; letter-spacing:.14em; text-transform:uppercase;
+font-size:.72rem`), recriada como `.legacy-eyes-caption` (não dá pra
+reaproveitar `.mono` direto — a Nova Home V2 já usa esse nome de classe
+pra outra coisa, com outros valores). Cor preta (`var(--black)`),
+igual ao original (`.manda-eyes .mono{color:var(--black)}`). Texto
+trocado de "Mais que automação. Representação." pra "Sua Doopla sempre
+com você." — único lugar onde essa frase aparece agora.
+
+**5. Confirmação de tamanho/proporção**: `.legacy-eyes-eye` 160×160px
+desktop (idêntico ao original), 110×110px em ≤760px (idêntico ao
+breakpoint original em ≤820px, ajustado pro breakpoint de 760px já
+usado nesta Home). Pupila 52px/36px, também idênticos. Confirmado via
+Playwright (`getBoundingClientRect()`): 160.08×159.95px reais em
+desktop. Sombra (`.legacy-eyes-shadow`, ausente na tentativa anterior)
+recuperada com os mesmos valores (`rgba(0,0,0,.22)`, blur 2px).
+
+**6. Confirmação de que a legenda não usa mais a tipografia errada**: a
+tentativa anterior usava `font-family:'Inter'; font-weight:700` (a
+mesma fonte bold/sans do resto da Home nova) — substituída por
+`'IBM Plex Mono'` uppercase/letter-spacing, confirmado via
+`getComputedStyle` no QA.
+
+**7. Confirmação de que o lado esquerdo não sofreu alteração de
+conteúdo/layout**: `.with-you-copy` (eyebrow/h2/p.lead/CTA) não teve
+nenhuma linha de HTML alterada — só a cor do texto mudou de
+`var(--off)`/`rgba(251,249,242,.86)` pra `var(--black)` (confirmado via
+`getComputedStyle`: `rgb(18, 17, 16)` nos três elementos). Nenhuma
+mudança de tipografia, quebra de linha, largura ou espaçamento.
+
+**8. Confirmação do CTA**: `.always .btn-primary` — fundo preto
+(`var(--black)`), texto/seta em off-white (`var(--off)`), glow escuro
+suave (`box-shadow:0 10px 34px rgba(0,0,0,.32)`, confirmado via
+`getComputedStyle`: `rgb(18,17,16)` / `rgb(251,249,242)` / sombra
+presente) — nunca a inversão off-white/preto usada nos outros CTAs
+desta Home.
+
+**Correção adicional, fora da seção "sempre com você"**: label do CTA
+no header voltou de "Começar agora" pra "Criar conta" (pedido explícito
+à parte) — único CTA da Home com esse texto; os demais continuam
+"Começar agora" (bloco 94).
+
+**QA**: `tsc --noEmit`/`eslint`/`next build` limpos. Validação via
+Playwright contra `next start`: tamanho real dos olhos confirmado
+(160px), sombra visível, legenda com texto/cor/tipografia corretos,
+cores do lado esquerdo e CTA confirmadas via `getComputedStyle`,
+header com "Criar conta". Amostragem de `transform` ao longo de ~8s
+confirmou o loop rodando de verdade (pulos, olhares, piscada — não
+uma animação travada/estática). `prefers-reduced-motion` testado
+via `reducedMotion:'reduce'` do Playwright: posição fica parada,
+zero timer registrado. Único erro de console em qualquer captura:
+`net::ERR_CONNECTION_RESET` do Google Fonts, limitação de proxy já
+documentada, não relacionada a este código.
+
+**Achado registrado, não "corrigido"**: durante a fase de entrada
+(`entrance()`, ~1.8s, uma vez por carregamento da página), os dois
+olhos podem se aproximar/sobrepor brevemente e, em viewports estreitos
+(mobile), a excursão lateral pode momentaneamente tocar a borda do
+container — comportamento herdado diretamente da mesma fórmula do
+original (`span` proporcional à largura do stage, capado por
+`eyeSize*1.375`), não uma regressão introduzida na porta. Não ajustado
+por not ser pedido — ajustar a amplitude seria desviar dos valores
+originais, o oposto do que essa tarefa pediu.
+
+**Preservado, nada alterado**: `EyeLogo.tsx` e o sistema de tracking
+do logo (header/footer), os 3 mascotes com blink (hero/CTA final,
+bloco 94), Menu overlay, FAQ, planos, footer, rotas reais, `SiteHeader`/
+`SiteFooter`/páginas institucionais.
+
+## 97. Bloco 6 — Nova Home pública — FECHAMENTO FORMAL: aprovada pela fundadora — `[APPROVED / CLOSED]`
+
+A fundadora revisou a Home pública (V2, a partir do
+`doopla-home-mockup.html`, blocos 94 e 96) e **aprovou**. O bloco "Nova
+Home Pública" do roadmap mestre está encerrado.
+
+**O que foi aprovado**: a implementação final completa — header/Menu
+overlay, hero, profissões, "você cuida do seu trabalho", seção "sempre
+com você" (fundo vermelho, texto preto, olhos grandes legados com
+pulinhos recuperados do histórico, CTA preto com glow — bloco 96, a
+versão final dessa seção), "como funciona", planos (`market.pricing`
+dinâmico), FAQ, CTA final, footer. Logo do header/footer usando a
+implementação real (`EyeLogo.tsx`, portada pra HTML cru), tracking do
+logo e blink dos 3 mascotes (hero/CTA final) conforme especificado.
+
+**Commits finais que compõem a versão aprovada**: `df7192b` (Nova Home
+V2, redesign completo), `420016e` (docs do bloco 94), `7b4f159`
+(recuperação dos olhos legados reais + correção do CTA do header,
+bloco 96), `102068c` (docs do bloco 96).
+
+**Findings/débitos que permanecem fora deste fechamento** (já
+documentados em blocos anteriores, não absorvidos aqui nem reabertos):
+- `SiteHeader`/`SiteFooter`/`PageShell`/páginas institucionais
+  (Sobre/Segurança/Termos/Privacidade/Contato) continuam no tema claro
+  antigo — decisão de escopo já registrada (bloco 94/auditoria
+  pré-implementação), pertence a um bloco futuro de unificação, não à
+  Home.
+- `legal-page.tsx`/`legal.css` continuam órfãos (zero import) —
+  achado de limpeza técnica, não bloqueia nada, não reaberto.
+- Links quebrados `/seguranca#pagamento`/`#verified` (usados pelo
+  footer do dashboard legado) — débito já registrado como fora de
+  escopo da Home, pertence a quem for mexer em `/seguranca` ou no
+  footer do dashboard legado.
+- Excursão lateral transitória dos olhos legados durante a entrada em
+  viewports estreitos (bloco 96) — achado técnico registrado, herdado
+  da fórmula original, não uma regressão; permanece registrado, não é
+  motivo pra reabrir a Home.
+
+Nenhum desses débitos pertence ao bloco "Nova Home Pública" — todos já
+estavam corretamente escopados fora dele antes desta aprovação, e
+continuam assim. **Reabrir a Home por qualquer um desses itens exigiria
+um pedido explícito novo, não decisão desta sessão.**
+
+**Roadmap mestre**: `HOME PÚBLICA` → `APPROVED / CLOSED`. Próximo passo
+combinado: fechamento documental (este bloco) seguido de checkpoint
+audit-only de Cadastro/Onboarding (ver bloco 98) antes de Settings V2
+— sequência não reorganizada, só executada na ordem já definida.
+
+## 98. Checkpoint audit-only — Cadastro/Onboarding, antes de Settings V2 — `[AUDIT ONLY / NO CODE CHANGE]`
+
+Auditoria read-only pedida explicitamente pela fundadora entre o
+fechamento da Home (bloco 97) e o início de Settings V2. **Nenhuma
+linha de código foi alterada nesta auditoria** — só leitura/mapeamento.
+Não é reabertura do Fluxo 1 (já simplificado no bloco 95), não é
+implementação de Booker/multi-role/role-switching, não cria migration
+nem arquitetura nova.
+
+Classificação usada: CURRENT (em produção, é o caminho real hoje) /
+DELIVERED (entregue e fechado em bloco anterior) / LEGACY (código
+antigo ainda presente e alcançável, fora do funil padrão) / DEFERRED
+(achado registrado, não corrigido agora) / FUTURE (decisão que
+pertence a um bloco futuro) / CONFLICT (acharia contradição entre
+decisões — nenhuma encontrada nesta auditoria).
+
+**(1) Fluxo E2E real hoje (artista padrão, sem convite) — CURRENT.**
+`/cadastro` (sem `tipo=booker`/`invite`) → Etapa 1 "Criar conta"
+(`CreateAccountForm.tsx`, cria a conta imediatamente via
+`createAccountAction`) → Etapa 2-5 "Prepare sua Doopla"
+(`PrepareForm.tsx`, 4 sub-etapas: nome/profissão/cidade/bio/link →
+"tem algo que sua Doopla deve saber (opcional)" → canal de contato →
+tela de conclusão) → Etapa 6 "Escolher plano" (`PlanForm.tsx`,
+`market.pricing`/`TRIAL_DAYS`) → `/dashboard`.
+
+**(2) Telas/etapas realmente ativas — CURRENT.** 6 etapas numeradas
+("Etapa N de 6") no Fluxo 1: Criar conta, 3 sub-etapas de
+"Prepare sua Doopla" com pergunta, 1 sub-etapa de conclusão sem
+pergunta, Escolher plano. Todas alcançáveis pelo funil público padrão
+(Home, Menu, páginas institucionais, `/login`, links de referral).
+
+**(3) Arquivos que implementam o fluxo — CURRENT.**
+`src/app/cadastro/page.tsx` (roteador — decide Fluxo 1 vs Fluxo 2),
+`CreateAccountForm.tsx`, `OnboardingShell.tsx`,
+`preparar/PrepareForm.tsx` + `preparar/page.tsx`,
+`plano/PlanForm.tsx` + `plano/page.tsx`, `PlanPicker.tsx`,
+`actions.ts` (`savePrepareAction`/`savePlanAction`),
+`src/app/auth/actions.ts` (`createAccountAction`). No lado Home:
+`src/app/_home/HomeCreateAccountModal.tsx` +
+`src/app/_home/CreateAccountModal.tsx` (versão em modal, reusa os
+mesmos componentes/actions em "modalMode").
+
+**(4) Mais de um caminho público de cadastro? Sim — CURRENT.** 7
+entradas distintas mapeadas, todas convergindo pro mesmo roteador:
+modal da Home, link "Começar agora" do Menu overlay (nav real, não
+modal), links diretos nas páginas institucionais/login, links de
+referral (`?ref=`), página de convite `/convite/[token]`
+(`?tipo=...&invite=...`), links manuais `?tipo=booker`/`?role=booker`,
+e `?role=agencia` legado (normalizado de volta pra `artista`). Todas
+exceto convite/booker-manual resolvem pro Fluxo 1.
+
+**(5) Situação real de `signup-form.tsx` — CURRENT (não é código
+morto), LEGACY (fluxo não simplificado por decisão explícita).**
+Único importador: `src/app/cadastro/page.tsx`. Continua ativo sempre
+que há `tipo=booker`/`role=booker` (sem convite) ou qualquer token de
+convite — ou seja, é o fluxo de booker E o fluxo de artista convidado.
+Contém `showRolePicker` (troca booker↔artista no meio do wizard,
+`handleRoleChange` limpa o estado por completo na troca — não há
+vazamento de perguntas comerciais pro lado artista). O funil de booker
+dentro dele (`BOOKER_REMAINING_STEPS`) ainda tem um questionário
+comercial/matching substancial (mercados, categorias, faixa de cachê,
+comissão, idiomas, capacidade) — isso é esperado e está fora do escopo
+desta auditoria (Booker é bloco futuro, per instrução explícita da
+fundadora).
+
+**(6) Resíduo do fluxo antigo Booker→Artist? Não encontrado —
+CONFLICT: nenhum.** `handleRoleChange` reseta 100% do estado do
+wizard na troca de role; não existe componente separado de "bateria de
+perguntas antigas"; as perguntas de cachê/negociação já foram removidas
+do lado artista de `signup-form.tsx` antes desta sessão (comentário no
+próprio arquivo). Nenhuma contradição encontrada com decisões já
+tomadas.
+
+**(7) "Você emite nota fiscal?" voltou? Não — DELIVERED (confirmado,
+achado do bloco 95 continua válido).** Busca exaustiva por
+`issues_invoice`/`issuesInvoice`/"nota fiscal" em todo `src/` e
+`mobile/src/`: zero ocorrências em qualquer fluxo de cadastro (Fluxo 1
+ou 2). As únicas ocorrências restantes são: leitura read-only pelo
+Runtime (`get-professional-business-context.ts`,
+`context-builder/sections.ts`) e a superfície de edição pós-onboarding
+já existente, `/dashboard/perfil/editar` (`dashboard/actions.ts`,
+`artist-profile-form.tsx`, `pro-artist-profile-form.tsx`) — exatamente
+como o bloco 95 previu.
+
+**(8) Redirect final por fluxo — CURRENT.** Fluxo 1 (rota real):
+`createAccountAction` → `/cadastro/preparar` (ou
+`/cadastro/confirme-seu-email` se precisar confirmar e-mail) →
+`savePrepareAction` → `/cadastro/plano` → `savePlanAction` →
+`redirect('/dashboard')`. Fluxo 1 (modal da Home): mesmo destino final
+via `router.push('/dashboard')` client-side. Fluxo 2:
+`signupAction` sempre redireciona pra `/cadastro/confirme-seu-email`
+(diferença real e proposital: não pula a confirmação de e-mail mesmo
+com sessão ativa, ao contrário do Fluxo 1).
+
+**(9) Plano/trial — CURRENT.** `market.pricing`/`TRIAL_DAYS` (7 dias)
+é a única fonte usada em toda a UI de planos (Fluxo 1 e 2). Intenção
+de plano vinda da Home (clique num card de preço específico) carrega
+via query param → metadata do signUp → `handle_new_user` grava em
+`subscriptions.artist_plan` → a Etapa 6 lê o valor já persistido no
+banco (não é estado de cliente) mas **continua livre pra ser trocada**
+antes de confirmar — nunca é travada antes da etapa final. Achado
+menor sem impacto funcional: o campo de voucher (`founderVoucherCode`)
+aparece na UI do `PlanPicker` também no Fluxo 1, mas `savePlanAction`
+nunca lê esse campo — é descartado silenciosamente. Registrado como
+DEFERRED (não corrigido nesta auditoria; não foi pedido).
+
+**(10) Web vs App — CURRENT (App não tem cadastro próprio).** O app
+mobile não tem nenhuma tela de cadastro/login própria além de restaurar
+sessão existente (`useAuth.tsx` só implementa `signInWithPassword`/
+`signOut`, sem `signUp`). Depende inteiramente do fluxo web pra criação
+de conta — consistente com o estágio atual do produto mobile
+(comentário no próprio código: "nenhuma tela real depende disso ainda
+nesta fase").
+
+**(11) Findings/deferred registrados nesta auditoria (não corrigidos):**
+- Campo de voucher exposto mas não lido no Fluxo 1 (`PlanPicker`
+  `showVoucherField=true` sem uso downstream) — DEFERRED.
+- Fluxo de booker dentro de `signup-form.tsx` continua com questionário
+  comercial substancial — LEGACY, intocado por decisão explícita
+  (pertence ao bloco futuro de Booker).
+
+**(12) Conflitos com decisões já tomadas — nenhum encontrado.** Todos
+os pontos auditados são consistentes com as decisões registradas nos
+blocos 95 (fechamento do onboarding) e no `DECISOES.md`
+(`market.pricing`, RPC `select_artist_plan` como único caminho de
+escrita de plano, `handle_new_user` como único criador de linha em
+`subscriptions`/`artist_profiles`).
+
+**(13) Confirmação: nenhuma mudança funcional foi feita durante esta
+auditoria.** Apenas leitura de código (`Explore` agent, read-only) —
+zero arquivos de código editados. Os únicos arquivos tocados nesta
+sessão para os blocos 97/98/99 são `PROGRESS.md` e `DECISOES.md`.
+
+**Roadmap mestre**: `AUDITORIA CADASTRO/ONBOARDING` → `[AUDIT ONLY —
+DELIVERED]`. Por instrução explícita, a implementação de Settings V2
+**não começa** neste bloco — aguarda revisão da fundadora sobre este
+relatório antes de prosseguir.
+
+## 99. Settings V2 — achado registrado (não corrigido agora): "Preferências de matching" é conteúdo legado — `[DEFERRED — reconciliar em Settings V2]`
+
+A fundadora encontrou, durante a revisão desta sessão, um achado visual
+no painel de Configurações atual (não no fluxo de cadastro — achado
+separado, registrado aqui porque foi levantado na mesma mensagem que
+pediu a auditoria acima). **Não foi corrigido agora** — só registrado,
+por instrução explícita, para ser tratado quando o bloco Settings V2
+começar.
+
+**O achado**: a tela atual de Configurações ainda expõe conteúdo de
+"Preferências de matching" — copy sobre "encontrar pessoas e
+oportunidades", "buscas e recomendações", informação de viagem/outras
+cidades atrelada a esse bloco — misturado com Perfil Público, links
+profissionais, link de orçamento, e lógica relacionada a quem recebe
+pedidos (Booker). Declaração explícita da fundadora: **"Matching NÃO
+pertence mais à arquitetura atual da Doopla."**
+
+**Quando corrigir**: no bloco Settings V2, usando como fonte da
+verdade a arquitetura já definida — **CONFIGURAÇÕES → DETALHE → AÇÃO**
+(progressive disclosure) — e não a tela legada atual. Este achado deve
+ser reconciliado contra essa arquitetura, não corrigido isoladamente
+dentro da tela existente.
+
+## 100. Settings V2 consolidado — decompõe /dashboard/perfil/editar, remove "matching" da UX, move roteamento pra Canais — `[DELIVERED / APPROVED / CLOSED]`
+
+Implementação da arquitetura V2 aprovada pela fundadora após a
+reconciliação do bloco 98/99 (audit-only) + duas rodadas de revisão
+(V1 rejeitada por reviver "Perfil profissional" como conceito de
+navegação; V2 aprovada com ajustes finais — grupo "Perfil e trabalho",
+nome final "Como você trabalha", roteamento/link de orçamento em
+"Canais e conexões", achados registrados sem correção).
+
+**O que mudou.** O antigo `/dashboard/perfil/editar` — uma página só
+misturando identidade profissional, contexto de trabalho (ex-"matching"),
+perfil público e roteamento de pedidos — foi decomposto em 3 rotas
+novas dentro de um grupo novo do hub ("Perfil e trabalho") + 1 rota
+existente que ganhou conteúdo:
+
+- **`/dashboard/perfil/dados`** ("Dados profissionais") — foto, nome
+  artístico, categoria, subcategoria, bio, gêneros, mercados, site,
+  outros links. `website_url`/`other_links` confirmados (leitura de
+  `src/app/[slug]/page.tsx`) como NÃO exibidos na página pública —
+  ficam aqui, não em "Perfil público", conforme pedido explícito de
+  checagem antes de posicionar.
+- **`/dashboard/perfil/trabalho`** ("Como você trabalha") — ex-modal
+  "Preferências de matching": tipos de trabalho/cliente, regiões,
+  idiomas, áreas de ajuda, estágio de carreira, faixa de cachê, emite
+  nota fiscal, viaja/atende outras cidades/aceita fora da cidade,
+  outras preferências. Deixou de ser modal (removido o `createPortal`/
+  `useSyncExternalStore`/containing-block workaround do bloco 87 — não
+  precisa mais, a página inteira já é o "detalhe") e virou uma página
+  normal com resumo + campos diretos. Copy de "matching"/buscas/
+  recomendações/compatibilidade removida por completo desta superfície;
+  microcopy aprovada usada literalmente ("Informações que ajudam sua
+  Doopla a entender como você trabalha e te representar melhor nas
+  conversas.", estado vazio "Nada preenchido ainda...").
+- **`/dashboard/perfil/publico`** ("Perfil público") — mesmo
+  `PublicProfileCard` de sempre (Instagram, portfólio, ativar/
+  desativar, link público), só rota própria.
+- **`/dashboard/perfil/canais`** ("Canais e conexões") — ganhou
+  `LinkRoutingCard` ("Seu link de orçamento"/"Quem recebe seus
+  pedidos", os 3 modos eu/meu booker/eu e meu booker preservados
+  intocados) ao lado do `ProWhatsappIdentityCard` já existente.
+  Corrige uma inconsistência real com a decisão de 06/09/2026 ("Canais
+  de booking nunca vira porta de volta pro Perfil profissional") — o
+  roteamento estava do lado errado dessa regra, dentro do editor de
+  perfil, não dentro de Canais.
+
+**Split de Server Action (correção técnica necessária, não pedida
+explicitamente mas obrigatória pra decompor com segurança).**
+`updateArtistProfileAction` (`actions.ts`) fazia um único UPDATE com
+TODOS os campos (identidade + contexto de trabalho) — mantê-la assim
+faria a página "Dados profissionais" sozinha zerar
+`travels`/`career_stage`/`work_types`/etc. toda vez que alguém
+salvasse só o nome artístico (campo ausente do FormData de uma página
+vira `null`/`false` na outra). Dividida em duas: `updateArtistProfileAction`
+(escopada a identidade) e `updateArtistWorkContextAction` (nova,
+escopada a contexto de trabalho) — mesma tabela, mesma validação, dois
+UPDATEs independentes em vez de um. Nenhuma migration, nenhuma coluna
+nova — só a fronteira de escrita foi dividida.
+
+**"Perfil profissional" não foi ressuscitado como navegação.** A
+decisão de 06/09/2026 (removido como item único de navegação em
+Configurações) continua respeitada — não existe nenhuma linha
+"Perfil profissional" no hub. O grupo novo "Perfil e trabalho" tem 3
+linhas de escopo estreito (Dados profissionais / Como você trabalha /
+Perfil público), decisão nova e explícita da fundadora, não uma
+reversão silenciosa.
+
+**Dados preservados, nenhum removido.** Todos os campos lidos por
+`get-professional-business-context.ts` (Runtime) continuam existindo e
+editáveis: `fee_range`, `career_stage`, `work_types`, `client_types`,
+`regions`, `travels`, `accepts_out_of_city_work`, `attention_channel`
+(inalterado, continua em "Preferências da Doopla"), `help_areas`,
+`issues_invoice`. Zero coluna apagada, zero migration, zero mudança de
+RLS/schema.
+
+**Findings registrados, não corrigidos (fora de escopo por instrução
+explícita — superfícies de Booker):**
+- `booker-profile-form.tsx` (perfil legado do Booker, `role==='booker'`)
+  ainda tem sua própria seção "Preferências de matching" (preferências
+  de trabalho do BOOKER, `booker_profiles.regions`/`fee_range`, tabela
+  diferente do artista) — intocado, é superfície de Booker.
+- `CompletePreferencesCard` (`src/app/dashboard/complete-preferences-card.tsx`,
+  renderizado só em `booker-home-view.tsx`, fluxo legado Booker
+  gerenciando artista) ainda diz "Complete seu perfil para melhorar
+  seu matching" e linka pra `/dashboard/perfil#preferencias-matching`
+  — um link que **já estava quebrado antes desta rodada** (o anchor
+  real sempre viveu em `/perfil/editar#preferencias-matching`, nunca em
+  `/perfil` puro). Não corrigido — é superfície de Booker (Home do
+  Booker gerenciando artista), fora do escopo explícito desta rodada.
+- `languages` (idioma) continua coletado em "Como você trabalha" mas
+  sem consumidor confirmado no Runtime hoje (não lido por
+  `get-professional-business-context.ts`) — achado já registrado na
+  reconciliação, mantido como está, não removido nem "corrigido".
+- `negotiation_notes`/`pricing_notes`/`fee_varies_by_job_type`/
+  `typical_job_duration` continuam sem superfície de edição em lugar
+  nenhum (lidos pelo Runtime, só `negotiation_notes` é escrito uma vez
+  no cadastro) — gap pré-existente, não introduzido por esta rodada,
+  não corrigido (fora de escopo).
+
+**Web only, App intocado por instrução explícita.** `git status
+mobile/` confirma zero arquivo do App tocado nesta rodada — paridade
+de "Como você trabalha"/"Minha equipe" no App permanece `FUTURE`,
+tratada no bloco correspondente quando chegar a vez.
+
+**Validado**: `next build` limpo (61 rotas geradas, `/dashboard/perfil/editar`
+ausente da listagem, as 4 rotas afetadas presentes: `dados`, `trabalho`,
+`publico`, `canais`), `tsc --noEmit` limpo, `eslint` limpo nos arquivos
+tocados. QA funcional limitada a smoke test via `curl` contra
+`next start` real (todas as rotas novas respondem, nenhum crash de
+servidor) — sem acesso a um Supabase real neste ambiente
+(`.env.local` é o template, mesmo gap já documentado em rodadas
+anteriores), não foi possível autenticar e confirmar visualmente
+salvamento/leitura ponta a ponta; a correção do split de action acima
+foi validada por leitura de código (cada action só grava as próprias
+colunas), não por teste E2E autenticado.
+
+**Aprovado pela fundadora em 09/09/2026 — bloco fechado.** Os
+findings de superfície de Booker (`booker-profile-form.tsx`,
+`CompletePreferencesCard`) e os campos pré-existentes sem UI
+(`languages`, `negotiation_notes`/`pricing_notes`/
+`fee_varies_by_job_type`/`typical_job_duration`) permanecem
+registrados como achados/backlog — não reabrem este bloco; tratamento
+fica para o bloco correspondente (Booker) ou backlog geral, quando
+houver pedido explícito.
+
+**Pendência de QA (não de implementação), registrada e não bloqueante
+pra este fechamento**: validação E2E autenticada com Supabase real das
+4 superfícies novas/realocadas (`/dashboard/perfil/dados`,
+`/trabalho`, `/publico`, `/canais`) — fluxo completo editar → salvar →
+recarregar → confirmar persistência, nas 4 rotas, incluindo confirmar
+que o split de `updateArtistProfileAction`/`updateArtistWorkContextAction`
+não perde dado em uso real (só validado por leitura de código nesta
+rodada, não por teste ponta a ponta autenticado). Só pode ser feita
+pela fundadora ou por alguém com acesso ao projeto Supabase real desta
+aplicação — este ambiente não tem essas credenciais.
+
+**Roadmap mestre**: `SETTINGS V2` → `[DELIVERED / APPROVED / CLOSED]`.
+
+## 101. ROADMAP MESTRE — reconciliação completa v1 — `[AUDIT ONLY / NO CODE CHANGE]` — 14/09/2026
+
+Auditoria read-only pedida explicitamente pela fundadora depois do
+fechamento de Settings V2: a tabela de "8 blocos" do §79 tinha sido
+tratada erroneamente como se fosse o roadmap inteiro da Doopla. Este
+bloco cruza `PROGRESS.md` + `DECISOES.md` inteiros (não só a tabela do
+§79) e devolve um ROADMAP MESTRE único, versionado, com todo item
+conhecido classificado. **Nenhum código foi alterado.** Nenhum CURRENT
+foi escolhido — por instrução explícita, essa decisão fica pra depois
+da fundadora validar esta reconciliação.
+
+Convenção de versionamento: esta é a **v1** (14/09/2026). Reconciliações
+futuras devem virar uma nova seção numerada com "v2", "v3" etc. — nunca
+editar esta em silêncio, pra preservar o histórico de auditoria.
+
+Classificação usada, conforme pedido: `DELIVERED/CLOSED`, `CURRENT`,
+`NEXT`, `FUTURE`, `BACKLOG`, `ABSORBED`, `SUPERSEDED`.
+
+### CURRENT
+
+Nenhum. Por instrução explícita da fundadora, não escolhido nesta
+rodada — aguarda a validação desta reconciliação.
+
+### NEXT
+
+Nenhum. Mesma razão acima — a ordem só é decidida depois da validação.
+
+### DELIVERED / CLOSED
+
+| Item | Evidência (seção/commit) |
+|---|---|
+| Doopla Professional Settings V2 (decomposição de `/perfil/editar`, remoção de "matching") | §100, commits `d66ce16`/`13dd768` |
+| Doopla Professional Dashboard (Shell+Home+Bookings/Agenda/Financeiro/Minha equipe/Configurações, gaps reais) | §80, commits `6db70b9`/`9064a01`/`7f675ef`/`14e710e` |
+| Comunidade — redesign visual da Home (Bloco 3 do §79) | §82 ("Bloco #3 canônico"), commits `8df5036`/`4265bbe`/`1e7af71`/`33dd13e` |
+| Comunidade Fase 1 (busca FTS, salvos, notificações V1, mentions/reply-to) | §74-§78 |
+| Comunidade — "Em alta"/"Para você" (ranking V1) | §82, migration `0079` |
+| Auditoria onboarding/cadastro (Bloco 4 do §79) | `[AUDIT DELIVERED]` em §79; as 2 decisões que gerou foram implementadas depois: `issues_invoice` editável → §95/§100, superfície de enriquecimento progressivo (regions/career_stage/etc.) → entregue como "Como você trabalha" em §100 |
+| Cadastro/Onboarding — fechamento (remove "Você emite nota fiscal?" da Etapa 3) | §95 |
+| Cadastro/Onboarding — checkpoint audit-only | §98, `[AUDIT ONLY — DELIVERED]`, zero mudança funcional por desenho |
+| Nova Home Pública (Bloco 6 do §79) | §97, commits `df7192b`/`420016e`/`7b4f159`/`102068c` |
+| Home pública — UX/navegação (Bloco 7 do §79) | Já `DELIVERED` antes desta sessão (commits `8fba1f9`/`51e5e3c`/`fca76f6`/`4097041`/`2a654a2`/`2d93c60`/`d0ec4a3`), preservado como baseline pelo Bloco 6 |
+| 6A+6B WhatsApp Outreach | §59-§60/§81, commits `8c88dca`/`f4eb371`/`47a5eb1`/`0384263`/`25b98b1` |
+| App Agenda — perda do estado "indisponível" | §90 |
+| Notificações da Comunidade — paginação/limite real (`limit()`) | §91 — escopo sempre foi só Comunidade (decisão já registrada no §79, linha 8 da tabela); não existe pendência de um "Notification Center" geral com esse mesmo bug |
+| Cache compartilhado entre os 2 sinos (Web) | §92, explicitamente Web-only |
+| Professional Product UI — P1 completo (itens a-h entregues em §86-92, item (i) formalmente fechado por ser irrecuperável) | §93, `[P1 CLOSED]` |
+| WhatsApp Identity UX + CTA "Falar com minha Doopla" real (era `[FUTURE]` no §68) | §72 (`ProWhatsappIdentityCard`, primeira UI real do OTP) + §73 (3 estados do CTA explicitados) |
+| Referral/afiliados ("Indique e ganhe") | Web + Mobile, tarefas internas #144/#85 concluídas |
+| Multi-role — fundação segura (`profile_roles`, `handle_new_user`, anti-autocobertura) | Tarefa interna #142 — **fundação apenas**; UX completa de multi-role/troca de papel permanece FUTURE, dentro do bloco Booker |
+| Booker existente — ID público estável + fluxo "Adicionar profissional" | Tarefa interna #141 |
+| **Professional Web Dashboard "final"** (item do registro do §68) | **Inferência, não 100% textual**: nenhuma frase fecha esse item nominalmente, mas o volume entregue em §69-§93 (Shell, Home, Bookings, Agenda, Financeiro, Minha equipe, Configurações, sistema de tema `--pro-*` próprio) cobre exatamente esse escopo. Marcado `DELIVERED` por inferência de escopo, não por citação direta — sinalizado pra você confirmar se concorda. |
+| **Professional App "final"** (item do registro do §68) | Mesma ressalva acima — coberto pelos blocos mobile #73-#89 (Home, Bookings, Agenda, Dinheiro, Indique e ganhe, Configurações, Decisões, bottom nav real). Inferência de escopo, não citação direta. |
+
+### ABSORBED
+
+| Item | Absorvido por |
+|---|---|
+| Configurações — Dados de recebimento (Bloco 5 do §79) | Settings V2 (Bloco 1/§80), desde §73 |
+| "Preferências de matching" como conteúdo legado (achado `[DEFERRED]` do §99) | Resolvido dentro de Settings V2 — §100 |
+
+### SUPERSEDED
+
+| Item | Substituído por / motivo |
+|---|---|
+| Conversas como aba primária de navegação | `Conversas Bloco 2` (acesso secundário via Booking) — DECISOES.md, "nunca ressuscitar sem nova instrução explícita" |
+| Doopla Verified (selo de booking) | Removido, de fato inerte — §68 |
+| Mecanismo de confirmação de booking por link do cliente | Removido — §68 |
+| Copy "Você recebeu uma mensagem da Doopla?" (confirmação/reenvio) | Removido — §68 |
+| Estados antigos dependentes de Verified/link de confirmação | Removidos — §68 |
+| Modelo antigo de Booker/marketplace (bookers/matching/comissão como eixo central do produto) | Substituído pelo modelo atual de Booker — ainda vaza como copy não revisada em páginas de marketing (`/login`, `/sobre`, `/cadastro`, `/seguranca`), ver BACKLOG |
+
+### FUTURE
+
+Itens registrados sem escopo pronto pra virar `NEXT` ainda — alguns com
+gatilho explícito de quando voltam à fila, outros bloqueados por
+decisão de produto ainda não tomada (Booker).
+
+| Item | Nota/gatilho |
+|---|---|
+| **Painel Admin** | Schema pronto desde migration `0018` (`profiles.is_admin`, `opportunity_events.source`, `ai_usage_events`), zero UI/lógica. Gatilho registrado: "volta pra fila quando a base de usuários justificar" (DECISOES.md, Bloco 4.5). A fundadora classifica como bloco obrigatório do produto — registrado aqui como tal, não como opcional, só ainda sem escopo/timing definido. |
+| Lifecycle + Transactional + Operational Messaging V1 | `[FUTURE, pré-beta]` desde §68 — cobre no mínimo DECISION/RISK/RESOLVED + compromissos temporais |
+| Intervention Moments + Feedback/Learning (wiring) | Schema/RPC prontos desde Beta Instrumentation (§66); o disparo real do evento nunca foi construído |
+| **Conversas — Bloco 3** | Citado só como item de lista desde §68 (linha única, "Conversas — Bloco 3"), **zero escopo definido em qualquer lugar do repositório** — precisa ser desenhado antes de sequer virar candidato a `NEXT` |
+| Career Intelligence V1 | Gatilho explícito: depende de volume real de uso via Beta Instrumentation, não de outro bloco de código |
+| Booker — capabilities/arquitetura (decisão de produto aberta) | Explicitamente NÃO antecipar — instrução repetida ao longo de toda a sessão |
+| Booker Web Dashboard | Não existe |
+| Booker App | Não existe em nenhuma forma |
+| Onboarding/Representation Profile (lado Booker) | Não existe |
+| Planos/trial/billing/NF e cobertura Booker (inclui Billing/Stripe real) | Explicitamente não implementar agora |
+| Multi-role — UX completa de troca de papel | Fundação já entregue (ver DELIVERED); a experiência completa depende da decisão de arquitetura do bloco Booker |
+| Materiais Pro | Hoje é só item "Em breve" (placeholder desabilitado) no painel |
+| Paridade Professional App de "Como você trabalha" (regions/career_stage/help_areas/work_types sem UI de edição no App) | Registrado em §83, reconfirmado em §100 |
+| "Minha equipe" no App | Hoje é `PlaceholderScreen` puro (`mobile/app/(tabs)/mais/equipe.tsx`) |
+| QA/E2E/Beta Readiness | Nenhum ambiente com Supabase real disponível nesta sessão desde sempre — nunca houve validação E2E autenticada formal |
+| Legal/LGPD/retention/security (programa dedicado) | Páginas estáticas (`/privacidade`, `/termos`) existem, mas isso não é um programa de compliance — nunca formalmente endereçado |
+| Notificações — extensão além do V1 (Comunidade-only) pra outros domínios (Bookings, Decisões etc.) | Decisão de escopo deliberada, não esquecimento — §79 |
+
+### BACKLOG
+
+Achados pequenos, já registrados, sem decisão de arquitetura pendente
+— podem ser puxados a qualquer momento sem precisar abrir um bloco
+maior.
+
+| Item | Origem |
+|---|---|
+| `MonthCalendar.tsx` (App) não diferencia tipos de evento visualmente no grid mensal | §90 |
+| Campo de voucher (`founderVoucherCode`) exposto no Fluxo 1 do cadastro mas nunca lido pelo backend | §98 |
+| `booker-profile-form.tsx` mantém sua própria seção "Preferências de matching" (copy legada, lado Booker) | §100 |
+| `CompletePreferencesCard` (Home do Booker) mantém copy de "matching" + link já quebrado antes desta rodada | §100 |
+| `languages` coletado em "Como você trabalha" sem consumidor confirmado no Runtime | §100 |
+| `negotiation_notes`/`pricing_notes`/`fee_varies_by_job_type`/`typical_job_duration` sem superfície de edição em lugar nenhum | §100 |
+| `SiteHeader`/`SiteFooter`/`PageShell` (páginas institucionais) continuam no tema claro antigo | §94/§97 |
+| `legal-page.tsx`/`legal.css` órfãos | §97 |
+| Links quebrados `/seguranca#pagamento`/`#verified` no rodapé do dashboard legado | §97 |
+| Excursão lateral transitória dos olhos legados em mobile na entrada (herdada, não é regressão) | §96 |
+| Marketing pages (`/login`, `/sobre`, `/cadastro`, `/seguranca`) ainda carregam linguagem do modelo antigo de Booker/marketplace | §68 |
+
+### Pendência de QA registrada (não de implementação)
+
+Validação E2E autenticada com Supabase real das 4 superfícies novas/
+realocadas de Settings V2 (`/dashboard/perfil/dados`, `/trabalho`,
+`/publico`, `/canais`) — editar → salvar → recarregar → confirmar
+persistência. Só pode ser feita por quem tem acesso ao projeto Supabase
+real (este ambiente nunca teve). Já registrada em §100.
+
+## 102. ROADMAP MESTRE v2 — CURRENT/NEXT definidos pela fundadora — `[AUDIT ONLY / NO CODE CHANGE]` — 14/09/2026
+
+Delta sobre a v1 (§101, validada como base canônica — não reeditada
+em silêncio, conforme a própria convenção de versionamento que ela
+estabeleceu). Nenhum item `DELIVERED/CLOSED`, `ABSORBED`, `SUPERSEDED`
+ou `BACKLOG` da v1 foi alterado. Nenhum código foi tocado — só decisão
+de ordem, registrada.
+
+**Ajuste de classificação e ordem, decidido pela fundadora:**
+
+- **`CURRENT` → QA / E2E / Beta Readiness do produto Professional
+  atual** (Web + App + backend/Supabase real, jornada completa). Antes
+  estava listado só como item `FUTURE` genérico; agora é o bloco
+  ativo. Ver §103 pra escopo detalhado (scoping-only, zero
+  implementação).
+- **`NEXT` → Painel Admin.** Deixa de ser só `FUTURE` — passa a estar
+  explicitamente na fila de execução, como bloco obrigatório do
+  produto (não opcional). **Implementação ainda não iniciada** — fica
+  pra quando `CURRENT` fechar.
+- **Booker** continua `FUTURE`, não antecipado.
+- **Career Intelligence V1** continua `FUTURE`, gated por volume real
+  de uso via Beta Instrumentation.
+- **Conversas — Bloco 3** continua `FUTURE`, sem scoping ainda.
+- **Lifecycle Messaging V1** e **Intervention Moments + Feedback**
+  continuam `FUTURE` — ordem entre eles e o resto da fila só é
+  decidida depois de Beta Readiness + Painel Admin fecharem.
+
+Todo o resto da v1 (§101) permanece válido e não foi tocado.
+
+## 103. Scoping — QA / E2E / Beta Readiness do Professional atual — `[SCOPING ONLY / NO IMPLEMENTATION]` — 14/09/2026
+
+Plano de validação, não execução. Nenhuma correção foi feita nesta
+rodada — só o desenho de como e o que validar, conforme pedido
+explícito ("faça somente o SCOPING... sem implementar correções
+ainda"). Execução real (rodar os testes contra o Supabase de produção/
+Preview) não é possível a partir deste ambiente — `.env.local` aqui é
+só o template, sem projeto Supabase real conectado, gap já documentado
+em rodadas anteriores. O plano abaixo é o que a fundadora (ou alguém
+com acesso ao projeto real) precisa executar.
+
+Ver corpo completo do plano na resposta desta sessão ao pedido —
+resumo estrutural registrado aqui pra rastreabilidade: escopo
+(Professional artista, Web + App, Fluxo 1 e Fluxo 2/convite de
+cadastro, todas as superfícies de Settings V2, Comunidade, Decisões,
+Bookings/Agenda/Financeiro, WhatsApp Identity/Falar com minha Doopla,
+Minha equipe, encerramento de conta), fora de escopo (Booker/Agência,
+qualquer feature `FUTURE`), pré-requisitos de ambiente, matriz de
+jornadas E2E por papel, critérios de saída pra declarar Beta Readiness,
+achados conhecidos que a validação deve reconfirmar (pendência de QA
+já registrada em §100).
+
+### Refinamento pedido pela fundadora (mesmo dia) — plano V2
+
+Ajustes, ainda `[SCOPING ONLY]`, zero implementação/execução real:
+
+1. **Matriz separada por quem executa**: (A) o que esta sessão
+   consegue rodar sozinha; (B) o que exige Supabase Preview/Staging
+   real; (C) o que exige ação humana/dispositivo real; (D) o que
+   depende de serviço externo indisponível (Meta/WhatsApp).
+2. **Booker não é requisito de Beta Readiness** — validam-se só os
+   pontos de integração que já existem e que poderiam quebrar o
+   Professional (`representations`, `artist_link_routing`, branch de
+   role compartilhado em `perfil/page.tsx`/`canais/page.tsx`), nunca a
+   superfície legada do Booker inteira.
+3. **Jornada P0/crítica adicionada**: o núcleo de representação
+   (inbound → Doopla identifica contexto → conduz conversa →
+   cria/atualiza oportunidade → gera decisão quando necessário →
+   profissional aprova/rejeita → conversa continua → booking
+   criado/atualizado). Se quebrado, Beta Readiness = NÃO. Transporte
+   real via WhatsApp/Meta (quando indisponível) marcado à parte como
+   `BLOCKED EXTERNAL`, nunca como aprovado — o pipeline interno é
+   validado via fixture/inbound controlado, sem depender do transporte
+   real.
+4. **Classificação de saída por item**: `PASS` / `FAIL BLOCKER` /
+   `FAIL NON-BLOCKER` / `BLOCKED EXTERNAL` / `NOT APPLICABLE / FUTURE`.
+5. **Preview/Staging preferido a Production** pra qualquer teste
+   destrutivo.
+
+**Achado de ambiente relevante pra categoria (A)**: este container tem
+PostgreSQL 16 instalado (`postgresql-16`, hoje parado) mas **não tem
+Docker daemon ativo** (`docker` CLI presente, socket ausente) — ou
+seja, dá pra subir um Postgres local (mesmo padrão histórico do
+`doopla_rls_test` usado em blocos anteriores) pra validar RLS/RPCs/
+lógica pura do pipeline via fixture, mas **não** dá pra rodar
+`supabase start` (stack completa com GoTrue/PostgREST/Storage) nem
+qualquer E2E de navegador que dependa de autenticação real — isso
+empurra qualquer fluxo que exija login/sessão real pra categoria (B).
+
+## 104. Beta Readiness — execução da Categoria A (QA/E2E) — `[CATEGORIA A COMPLETA]` — 14/09/2026
+
+Execução real (não mais scoping) da Categoria A definida no bloco 103:
+o que esta sessão consegue rodar sozinha, sem Supabase Preview/Staging
+real. **Nenhuma correção de produto foi feita** — só teste. Zero
+arquivo de código do produto tocado (`git status` limpo no fim). Todos
+os artefatos (bootstrap SQL, fixtures, harness de teste) foram
+descartáveis, em `/tmp`, nunca commitados — removidos ao final.
+
+**Ambiente real usado**: PostgreSQL 16 local (instalado no container,
+antes parado), banco descartável `doopla_qa_a`, criado e destruído
+várias vezes nesta rodada. Sem Docker daemon disponível (confirmado no
+bloco 103) — não dá pra rodar GoTrue/PostgREST real, então todo teste
+aqui é no nível SQL direto (RPCs/RLS), nunca HTTP/sessão de navegador.
+
+### 1. Baseline (regra 5) — `PASS`
+
+`tsc --noEmit` (Web + Mobile): limpo. `eslint`: 44 erros/4 warnings,
+100% pré-existentes em `mobile/` (arquivos nunca tocados por nenhum
+bloco recente — `MascotBall.tsx`, `useAuth.tsx`, mesma contagem exata
+já documentada em rodadas anteriores) + 1 warning pré-existente em
+`src/app/layout.tsx`. `next build`: limpo, 61 rotas geradas, as 6 rotas
+`/dev/*-golden-suite` e `/dev/runtime-smoke-test` presentes.
+
+### 2. Postgres local + migrations (regra 6) — `PASS`
+
+As 79 migrations (`0001` a `0079`) aplicadas em ordem, do zero, contra
+um Postgres 16 limpo com stubs mínimos de `auth`/`storage`/roles
+(`anon`/`authenticated`/`service_role`) + GRANTs de tabela base
+(replicando o que a plataforma Supabase concede fora das migrations).
+Zero erro de aplicação. Schema final: 69 tabelas, 150 funções, todas as
+RPCs-chave confirmadas presentes.
+
+### 3. RLS/RPC/idempotência (regra 6) — resultados
+
+| Teste | Resultado | Detalhe |
+|---|---|---|
+| RLS-1a — A lê profile de B | `PASS` | 0 linhas |
+| RLS-1b — A escreve em artist_profiles de B | `PASS` | 0 linhas afetadas |
+| RPC-2a — select_artist_plan(pro), dono | `PASS` | aceito |
+| RPC-2b — select_artist_plan(plano inválido) | `PASS` | rejeitado |
+| **RLS-3a — INSERT direto em artist_link_routing com booker que não representa o artista** | **`FAIL NON-BLOCKER`** | **aceito — ver achado #1 abaixo** |
+| RLS-3b — UPDATE em artist_link_routing com booker rogue | `PASS` | rejeitado pela RLS |
+| RPC-4a — set_payment_details, dono | `PASS` | aceito |
+| RPC-4b — isolamento de payment_details entre A e B | `PASS` | dados de B intocados |
+| RPC-5a — activate_community_profile como booker | `PASS` | rejeitado (`community_requires_artist_role`) |
+| RPC-5b — activate + update_community_profile como artista | `PASS` | aceito |
+| RPC-5d — update_community_profile sem ativação prévia | `PASS` | rejeitado (`community_membership_required`) |
+| RPC-12a/b — close_own_account + status | `PASS` | conta encerrada, `profiles.status='closed'` |
+
+### 4. Pipeline P0 via fixture (regra 7, atenção máxima) — todos `PASS`
+
+Cadeia completa exercitada via RPCs reais (não simulação em TS — os
+RPCs de produção, um por um, na ordem real):
+`claim_inbound_event` (idempotência) → `create_conversation` →
+`persist_inbound_message` → `ensure_opportunity_for_conversation`
+(idempotente, 2ª chamada não duplica) → isolamento cross-tenant da
+conversa → `start_orchestrator_run`/`finish_orchestrator_run` →
+`policy_gate_decisions` (outcome `blocked`/`no_matching_approval`,
+simulando o Policy Gate real bloqueando o envio automático) →
+`create_runtime_pending_reply` (decisão gerada pro profissional) →
+`resolve_runtime_pending_reply_allowed` (profissional aprova) →
+`persist_ai_message` (conversa continua) → `commit_approval_resolution`
+com lease/context inventados (`PASS` — rejeitado fail-closed,
+confirmando que o Approval Engine nunca aceita um commit sem
+proveniência real).
+
+**P0 = PASS integralmente na Categoria A.** Nenhuma quebra encontrada
+no núcleo de representação, até onde esta categoria consegue alcançar
+sem LLM real (ver limite abaixo).
+
+**Limite explícito, não uma falha**: o Classifier/Planner reais (que
+decidiriam `primary_intent`/`classification_status`/o conteúdo da
+resposta a partir de um LLM de verdade) não foram exercitados — os
+valores usados nesta fixture (`orcamento`/`classified`) foram
+fornecidos manualmente, simulando um resultado já decidido, exatamente
+como avisado no scoping (bloco 103). A chamada real ao model e o
+transporte real via WhatsApp continuam como `BLOCKED EXTERNAL`
+(Categoria D) — não reclassificados como `PASS` por este teste.
+
+### 5. Golden suites (regra 8) — `BLOCKED ENVIRONMENT`
+
+Tentativa real: `next build` + `next start` local, `curl` contra as 6
+rotas `/dev/*-golden-suite`/`runtime-smoke-test`. Todas devolvem `307`
+para `/login?next=...` — exigem sessão autenticada real (Supabase
+Auth/GoTrue), que este ambiente não tem (sem projeto Supabase real,
+sem Docker pra rodar GoTrue local). Adicionalmente, as golden suites de
+Approval/Classification/Planner chamam o model real da Anthropic em
+Preview (comentário no próprio código-fonte, `golden-suite.ts`) —
+precisariam de `ANTHROPIC_API_KEY` configurada pro app, também ausente
+aqui. **Nenhuma tentativa de adaptar o produto (remover auth, mockar
+sessão) foi feita** — classificado `BLOCKED ENVIRONMENT` com a causa
+exata documentada, como pedido.
+
+### 6. Achados/bugs encontrados
+
+**Achado #1 — `artist_link_routing`, gap real de defesa em profundidade
+(não é o achado do Fluxo 1/onboarding, é novo, desta rodada).**
+A policy de UPDATE da tabela (`0023_perfil_completo_e_orcamento.sql`)
+valida corretamente que `booker_id` precisa estar em `representations`
+antes de aceitar a mudança — mas a policy de INSERT (mesma migration,
+linha 49-50) só verifica `auth.uid() = artist_id`, sem essa mesma
+validação. Na prática do produto hoje isso é blindado pela camada de
+aplicação (`updateLinkRoutingAction` em `actions.ts` já valida
+`representations` antes de fazer o upsert) — **não é explorável pelo
+fluxo real do app**. Mas se alguém com uma sessão `authenticated`
+válida chamasse a API do Supabase diretamente (bypassando o Next.js),
+poderia, na primeira vez que salva o próprio roteamento (nunca depois,
+porque aí vira UPDATE, que já é protegido), apontar `booker_id` pra
+qualquer booker, mesmo um que não a representa. **Severidade: baixa —
+FAIL NON-BLOCKER, não afeta P0, exige bypassar a aplicação com uma
+sessão roubada/válida.** Não corrigido nesta rodada (regra 1).
+
+**Nenhum outro achado de bug** — todos os demais resultados divergentes
+das primeiras rodadas do harness (detalhados no processo, não
+repetidos aqui) eram gaps do meu próprio script de teste (GRANTs de
+base ausentes no bootstrap, GUC errado pra simular `service_role`,
+fixtures incompletas — `external_participants`, `policy_gate_decisions`,
+`orchestrator_runs`), nunca do produto. Corrigidos no harness, não no
+produto, e re-executados até dar resultado real.
+
+### 7. O que ainda depende de B/C/D
+
+- **Categoria B (Supabase Preview/Staging real)**: as 4 superfícies de
+  Settings V2 (editar→salvar→recarregar→confirmar persistência, já
+  registrado como pendência no §100), upload de avatar (Storage real),
+  WhatsApp Identity request/confirm OTP, Bookings/Agenda/Financeiro/
+  Comunidade/Decisões com dado real, golden suites completas (auth +
+  LLM real).
+- **Categoria C (dispositivo/ação humana)**: App em device/simulador
+  real, clique humano de aprovação/rejeição na UI, julgamento visual.
+- **Categoria D (bloqueado por Meta/WhatsApp)**: transporte real do
+  webhook do WhatsApp, "Falar com minha Doopla" ponta a ponta real, OTP
+  via número real — continuam `BLOCKED EXTERNAL`, nunca reclassificados
+  como aprovados por este teste.
+
+**Conclusão da Categoria A**: nenhum `FAIL BLOCKER` encontrado, P0
+íntegro no que é testável sem LLM/Auth real, 1 achado real de baixa
+severidade registrado (não corrigido). Categoria A considerada
+completa — Beta Readiness definitivo ainda depende de B/C/D.
+
+## 105. Beta Readiness — Categoria A aprovada pela fundadora, classificação formal — `[CATEGORIA A: PASS]` — 14/09/2026
+
+Fundadora revisou o relatório do bloco 104 e aprovou. Classificação
+formal registrada (sem mudança de conteúdo, só o carimbo oficial):
+
+- **Categoria A** → `PASS`, com 1 `FAIL NON-BLOCKER`.
+- **P0 — núcleo de representação** (inbound → contexto → conversa →
+  oportunidade → decisão → aprovação/policy → continuação → booking)
+  → `PASS`.
+- **`artist_link_routing`, gap de RLS no INSERT** → finding formal de
+  Beta Readiness, `FAIL NON-BLOCKER`, **pendente de correção antes do
+  fechamento final do beta** (não antes — ver bloco 104, não corrigido
+  de propósito, consolidação de findings vem antes da rodada de
+  correções).
+- **Golden suites** → `BLOCKED ENVIRONMENT` nesta etapa; retomar na
+  Categoria B, quando houver Auth/LLM reais disponíveis.
+
+Próximo passo combinado: Categoria B (Supabase Preview/Staging real).
+Antes de executar qualquer coisa, setup solicitado e entregue nesta
+mesma rodada (ver resposta desta sessão) — sem execução, sem alteração
+de código.
+
+### OPEN FINDINGS — BETA READINESS (registro persistente, consultar sempre antes de declarar BETA READY)
+
+Esta lista é a fonte única de findings abertos de Beta Readiness.
+Nunca depende de alguém lembrar de mencionar de novo — antes de
+qualquer declaração de `BETA READY`, ou antes de qualquer rodada
+consolidada de correções do Beta Readiness, esta lista inteira precisa
+ser recuperada e cada item resolvido ou explicitamente re-adiado por
+decisão nova da fundadora. Novos findings de blocos futuros (B/C/D)
+devem ser adicionados aqui, nunca substituir esta lista.
+
+| # | Finding | Classificação | Origem | Status |
+|---|---|---|---|---|
+| 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
 
 ## Como usar isso
 

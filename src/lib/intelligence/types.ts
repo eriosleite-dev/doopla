@@ -34,7 +34,9 @@ export type Capability =
   | 'read_professional_profile'
   | 'read_opportunity'
   | 'read_booking'
-  | 'read_external_participant';
+  | 'read_external_participant'
+  | 'read_professional_business_context'
+  | 'read_professional_commercial_history';
 
 export type ActorContext = {
   representedProfessionalId: string;
@@ -91,7 +93,9 @@ export type ContextSource =
   | 'conversation_messages'
   | 'opportunity'
   | 'booking'
-  | 'external_participant';
+  | 'external_participant'
+  | 'professional_business_context'
+  | 'professional_commercial_history';
 
 export type ToolContext = {
   representedProfessionalId: string;
@@ -223,6 +227,12 @@ export type OrchestratorRunPlan = {
   professionalDecisionSignal: 'none' | 'candidate_contextual' | 'candidate_ambiguous';
   missingInformationCount: number;
   evidenceUsedCount: number;
+  // Derivado do responsePlan final (resolveRequiresProfessionalReviewBeforeSend,
+  // planner/invariants.ts) — decisão do usuário (fechamento do
+  // Runtime): deixou de ser um literal `true` incondicional (migration
+  // 0044 original tinha CHECK físico forçando isso, relaxado na
+  // migration que introduz este campo como parâmetro real).
+  requiresProfessionalReviewBeforeSend: boolean;
 };
 
 export type OrchestratorRunFinish = {

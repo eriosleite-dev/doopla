@@ -20,17 +20,46 @@ import type { ActorContextResult, ActorTrigger, ActorType, Capability, MinimalCo
 // autorize (prepara o Booker Pro futuro sem abrir uma porta de
 // spoofing de identidade agora).
 
+// Assinatura deliberadamente só de actorType por enquanto — nenhum
+// código hoje precisa de mais que isso, porque só 'professional'/
+// 'system' têm caminho real (ver resolveActorContext). Mas esta função
+// é o único lugar que decide "o que este ator pode ler" — quando o
+// Booker Pro existir, 'authorized_collaborator' vai precisar de uma
+// autorização REAL (consulta a representations/booker_profiles: este
+// actorProfileId está autorizado para ESTE representedProfessionalId?
+// com que capabilities, possivelmente um subconjunto negociado) — não
+// de um valor fixo por actorType. Isso é uma evolução desta mesma
+// função (ganhar representedProfessionalId/actorProfileId como
+// parâmetros e consultar uma fonte de verdade real), nunca um segundo
+// mecanismo de capabilities paralelo. As duas capabilities de
+// Professional Intelligence Context (abaixo) entram nesse mesmo
+// mecanismo único — nenhuma delas concedida a 'authorized_collaborator'
+// agora.
 export function resolveCapabilities(actorType: ActorType): Capability[] {
   switch (actorType) {
     case 'professional':
-      return ['read_professional_profile', 'read_opportunity', 'read_booking', 'read_external_participant'];
+      return [
+        'read_professional_profile',
+        'read_opportunity',
+        'read_booking',
+        'read_external_participant',
+        'read_professional_business_context',
+        'read_professional_commercial_history',
+      ];
     case 'authorized_collaborator':
       // Nenhum caminho real chega aqui em v1 (ver resolveActorContext) —
       // mantido vazio de propósito até o Booker Pro definir o conjunto
       // real de capacidades de um colaborador autorizado.
       return [];
     case 'system':
-      return ['read_professional_profile', 'read_opportunity', 'read_booking', 'read_external_participant'];
+      return [
+        'read_professional_profile',
+        'read_opportunity',
+        'read_booking',
+        'read_external_participant',
+        'read_professional_business_context',
+        'read_professional_commercial_history',
+      ];
   }
 }
 

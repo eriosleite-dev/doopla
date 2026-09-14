@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { removeAgendaEntryAction } from '../actions';
 import { AgendaEntryForm } from './agenda-entry-form';
+import { ProAgendaView } from './pro-agenda-view';
 import { buildCalendarMonth, parseMonthParam } from './calendar';
 import {
   AGENDA_ENTRY_LABEL,
@@ -58,6 +59,15 @@ export default async function AgendaPage(props: {
   const artistEntries =
     activeArtistId != null ? await getArtistAgendaEntries(activeArtistId, supabase) : [];
 
+  // Agenda é rota COMPARTILHADA — Booker (shell legado, seção "Agenda
+  // dos seus artistas" abaixo) continua 100% intocado; profissional/
+  // artista vê o re-skin novo (item 8 da revisão Professional Web
+  // Dashboard, 06/09/2026), mesma lógica de dados (buildCalendarMonth/
+  // getAgendaEvents/CRUD de agenda_entries).
+  if (profile.role !== 'booker') {
+    return <ProAgendaView calendar={calendar} monthEvents={monthEvents} artistProfileId={user.id} agendaEntryLabel={AGENDA_ENTRY_LABEL} />;
+  }
+
   return (
     <main className="flex flex-col gap-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -80,8 +90,6 @@ export default async function AgendaPage(props: {
           </span>
         </div>
       </header>
-
-      {profile.role === 'artista' && <AgendaEntryForm artistProfileId={user.id} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className={cardClass}>
@@ -197,7 +205,7 @@ export default async function AgendaPage(props: {
         </section>
       </div>
 
-      {profile.role === 'booker' && myArtists.length > 0 && (
+      {myArtists.length > 0 && (
         <section className={cardClass}>
           <p className={eyebrowClass}>Agenda dos seus artistas</p>
           <p className="mt-1 text-[12.5px] text-[var(--ink)]/55">

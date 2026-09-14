@@ -15,7 +15,7 @@ import type {
   OpportunityInterestStatus,
   OpportunityInvitation,
   OpportunityInvitationStatus,
-  PayoutRequest,
+  PixKeyType,
   Profile,
   Referral,
   RepresentationRequest,
@@ -62,10 +62,6 @@ export function getBookingCheckpoints(booking: Booking): Checkpoint[] {
     { key: 'validado', label: 'Validado', done: booking.validated_at != null },
     { key: 'pagamento', label: 'Pagamento', done: booking.status === 'concluida' },
   ];
-}
-
-export function isDooplaVerified(booking: Booking): boolean {
-  return booking.validated_at != null;
 }
 
 async function attachOtherPartyNames(
@@ -311,6 +307,10 @@ export async function getSentInvites(
   bookerId: string,
   supabase: SupabaseServerClient
 ): Promise<Invite[]> {
+  // Sweep sob demanda (mesmo padrão de expire_stale_representation_requests)
+  // — garante que um convite já vencido aparece como 'expirada' pra quem
+  // enviou, não como 'pendente' desatualizado.
+  await supabase.rpc('expire_stale_invites');
   const { data } = await supabase
     .from('invites')
     .select('*')
@@ -1228,7 +1228,7 @@ function isPrevMonth(iso: string): boolean {
   return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
 }
 
-function commissionCents(booking: Booking): number {
+export function commissionCents(booking: Booking): number {
   if (!booking.cache_amount_cents) return 0;
   return Math.round((booking.cache_amount_cents * booking.commission_percent) / 100);
 }
@@ -1350,6 +1350,45 @@ export function computeArtistStats(bookings: Booking[]): ArtistStats {
     awaitingPaymentCount,
     avgCommissionPercent,
   };
+}
+
+// Correção de UX do Financeiro (07/09/2026) — "Histórico de bookings"
+// duplicava a tela Bookings (mesma fonte, mesmos campos, só truncado).
+// Auditoria confirmou: status='concluida' só é atingido por
+// markPaidAction (booker confirma pagamento direto) ou pelo último
+// estágio do fluxo de NF (invoice_commission_paid_at preenchido) —
+// nenhum outro caminho no código ou no banco seta esse status. Ou
+// seja, 'concluida' já significa "valor recebido de verdade", nunca
+// só "operacionalmente concluído" — por isso este recorte pode confiar
+// nele sem inventar um ledger/status novo. Data usada é
+// invoice_commission_paid_at quando existe (fluxo de NF, timestamp
+// exato do recebimento), senão updated_at — que nesses dois fluxos é
+// a própria escrita que setou 'concluida' e nunca é tocado de novo
+// depois (booking em estado terminal), então não sofre o problema de
+// "evento secundário empurrando a data" que updated_at teria em
+// status não-terminais.
+export type ReceivedBookingCard = {
+  id: string;
+  otherPartyName: string;
+  receivedAtIso: string;
+  grossCents: number;
+  commissionCents: number;
+  netCents: number;
+};
+
+export function getArtistReceivedBookings(bookings: BookingWithOtherParty[]): ReceivedBookingCard[] {
+  return bookings
+    .filter((b) => b.status === 'concluida')
+    .map((b) => ({
+      id: b.id,
+      otherPartyName: b.otherPartyName,
+      receivedAtIso: b.invoice_commission_paid_at ?? b.updated_at,
+      grossCents: b.cache_amount_cents ?? 0,
+      commissionCents: commissionCents(b),
+      netCents: (b.cache_amount_cents ?? 0) - commissionCents(b),
+    }))
+    .sort((a, b) => b.receivedAtIso.localeCompare(a.receivedAtIso))
+    .slice(0, 8);
 }
 
 // vermelha: ação pendente/urgente (algo bloqueado, dinheiro parado).
@@ -1567,6 +1606,9 @@ export async function getPendingInvites(
   userId: string,
   supabase: SupabaseServerClient
 ): Promise<PendingInvite[]> {
+  // Mesmo sweep de getSentInvites — nunca oferecer "Aceitar conexão" pra
+  // um convite que já venceu, mesmo que o sweep ainda não tenha rodado.
+  await supabase.rpc('expire_stale_invites');
   const { data: invites } = await supabase
     .from('invites')
     .select('*')
@@ -1636,32 +1678,29 @@ export async function getBookingContract(
   return { contract, booking: withName };
 }
 
-export type PayoutBalance = {
-  availableCents: number;
-  requests: PayoutRequest[];
+export type ActivePaymentDetails = {
+  pixKeyType: PixKeyType;
+  pixKey: string;
+  holderName: string | null;
 };
 
-// Disponível pra saque = total já recebido menos o que já foi solicitado
-// (não processado ainda — Bloco 2/Pagar.me faz a transferência de
-// verdade). Sem tabela de "já liquidado" separada, é uma aproximação
-// honesta: nunca deixa pedir mais do que já ganhou.
-export async function getPayoutBalance(
+// Financeiro (revisão Professional Web Dashboard, 06/09/2026) — extraída
+// da query inline que já existia em dinheiro/page.tsx. A Doopla nunca
+// recebe o dinheiro do booking (pagamento é direto cliente -> profissional
+// no beta); esta função só lê os dados que a Doopla usa pra ORIENTAR
+// esse pagamento direto, nunca um saldo/carteira. Ver DECISOES.md.
+export async function getActivePaymentDetails(
   userId: string,
-  totalReceivedCents: number,
   supabase: SupabaseServerClient
-): Promise<PayoutBalance> {
-  const { data: requests } = await supabase
-    .from('payout_requests')
-    .select('*')
+): Promise<ActivePaymentDetails | null> {
+  const { data } = await supabase
+    .from('payment_details')
+    .select('pix_key_type, pix_key, holder_name')
     .eq('profile_id', userId)
-    .order('created_at', { ascending: false })
-    .returns<PayoutRequest[]>();
-
-  const requested = (requests ?? []).reduce((sum, r) => sum + r.amount_cents, 0);
-  return {
-    availableCents: Math.max(totalReceivedCents - requested, 0),
-    requests: requests ?? [],
-  };
+    .eq('status', 'active')
+    .maybeSingle<{ pix_key_type: PixKeyType; pix_key: string; holder_name: string | null }>();
+  if (!data?.pix_key_type || !data.pix_key) return null;
+  return { pixKeyType: data.pix_key_type, pixKey: data.pix_key, holderName: data.holder_name };
 }
 
 export type ReferralWithName = Referral & { referredName: string };
