@@ -13889,7 +13889,7 @@ já registrada em todos os blocos anteriores) — nunca contra
 2. **`needs_you` (`state.ts`/`doopla-intervention.ts`) não distingue ainda `requires_professional_review`** — hoje continua dependendo só de `lastOutboundIntentDeliveryState === 'policy_allowed'` (comentário corrigido, lógica não). Uma mensagem retida por revisão E uma mensagem que vai sair sozinha em segundos disparam o mesmo `needs_you`, sem diferenciação.
 3. Ambos os pontos acima dependem de reconciliação com a auditoria da Sessão Painel sobre "Decisões/Precisa de você" — explicitamente combinado que viria depois, não decidido unilateralmente aqui.
 
-## 106. Pacote "10 melhorias Professional UX" — sessão isolada `claude/professional-ux-improvements` — roadmap consolidado — `[REGISTRADO / NÃO IMPLEMENTADO]` — 15/09/2026
+## 108. Pacote "10 melhorias Professional UX" — sessão isolada `claude/professional-ux-improvements` — roadmap consolidado — `[REGISTRADO / NÃO IMPLEMENTADO]` — 15/09/2026
 
 ### Contexto — 3 sessões em paralelo
 
@@ -14101,7 +14101,7 @@ pré-aprovado pra remoção cega; (3) manter explícito que os 4 campos
 atuais de completude não são regra permanente; (4) protocolo de
 concorrência entre sessões antes de cada item; (5) confirmar que
 Financeiro não pode assumir payout/wallet. A tabela e a numeração
-"10 melhorias" no título desta seção 106 ficam como registro histórico
+"10 melhorias" no título desta seção 108 ficam como registro histórico
 de como o pacote foi *nomeado inicialmente* — a contagem e os nomes
 corretos dos itens são os desta correção, não os do topo da seção.
 
@@ -15341,6 +15341,25 @@ errado. **NÃO corrigido nesta branch** (runtime/pipeline fora de
 escopo Professional) — registrado pra reconciliação com a Sessão
 Central junto da arquitetura de Decisões/Precisa de você.
 
+> **Nota de reconciliação da integração (16/09/2026, fundadora
+> aprovou explicitamente esta leitura)**: o achado acima descreve o
+> `pipeline.ts` como estava no checkout isolado da Sessão Painel
+> (forkado em `ff77afc8`, nunca re-sincronizado). A Sessão Central já
+> havia corrigido exatamente esta lacuna em `c40c445`
+> (2026-09-15 11:58:29 UTC) — quase 6h antes deste texto ter sido
+> escrito (`8840224`, 17:43:34 UTC) — passando
+> `requiresProfessionalReview: decision.requiresProfessionalReviewBeforeSend`
+> diretamente no `createOutboundIntent()` de `pipeline.ts`, sem
+> depender de `disposition`. Confirmado lendo o `pipeline.ts` real do
+> HEAD canônico pós-integração: a propagação está presente. **Estado
+> canônico**: propagação/fail-closed do worker de envio =
+> `DELIVERED + VALIDATED` (ver §107). A segunda parte do achado
+> continua real e não resolvida: `requires_professional_review` ainda
+> não chega a `decisions/data.ts`/`doopla-intervention.ts`/
+> `work-items.ts` — o release/integração com "Precisa de você"
+> permanece `PENDING INTEGRATION`, exatamente como já registrado em
+> §107.
+
 **Busca Global — decisão de roadmap registrada** (não implementada): o
 painel terá futuramente uma busca global (cliente/trabalho/booking/
 data/local/contrato/outros), permitindo por exemplo "contrato Mariana"
@@ -15854,7 +15873,11 @@ Ajuda e suporte, Booking Detail + Contratos, e agora Decisões —
 encerrando o roadmap da Sessão Painel. Pendências registradas pra
 reconciliação com a Sessão Central (não resolvidas nesta branch, por
 escopo): P0 conversa→booking (impacta Bookings/Financeiro/Contratos),
-`requires_professional_review` não propagado em `pipeline.ts`,
+`requires_professional_review` não propagado em `pipeline.ts` (**nota
+de integração, 16/09/2026**: já corrigido pela Sessão Central em
+`c40c445`, antes deste texto ter sido escrito — ver correção completa
+logo acima, nesta mesma seção; release/integração com "Precisa de
+você" continua `PENDING INTEGRATION`),
 `booking ↔ conversation` (`related_booking_id` nunca escrito),
 paridade Web×App de "Condições decididas", cleanup futuro das RPCs
 `list_actionable_decisions_page`/`list_resolved_decisions_page` órfãs.
@@ -15863,9 +15886,9 @@ Booker, Home (`_home/**`) e runtime/Approval Engine/Policy Gate
 permanecem 100% intocados do início ao fim.
 
 
-## 107. Sessão paralela (Home) — pacote de 7 ajustes pontuais de UI fechado — `[CORRIGIDO — item 7 reaberto, ver §108]` — 15/09/2026
+## 109. Sessão paralela (Home) — pacote de 7 ajustes pontuais de UI fechado — `[CORRIGIDO — item 7 reaberto, ver §110]` — 15/09/2026
 
-**Correção (ver §108 abaixo):** a fundadora reabriu o item 7 depois
+**Correção (ver §110 abaixo):** a fundadora reabriu o item 7 depois
 deste bloco ser escrito — a avaliação "já estava correto" abaixo foi
 insuficiente. Pacote **não é mais 7/7** até o item 7 ser reaprovado.
 Mantendo o resto deste bloco como registro histórico do que foi feito
@@ -15890,7 +15913,7 @@ resposta desta sessão pra tabela completa item a item.
 | 4 | Idle wander das pupilas | Um deslocamento sorteado por PAR de olhos (não por pupila) em `initMascotEyes`/`startIdleWander` — verificado em runtime, pupilas do mesmo par sempre com o mesmo transform depois de ~1.5s parado. Cursor tracking e os olhos grandes de "Sempre com você" (`legacyEyesCol*`) preservados sem nenhuma alteração |
 | 5 | CTAs Básico/Pro | `.plan-cta{margin-top:8px}` → `margin-top:auto`; diferença de alinhamento caiu de ~27px pra ~2px |
 | 6 | Largura do FAQ | Duas rodadas: 760px→920px (rejeitado pela fundadora, "ainda estreito") → **760px→1180px**, igualando exatamente `.two-col`/`.plans`/`.with-you` (não um número novo, o valor que a Home já usava). Confirmado por medição em 1440px e 1024px: `.faq .narrow` sempre com a mesma largura de `.plans` nas duas resoluções |
-| 7 | Seção final + footer | ~~Avaliado visualmente, nenhuma alteração feita~~ — **REABERTO pela fundadora, ver §108: card estreito demais e footer longe demais do card, avaliação abaixo estava errada** |
+| 7 | Seção final + footer | ~~Avaliado visualmente, nenhuma alteração feita~~ — **REABERTO pela fundadora, ver §110: card estreito demais e footer longe demais do card, avaliação abaixo estava errada** |
 
 **Arquivos alterados** (só estes 4, nada fora de `src/app/_home/`):
 `home.css`, `home.html`, `home.js`, `site-chrome.css`.
@@ -15920,9 +15943,9 @@ aguardando decisão da fundadora sobre quando reconciliar com o HEAD
 canônico mais atual (não necessariamente `41cae54` — vai depender do
 que a linha Professional tiver avançado até lá).
 
-## 108. Item 7 (seção final + footer) reaberto e corrigido — `[DELIVERED — aprovado pela fundadora]` — 15/09/2026
+## 110. Item 7 (seção final + footer) reaberto e corrigido — `[DELIVERED — aprovado pela fundadora]` — 15/09/2026
 
-Correção do §107: a fundadora olhou o render e apontou 2 problemas
+Correção do §109: a fundadora olhou o render e apontou 2 problemas
 reais que a avaliação anterior não pegou:
 
 1. **Card estreito**: `.cta-final{max-width:1080px}` era o único
@@ -15966,7 +15989,7 @@ reconciliar com o HEAD canônico mais atual (não necessariamente
 `ecb713d` — vai depender do que a linha Professional tiver avançado
 até lá).
 
-## 109. Novo pacote Home — reposicionamento de comunicação "Doopla 2.5" — `[AGUARDANDO QA VISUAL]` — 15/09/2026
+## 111. Novo pacote Home — reposicionamento de comunicação "Doopla 2.5" — `[AGUARDANDO QA VISUAL]` — 15/09/2026
 
 Pacote **separado** do pacote visual (§106-108, 7/7 aprovado e
 encerrado — preservado integralmente, nada dele foi revisitado aqui).
@@ -16045,9 +16068,9 @@ QA visual desktop 1440px e mobile 390px em todas as seções tocadas
 **Status**: commitado (`96015d6`), branch isolado, sem push. Aguardando
 QA visual da fundadora antes de fechar.
 
-## 110. QA do pacote de reposicionamento — ajustes pedidos, ainda não fechado — `[AGUARDANDO NOVO QA VISUAL]` — 15/09/2026
+## 112. QA do pacote de reposicionamento — ajustes pedidos, ainda não fechado — `[AGUARDANDO NOVO QA VISUAL]` — 15/09/2026
 
-Direção geral do §109 **aprovada**, mas fundadora pediu 4 ajustes antes
+Direção geral do §111 **aprovada**, mas fundadora pediu 4 ajustes antes
 do fechamento (item 5 "não reordenar" e item 6 "manter seções novas"
 já estavam corretos, sem ação). Fetch de concorrência refeito antes de
 começar: Professional avançou de `c40c445` até `b426503` (docs), zero
@@ -16088,7 +16111,7 @@ overlap com `_home/`.
 **Confirmações pedidas**:
 - `home.js`: zero diff desde o HEAD congelado do pacote visual
   (`b0db655`) — nunca tocado, nas duas rodadas.
-- Planos: zero diff nesta rodada (só o título mudou no §109, mantido).
+- Planos: zero diff nesta rodada (só o título mudou no §111, mantido).
 - Working tree: limpo, HEAD `37f9bc8`.
 
 **Arquivos alterados**: `home.css`, `home.html`.
@@ -16104,12 +16127,12 @@ desktop completa (8 capturas) e Home mobile completa (12 capturas).
 integração. **Pacote ainda não fechado** — aguardando novo QA visual
 da fundadora.
 
-## 111. Correção da correção — intercalar cor dos balões, cinza sem verde, profissões — `[AGUARDANDO QA VISUAL]` — 15/09/2026
+## 113. Correção da correção — intercalar cor dos balões, cinza sem verde, profissões — `[AGUARDANDO QA VISUAL]` — 15/09/2026
 
 Fetch de concorrência refeito: Professional em `b426503`, mesmo do
 bloco anterior, zero overlap com `_home/`.
 
-- **Balões**: o padrão vermelho→5 escuros em bloco→vermelho (§110)
+- **Balões**: o padrão vermelho→5 escuros em bloco→vermelho (§112)
   ficou pesado no centro e lido como bloco separado. Corrigido pra
   intercalar a cada balão: 1/3/5/7 vermelhos, 2/4/6 cinza
   (`.bubble.out`/`.bubble.neutral` alternados na marcação).
@@ -16136,9 +16159,9 @@ com zero diff desde `b0db655`.
 **Status**: commitado (`4419d4e`), branch isolado, sem push, sem
 integração. **Pacote ainda não fechado** — aguardando QA visual.
 
-## 112. Pacote de reposicionamento de comunicação da Home — FECHADO — `[DELIVERED + VISUAL QA APPROVED]` — 15/09/2026
+## 114. Pacote de reposicionamento de comunicação da Home — FECHADO — `[DELIVERED + VISUAL QA APPROVED]` — 15/09/2026
 
-Fundadora aprovou o QA visual da rodada §111. Pacote de reposicionamento
+Fundadora aprovou o QA visual da rodada §113. Pacote de reposicionamento
 ("uma nova forma de agenciamento", §109-111) **fechado oficialmente**.
 
 **Aprovado nesta rodada**: nova comunicação de agenciamento; Hero;
@@ -16156,11 +16179,18 @@ Doopla.") foi alterado; os benefícios/limites/preço atuais **não**
 foram revisados nem aprovados por este QA, ficam para uma rodada
 própria quando a visão universal do agenciamento for decidida.
 
-Resumo do que os dois pacotes (visual §106-108 + comunicação §109-112)
+Resumo do que os dois pacotes (visual §106-108 + comunicação §111-114)
 deixam na Home, juntos: identidade visual (olhos/mascotes/grid/cores)
 100% preservada do redesign original; copy e composição atualizadas
 pra "agenciamento" em vez de "IA de representação"; 3 seções novas;
 `home.js` nunca tocado em nenhuma das duas rodadas.
+
+> **Correção documental da integração (16/09/2026)**: o diff real
+> desta branch contra a base (`c2fcda22`) mostra 30 linhas alteradas
+> em `home.js` (`src/app/_home/home.js`) — a frase acima está
+> desatualizada. Correção só da documentação, per decisão explícita da
+> fundadora: a Home aprovada NÃO foi alterada pra corresponder a este
+> texto; o texto é que estava impreciso.
 
 **Branch**: `claude/home-pacote-7-ajustes-ui-4tq8lz`, isolado,
 preservado. **HEAD**: `51f60cf`. Working tree limpo. **Sem push, sem
@@ -16168,6 +16198,54 @@ merge/rebase/cherry-pick, sem integração com a linha canônica** —
 segue aguardando o checkpoint de integração combinado no início desta
 sessão (reconciliar contra o HEAD canônico mais recente daquele
 momento, preservando o trabalho das outras sessões).
+
+## 115. Checkpoint de integração — Central + Painel + Home reconciliadas numa Doopla canônica — `[INTEGRAÇÃO CONCLUÍDA / QA EM ANDAMENTO]` — 16/09/2026
+
+Auditoria de integração completa (fetch dos 3 HEADs reais, mapa de
+arquivos, migrations, PROGRESS.md das 3 branches) aprovada pela
+fundadora antes de qualquer merge. Execução:
+
+`claude/categoria-b-supabase-env-qsbdq9` (base) → `merge
+claude/professional-ux-improvements` (HEAD auditado `b13939c`) →
+`merge claude/home-pacote-7-ajustes-ui-4tq8lz` (HEAD auditado
+`db0b469`) → reconciliação manual deste arquivo.
+
+**Merges**: os dois `git merge --no-ff` aplicaram limpos — auto-merge
+do git resolveu `PROGRESS.md` sozinho nos dois casos (as três branches
+respeitaram 100% a convenção "nunca reescrever, só anexar", zero linha
+removida em qualquer uma), sem nenhum conflito de código: confirmado
+na auditoria que nenhum arquivo de código foi tocado por mais de uma
+frente. Nenhuma migration nova, nenhum código alterado por esta
+integração além desta reconciliação documental e da renumeração de
+seções abaixo.
+
+**Renumeração**: as três branches cresceram este arquivo em paralelo
+usando os mesmos números de seção (Central `§106`/`§107`, Painel
+`§106`, Home `§107`-`§112`). Renumerado pra sequência única
+`§106`-`§114` (Central mantém `106`/`107` por ter sido escrito
+primeiro; Painel vira `108`; Home vira `109`-`114`), preservando 100%
+do texto original — só os números dos cabeçalhos `## N.` e as
+referências internas `§N` que apontavam pra eles foram ajustados. Uma
+referência ambígua pré-existente do próprio texto da Home ("§106-108")
+foi deixada como estava — não corresponde a nenhum header real (nem
+antes nem depois desta integração) e não é seguro adivinhar a
+intenção original; registrado aqui como nota, não corrigido.
+
+**Correções documentais aplicadas** (só texto, zero código, ambas
+aprovadas explicitamente): (1) o achado da Sessão Painel sobre
+`requires_professional_review` não propagado em `pipeline.ts` — real
+no momento em que foi escrito, mas já corrigido pela Sessão Central 6h
+antes (`c40c445`) — anotado como desatualizado nos dois lugares onde
+aparece, sem apagar o registro original; (2) a Sessão Home afirmava
+"`home.js` nunca tocado" — o diff real mostra 30 linhas alteradas,
+anotado como imprecisão documental, sem tocar o código da Home.
+
+Migrations no HEAD canônico: `0001`-`0084`, sem colisão (Painel e Home
+nunca criaram migration própria — confirmado por auditoria).
+
+Ver PR/commit desta reconciliação pro HEAD final e o relatório
+completo desta sessão pro detalhamento A-V da entrega (mapa de
+arquivos, QA integrado, P0s consolidados).
 
 ## Como usar isso
 
