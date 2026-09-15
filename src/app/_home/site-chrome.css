@@ -12,12 +12,10 @@
 /* ===== logo (olhos) ===== */
 #site-chrome .eye-logo{ display:inline-flex; align-items:center; font-family:'Familjen Grotesk',sans-serif; font-weight:600; }
 #site-chrome .eye-logo .dot{
-  width:.62em; height:.62em; border-radius:50%; background:var(--black);
+  width:.62em; height:.62em; border-radius:50%; background:var(--off);
   display:inline-flex; align-items:center; justify-content:center; margin:0 .03em; position:relative; top:-.03em;
 }
-#site-chrome .eye-logo .dot .pupil{ width:34%; height:34%; border-radius:50%; background:var(--cream); }
-#site-chrome .eye-logo.on-dark .dot{ background:var(--off); }
-#site-chrome .eye-logo.on-dark .dot .pupil{ background:var(--black); }
+#site-chrome .eye-logo .dot .pupil{ width:34%; height:34%; border-radius:50%; background:var(--black); }
 
 /* ===== header ===== */
 #site-chrome .site-header{

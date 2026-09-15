@@ -85,8 +85,8 @@
   }
   #home-marketing .nav-logo{ font-size:1.3rem; }
   #home-marketing .foot-logo{ font-size:1.35rem; }
-  #home-marketing .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--black); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
-  #home-marketing .eye-slot .mascot-pupil{ width:34%; height:34%; }
+  #home-marketing .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--off); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
+  #home-marketing .eye-slot .mascot-pupil{ width:34%; height:34%; background:var(--black); }
 
   /* ===== MASCOTE (hero + CTA final) — bola vermelha, olho preto, pupila
      branca. Ganha .blink (piscada), nunca tracking de cursor. */
@@ -187,7 +187,10 @@
   #home-marketing .phone-chatbar{ display:flex; align-items:center; gap:10px; padding:10px 14px 12px; border-bottom:1px solid rgba(255,255,255,.07); }
   #home-marketing .phone-back{ color:var(--tx-50); flex:none; display:flex; }
   #home-marketing .phone-back svg{ width:16px; height:16px; }
-  #home-marketing .phone-avatar{ width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #ff5a5a, #b30f16 75%); flex:none; }
+  #home-marketing .phone-avatar{
+    width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #ff5a5a, #b30f16 75%); flex:none;
+    display:flex; align-items:center; justify-content:center; gap:5px;
+  }
   #home-marketing .phone-chatbar .who{ flex:1; }
   #home-marketing .phone-chatbar .who .name{ display:block; font-size:.78rem; font-weight:600; color:var(--off); }
   #home-marketing .phone-chatbar .who .status{ font-size:.66rem; color:#5fd97a; }
@@ -201,7 +204,7 @@
   #home-marketing .bubble-group{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
   #home-marketing .bubble-sender{ display:flex; align-items:center; gap:5px; font-size:.62rem; font-weight:600; color:var(--tx-50); padding-right:2px; }
   #home-marketing .bubble-avatar{
-    display:flex; align-items:center; justify-content:center; gap:2px; width:16px; height:16px; border-radius:50%; flex:none;
+    display:flex; align-items:center; justify-content:center; gap:3px; width:20px; height:20px; border-radius:50%; flex:none;
     background:radial-gradient(circle at 38% 32%, #ff4a38, var(--red) 60%, #a81a10 100%);
   }
   #home-marketing .phone-input{ display:flex; align-items:center; gap:8px; padding:10px 14px 16px; border-top:1px solid rgba(255,255,255,.06); }
@@ -223,6 +226,15 @@
 
   #home-marketing .hero-side{ position:absolute; right:6px; top:6%; z-index:3; display:flex; align-items:flex-start; gap:8px; max-width:170px; }
   #home-marketing .hero-side .sq{ width:8px; height:8px; background:var(--red); box-shadow:0 0 10px var(--red-glow); flex:none; margin-top:6px; }
+  /* Só no layout de 2 colunas (hero-grid vira 1fr acima de 1080px — ver
+     media query abaixo) o .phone fica centralizado numa coluna bem mais
+     larga que ele mesmo, e o badge ancorado em right:6px/170px invadia o
+     canto do telefone (achado real, medido: ~42px de sobreposição em
+     1440px). Abaixo de 1081px o hero-visual já é largo o bastante pra
+     não sobrepor (comportamento original preservado, sem alteração). */
+  @media (min-width:1081px){
+    #home-marketing .hero-side{ right:auto; left:calc(50% + 133px + 16px); max-width:110px; }
+  }
   #home-marketing .hero-side span{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--off); line-height:1.5; }
 
   /* ===== PROFISSÕES ===== */
@@ -290,12 +302,12 @@
   #home-marketing .plan-features{ list-style:none; display:flex; flex-direction:column; gap:7px; font-size:.85rem; color:var(--tx-70); }
   #home-marketing .plan-features li{ padding-left:16px; position:relative; }
   #home-marketing .plan-features li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
-  #home-marketing .plan-cta{ margin-top:8px; text-align:center; }
+  #home-marketing .plan-cta{ margin-top:auto; text-align:center; }
 
   /* ===== FAQ (mantido da Home anterior — sem seção equivalente no novo
      mockup; overlay do Menu referencia "FAQ" como destino, então a
      seção precisa continuar existindo. Ver relatório.) ===== */
-  #home-marketing .faq .narrow{ max-width:760px; margin:0 auto; }
+  #home-marketing .faq .narrow{ max-width:920px; margin:0 auto; }
   #home-marketing .faq-list details{ border-bottom:1px solid var(--line); padding:16px 0; }
   #home-marketing .faq-list details:first-child{ border-top:1px solid var(--line); }
   #home-marketing .faq-list summary{ list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:16px; font-family:'Inter',sans-serif; font-weight:700; font-size:.94rem; color:var(--off); }
@@ -411,8 +423,8 @@
     font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.3rem; color:var(--off, #fbf9f2);
     display:flex; align-items:center; text-decoration:none;
   }
-  #home-menu-overlay .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--black, #121110); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
-  #home-menu-overlay .eye-slot .mascot-pupil{ width:34%; height:34%; border-radius:50%; background:var(--off, #fbf9f2); }
+  #home-menu-overlay .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--off, #fbf9f2); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
+  #home-menu-overlay .eye-slot .mascot-pupil{ width:34%; height:34%; border-radius:50%; background:var(--black, #121110); }
   #home-menu-overlay .btn{ padding:13px 24px; border-radius:999px; font-size:.82rem; font-weight:600; display:inline-flex; align-items:center; gap:8px; text-decoration:none; border:none; }
   #home-menu-overlay .btn-primary{ background:var(--red, #e2291c); color:var(--off, #fbf9f2); box-shadow:0 8px 24px rgba(226,41,28,.35); }
   #home-menu-overlay .close-btn{ background:transparent; border:none; color:var(--off, #fbf9f2); font-size:1.6rem; line-height:1; padding:6px; cursor:pointer; }
