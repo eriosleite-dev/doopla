@@ -294,28 +294,43 @@
   #home-marketing .manifesto p.lead + p.lead{ margin-top:14px; }
   #home-marketing .manifesto-close{ margin:24px 0 0; font-family:'Inter',sans-serif; font-weight:700; font-size:1.1rem; color:var(--off); }
 
-  #home-marketing .job-demo{ display:flex; flex-direction:column; gap:16px; }
-  #home-marketing .job-demo-chat,
-  #home-marketing .job-demo-found{ background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:18px; display:flex; flex-direction:column; gap:10px; }
-  #home-marketing .job-demo-chat .bubble,
-  #home-marketing .job-demo-found > .bubble{ max-width:90%; }
-  #home-marketing .job-card{ margin-top:2px; background:var(--panel-solid); border:1px solid var(--line); border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:12px; }
-  #home-marketing .job-card-title{ font-family:'Inter',sans-serif; font-weight:700; font-size:.95rem; color:var(--off); }
-  #home-marketing .job-card-details{ list-style:none; display:flex; flex-direction:column; gap:6px; font-size:.82rem; color:var(--tx-70); }
-  #home-marketing .job-card-details li{ padding-left:16px; position:relative; }
-  #home-marketing .job-card-details li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
-  #home-marketing .job-card-cta{ align-self:flex-start; padding:10px 20px; font-size:.78rem; }
+  /* Demonstração "Novos trabalhos" — v2 (16/09/2026, ref. de arte da
+     fundadora). Cada troca (cliente↔Doopla, Doopla↔profissional) é UMA
+     superfície de conversa só (.job-demo-panel), nunca caixa dentro de
+     caixa. As duas ficam unidas por uma linha vertical (.job-demo-thread)
+     que atravessa a transição — nunca dois blocos soltos empilhados. O
+     selo do WhatsApp pertence só à TRANSIÇÃO entre as conversas, nunca
+     ao topo do primeiro painel (achado da fundadora: fazia parecer que
+     o primeiro bloco "era" o WhatsApp). */
+  #home-marketing .job-demo{ position:relative; display:flex; flex-direction:column; gap:0; }
+  /* Mesmo glow do hero (.hero-glow), mais discreto — só pra dar
+     profundidade e equilibrar o peso visual com a coluna esquerda,
+     igual à ref. de arte (16/09/2026). */
+  #home-marketing .job-demo-glow{ position:absolute; inset:-40px; z-index:-1; filter:blur(6px); background:radial-gradient(closest-side, var(--red-glow), transparent 70%) 75% 90% / 55% 55% no-repeat; opacity:.55; }
+  #home-marketing .job-demo-panel{ background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:16px 18px; display:flex; flex-direction:column; gap:12px; position:relative; z-index:1; }
+  #home-marketing .job-demo-row{ display:flex; align-items:flex-start; gap:10px; }
+  #home-marketing .job-demo-avatar{ flex:none; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; gap:3px; }
+  #home-marketing .job-demo-avatar.phone-avatar{ width:26px; height:26px; }
+  #home-marketing .job-demo-avatar-neutral{ background:rgba(255,255,255,.08); color:var(--tx-50); }
+  #home-marketing .job-demo-avatar-neutral svg{ width:14px; height:14px; }
+  #home-marketing .job-demo-row-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+  #home-marketing .job-demo-who{ font-size:.64rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--tx-50); line-height:1; padding-top:5px; }
+  #home-marketing .job-demo-row .bubble{ max-width:100%; }
+  #home-marketing .job-demo-ellipsis{ align-self:flex-start; margin-left:36px; color:var(--tx-30); font-size:.8rem; letter-spacing:.12em; }
+  #home-marketing .job-demo-info{ display:flex; align-items:center; gap:8px; margin-left:36px; padding:8px 12px; border-radius:10px; background:rgba(255,255,255,.03); font-size:.78rem; color:var(--tx-70); }
+  #home-marketing .job-demo-info svg{ flex:none; color:var(--red); }
+  /* Estilo próprio (não usa .btn-ghost) — achado real desta rodada:
+     .btn-ghost some no mobile (@media max-width:760px, regra pensada
+     pro "Entrar" do header), o que também escondia sem querer o CTA
+     desta demonstração. "Quero saber mais" precisa continuar visível
+     no mobile. */
+  #home-marketing .job-demo-panel .job-card-cta{ margin-left:36px; align-self:flex-start; padding:9px 18px; font-size:.76rem; background:transparent; color:var(--off); border:1px solid var(--line-strong); }
 
-  /* Ajustes pontuais pós-integração (16/09/2026) — demonstração "Novos
-     trabalhos" refeita pra deixar explícito que é uma conversa de
-     WhatsApp e que cliente↔Doopla / Doopla↔profissional são duas
-     partes do MESMO fluxo. Reaproveita .bubble/.job-card já existentes
-     — só 3 seletores novos, nenhum componente do zero. */
-  #home-marketing .job-demo-channel{ display:flex; align-items:center; gap:6px; font-size:.68rem; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:var(--tx-50); }
-  #home-marketing .job-demo-channel svg{ flex-shrink:0; }
-  #home-marketing .job-demo-messages{ display:flex; flex-direction:column; gap:8px; }
-  #home-marketing .job-demo-arrow{ display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--tx-50); align-self:center; }
-  #home-marketing .job-demo-arrow span{ font-size:.72rem; text-align:center; }
+  #home-marketing .job-demo-thread{ position:absolute; left:31px; top:0; bottom:0; width:2px; background:linear-gradient(180deg, rgba(226,41,28,0) 0%, rgba(226,41,28,.35) 20%, rgba(226,41,28,.35) 80%, rgba(226,41,28,0) 100%); z-index:0; }
+  #home-marketing .job-demo-transition{ display:flex; align-items:center; gap:10px; padding:14px 0 14px 18px; position:relative; z-index:1; }
+  #home-marketing .job-demo-whatsapp-badge{ flex:none; width:28px; height:28px; border-radius:50%; background:var(--red); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 4px var(--bg); }
+  #home-marketing .job-demo-whatsapp-badge svg{ width:14px; height:14px; color:#fff; }
+  #home-marketing .job-demo-transition span{ font-size:.8rem; color:var(--tx-70); }
 
   /* sempre com você (WhatsApp) — fundo vermelho sólido, olhos grandes
      reaproveitados à direita */
