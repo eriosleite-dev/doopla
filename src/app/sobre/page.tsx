@@ -6,7 +6,7 @@ import { PageShell } from '../_home/PageShell';
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
   description:
-    'A Doopla nasceu para dar ao artista independente a estrutura que existe por trás de uma carreira profissional. Representação, organização e inteligência para que você possa focar no seu trabalho e continuar no controle da sua carreira.',
+    'A Doopla é uma nova forma de agenciamento para profissionais independentes. Encontra trabalhos, atende clientes, negocia e cuida de tudo até o trabalho acontecer.',
 };
 
 export default function SobrePage() {
@@ -16,10 +16,9 @@ export default function SobrePage() {
         <span className="eyebrow">Sobre a Doopla</span>
         <h1>Toda carreira merece sua Doopla.</h1>
         <p>
-          A Doopla nasceu para dar ao artista independente a estrutura que
-          existe por trás de uma carreira profissional. Representação,
-          organização e inteligência para que você possa focar no seu
-          trabalho e continuar no controle da sua carreira.
+          A Doopla é uma nova forma de agenciamento para profissionais
+          independentes. Encontra trabalhos, atende clientes, negocia e cuida
+          de tudo até o trabalho acontecer.
         </p>
         <div className="hero-eyes" aria-hidden="true">
           <span className="dot">
@@ -33,28 +32,28 @@ export default function SobrePage() {
 
       <section className="page-content">
         <div className="inner">
-          <h2>Você faz seu trabalho. Sua Doopla cuida do booking.</h2>
+          <h2>Você faz seu trabalho. Sua Doopla trabalha por você.</h2>
           <div className="concepts">
             <div className="concept">
-              <h3>Representação</h3>
-              <p>Negociação, propostas, follow-ups, contratos e organização.</p>
+              <h3>Encontra trabalhos</h3>
+              <p>Sua Doopla identifica trabalhos que fazem sentido para você.</p>
             </div>
             <div className="concept">
-              <h3>Com você no controle</h3>
-              <p>Sua Doopla conduz. Decisões comerciais importantes passam por você.</p>
+              <h3>Cuida de tudo</h3>
+              <p>Atende clientes, entende o trabalho, negocia e acompanha cada etapa.</p>
             </div>
             <div className="concept">
-              <h3>Independência</h3>
-              <p>Você não precisa entrar para uma agência para ter estrutura de representação.</p>
+              <h3>Você decide</h3>
+              <p>Quando uma decisão precisa ser sua, sua Doopla te chama.</p>
             </div>
           </div>
         </div>
       </section>
 
       <section className="page-cta">
-        <h2>Tem booking pra resolver?</h2>
+        <h2>Tenha uma Doopla trabalhando por você.</h2>
         <Link href="/cadastro" className="btn-cta">
-          Começar agora
+          Criar conta
         </Link>
       </section>
     </PageShell>

@@ -61,8 +61,10 @@
   background:var(--black); color:rgba(251,249,242,.6); padding:44px;
   display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;
 }
+#site-chrome .site-footer .foot-brand{ display:flex; flex-direction:column; gap:8px; }
 #site-chrome .site-footer .eye-logo{ font-size:1.3rem; color:var(--off); }
-#site-chrome .site-footer .foot-links{ display:flex; gap:26px; flex-wrap:wrap; }
+#site-chrome .site-footer .foot-tagline{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:.86rem; color:rgba(251,249,242,.8); }
+#site-chrome .site-footer .foot-links{ display:flex; align-items:center; gap:26px; flex-wrap:wrap; }
 #site-chrome .site-footer .foot-links a{
   color:inherit; text-decoration:none; font-family:'IBM Plex Mono',monospace; font-size:.72rem;
   letter-spacing:.06em; text-transform:uppercase; transition:color .2s ease;
@@ -106,9 +108,10 @@
 #site-chrome .principles .principle p{ font-size:.92rem; color:#5a5648; line-height:1.6; }
 #site-chrome .principles .principle .discreet-link{ display:inline-block; margin-top:10px; font-size:.78rem; color:var(--red); text-decoration:underline; }
 
-/* contato: 2 colunas no desktop */
-#site-chrome .contact-grid{ display:grid; grid-template-columns:.8fr 1.2fr; gap:56px; align-items:start; }
-#site-chrome .contact-info .email{ font-family:'IBM Plex Mono',monospace; font-size:1.05rem; margin-top:10px; display:inline-block; color:var(--black); }
+/* contato: composição compacta, coluna única */
+#site-chrome .contact-layout{ max-width:560px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+#site-chrome .email-alt{ text-align:center; font-size:.86rem; color:#5a5648; }
+#site-chrome .email-alt a{ font-family:'IBM Plex Mono',monospace; color:var(--red); text-decoration:underline; margin-left:4px; }
 #site-chrome form.contact-form{ display:flex; flex-direction:column; gap:16px; }
 #site-chrome form.contact-form label{ font-family:'IBM Plex Mono',monospace; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; margin-bottom:6px; display:block; }
 #site-chrome form.contact-form input, #site-chrome form.contact-form textarea{
@@ -144,5 +147,4 @@
   #site-chrome .page-hero{ padding:64px 20px 52px; }
   #site-chrome .page-content{ padding:52px 20px; }
   #site-chrome .concepts, #site-chrome .principles{ grid-template-columns:1fr; gap:28px; }
-  #site-chrome .contact-grid{ grid-template-columns:1fr; gap:36px; }
 }
