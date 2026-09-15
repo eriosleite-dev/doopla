@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { logoutAction } from '@/app/auth/actions';
 
 import { NotificationBell } from './notification-bell';
+import { ProHeaderCommunityLink } from './pro-header-community-link';
 import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
 import { ProSidebarReferralLink } from './pro-sidebar-referral-link';
 import { initialsFromName } from './ui';
@@ -149,18 +150,7 @@ export function ProfessionalShell({
         <main className="min-w-0 flex-1 px-5 py-6 sm:px-8 sm:py-7">
           <div className="mb-4 flex items-center justify-end gap-2.5">
             <NotificationBell />
-            <Link
-              href="/dashboard/comunidade"
-              aria-label="Comunidade"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <circle cx="9" cy="8" r="3" />
-                <circle cx="17" cy="9" r="2.6" />
-                <path d="M2 20c1-3.5 3.5-5.5 7-5.5s6 2 7 5.5" />
-                <path d="M14.5 14.6c2.7.4 4.3 2 5 5.4" />
-              </svg>
-            </Link>
+            <ProHeaderCommunityLink />
             <Link
               href="/dashboard/perfil"
               aria-label="Configurações"
