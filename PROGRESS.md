@@ -13840,6 +13840,110 @@ Nenhum destes pontos bloqueia o início dos AUDITs (que são só leitura).
 Bloqueiam apenas o momento de escrever código nas superfícies citadas
 — nesse momento, checar de novo antes de editar.
 
+### CORREÇÃO 15/09/2026 — reconciliação literal dos pedidos + escopo revisado de #1
+
+A fundadora pediu, antes de aprovar implementação: (1) não forçar a
+contagem em 10 — voltar às mensagens reais desta sessão e reconciliar
+literalmente; (2) corrigir o escopo do item Decisões, que não está
+pré-aprovado pra remoção cega; (3) manter explícito que os 4 campos
+atuais de completude não são regra permanente; (4) protocolo de
+concorrência entre sessões antes de cada item; (5) confirmar que
+Financeiro não pode assumir payout/wallet. A tabela e a numeração
+"10 melhorias" no título desta seção 106 ficam como registro histórico
+de como o pacote foi *nomeado inicialmente* — a contagem e os nomes
+corretos dos itens são os desta correção, não os do topo da seção.
+
+**Reconciliação literal, mensagem por mensagem, sem forçar número**:
+
+Revisando as mensagens reais enviadas nesta sessão em ordem, os blocos
+distintos de pedido são:
+
+1. "Quero revisar a necessidade da página Decisões no Professional..." — 1 pedido.
+2. "Mais alguns ajustes no detalhe: 1/2/3/4 (voltar, badge, estado inicial, regra global sem travessão)" — 1 pedido.
+3. "Encontrei um bug na Home em Deixe sua Doopla pronta..." — bug report inicial.
+4. "Tivemos uma mudança recente no Contexto profissional / 'Como você trabalha'... identifique exatamente quais são hoje os '4' requisitos..." — **mesma investigação/correção do bloco 3**, com o diagnóstico aprofundado (audita a fonte de verdade do mesmo bug, os mesmos "4 critérios", o mesmo card da Home). Não é um pedido novo e independente — é a continuação/detalhamento do pedido do bloco 3, confirmado agora pela fundadora.
+5. "Encontramos outro resíduo do modelo legado em `Financeiro`..." (enviado duas vezes, texto idêntico — duplicata, não conta como 2) — 1 pedido.
+6. "CONFIGURAÇÕES — REDESIGN COMPLETO DE 'PERFIL E TRABALHO'" — 1 pedido.
+7. "Quero revisar `Configurações > Sua Doopla`..." — 1 pedido.
+8. "CONFIGURAÇÕES — REDESIGN DE 'CANAIS DA SUA DOOPLA'" — 1 pedido.
+9. "CONFIGURAÇÕES — AJUSTE DE UX EM 'PRIVACIDADE E DADOS'" — 1 pedido.
+10. "CONFIGURAÇÕES — AJUSTE DE 'AJUDA E SUPORTE'" — 1 pedido.
+
+Os blocos "Mandei 3 coisas nessa sessao..." e "5 mudancas no total
+agora" / "7 mudancas" são comentários de acompanhamento da própria
+fundadora sobre quantos pedidos ela já tinha enviado até aquele ponto
+(contagens corridas, não pedidos novos). O pedido "ROADMAP CONSOLIDADO
+— 10 MELHORIAS ENVIADAS NESTA SESSÃO" é o meta-pedido que deu origem a
+este próprio registro, também não é um dos itens.
+
+**Resultado da reconciliação: 9 pedidos distintos, não 10.** Os
+blocos 3 e 4 (bug + investigação aprofundada da mesma pendência de
+Home) são uma única correção, exatamente como a fundadora suspeitou —
+e essa única correção já está `DELIVERED` (commit `fce024e`, fora
+desta sessão). Nenhum pedido ficou de fora da primeira tabela: a
+diferença de 10 pra 9 é só a fusão de #3+#4 num item só. Renumerando
+em ordem de envio:
+
+| # | Item original | Status | Audit | Superfícies | Dependências |
+|---|---|---|---|---|---|
+| 1 | Auditar `/dashboard/decisoes`: identificar se a superfície tem capacidade exclusiva necessária ao Professional antes de cogitar remoção (ver escopo revisado abaixo) | PENDING | **Sim, obrigatório** | Nav, Home, Bookings, detalhe do booking, Conversas, Agenda | Depende da conclusão de #6 (Sua Doopla — regra "Painel sempre reflete") e de #2 (CTA no detalhe do booking) pra decidir com segurança |
+| 2 | Ajustes no detalhe do booking: botão voltar → "VOLTAR PARA BOOKINGS" + destino correto; badge de status revisado (semântica de status, não só valor); estado inicial "SUA DOOPLA ESTÁ CUIDANDO" com CTA reusando `buildTalkToYourDooplaUrl`, evoluindo pra "PRECISA DE VOCÊ" quando houver intervenção real; regra global "nunca usar travessão em copy de produto", auditar ocorrências | PENDING | Parcial (audit de travessão nas superfícies Professional) | Detalhe do booking | Reusa `buildTalkToYourDooplaUrl`. Não redesenhar a estrutura visual da página (aprovada) |
+| 3 | Bug "Contexto profissional · N/4" não desaparecia da Home após completar + auditoria da fonte de verdade dos 4 critérios (remover campos legados/ocultos do cálculo) | **DELIVERED** (commit `fce024e`, fora desta sessão) | Feito | Home, `src/app/dashboard/data.ts`, App (`mobile/app/(tabs)/index.tsx`) | **Os 4 campos atuais (`what_you_do`/`where_you_serve`/`fee_range`/`issues_invoice`) NÃO são regra permanente** — se #5 (Perfil e trabalho) mudar o modelo canônico de campos (ex.: regra "cachê OU informações extras"), `getArtistMatchingCompletion` precisa ser revalidado e ajustado. Isso não reabre o bug, é consequência esperada de #5 |
+| 4 | Financeiro: remover bloco "Recebimentos" (residual de payout/repasse que não existe mais); revisar rótulos dos 3 indicadores pra linguagem de "valor do trabalho" (nunca "recebido pela Doopla"); manter "Dados de recebimento" com nova copy; auditar se existe fonte canônica confiável de booking pago pelo cliente antes de criar qualquer UI de estado de pagamento | PENDING | **Sim** — auditar lógica antiga de payout/saque antes de remover; reportar se existe fonte canônica de "pago" antes de criar UI | Financeiro | **A Doopla não processa pagamento — cliente paga direto ao profissional. Não criar wallet, saldo, saque ou payout novo sob nenhuma hipótese.** Não mexer em Booker |
+| 5 | Redesign completo de "Perfil e trabalho": unificar Dados profissionais + Como você trabalha num único accordion/página, 3 grupos (Informações profissionais / Seu trabalho / Valores e condições), cachê de referência + informações extras + nota fiscal | AUDIT | **Sim, obrigatório e extenso** — reportar os 13 pontos pedidos antes de qualquer implementação; parar se exigir schema novo | Configurações | Fundacional pra #3 (completude da Home) e pra #7 (toggles de especialidades/tipos de trabalho em Privacidade). Não duplicar responsabilidade com "Sua Doopla" (mandato/autonomia fica lá) |
+| 6 | Auditar/possivelmente remover a preferência "WhatsApp / Painel / WhatsApp+Painel" em Configurações > Sua Doopla; avaliar se a própria seção deve desaparecer da UI beta | AUDIT | **Sim, obrigatório** — reportar onde é armazenada, quem consome, se altera envio de fato, antes de mudar | Configurações | Fundacional pra #1 (regra "Painel sempre reflete a pendência") e pra #7 (semântica do canal WhatsApp) |
+| 7 | Redesign de "Canais da sua Doopla": WhatsApp da Doopla, código individual, "Doopla chama o cliente" (CTA "Falar com minha Doopla"), "Seu link de booking" (mantendo rota `/orcamento/[slug]`), "Seu WhatsApp"; remover lógica antiga de booker ("Quem recebe seus pedidos de orçamento") só da superfície Professional | PENDING (infra parcial já existe na base) | **Sim, extensa** — NÃO simular/prometer o fluxo "Doopla chama o cliente" se não estiver operacional ponta a ponta; reportar o menor bloco de infraestrutura necessário nesse caso, separadamente | Configurações | Depende de #6 (semântica do canal); reusa `buildTalkToYourDooplaUrl` no mesmo padrão de #2 |
+| 8 | Ajustes de UX em "Privacidade e dados": remover "Seus dados" vazio; renomear seção Comunidade + copy; renomear botão "Salvar" → "Salvar preferências"; auditar os 2 toggles "Mostrar minhas especialidades" / "Mostrar tipos de trabalho" quanto a dependência de campos legados de matching | PENDING | Parcial — só os 2 toggles citados | Configurações | Os 2 toggles dependem da conclusão de #5 (quais campos de matching seguem editáveis vs. legados) |
+| 9 | Simplificar "Ajuda e suporte": remover copy explicativa sobre "Falar com minha Doopla"; reusar FAQ institucional canônico; "Falar com o suporte" via `contato@doopla.pro` centralizado | PENDING (infra parcial já existe: e-mail já centralizado em `src/lib/support.ts`, página em `dashboard/perfil/suporte`) | Leve — confirmar rota do FAQ institucional | Configurações | Nenhuma |
+
+### Escopo revisado do item #1 (Decisões) — não é remoção pré-aprovada
+
+Corrigindo a formulação anterior desta seção ("remover Decisões"): o
+mandato real é **auditar**, não remover cegamente. Arquitetura de
+referência dada pela fundadora:
+
+- **Bookings** = universo dos trabalhos.
+- **"Precisa de você"** = condição/prioridade transversal, não uma
+  seção conceitualmente independente.
+- **Home** = resumo/atalho do que precisa da pessoa.
+- **Detalhe do booking** = onde a decisão concreta é entendida/resolvida.
+- **Conversas** = comunicação.
+- **Agenda** = dimensão temporal.
+- **Backend de decisões** = pode continuar existindo como fonte de
+  autorização/histórico, independente do que acontecer na UI.
+
+Passo obrigatório antes de qualquer remoção: confirmar se
+`/dashboard/decisoes` tem alguma capacidade exclusiva necessária ao
+Professional que Home + Bookings + detalhe do booking + Conversas +
+Agenda não cobrem. Só se a resposta for "nenhuma capacidade exclusiva"
+é que a sequência de remoção se aplica: tirar do nav Professional,
+remover a superfície redundante, redirecionar a rota quando apropriado
+— **preservando integralmente** backend, tabelas, RPCs, histórico e
+qualquer integração necessária. Não remover decisões do backend, não
+apagar histórico, não tocar Booker.
+
+### Protocolo de concorrência entre sessões (regra permanente do pacote, não um item)
+
+Antes de começar **cada** item da tabela acima (não só uma vez no
+início do pacote):
+
+1. `git fetch` do Professional canônico (`origin/claude/categoria-b-supabase-env-qsbdq9`).
+2. Verificar se há commits novos desde `ff77afc` (a base desta branch).
+3. Se houver, checar se algum deles toca arquivos que o item em questão
+   vai tocar.
+4. **Não integrar/rebasear automaticamente.** Se houver mudança
+   concorrente relevante nos arquivos do item, parar e reportar antes
+   de sobrescrever ou escolher uma versão — a decisão de como
+   reconciliar é da fundadora, não desta sessão.
+
+**`src/app/_home/` e `src/app/page.tsx` são propriedade da Sessão
+Home.** Esta sessão não edita esses arquivos em nenhum item deste
+pacote, mesmo que um item pareça tocar Home indiretamente (ex.: #3 já
+foi resolvido por fora; se #5 exigir revalidar a completude, o arquivo
+a tocar é `src/app/dashboard/data.ts`/equivalente do card na Home
+*dentro do Professional*, não os arquivos de `_home/`).
+
+
 
 ## Como usar isso
 
