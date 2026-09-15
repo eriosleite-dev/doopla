@@ -16466,6 +16466,62 @@ Build limpo, typecheck 0 erros, lint idêntico ao baseline (44 erros/6 warnings 
 
 **Arquivo alterado**: `src/app/dashboard/actions.ts`.
 
+## 118. Reabertura + causa raiz real do bug §117, e página em branco no ícone de Comunidade do header — `[DELIVERED]` — 16/09/2026
+
+Fundadora testou o fix do §117 no deployment novo e confirmou que o
+bug **continuava** presente: "Salvo ✓" aparecia (sem erro), mas a Home
+seguia em 3/4. Isso descartou a hipótese de falha silenciosa por
+`error` do Supabase (já coberta) e apontou pra uma causa mais
+específica.
+
+**Causa raiz real**: a policy de UPDATE em `artist_profiles` não tem
+`WITH CHECK` explícito (usa o mesmo `auth.uid() = profile_id` do
+`USING`) — um `.update()` cujo filtro não bate com nenhuma linha (RLS
+ou JWT dessincronizado no meio do request) retorna **sucesso com 0
+linhas afetadas**, sem popular `error`. A checagem do §117 (`if
+(error) return {...}`) não detecta esse caso porque não é um error de
+verdade — é um "sucesso" vazio. Corrigido em
+`updateProfileAndWorkContextAction` adicionando `.select('profile_id')`
+ao update e tratando 0 linhas retornadas como falha visível ao
+usuário, igual a um error real (commit `da2c269`).
+
+**Achado relacionado, mesma janela de tempo**: a fundadora reportou
+também que o ícone de Comunidade do header ("quando aperto no ícone
+vai pra uma página em branco que não existe") tinha voltado a
+apresentar o mesmo sintoma do bug do fundo preto já corrigido no
+sidebar em 08/09/2026 (`pro-sidebar-nav.tsx`, commits
+`c4675ad`/`f08cee2` — ver §78). Causa raiz idêntica: prefetch
+automático do `<Link>` concorrendo com a navegação interceptada de
+`/dashboard/comunidade` e derrubando o slot `children` já montado.
+Esse ícone específico (`pro-shell.tsx`) nunca tinha recebido a mesma
+correção porque vive fora do sidebar, num Server Component sem
+estado — fica sempre visível em toda página do dashboard, então o
+prefetch automático padrão dispara a qualquer momento. Extraído pra um
+Client Component dedicado (`ProHeaderCommunityLink`, novo arquivo)
+aplicando o mesmo padrão já validado em produção: prefetch desligado
+por padrão, armado só depois de hover ou toque real (commit
+`eba1da0`).
+
+**Integração com a sessão paralela de QA (Bookings + Financeiro)**:
+entre os dois fixes acima e o push, a sessão paralela
+(`qa-bookings-financeiro`) trouxe de volta pra esta linha um merge com
+correções de alinhamento do shell/Bookings/Financeiro (`eca9856`), que
+tocou `pro-shell.tsx` nas linhas de padding/margin adjacentes (não as
+mesmas linhas do ícone de Comunidade). Merge simples (`git merge`, sem
+rebase/force-push), resolvido automaticamente pelo git sem conflito —
+confirmado que `895c145`/`da2c269`/`eba1da0` e `eca9856` estão todos
+preservados na história depois do merge.
+
+**Validação**: `tsc --noEmit` limpo, ESLint idêntico ao baseline (44
+erros/6 warnings), `npm run build` sem erros, depois do merge com a
+sessão paralela. Reprodução E2E real (clicar de fato no ícone, salvar
+de fato no formulário) continua **BLOCKED ENVIRONMENT** — sem
+Supabase real neste sandbox; a fundadora quem reportou os sintomas
+reais e quem precisa confirmar em QA real depois deste deploy.
+
+**Arquivos alterados**: `src/app/dashboard/actions.ts`,
+`src/app/dashboard/pro-shell.tsx`, `src/app/dashboard/pro-header-community-link.tsx` (novo).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
