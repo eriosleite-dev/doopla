@@ -13705,6 +13705,57 @@ devem ser adicionados aqui, nunca substituir esta lista.
 |---|---|---|---|---|
 | 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
 
+## 107. Sessão paralela (Home) — pacote de 7 ajustes pontuais de UI fechado — `[DELIVERED, aguardando integração]` — 15/09/2026
+
+Continuação do §106. Fundadora confirmou que esta terceira sessão É a
+sessão da Home (não uma quarta sessão distinta) e que o pacote correto
+é de **7 itens**, não 10 — os 3 "faltando" eram engano de organização,
+não itens reais. Auditoria refeita contra o `home.html`/`home.css`/
+`home.js` ATUAIS (pós-redesign "Nova Home V2 a partir do
+doopla-home-mockup.html", não a versão antiga usada por engano na
+primeira tentativa desta sessão) antes de qualquer código — ver
+resposta desta sessão pra tabela completa item a item.
+
+**Status final dos 7 itens — todos `DELIVERED`:**
+
+| # | Item | Resultado |
+|---|---|---|
+| 1 | Olhos do logo (header/footer) | Bola clara + pupila escura, invertido em `home.css` (Home) e `site-chrome.css` (chrome institucional) |
+| 2 | "Booking de um jeito novo" sobre o celular | Sobreposição (medida: 42-59px no desktop de 2 colunas) eliminada só na faixa `min-width:1081px`; mobile/tablet intocados |
+| 3 | Avatares da conversa | Cliente ganhou olhos da marca (antes: bola vermelha vazia); avatar da doopla no bubble-group aumentado de 16px→20px com olhos reduzidos de 8px→6px |
+| 4 | Idle wander das pupilas | Um deslocamento sorteado por PAR de olhos (não por pupila) em `initMascotEyes`/`startIdleWander` — verificado em runtime, pupilas do mesmo par sempre com o mesmo transform depois de ~1.5s parado. Cursor tracking e os olhos grandes de "Sempre com você" (`legacyEyesCol*`) preservados sem nenhuma alteração |
+| 5 | CTAs Básico/Pro | `.plan-cta{margin-top:8px}` → `margin-top:auto`; diferença de alinhamento caiu de ~27px pra ~2px |
+| 6 | Largura do FAQ | Duas rodadas: 760px→920px (rejeitado pela fundadora, "ainda estreito") → **760px→1180px**, igualando exatamente `.two-col`/`.plans`/`.with-you` (não um número novo, o valor que a Home já usava). Confirmado por medição em 1440px e 1024px: `.faq .narrow` sempre com a mesma largura de `.plans` nas duas resoluções |
+| 7 | Seção final + footer | Avaliado visualmente (desktop + mobile) depois dos outros 6 prontos — card já horizontal (mascote/texto/CTA em uma linha no desktop), padding do wrap (88/100px desktop, 54/64px mobile) consistente com o ritmo do resto das seções (176px/108px). **Nenhuma alteração feita** — já estava correto |
+
+**Arquivos alterados** (só estes 4, nada fora de `src/app/_home/`):
+`home.css`, `home.html`, `home.js`, `site-chrome.css`.
+
+**Commits do pacote** (branch `claude/home-pacote-7-ajustes-ui-4tq8lz`,
+a partir da base `c2fcda2` da linha Professional):
+- `2531116` — itens 1-6 (primeira rodada, incluindo o FAQ em 920px que foi depois revisado)
+- `d7e7204` — revisão do item 6 (FAQ pra 1180px)
+
+**Validações**: `tsc --noEmit` limpo; `npm run lint` sem nenhum erro
+novo em `src/app/_home/` (os 44 erros/4 warnings pré-existentes são
+todos em `mobile/` e `src/app/layout.tsx`, não tocados por este
+pacote). `git status` limpo no fechamento.
+
+**Confirmação de não-sobrescrita**: fetch feito antes de fechar —
+`categoria-b-supabase-env-qsbdq9` avançou de `c2fcda2` (base) até
+`41cae54` (docs), zero commits tocando `src/app/_home/**` ou
+`src/app/page.tsx` nesse intervalo. Os outros 4 branches remotos
+(`ficoou-algo-para-tras-t9tfvd`, `doopla-bloco-4-5-opportunities-5f15n6`,
+`new-session-3hdkui`, `doopla-backend-login-db-fj5j3y`) seguem exatamente
+nos mesmos commits da auditoria original — nenhum foi tocado, nenhum
+trabalho de outra sessão foi sobrescrito.
+
+**Nada foi integrado à linha canônica.** Sem push, sem merge/rebase/
+cherry-pick — tudo segue isolado em `claude/home-pacote-7-ajustes-ui-4tq8lz`,
+aguardando decisão da fundadora sobre quando reconciliar com o HEAD
+canônico mais atual (não necessariamente `41cae54` — vai depender do
+que a linha Professional tiver avançado até lá).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
