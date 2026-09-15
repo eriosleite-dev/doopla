@@ -1338,7 +1338,16 @@ export async function updateProfileAndWorkContextAction(
   // banco (true/false/null), só a UI que não oferece mais um 3º botão.
   const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
 
-  const { error } = await supabase
+  // A policy de UPDATE de artist_profiles não tem WITH CHECK explícito
+  // (usa o mesmo auth.uid()=profile_id do USING) — um update cujo filtro
+  // não bate com nenhuma linha (RLS ou JWT dessincronizado no meio do
+  // request) retorna { error: null, data: null } por padrão, sem
+  // nenhuma indicação de que 0 linhas foram afetadas. Por isso o
+  // .select() aqui: sem ele, checar só `error` (como o padrão das
+  // actions irmãs) não detecta esse caso — "Salvo ✓" aparecia mesmo
+  // quando a escrita não tocava a linha nenhuma (achado real, 16/09/2026,
+  // reportado pela fundadora depois do primeiro fix só de `error`).
+  const { data: updatedRows, error } = await supabase
     .from('artist_profiles')
     .update({
       stage_name: stageName || null,
@@ -1350,8 +1359,9 @@ export async function updateProfileAndWorkContextAction(
       pricing_notes: pricingNotes || null,
       issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
     })
-    .eq('profile_id', user.id);
-  if (error) return { error: 'Não foi possível salvar agora.' };
+    .eq('profile_id', user.id)
+    .select('profile_id');
+  if (error || !updatedRows || updatedRows.length === 0) return { error: 'Não foi possível salvar agora.' };
 
   revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
