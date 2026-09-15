@@ -1639,6 +1639,18 @@ Corrigido com uma fonte de verdade nova e única, `resolveDooplaIntervention` (`
   o que contorna esse Mac antigo também. Alternativa: usar outro
   computador com macOS mais novo só pra rodar `npm run dev`.
 
+## Correção — "Contexto profissional · N/4" nunca zerava na Home — `[DELIVERED — Web]` — 15/09/2026
+
+Achado da fundadora: preencheu "Como você trabalha" (Contexto profissional) inteiro e salvou, mas o card "Deixe sua Doopla pronta" continuou mostrando a pendência na Home.
+
+**Auditoria da fonte de verdade** — `getArtistMatchingCompletion` (`src/app/dashboard/data.ts`) calculava os "4" a partir de `regions`/`career_stage`/`fee_range`/`help_areas` (`artist_profiles`). A Simplificação de beta de 14/09/2026 (comentário já existente em `pro-work-context-form.tsx`) já tinha removido `regions`, `career_stage` e `help_areas` da UI — a tela atual de "Como você trabalha" só edita `what_you_do`, `where_you_serve`, `fee_range`, `issues_invoice` e `other_preferences` (`updateArtistWorkContextAction`, `actions.ts`). Resultado: **3 dos 4 critérios dependiam de colunas que o profissional não tem mais como preencher** — `fee_range` era o único dos 4 ainda editável, então o card nunca passava de 1/4 por mais que a tela atual fosse preenchida por completo. `regions`/`career_stage`/`help_areas` continuam existindo no banco (dado histórico de quem preencheu antes da simplificação), só pararam de ser escritas/lidas por qualquer tela nova.
+
+**Correção**: `getArtistMatchingCompletion` passou a checar exatamente os 4 campos que a tela atual edita — `what_you_do`, `where_you_serve`, `fee_range`, `issues_invoice` (`other_preferences` fica de fora, é claramente complementar, sem placeholder nem "obrigatório" implícito). `issues_invoice` conta como preenchido em `false` também (resposta válida — só `null`, nunca respondido, é que falta), evitando o mesmo tipo de bug de outra forma (contar `Boolean(false)` como vazio). Nenhuma mudança na UI/rendering do card (`ProfessionalHomeView`) — a lógica de exibir/esconder (`filled >= total`) já estava correta, só recebia números errados. `revalidatePath('/dashboard')` já existia em `updateArtistWorkContextAction` desde antes — a Home já atualiza sem logout/reload manual assim que o profissional navega de volta pra lá, mesmo mecanismo que já fazia "Dados de recebimento" funcionar certo.
+
+**Auditoria Web vs. App**: o App (`mobile/app/(tabs)/index.tsx`) já excluía "Contexto profissional" do próprio card de pendências de propósito, com comentário explícito ("não tem superfície de edição real no App ainda") — nenhum bug espelhado lá, só o comentário citava os nomes antigos das colunas (`regions/careerStage/helpAreas`); atualizado pra citar os campos canônicos atuais, sem mudança de comportamento (o App continua sem mostrar essa pendência até ganhar uma tela de edição real).
+
+`npx tsc --noEmit` e `npx eslint` limpos nos 2 arquivos tocados (`src/app/dashboard/data.ts`, `mobile/app/(tabs)/index.tsx`).
+
 ## Categoria B — variáveis de ambiente do Supabase QA/Staging
 
 Auditoria de setup concluída (nenhuma mudança de código — não havia

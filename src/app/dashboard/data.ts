@@ -375,29 +375,41 @@ export async function getOrcamentoLinkInfo(
 
 export type MatchingCompletion = { filled: number; total: number };
 
-// Campos complementares (puláveis no cadastro) — os mesmos marcados como
-// `optional` no wizard de signup-form.tsx. Usado só pro card "Complete
-// suas preferências" do painel; não afeta o que já é essencial.
+// Correção 15/09/2026 (achado da fundadora) — este cálculo checava
+// `regions`/`career_stage`/`help_areas`, colunas do modelo antigo de
+// matching que a Simplificação de beta de 14/09/2026 (ver comentário
+// em `pro-work-context-form.tsx`) já tinha removido da UI de "Como
+// você trabalha". Resultado: o card "Contexto profissional" nunca
+// chegava a N/N — 3 dos 4 critérios dependiam de colunas que o
+// profissional não tem mais como preencher, então a pendência nunca
+// desaparecia da Home mesmo depois de salvar tudo que a tela atual
+// oferece. Critérios agora são exatamente as colunas que
+// `updateArtistWorkContextAction` escreve hoje (mesmo padrão de
+// `getActivePaymentDetails`, que já lia certo: sempre os campos da
+// superfície de edição ATUAL, nunca uma coluna legada preservada só
+// por compatibilidade de dado histórico). `issues_invoice` conta como
+// preenchido em `false` também — é uma resposta válida, só `null`
+// (nunca respondido) é que falta.
 export async function getArtistMatchingCompletion(
   artistId: string,
   supabase: SupabaseServerClient
 ): Promise<MatchingCompletion> {
   const { data } = await supabase
     .from('artist_profiles')
-    .select('regions, career_stage, fee_range, help_areas')
+    .select('what_you_do, where_you_serve, fee_range, issues_invoice')
     .eq('profile_id', artistId)
     .maybeSingle<{
-      regions: string[] | null;
-      career_stage: string | null;
+      what_you_do: string | null;
+      where_you_serve: string | null;
       fee_range: string | null;
-      help_areas: string[] | null;
+      issues_invoice: boolean | null;
     }>();
 
   const fields = [
-    (data?.regions?.length ?? 0) > 0,
-    Boolean(data?.career_stage),
+    Boolean(data?.what_you_do?.trim()),
+    Boolean(data?.where_you_serve?.trim()),
     Boolean(data?.fee_range),
-    (data?.help_areas?.length ?? 0) > 0,
+    data?.issues_invoice != null,
   ];
   return { filled: fields.filter(Boolean).length, total: fields.length };
 }

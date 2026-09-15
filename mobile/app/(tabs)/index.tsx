@@ -116,8 +116,10 @@ export default function HomeScreen() {
   // Bloco 4 — nudge progressivo (08/09/2026). `undefined` (ainda
   // carregando) nunca mostra a linha — evita um falso positivo piscando
   // antes do fetch resolver. Só "Dados de recebimento" no App nesta
-  // rodada: "Contexto profissional" (regions/careerStage/helpAreas)
-  // não tem superfície de edição real no App ainda (gap real,
+  // rodada: "Contexto profissional" (what_you_do/where_you_serve/
+  // fee_range/issues_invoice — atualizado 15/09/2026 pra refletir os
+  // campos canônicos reais, ver getArtistMatchingCompletion em
+  // data.ts) não tem superfície de edição real no App ainda (gap real,
   // registrado no PROGRESS.md) — nunca aponta pra uma tela que não
   // existe.
   const readinessRows: ReadinessRowData[] =
