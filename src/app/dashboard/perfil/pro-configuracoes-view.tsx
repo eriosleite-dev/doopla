@@ -80,12 +80,19 @@ import { ProSettingsRow } from './settings-ui';
 // coluna/RPC/identificador novo foi criado). "Seu link de orçamento"
 // virou "Seu link de booking" (só copy — mesma URL `/orcamento/[slug]`,
 // mesma action, mesmo tracking de origem, intocados).
+//
+// "Dados de recebimento" saiu daqui (auditoria de Financeiro,
+// 15/09/2026) — Financeiro (`/dashboard/dinheiro`) passou a ser a
+// ÚNICA superfície canônica pra esse formulário; existia nos dois
+// lugares (mesmo componente `PaymentDetailsFields`/mesma action, só
+// duplicação de navegação). `paymentConfigured` removido da
+// assinatura — só existia pra alimentar essa linha. `/dashboard/perfil/recebimento`
+// vira redirect pra `/dashboard/dinheiro`.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
   whatsappStatus,
   whatsappVerifiedNumber,
-  paymentConfigured,
   orcamentoUrl,
   professionalSlug,
   whatsappNumber,
@@ -94,7 +101,6 @@ export function ProConfiguracoesView({
   subscription: Subscription | null;
   whatsappStatus: string | null;
   whatsappVerifiedNumber: string | null;
-  paymentConfigured: boolean;
   orcamentoUrl: string | null;
   professionalSlug: string | null;
   whatsappNumber: string | null;
@@ -121,11 +127,6 @@ export function ProConfiguracoesView({
         <ProAccordion title="Assinatura e cobrança" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{planSummary}</span>}>
           <RowList>
             <ProSettingsRow href="/dashboard/perfil/assinatura" label="Plano e assinatura" summary={planSummary} />
-            <ProSettingsRow
-              href="/dashboard/perfil/recebimento"
-              label="Dados de recebimento"
-              summary={paymentConfigured ? 'Configurados ✓' : 'Ainda não configurados'}
-            />
           </RowList>
         </ProAccordion>
 

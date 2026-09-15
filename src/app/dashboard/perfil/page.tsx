@@ -5,7 +5,7 @@ import { siteOrigin } from '@/lib/site-url';
 import { hasDooplaPro } from '@/lib/subscription';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
 import { PlanCard } from '../booker-pro/plan-card';
-import { getActivePaymentDetails, getSubscription } from '../data';
+import { getSubscription } from '../data';
 import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
@@ -41,10 +41,9 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, origin] = await Promise.all([
+    const [subscription, homeFacts, origin] = await Promise.all([
       getSubscription(user.id, supabase),
       getCachedProfessionalHomeFacts(supabase),
-      getActivePaymentDetails(user.id, supabase),
       siteOrigin(),
     ]);
     return (
@@ -53,7 +52,6 @@ export default async function PerfilPage() {
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         whatsappVerifiedNumber={homeFacts?.whatsappVerifiedNumber ?? null}
-        paymentConfigured={paymentDetails !== null}
         orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
         professionalSlug={profile.slug}
         whatsappNumber={whatsappPublicNumber()}

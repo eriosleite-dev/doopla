@@ -15009,6 +15009,159 @@ Home (`_home/**`, `professional-home-view.tsx`), Booker (infraestrutura),
 arquitetura da Comunidade, matching, Perfil público legado.
 
 
+### 🔴 P0 INTEGRAÇÃO / BETA READINESS — conversa direta não tem caminho pra virar booking (registrado 15/09/2026, achado da auditoria de Financeiro)
+
+**Não resolvido nesta branch — reconciliar com a Sessão Central após integração das branches.**
+
+`/orcamento/[slug]` (cliente direto, sem login) → RPC `submit_orcamento_request`
+(migration 0023) → cria `opportunity` + `conversation` (`origin/channel='public_link'`).
+**Nunca chega a criar uma `booking`.** Rastreei TODOS os pontos de
+`insert` em `bookings` no código inteiro (só 2 existem, os dois em
+`src/app/dashboard/actions.ts`): `proposeBookingAction` (booker propõe
+pro artista que representa) e `selectBookerForOpportunityAction`
+(artista escolhe um booker real pra uma oportunidade do marketplace
+legado). **As duas exigem um Booker real com `representations` ativa.**
+`/dashboard/propor` (única UI que cria bookings do lado "proposta") é
+bloqueada pra quem não é booker (`if (profile.role !== 'booker')
+redirect('/dashboard')`).
+
+Confirmação direta no próprio código (comentário já existente,
+`professional-home-view.tsx:92-104`): *"conversations.related_booking_id
+(FK que ligaria uma conversa à SUA própria proposta) nunca é escrito em
+nenhum caminho de código atual... os dois conjuntos são estruturalmente
+disjuntos."*
+
+**Consequência**: um artista sem Booker que fecha um trabalho de
+verdade via conversa direta (o canal que a própria Doopla promove como
+principal em "Canais da sua Doopla"/Home) não tem hoje nenhum caminho
+de código pra esse trabalho virar uma `booking` — logo **nunca aparece
+no Financeiro**, em nenhuma métrica, permanentemente R$0,00, mesmo
+tendo sido pago de verdade. Isso é uma lacuna estrutural anterior a
+qualquer copy/UI do Financeiro, não algo que esta rodada resolve.
+
+**Explicitamente NÃO feito nesta branch** (instrução direta da
+fundadora): nenhuma booking artificial criada; nenhum Booker fake;
+`bookings.booker_profile_id` intocado; nenhuma migration; nenhuma
+mudança em `conversations`/`/orcamento`/RPC/runtime. Fica só
+registrado aqui pra reconciliação futura com a Sessão Central.
+
+
+### "Financeiro" — Dados de recebimento como superfície única, métricas semanticamente fiéis, Booker Web/App intocado — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Dados de recebimento — superfície única (Web)
+
+Removida a linha "Dados de recebimento" do accordion "Assinatura e
+cobrança" em `pro-configuracoes-view.tsx` — Financeiro
+(`/dashboard/dinheiro`) passa a ser a ÚNICA superfície canônica.
+`paymentConfigured` removido da assinatura do componente (só existia
+pra essa linha); `page.tsx` parou de buscar `getActivePaymentDetails`
+só pra essa prop (import/`Promise.all` reduzidos). `/dashboard/perfil/recebimento`
+vira `redirect('/dashboard/dinheiro')`. **Preservados intactos**:
+`PaymentDetailsFields`, `setPaymentDetailsAction`, RPC
+`set_payment_details` (migration 0046), `payment_details` (append-only,
+RLS, versionamento) — nenhuma linha de backend tocada. App já não
+tinha essa duplicação (só existia em Financeiro lá) — nenhuma mudança
+necessária nesse ponto.
+
+Copy canônica confirmada/alinhada nos dois lados: *"A Doopla usa estes
+dados quando precisa orientar o cliente sobre o pagamento. O pagamento
+é feito diretamente para você."* — Web já tinha essa frase quase
+literal (`pro-payment-details-card.tsx`, intocado); App (`financeiro.tsx`)
+foi alinhado à mesma frase (antes: "ficam protegidos... é só me
+perguntar", vago demais). **Não afirma** que a Doopla já envia a chave
+Pix automaticamente pro cliente — confirmado na auditoria que
+`is_operationally_ready()` está de fato ligado ao Post-model Policy
+Gate (bloqueia envio de compromisso sem dados configurados), mas o
+*valor* da chave Pix nunca chega ao Business Context/IA (comentário
+explícito na migration 0046, PII nunca exposta a
+`conversation_messages`) — arquitetura de segurança preservada 100%
+intocada, só a copy foi calibrada pra não prometer mais do que existe.
+
+#### 2. Métricas — labels semanticamente fiéis (Web + App)
+
+Nenhum cálculo alterado — só os labels, porque nenhum dos dois
+caminhos que levam `bookings.status` a `'concluida'` (`markPaidAction`,
+booker; `advanceInvoiceStage`, artista via NF) é uma confirmação de
+terceiro/gateway — são auto-reportados, comentário já existente no
+próprio código confirma isso (`data.ts:1402-1416`).
+
+Web (`dinheiro/page.tsx`, branch artista): "Valor negociado (bookings
+confirmados)" → "Valor em bookings confirmados"; "Recebido líquido
+(bookings concluídos)" → "Valor em bookings concluídos"; "Recebido
+este mês" → "Valor concluído este mês"; seção "Recebimentos" → "Bookings
+concluídos"; empty state "Nenhum recebimento ainda." → "Nenhum booking
+concluído ainda.".
+
+App (`financeiro.tsx`): "Recebido no mês" → "Valor concluído este mês";
+"Total recebido" → "Valor em bookings concluídos"; "Bookings pagos" →
+"Bookings concluídos". Título em tela "Dinheiro" → "Financeiro"
+(função renomeada `DinheiroScreen` → `FinanceiroScreen`, zero outro
+caller). Menu "Mais" (`mais/index.tsx`) label "Dinheiro" → "Financeiro".
+`Stack.Screen` (`_layout.tsx`) já dizia "Financeiro" — intocado.
+
+#### 3. Booker — intocado nos dois lados
+
+Branch Booker de `dinheiro/page.tsx` (Web, "Ganhos"/"Comissão
+recebida"/`PaymentDetailsCard` legado) — zero linha tocada. Nenhuma
+tentativa de harmonizar o modelo financeiro Booker com o do Professional,
+conforme instrução.
+
+#### 4. availableToWithdrawCents / referral
+
+Nenhuma refatoração feita — confirmado de novo que segue não
+renderizado em lugar nenhum (Web ou App), registrado como debt de
+nomenclatura interna, sem trabalho técnico criado pra isso. "Créditos
+de indicação" (Web) preservado exatamente como estava — já claramente
+separado visual/conceitualmente de valores de bookings, nenhuma
+alteração no programa de indicação.
+
+#### Testes/validação
+
+- `tsc --noEmit`: os únicos erros vistos (`PageProps`/`LayoutProps`)
+  são artefato conhecido de `.next` removido entre rodadas — `npm run
+  build` (que gera esses tipos do zero) rodou limpo, 0 erros, todas as
+  rotas geradas (incluindo `/dashboard/perfil/recebimento` como rota
+  dinâmica de redirect).
+- `eslint` nos 4 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-financeiro` (Playwright) — screenshot
+  confirma os 3 cards com os novos labels, "Dados de recebimento" com a
+  copy canônica, seção "Bookings concluídos" com os itens. Rota de
+  preview e `.next` removidos antes do commit (confirmado via `git
+  status`, só os 6 arquivos de produto no diff).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa do
+  arquivo após as edições: JSX balanceado, imports consistentes, nomes
+  de estilo (`styles.*`) todos preexistentes e reaproveitados.
+- Checklist da fundadora (13 itens): (1) Dados de recebimento com 1 só
+  superfície — confirmado; (2) rota antiga redireciona — confirmado;
+  (3) `payment_details` intacto — confirmado, zero linha de migration/RPC
+  tocada; (4) Policy Gate intacto — confirmado, `gate.ts`/`tool-gate.ts`/
+  `types.ts` não tocados; (5) nenhuma PII nova chega à IA — confirmado,
+  `get-professional-business-context.ts` continua sem nenhuma menção a
+  payment/pix; (6) nenhuma métrica implica processamento financeiro —
+  confirmado, termos banidos (Recebido/Saldo/A receber/Disponível pra
+  saque) removidos dos labels tocados; (7) cálculos não mudaram —
+  confirmado, `computeArtistStats`/`getArtistReceivedBookings` intactos
+  nos dois lados; (8) App usa "Financeiro" consistentemente — confirmado
+  nos 3 lugares (menu/Stack.Screen/tela); (9) Booker intocado —
+  confirmado; (10) `/orcamento` e `conversations` intocados — confirmado,
+  nenhum arquivo desses tocado; (11) nenhuma migration — confirmado;
+  (12) typecheck/lint/build — limpos; (13) concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Onboarding, Ajuda e suporte, Ajustes no detalhe do booking,
+Decisões, Home (`_home/**`, `professional-home-view.tsx`), Booker
+(financeiro e infraestrutura), arquitetura da Comunidade, matching,
+Perfil público legado, `payment_details`/RPC/RLS/Policy Gate/Business
+Context (arquitetura de segurança 100% preservada).
+
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

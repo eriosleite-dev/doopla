@@ -13,7 +13,7 @@ import type { ArtistProfile, ArtistSubscription } from '@/types/artistProfile';
 
 const MENU = [
   { key: 'decisoes', label: 'Decisões', route: '/(tabs)/mais/decisoes', icon: <DecisoesIcon size={18} color={colors.tx70} /> },
-  { key: 'financeiro', label: 'Dinheiro', route: '/(tabs)/mais/financeiro', icon: <MoneyIcon size={18} color={colors.tx70} /> },
+  { key: 'financeiro', label: 'Financeiro', route: '/(tabs)/mais/financeiro', icon: <MoneyIcon size={18} color={colors.tx70} /> },
   { key: 'materiais', label: 'Materiais', route: '/(tabs)/mais/materiais', icon: <MateriaisIcon size={18} color={colors.tx70} /> },
   { key: 'analytics', label: 'Analytics', route: '/(tabs)/mais/analytics', icon: <AnalyticsIcon size={18} color={colors.tx70} /> },
   { key: 'equipe', label: 'Minha equipe', route: '/(tabs)/mais/equipe', icon: <ForumPeopleIcon size={18} color={colors.tx70} /> },
