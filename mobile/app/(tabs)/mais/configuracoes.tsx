@@ -42,7 +42,15 @@ type Phase = 'loading' | 'ready' | 'error';
 // "whatsapp" e "link" viraram gaps bloqueantes fechados nesta rodada
 // (14/09/2026) — mesmo backend/RPCs/regras do Web, nenhum sistema
 // paralelo. Ver whatsapp-identity.ts e link-routing.ts.
-type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'link' | 'comunidade' | 'ajuda' | 'excluir' | null;
+//
+// "comunidade" saiu do beta (15/09/2026, auditoria de legado) — os 7
+// toggles de "Privacidade na Comunidade" não têm efeito visível hoje
+// (CommunityAuthorSnapshot equivalente no App não carrega bio/
+// specialties/workTypes/instagramUrl/portfolioUrl; nenhum componente
+// da Comunidade renderiza city/avatarUrl). CommunityPrivacySheet
+// (abaixo) preservada — arquivo intocado, só sem SheetKey/row que a
+// abra mais. Mesma decisão do painel Web, ver pro-configuracoes-view.tsx.
+type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'link' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
 
@@ -120,7 +128,6 @@ export default function ConfiguracoesScreen() {
               onPress={() => setOpenSheet('whatsapp')}
             />
             <SettingsRow label="Seu link de booking" onPress={() => setOpenSheet('link')} />
-            <SettingsRow label="Privacidade na Comunidade" onPress={() => setOpenSheet('comunidade')} />
             <SettingsRow label="Ajuda / Sobre a Doopla" onPress={() => setOpenSheet('ajuda')} />
             <SettingsRow label="Excluir minha conta" onPress={confirmDeleteAccount} last />
           </View>
@@ -172,10 +179,6 @@ export default function ConfiguracoesScreen() {
 
       <BottomSheet visible={openSheet === 'link'} onClose={() => setOpenSheet(null)}>
         {user && profile?.slug && <BookingLinkSheet artistId={user.id} slug={profile.slug} visible={openSheet === 'link'} />}
-      </BottomSheet>
-
-      <BottomSheet visible={openSheet === 'comunidade'} onClose={() => setOpenSheet(null)}>
-        <CommunityPrivacySheet visible={openSheet === 'comunidade'} />
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'ajuda'} onClose={() => setOpenSheet(null)}>

@@ -2,14 +2,12 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
-import type { CommunityProfileSnapshot } from '@/lib/community/data';
 import { SUPPORT_EMAIL } from '@/lib/support';
 import type { LinkRoutingMode, Subscription } from '@/lib/supabase/types';
 
 import type { BookerOption } from '../link-routing-form';
 import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
 import { ProLinkRoutingForm } from '../pro-link-routing-form';
-import { CommunityPrivacyForm } from './privacidade/comunidade/community-privacy-form';
 import { DeleteAccountModal } from './delete-account-modal';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 import { ProSettingsRow } from './settings-ui';
@@ -45,6 +43,27 @@ import { ProSettingsRow } from './settings-ui';
 // (attention_channel, updateAttentionChannelAction,
 // AttentionChannelForm) — só a superfície de Configurações foi
 // desconectada, nada apagado.
+//
+// "Privacidade e dados" simplificada (auditoria de legado, 15/09/2026):
+// "Seus dados" (placeholder "em breve", zero infra de exportação por
+// trás) e os 7 toggles de "Privacidade na Comunidade" saíram daqui.
+// Auditoria confirmou que NENHUM dos 7 (cidade/foto/bio/especialidades/
+// tipos de trabalho/Instagram/portfólio) tem efeito visível hoje — a
+// view `community_profiles_public` já aplica a regra no servidor, mas
+// `CommunityAuthorSnapshot` (o tipo que a UI da Comunidade de fato usa)
+// só carrega profileId/displayName/professionLabel/isPro/isIncomplete/
+// city/state/avatarUrl/publicId; nenhum componente da Comunidade
+// renderiza bio/specialties/workTypes/instagramUrl/portfolioUrl, e
+// city/avatarUrl também não aparecem em lugar nenhum. 2 dos 7
+// (especialidades/tipos de trabalho) ainda dependiam de `genres`/
+// `work_types` — colunas sem superfície de edição desde a
+// simplificação de "Perfil e trabalho". Schema/RLS/RPC/`community_profiles`/
+// `community_profiles_public`/`CommunityPrivacyForm`/regra de ativação
+// (`ensureCommunityProfileActivated`, disparada ao visitar qualquer
+// página real da Comunidade — nunca dependeu deste formulário)
+// preservados, só a superfície de Configurações desconectada. Quando a
+// Comunidade passar a exibir esses campos de verdade, revisar quais
+// controles voltam.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
@@ -55,7 +74,6 @@ export function ProConfiguracoesView({
   linkRoutingMode,
   linkRoutingBookerId,
   orcamentoUrl,
-  communityProfile,
 }: {
   hasPro: boolean;
   subscription: Subscription | null;
@@ -66,11 +84,6 @@ export function ProConfiguracoesView({
   linkRoutingMode: LinkRoutingMode;
   linkRoutingBookerId: string | null;
   orcamentoUrl: string | null;
-  // Leitura pura (getMyCommunityProfile, sem ativar nada) — null
-  // quando o profissional nunca entrou na Comunidade. Ver correção
-  // 14/09/2026: visualizar Configurações nunca pode ativar
-  // participação, só a ação explícita de salvar uma preferência aqui.
-  communityProfile: CommunityProfileSnapshot | null;
 }) {
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
@@ -158,31 +171,6 @@ export function ProConfiguracoesView({
               <Link href="/termos" className="text-[12.5px] font-semibold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]">
                 Termos de uso
               </Link>
-            </div>
-
-            <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Seus dados</p>
-              <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">Exportação de dados ainda não está disponível — em breve.</p>
-            </div>
-
-            <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Privacidade na Comunidade</p>
-              <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">
-                O que outros profissionais veem no seu perfil público dentro da Comunidade — não afeta seus dados
-                profissionais gerais na Doopla.
-              </p>
-              <div className="mt-3">
-                <CommunityPrivacyForm
-                  availableForReferrals={communityProfile?.availableForReferrals ?? false}
-                  showCity={communityProfile?.showCity ?? false}
-                  showAvatar={communityProfile?.showAvatar ?? false}
-                  showBio={communityProfile?.showBio ?? false}
-                  showSpecialties={communityProfile?.showSpecialties ?? false}
-                  showWorkTypes={communityProfile?.showWorkTypes ?? false}
-                  showInstagram={communityProfile?.showInstagram ?? false}
-                  showPortfolio={communityProfile?.showPortfolio ?? false}
-                />
-              </div>
             </div>
 
             <div className="border-t border-[var(--pro-line)] pt-4">

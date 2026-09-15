@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { getMyCommunityProfile } from '@/lib/community/data';
 import { siteOrigin } from '@/lib/site-url';
 import { hasDooplaPro } from '@/lib/subscription';
 import type { LinkRoutingMode } from '@/lib/supabase/types';
@@ -42,7 +41,7 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, bookers, routing, origin, communityProfile] =
+    const [subscription, homeFacts, paymentDetails, bookers, routing, origin] =
       await Promise.all([
         getSubscription(user.id, supabase),
         getCachedProfessionalHomeFacts(supabase),
@@ -50,11 +49,6 @@ export default async function PerfilPage() {
         getArtistBookers(user.id, supabase),
         getArtistLinkRouting(user.id, supabase),
         siteOrigin(),
-        // Leitura pura (getMyCommunityProfile nunca ativa nada — só
-        // `null` quando o profissional nunca entrou na Comunidade,
-        // ver correção 14/09/2026 abaixo) — segura pra rodar sempre
-        // que Configurações carrega, sem nenhum efeito colateral.
-        getMyCommunityProfile(supabase),
       ]);
     return (
       <ProConfiguracoesView
@@ -67,7 +61,6 @@ export default async function PerfilPage() {
         linkRoutingMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
         linkRoutingBookerId={routing?.booker_id ?? null}
         orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
-        communityProfile={communityProfile}
       />
     );
   }

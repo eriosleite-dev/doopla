@@ -14721,6 +14721,137 @@ Approval Engine, `intervention`, `requires_professional_review`.
 `DELIVERED`.**
 
 
+### "Privacidade e dados" — simplificação para o que é real no beta — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado antes de editar (`git fetch`): mesmo
+tip conhecido (`b426503`), zero diff nos arquivos tocados desde
+`ff77afc`. Sem conflito.
+
+#### Auditoria crítica prévia (item 2 do pedido) — ativação da Comunidade não depende do formulário removido
+
+Confirmado **antes** de tocar em qualquer código: `ensureCommunityProfileActivated`
+(`src/lib/community/data.ts`) é chamada em 4 lugares — `comunidade/actions.ts`,
+`comunidade/page.tsx`, `comunidade/[topicId]/page.tsx` (Web) e nos
+equivalentes de fórum do App (`mobile/app/forum/index.tsx`,
+`mobile/app/forum/[topicId].tsx`) — **automaticamente, ao simplesmente
+visitar qualquer página real da Comunidade**, comentário no próprio
+código confirma ("Fase 1... pra 'entrar na comunidade' ser invisível
+pro profissional: nenhum passo explícito"). O formulário de privacidade
+(`updateCommunityPrivacyAction`) também chamava essa mesma função, mas
+de forma redundante/defensiva (idempotente) — nunca foi o caminho
+canônico de ativação. **Removê-lo do Settings não quebra participação
+na Comunidade** — nenhum arquivo de `comunidade/**` ou dos fóruns do
+App foi tocado nesta rodada. Sem bloqueio — seguiu pra implementação
+conforme autorizado.
+
+#### 1. Comunidade — toggles removidos (Web + App)
+
+`pro-configuracoes-view.tsx`: removido o bloco inteiro "Privacidade na
+Comunidade" (título, descrição com "perfil público" + travessão, e o
+`CommunityPrivacyForm` com os 7 toggles) de dentro do accordion
+"Privacidade e dados". Prop `communityProfile` removida da assinatura
+do componente (só existia pra alimentar esse bloco).
+`dashboard/perfil/page.tsx`: removida a query `getMyCommunityProfile`
+(só existia pra essa prop) e o import correspondente.
+
+`mobile/.../configuracoes.tsx`: removida a linha "Privacidade na
+Comunidade" e o `BottomSheet`/`SheetKey='comunidade'` que a abria.
+**`CommunityPrivacySheet` preservada intacta** (função ainda definida
+no arquivo, imports que ela usa internamente intocados) — só sem
+nenhum caller na UI agora, mesmo padrão já usado pra `AttentionChannelForm`
+no Web.
+
+#### 2. "Seus dados" — removido (Web)
+
+Bloco "Seus dados" / "Exportação de dados ainda não está disponível —
+em breve." removido do accordion. Confirmado antes: zero backend de
+exportação (nenhum RPC/action em todo `src`/`supabase`). App já não
+tinha esse bloco — nenhuma alteração necessária lá.
+
+#### 3. Legal — mantido (Web), gap registrado (App)
+
+Web: links "Política de privacidade"/"Termos de uso" preservados
+exatamente como estavam, apontando pra `/privacidade`/`/termos`
+(conteúdo institucional real, confirmado na auditoria).
+App: **não adicionado** — auditei se existia um padrão reusável de
+navegação externa (`Linking.openURL`, usado em `bookings/[id].tsx` e
+`FalarComDooplaCard.tsx`) mas não existe hoje nenhuma constante
+centralizada de URL do site no App (equivalente a `site-url.ts` do
+Web) pra apontar pra `/privacidade`/`/termos` sem hardcode solto.
+Registrado como gap de paridade, não implementado, conforme
+autorizado explicitamente ("se exigir arquitetura nova, só registrar").
+
+#### 4. Excluir conta — intocado
+
+`DeleteAccountModal`/`DeleteAccountForm` (Web) e o fluxo nativo do App
+— nenhuma linha alterada. Confirmado que `DeleteAccountModal` importa
+`DeleteAccountForm` direto do arquivo do componente, nunca da rota —
+por isso a rota `/privacidade/excluir` pôde virar redirect sem
+quebrar nada.
+
+#### 5. Rotas órfãs — viraram redirect
+
+`/dashboard/perfil/privacidade`, `/dashboard/perfil/privacidade/comunidade`
+e `/dashboard/perfil/privacidade/excluir` — nenhuma tinha conteúdo
+próprio que não estivesse duplicado em outro lugar já ativo (a página
+`/excluir` tinha uma cópia ligeiramente desatualizada do mesmo texto
+que `DeleteAccountModal` já mostra por completo). Todas as 3 viraram
+`redirect('/dashboard/perfil')`. Componentes que elas importavam
+(`CommunityPrivacyForm`, `DeleteAccountForm`) preservados, arquivos
+intocados, só perderam esses 2 importadores específicos (`DeleteAccountForm`
+continua tendo o `DeleteAccountModal` como importador ativo).
+
+#### Infra preservada, nada apagado
+
+`community_profiles`, `visibility_status`, as 7 colunas `show_*`, a
+view `community_profiles_public`, migrations, RPCs
+(`activate_community_profile`/`update_community_profile`),
+`CommunityPrivacyForm`, `CommunityPrivacySheet`,
+`ensureCommunityProfileActivated`/`updateCommunityProfile`/
+`getMyCommunityProfile` (camada de dados) — todos intactos. Nenhum
+dado/preferência existente de nenhum profissional foi apagado ou
+sobrescrito (nenhuma escrita acontece nesta rodada, só remoção de UI).
+
+#### Copy
+
+"Perfil público" + travessão removidos junto com o bloco que os usava
+(accordion Web). 2 ocorrências remanescentes de "perfil público" —
+uma no bloco "Canais da sua Doopla" do Web e do App (seção diferente,
+fora de escopo desta rodada) e uma dentro da `CommunityPrivacySheet`
+preservada do App (código morto, não renderizado por ninguém agora,
+intencionalmente não editado por já não estar mais visível a
+nenhum usuário) — nenhuma delas está na superfície "Privacidade e
+dados" que esta rodada tocou.
+
+#### Testes/validação
+
+- `tsc --noEmit`, `eslint` (5 arquivos Web), `npm run build`: limpos.
+- App: sem toolchain de typecheck/lint configurado no projeto
+  (`package.json` só tem scripts do Expo, `node_modules` não
+  instalado neste ambiente) — validado por leitura cuidadosa de
+  código (JSX balanceado nos pontos editados, `SheetKey`/imports
+  consistentes, `CommunityPrivacySheet` com todos os imports que usa
+  internamente ainda presentes). Mesma limitação já documentada em
+  rodadas anteriores para validação técnica do App.
+- Checklist da fundadora: (1) nenhum toggle sem efeito aparece mais —
+  confirmado; (2) nenhum dado apagado — confirmado, nenhuma escrita
+  nesta rodada; (3) infra da Comunidade intacta — confirmado; (4)
+  ativação não quebrada — confirmado antes de implementar (ver acima);
+  (5) "Seus dados" saiu — confirmado; (6) Política/Termos acessíveis —
+  confirmado (Web); (7) exclusão de conta intacta — confirmado; (8)
+  rotas órfãs sem quebrar componentes compartilhados — confirmado
+  (`DeleteAccountForm` continua com o `DeleteAccountModal` como
+  importador); (9) sem "perfil público" na superfície tocada —
+  confirmado; (10) typecheck/lint/build — limpos; (11) concorrência —
+  checada antes de editar.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Onboarding, Canais, Financeiro, Ajuda,
+Decisões, Home, Booker, arquitetura da Comunidade (`comunidade/**`,
+fóruns do App, migrations, RPCs), matching, Perfil público legado.
+
+
 
 ## Como usar isso
 
