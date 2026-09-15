@@ -105,6 +105,14 @@ function buildExtractorInstructions(hasTemporalCandidates: boolean): string {
     'Isso vale mesmo quando a frase de adiamento é elaborada ou menciona um próximo passo concreto: "Assim que tivermos os dados solicitados, checamos os detalhes com a equipe e voltamos com a confirmação." e "Vou verificar essa disponibilidade com o profissional e já te retorno." são os DOIS exemplos de commitments vazio — "checar/verificar e voltar com uma confirmação" nunca é, por si só, a confirmação — é a promessa de uma confirmação futura.',
     'Cada compromisso precisa de um valor CONCRETO no texto (um número, uma data, uma hora, uma descrição específica) — nunca infira um valor que o texto não afirma.',
     'subjectKey só é relevante pra categorias com múltiplas instâncias possíveis no mesmo trabalho (ex.: logistics_commitment pode ser sobre transporte OU hospedagem, separadamente) — descreva em uma palavra curta (ex.: "transport", "lodging") o que o texto especifica; null se a categoria for de instância única (preço, data, hora, duração, local, desconto, condição de pagamento, aceite, cancelamento) ou se o texto não deixar claro qual instância.',
+    // Correção semântica (16/09/2026): mesma exigência do Resolver —
+    // um compromisso decisionCategory="accept_or_decline_work" só
+    // conta como compromisso concreto se o texto confirma
+    // inequivocamente aceite OU recusa. value.accepted precisa ser
+    // true ou false nesse caso, nunca null — texto que só sugere
+    // consultar/verificar não é compromisso (regra já coberta acima),
+    // então não deveria gerar este commitment de qualquer forma.
+    'Para decisionCategory="accept_or_decline_work": só extraia este compromisso se o texto confirma claramente que o trabalho foi aceito ou recusado, e preencha value.accepted como true (aceite) ou false (recusa) — nunca null. Se o texto não deixar isso inequívoco, não extraia o compromisso.',
   ];
   const temporal = hasTemporalCandidates
     ? [

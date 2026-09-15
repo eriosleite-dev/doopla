@@ -16247,6 +16247,67 @@ Ver PR/commit desta reconciliação pro HEAD final e o relatório
 completo desta sessão pro detalhamento A-V da entrega (mapa de
 arquivos, QA integrado, P0s consolidados).
 
+## 116. Correção semântica de `accept_or_decline_work` no Approval Engine — `[DELIVERED, LLM real BLOCKED ENVIRONMENT]` — 16/09/2026
+
+Pré-requisito da futura auditoria de Direct Booking (não implementado
+nesta rodada — Direct Booking segue não iniciado). Achado da auditoria
+de impacto: `accept_or_decline_work` tinha `approved_value = {}`
+(objeto vazio) — um "Aceito o trabalho." e um "Não vou aceitar esse
+trabalho." produziam o MESMO registro, sem nenhum jeito de distinguir
+aceite de recusa lendo `approval_records`.
+
+**Contrato canônico novo**: `accept_or_decline_work` agora exige
+`{ accepted: boolean }`. `accepted: true` = aceite inequívoco.
+`accepted: false` = recusa inequívoca. **A mera existência de um
+`approval_record` desta categoria nunca significa aceite** — só
+`approved_value.accepted === true` na versão ATIVA (mais recente,
+`get_active_approvals`) pode ser interpretado como aceite por qualquer
+consumidor futuro (incluindo o Direct Booking, quando for retomado).
+
+**Legacy**: registros antigos com `approved_value = {}` continuam
+semanticamente desconhecidos pra sempre — nunca reinterpretados como
+`true` nem `false`, nenhum backfill feito. Fail-closed garantido
+estruturalmente: `validateApprovedValue` agora exige o campo
+`accepted`, então `{}` falha validação em qualquer escrita nova, e
+`valuesStructurallyEqual` (matcher.ts) nunca trata `{}` como igual a
+`{accepted:true}` — confirmado com teste determinístico real (ver
+abaixo), sem precisar de nenhuma regra de "legado" escrita à mão.
+
+**`revocation` continua com sua semântica própria** — decisão
+explícita de não usá-lo pra representar recusa (misturaria duas
+semânticas). Recusa é `accept_or_decline_work` + `accepted:false`,
+nunca uma revogação.
+
+### Arquivos alterados
+
+- `src/lib/intelligence/approval/value-schemas.ts`: `APPROVED_VALUE_SCHEMAS.accept_or_decline_work` vira `z.object({accepted:z.boolean()}).strict()`; `MODEL_VALUE_OUTPUT_SCHEMA` (compartilhado com o Post-model Gate) ganha `accepted: z.boolean().nullable()`; `modelValueToRecord()` inclui o campo quando não-nulo.
+- `src/lib/intelligence/approval/resolver.ts`: `buildResolverInstructions()` ganha instruções explícitas com exemplos-âncora de aceite ("Aceito.", "Pode fechar.", "Pode seguir.", "Confirmado."), recusa ("Não aceito.", "Não vou conseguir.", "Recuso.", "Não quero esse trabalho.") e ambiguidade ("Vou pensar.", "Depois te falo.", "Talvez." → inconclusive; "sim"/"pode" curtos sem referente → inconclusive).
+- `src/lib/intelligence/policy-gate-post/extractor.ts`: instrução equivalente pro extrator (lê o RASCUNHO DE SAÍDA, não a fala do profissional) — só extrai o compromisso se o texto confirma aceite/recusa claramente, `accepted` nunca null quando extraído.
+- `src/lib/intelligence/approval/golden-suite.ts`: tipo ganha `expectedApprovedValue` opcional; 5 casos novos (A-E: aceite, recusa, ambíguo, 2 respostas curtas sem referente).
+- `src/lib/intelligence/policy-gate-post/golden-suite.ts`: tipo ganha `expectedValue` opcional nos commitments esperados; caso existente de aceite passa a exigir `{accepted:true}`; caso novo de recusa exigindo `{accepted:false}`.
+- `src/app/dev/approval-golden-suite/actions.ts` e `src/app/dev/policy-gate-golden-suite/actions.ts`: `evaluateCase` de cada harness passa a conferir o valor real quando o caso declara um esperado, não só outcome/categoria.
+
+### Testes
+
+**Determinísticos (executados de verdade nesta rodada, código real, zero LLM, zero mock)** — script ad-hoc importando `matcher.ts`/`value-schemas.ts` diretamente:
+
+| # | Teste | Resultado |
+|---|---|---|
+| 1 | `validateApprovedValue('accept_or_decline_work', {})` | **PASS** — inválido (legado rejeitado na escrita) |
+| 2 | `validateApprovedValue(..., {accepted:true})` | **PASS** — válido |
+| 3 | `validateApprovedValue(..., {accepted:false})` | **PASS** — válido |
+| 4 | `validateApprovedValue(..., {accepted:"sim"})` | **PASS** — inválido (precisa ser boolean) |
+| 5 (F) | approval ativa legado `{}` + rascunho alega `accepted:true` | **PASS** — bloqueado (`value_mismatch`), nunca vira aceite |
+| 6 | approval ativa `{accepted:false}` + rascunho alega `accepted:true` | **PASS** — bloqueado (`value_mismatch`) |
+| 7 | approval ativa `{accepted:true}` real + rascunho alega `accepted:true` | **PASS** — permitido (`matched`) |
+| 8 (G) | rascunho sem `accepted` (extração incompleta) | **PASS** — bloqueado (`invalid_extracted_value`), fail-closed |
+
+**Golden suites (LLM real) — `BLOCKED ENVIRONMENT`, não executadas.** Sandbox sem rede pra OpenAI (mesma limitação de sempre). Os 5 novos casos do Approval Resolver (A-E) e os 2 do Post-model Gate (aceite/recusa) estão registrados nos arquivos de golden suite, prontos pra rodar assim que houver ambiente com LLM real — **não simulei nenhum resultado**.
+
+Build limpo, typecheck 0 erros, lint idêntico ao baseline (44 erros/6 warnings pré-existentes, zero novo).
+
+**Direct Booking continua não implementado** — este bloco só fecha a lacuna semântica que o bloqueava.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

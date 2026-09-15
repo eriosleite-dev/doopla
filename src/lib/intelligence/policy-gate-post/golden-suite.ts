@@ -28,7 +28,11 @@ import type { ProfessionalDecisionCategory } from '../planner/decision-categorie
 export type PolicyGateGoldenSuiteCase = {
   name: string;
   proposedResponse: string;
-  expectedCommitments: Array<{ decisionCategory: ProfessionalDecisionCategory; subjectKey?: string }>;
+  // expectedValue opcional (correção semântica de accept_or_decline_work,
+  // 16/09/2026) — quando presente, o harness confere o valor extraído
+  // real, não só a categoria/subjectKey (a categoria sozinha nunca
+  // prova aceite/recusa).
+  expectedCommitments: Array<{ decisionCategory: ProfessionalDecisionCategory; subjectKey?: string; expectedValue?: Record<string, unknown> }>;
   note?: string;
 };
 
@@ -76,7 +80,17 @@ export const POLICY_GATE_GOLDEN_SUITE_CASES: PolicyGateGoldenSuiteCase[] = [
   {
     name: 'aceite de trabalho + compromisso logístico multi-instância',
     proposedResponse: 'Fechado! Aceito o trabalho, e o transporte fica por nossa conta.',
-    expectedCommitments: [{ decisionCategory: 'accept_or_decline_work' }, { decisionCategory: 'logistics_commitment', subjectKey: 'transport' }],
+    expectedCommitments: [
+      { decisionCategory: 'accept_or_decline_work', expectedValue: { accepted: true } },
+      { decisionCategory: 'logistics_commitment', subjectKey: 'transport' },
+    ],
+    note: 'correção semântica (16/09/2026) — accepted precisa vir true no valor extraído, nunca só a categoria',
+  },
+  {
+    name: 'recusa de trabalho — G/nova (correção semântica 16/09/2026)',
+    proposedResponse: 'Infelizmente não vou poder aceitar esse trabalho, já tenho outro compromisso nessa data.',
+    expectedCommitments: [{ decisionCategory: 'accept_or_decline_work', expectedValue: { accepted: false } }],
+    note: 'recusa comunicada ao cliente também precisa extrair accepted=false, nunca ficar vazio nem virar accepted=true por engano',
   },
   {
     name: 'confirmação de desconto',

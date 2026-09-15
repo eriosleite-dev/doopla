@@ -53,7 +53,10 @@ async function requireProfessional() {
 // não o matching determinístico já coberto pelos testes de
 // engenharia). subjectKey esperado, quando presente no caso, também é
 // checado.
-function evaluateCase(goldenCase: PolicyGateGoldenSuiteCase, extracted: { decisionCategory: string; rawSubjectKey: string | null }[]): boolean {
+function evaluateCase(
+  goldenCase: PolicyGateGoldenSuiteCase,
+  extracted: { decisionCategory: string; rawSubjectKey: string | null; rawValue: Record<string, unknown> | null }[]
+): boolean {
   const extractedSet = new Set(extracted.map((c) => c.decisionCategory));
   const expectedSet = new Set(goldenCase.expectedCommitments.map((c) => c.decisionCategory));
   if (extractedSet.size !== expectedSet.size) return false;
@@ -64,6 +67,14 @@ function evaluateCase(goldenCase: PolicyGateGoldenSuiteCase, extracted: { decisi
     if (!expected.subjectKey) continue;
     const match = extracted.find((c) => c.decisionCategory === expected.decisionCategory && c.rawSubjectKey === expected.subjectKey);
     if (!match) return false;
+  }
+  // Correção semântica de accept_or_decline_work (16/09/2026) — quando
+  // o caso declara expectedValue, confere o valor extraído real, nunca
+  // só a categoria (accepted precisa vir true/false, nunca ausente).
+  for (const expected of goldenCase.expectedCommitments) {
+    if (!expected.expectedValue) continue;
+    const match = extracted.find((c) => c.decisionCategory === expected.decisionCategory);
+    if (!match || JSON.stringify(match.rawValue) !== JSON.stringify(expected.expectedValue)) return false;
   }
   return true;
 }

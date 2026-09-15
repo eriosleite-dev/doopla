@@ -73,6 +73,13 @@ function buildResolverInstructions(): string {
     'Reserve outcome=inconclusive, inconclusiveReason=model_ambiguous para quando: a mensagem depende de informação não presente no contexto fornecido; o objeto/condição da decisão não pode ser determinado com segurança; há múltiplas interpretações plausíveis; ou a frase apenas menciona/descreve um valor ou condição, sem expressar decisão. Exemplos que NUNCA viram professional_initiated: "R$3.000 é pouco.", "Ele ofereceu R$3.000?", "Normalmente cobro R$3.000.", "Talvez R$3.000.", "Pode usar aquele valor combinado." quando esse referente não estiver disponível no contexto.',
     'Aceites curtos ("sim", "pode", "fechado", "confirmado") continuam dependendo de um referente inequívoco no contexto — nunca viram professional_initiated sozinhos, mesmo sob este critério mais explícito.',
     'Nunca decida "aprovado" por suposição de contexto histórico não representado explicitamente no ResolutionContext fornecido.',
+    // Correção semântica (16/09/2026, achado da auditoria de impacto do
+    // Direct Booking): decisionCategory=accept_or_decline_work exige
+    // approvedValue.accepted explícito (true ou false) — nunca deixe
+    // null quando outcome=resolved pra esta categoria. A mera categoria
+    // não basta: o valor precisa dizer QUAL das duas coisas aconteceu.
+    'Para decisionCategory="accept_or_decline_work", approvedValue.accepted precisa ser exatamente true (aceite) ou false (recusa) — nunca null quando você decidir resolver esta categoria. Exemplos de ACEITE inequívoco, sempre accepted=true: "Aceito.", "Aceito o trabalho.", "Pode fechar.", "Pode seguir.", "Confirmado.". Exemplos de RECUSA inequívoca, sempre accepted=false: "Não aceito.", "Não vou conseguir.", "Recuso.", "Não quero esse trabalho.".',
+    'Frases que não decidem claramente aceite nem recusa do trabalho NUNCA viram accept_or_decline_work resolvido — retorne outcome=inconclusive, inconclusiveReason=model_ambiguous. Exemplos que ficam inconclusive: "Vou pensar.", "Depois te falo.", "Preciso ver.", "Talvez.", "Vou confirmar." (prometem uma decisão futura, não são a decisão). Respostas curtas sem referente suficiente ("sim", "pode", "ok") também NUNCA viram accept_or_decline_work sozinhas — mesma regra já aplicada a aceites curtos de outras categorias.',
   ].join('\n');
 }
 

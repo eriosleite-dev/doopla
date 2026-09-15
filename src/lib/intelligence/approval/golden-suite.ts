@@ -21,6 +21,11 @@ export type ApprovalGoldenSuiteCase = {
   professionalStatementText: string; // só documentação — o texto real já está em messageWindow
   expectedOutcome: 'resolved' | 'inconclusive';
   expectedOperationType?: 'contextual_decision' | 'explicit_decision' | 'counterproposal' | 'revocation' | 'professional_initiated';
+  // Correção semântica de accept_or_decline_work (16/09/2026) — quando
+  // presente, o harness (approval-golden-suite/actions.ts) também
+  // confere o approvedValue real contra este shape, não só outcome/
+  // operationType. Opcional: nenhum caso anterior precisa disso.
+  expectedApprovedValue?: Record<string, unknown>;
   note?: string;
 };
 
@@ -279,5 +284,91 @@ export const APPROVAL_GOLDEN_SUITE_CASES: ApprovalGoldenSuiteCase[] = [
     expectedOutcome: 'resolved',
     expectedOperationType: 'professional_initiated',
     note: 'reproduz o formato real do smoke test 3b — pergunta do cliente (sem valor, nunca vira candidato) seguida da resposta decisiva do profissional; ainda autocontida, nunca inconclusive só por ter uma pergunta antes',
+  },
+
+  // ============================================================
+  // Correção semântica de accept_or_decline_work (16/09/2026) — casos
+  // A-E do audit de impacto do Direct Booking. Só executáveis contra o
+  // model real (BLOCKED ENVIRONMENT neste sandbox, sem rede pra
+  // OpenAI) — registrados aqui pra rodar assim que houver ambiente
+  // com LLM real disponível. A parte determinística desta correção
+  // (schema rejeita legado {}, matcher nunca trata legado/recusa como
+  // aceite) já foi verificada com código real, sem LLM — ver relatório.
+  // ============================================================
+  {
+    name: 'A. aceite inequívoco do trabalho — "Aceito o trabalho."',
+    category: 'accept_or_decline_work',
+    professionalStatementText: 'Aceito o trabalho.',
+    context: ctx({
+      messageWindow: [{ messageId: 'gm-21', authorType: 'professional', contentDigest: 'd21' }],
+      messageContents: [{ messageId: 'gm-21', usableText: 'Aceito o trabalho.' }],
+      communicatedProposalCandidates: [],
+    }),
+    expectedOutcome: 'resolved',
+    expectedOperationType: 'professional_initiated',
+    expectedApprovedValue: { accepted: true },
+    note: 'declaração autocontida e decisiva de aceite — accepted precisa vir true, nunca só a categoria sem valor',
+  },
+  {
+    name: 'B. recusa inequívoca do trabalho — "Não vou conseguir, não aceito esse trabalho."',
+    category: 'accept_or_decline_work',
+    professionalStatementText: 'Não vou conseguir, não aceito esse trabalho.',
+    context: ctx({
+      messageWindow: [{ messageId: 'gm-22', authorType: 'professional', contentDigest: 'd22' }],
+      messageContents: [{ messageId: 'gm-22', usableText: 'Não vou conseguir, não aceito esse trabalho.' }],
+      communicatedProposalCandidates: [],
+    }),
+    expectedOutcome: 'resolved',
+    expectedOperationType: 'professional_initiated',
+    expectedApprovedValue: { accepted: false },
+    note: 'recusa nunca é revocation — é accept_or_decline_work com accepted=false, decisão do usuário (16/09/2026)',
+  },
+  {
+    name: 'C. frase ambígua, promessa de decisão futura — "Vou pensar."',
+    category: 'accept_or_decline_work',
+    professionalStatementText: 'Vou pensar.',
+    context: ctx({
+      messageWindow: [{ messageId: 'gm-23', authorType: 'professional', contentDigest: 'd23' }],
+      messageContents: [{ messageId: 'gm-23', usableText: 'Vou pensar.' }],
+      communicatedProposalCandidates: [],
+    }),
+    expectedOutcome: 'inconclusive',
+    note: 'promete uma decisão futura, não é a decisão — nunca vira accepted=true nem false',
+  },
+  {
+    name: 'D. resposta curta sem referente suficiente — "sim"',
+    category: 'accept_or_decline_work',
+    professionalStatementText: 'sim',
+    context: ctx({
+      messageWindow: [
+        { messageId: 'gm-24a', authorType: 'external_participant', contentDigest: 'd24a' },
+        { messageId: 'gm-24b', authorType: 'professional', contentDigest: 'd24b' },
+      ],
+      messageContents: [
+        { messageId: 'gm-24a', usableText: 'Consegue tocar no meu casamento dia 20/12?' },
+        { messageId: 'gm-24b', usableText: 'sim' },
+      ],
+      communicatedProposalCandidates: [],
+    }),
+    expectedOutcome: 'inconclusive',
+    note: 'aceite curto sem candidato comunicado pra confirmar — mesma regra já aplicada a "Pode." sozinho; nunca vira accepted=true só por responder afirmativamente a uma pergunta',
+  },
+  {
+    name: 'E. resposta curta sem referente suficiente — "pode"',
+    category: 'accept_or_decline_work',
+    professionalStatementText: 'pode',
+    context: ctx({
+      messageWindow: [
+        { messageId: 'gm-25a', authorType: 'external_participant', contentDigest: 'd25a' },
+        { messageId: 'gm-25b', authorType: 'professional', contentDigest: 'd25b' },
+      ],
+      messageContents: [
+        { messageId: 'gm-25a', usableText: 'Fico com a data reservada então?' },
+        { messageId: 'gm-25b', usableText: 'pode' },
+      ],
+      communicatedProposalCandidates: [],
+    }),
+    expectedOutcome: 'inconclusive',
+    note: 'mesma família do caso D — resposta curta sem carregar decisão autocontida sobre o trabalho em si',
   },
 ];

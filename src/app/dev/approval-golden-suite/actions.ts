@@ -42,7 +42,13 @@ async function requireProfessional() {
 function evaluateCase(goldenCase: ApprovalGoldenSuiteCase, outcome: Awaited<ReturnType<typeof resolveApproval>>['output']): boolean {
   if (outcome.outcome !== goldenCase.expectedOutcome) return false;
   if (outcome.outcome === 'resolved' && goldenCase.expectedOperationType) {
-    return outcome.decisions.some((d) => d.operationType === goldenCase.expectedOperationType);
+    if (!outcome.decisions.some((d) => d.operationType === goldenCase.expectedOperationType)) return false;
+  }
+  // Correção semântica de accept_or_decline_work (16/09/2026) — quando
+  // o caso declara expectedApprovedValue, confere o valor real, nunca
+  // só outcome/operationType (a mera categoria não prova aceite/recusa).
+  if (outcome.outcome === 'resolved' && goldenCase.expectedApprovedValue) {
+    return outcome.decisions.some((d) => JSON.stringify(d.approvedValue) === JSON.stringify(goldenCase.expectedApprovedValue));
   }
   return true;
 }

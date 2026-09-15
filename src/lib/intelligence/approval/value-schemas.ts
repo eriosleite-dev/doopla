@@ -11,7 +11,17 @@ import { PROFESSIONAL_DECISION_CATEGORIES, type ProfessionalDecisionCategory } f
 // um número não-inteiro falha a canonicalização, então o schema já
 // impede a origem do problema.
 export const APPROVED_VALUE_SCHEMAS = {
-  accept_or_decline_work: z.object({}).strict(),
+  // Correção semântica (16/09/2026, achado da auditoria de impacto do
+  // Direct Booking): {} não distinguia aceite de recusa — um "Aceito o
+  // trabalho." e um "Não vou aceitar esse trabalho." produziam o MESMO
+  // registro. accepted:true = aceite inequívoco; accepted:false =
+  // recusa inequívoca. A mera existência de um approval_record desta
+  // categoria NUNCA significa aceite — só accepted===true significa
+  // isso. Registros legados com {} (anteriores a esta migração de
+  // schema) continuam semanticamente desconhecidos pra sempre — nunca
+  // reinterpretados como true nem como false (ver resolver.ts e
+  // buildResolverInstructions).
+  accept_or_decline_work: z.object({ accepted: z.boolean() }).strict(),
   price_or_cache: z.object({ amountCents: z.number().int() }).strict(),
   discount: z.object({ amountCents: z.number().int() }).strict(),
   payment_condition: z
@@ -66,6 +76,11 @@ export type ApprovedValueFor<C extends ProfessionalDecisionCategory> = z.infer<(
 // valor cruza a fronteira do model.
 export const MODEL_VALUE_OUTPUT_SCHEMA = z
   .object({
+    // accept_or_decline_work (16/09/2026): nullable como todo o resto
+    // deste objeto achatado — null = model não determinou aceite/
+    // recusa com segurança (outcome deve ser inconclusive nesse caso,
+    // nunca um default aqui).
+    accepted: z.boolean().nullable(),
     amountCents: z.number().int().nullable(),
     date: z.string().nullable(),
     time: z.string().nullable(),
@@ -88,6 +103,7 @@ export type ModelValueOutput = z.infer<typeof MODEL_VALUE_OUTPUT_SCHEMA>;
 export function modelValueToRecord(value: ModelValueOutput): Record<string, unknown> | null {
   if (value === null) return null;
   const record: Record<string, unknown> = {};
+  if (value.accepted !== null) record.accepted = value.accepted;
   if (value.amountCents !== null) record.amountCents = value.amountCents;
   if (value.date !== null) record.date = value.date;
   if (value.time !== null) record.time = value.time;
