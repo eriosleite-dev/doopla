@@ -13944,6 +13944,201 @@ a tocar é `src/app/dashboard/data.ts`/equivalente do card na Home
 *dentro do Professional*, não os arquivos de `_home/`).
 
 
+### Item da ordem revisada #1 — "Perfil e trabalho": AUDITORIA — `[AUDIT DELIVERED / NENHUMA IMPLEMENTAÇÃO]` — 15/09/2026
+
+Protocolo de concorrência seguido antes de iniciar: `git fetch
+origin/claude/categoria-b-supabase-env-qsbdq9` — 2 commits novos desde
+`ff77afc` (`baa50b9`, `c2fcda2`), ambos só em `/orcamento/[slug]`
+(`docs` + redesign do formulário público). Nenhum arquivo de
+`perfil/dados`, `perfil/trabalho`, `pro-artist-identity-form.tsx`,
+`pro-work-context-form.tsx`, `actions.ts` (as duas actions relevantes)
+ou `data.ts` foi tocado — sem conflito, auditoria seguiu.
+
+#### Estrutura atual
+
+`Perfil e trabalho` já existe como **título de accordion** em
+`pro-configuracoes-view.tsx:104`, mas ainda com 2 sub-rotas
+independentes dentro dele (não consolidadas):
+- `/dashboard/perfil/dados` → "Dados profissionais" (`dados/page.tsx` + `pro-artist-identity-form.tsx`)
+- `/dashboard/perfil/trabalho` → "Como você trabalha" (`trabalho/page.tsx` + `pro-work-context-form.tsx`)
+
+Não há duplicidade conceitual grave entre as duas hoje (já foi
+separado numa rodada anterior: "identidade/apresentação" vs. "contexto
+de trabalho"), mas continuam sendo 2 páginas com navegação própria —
+exatamente o que o pedido quer eliminar (uma experiência só, 3 grupos,
+sem camada de navegação extra).
+
+Há também uma 3ª página relacionada mas com escopo diferente:
+`/dashboard/perfil/preferencias` ("Preferências da Doopla" — hoje
+mostra a preferência WhatsApp/Painel + um card-link pra "Como você
+trabalha"). Essa é a página-alvo do próximo item da ordem ("Sua
+Doopla"), não deste.
+
+#### Campos atuais e onde são armazenados (tabela `artist_profiles`)
+
+**Dados profissionais** (`pro-artist-identity-form.tsx` → `updateArtistProfileAction`):
+| Campo UI | Coluna | Consumidor real (Intelligence Context) |
+|---|---|---|
+| Nome artístico | `stage_name` | **Sim** — `get_professional_profile` (`sections.ts:66`), fact `professional_profile.stageName` |
+| Categoria | `category` | **Sim** — mesmo tool, fact `.category` |
+| Bio | `bio` | **Sim** — mesmo tool, fact `.bio` (truncado) |
+| Gêneros/estilos | `genres` | **Não** — não selecionado em nenhuma tool nem em `sections.ts` |
+| Site | `website_url` | **Não** — confirmado no comentário de `dados/page.tsx`: nem a página pública (`/[slug]`) exibe |
+| Outros links | `other_links` | **Não** — mesmo caso de `website_url` |
+
+**Como você trabalha** (`pro-work-context-form.tsx` → `updateArtistWorkContextAction`):
+| Campo UI | Coluna | Consumidor real |
+|---|---|---|
+| "O que você faz e para quem?" | `what_you_do` | **Sim** — `get_professional_business_context` |
+| "Onde você atende?" | `where_you_serve` | **Sim** — mesma tool |
+| Faixa de cachê (dropdown, "Prefiro não dizer") | `fee_range` | **Sim** — mesma tool, mas ver achado abaixo (fork de modelo) |
+| "Você emite nota fiscal?" (dropdown, "Prefiro não dizer"/Sim/Não) | `issues_invoice` | **Sim** — mesma tool + já é um dos 4 critérios de completude |
+| "Outras preferências" | `other_preferences` | **Não confirmado** — não aparece em `get-professional-business-context.ts` nem em `sections.ts` (grep sem resultado); tratar como sem consumidor de IA hoje até prova em contrário |
+
+Campos que **não têm nenhuma superfície de edição hoje** (Web nem App)
+mas continuam sendo lidos pela Intelligence Context, escritos só no
+onboarding (`cadastro/actions.ts` / `PrepareForm.tsx`):
+- `negotiation_notes` — "algo que sua Doopla sempre deve saber antes de
+  negociar por você". **Achado de arquitetura**: pela própria regra
+  deste pedido ("mandato/autonomia pertence a 'Sua Doopla', nunca a
+  'Perfil e trabalho'"), este campo é conceitualmente uma regra de
+  negociação, não um dado de identidade/trabalho — mais perto de "Sua
+  Doopla" do que de "Perfil e trabalho". Não decidido aqui; fica
+  registrado pra quando o próximo item da ordem (Sua Doopla) for
+  auditado.
+- `attention_channel` — WhatsApp/Painel/Ambos. É exatamente o campo do
+  próximo item da ordem. Só citado aqui porque também é escrito pelo
+  mesmo formulário de onboarding.
+
+#### Achado principal: fork de modelo de cachê (resolve a pergunta sobre "Informações extras sobre seu cachê")
+
+Existem **3 representações diferentes de cachê** na base, de 2 épocas
+diferentes:
+
+1. `base_fee_cents` (integer, migration `0001`, a mais antiga) — valor
+   fixo em centavos.
+2. `pricing_notes` (text, migration `0038`, 08/09/2026) — "como você
+   costuma definir seus valores", preenchido especificamente quando o
+   profissional escolhe "depende do trabalho" em vez de um valor fixo.
+   Comentário da própria migration já diz explicitamente: "diferente
+   de bio e de negotiation_notes — nunca concatenar".
+3. `fee_range` (text, migration `0026`, mais antiga ainda) — dropdown
+   de faixas fixas (`FEE_RANGE_OPTIONS`, `src/lib/matching-options.ts`,
+   comentário explícito: "isso é o que alimenta o matching"). É o
+   **único dos 3 que a UI atual de Settings V2 edita** hoje
+   (`pro-work-context-form.tsx`), com "Prefiro não dizer" como opção.
+
+`base_fee_cents`/`pricing_notes` pararam de ser coletados no onboarding
+em 07/09/2026 ("removida a pedido do produto", comentário em
+`cadastro/actions.ts:40-47`) e **nunca foram trazidos pra Settings V2**
+— ficaram órfãos, sem nenhuma superfície de edição ativa hoje, mas
+sem terem sido apagados (dado de quem preencheu antes do corte
+continua no banco). `fee_range` foi o substituto que a Settings V2
+inventou (09/09/2026) sem reaproveitar as colunas que já existiam —
+duplicando o conceito em vez de reabrir o par correto.
+
+**Resposta direta à pergunta da fundadora**: sim, já existe campo
+canônico adequado pra "Informações extras sobre seu cachê" —
+**`pricing_notes`** (mesmo texto livre, mesma semântica, mesmo
+comentário de schema já escrito pra isso). E já existe campo adequado
+pra "Cachê de referência" como valor monetário — **`base_fee_cents`**
+(inteiro em centavos, exatamente o formato de um input `R$ ____`).
+**Nenhuma migration é necessária** pra este redesign. O trabalho de
+implementação é:
+- trocar o dropdown de `fee_range` por um input monetário ligado a
+  `base_fee_cents` + o textarea "Informações extras" ligado a
+  `pricing_notes`;
+- **`fee_range` fica órfão** (mesmo tratamento já padrão neste
+  código: coluna preservada, só para de ser editada/lida como
+  principal);
+- **`get-professional-business-context.ts` precisa ser atualizado**
+  pra parar de expor `feeRange`/retornar `baseFeeCents`/`pricingNotes`
+  em cents formatados — hoje a tool NEM SEQUER lê `base_fee_cents`
+  (confirmado por grep no arquivo), só `fee_range`/`pricing_notes`. Ou
+  seja, mesmo antes desta migração de UI, o valor de referência fixo
+  já não chega à IA hoje — é um gap pré-existente, não algo que esta
+  mudança cria.
+
+#### Situação campo a campo pedida
+
+- **`what_you_do`**: canônico, ativo, consumido, sem problema. Mantido como está (copy só muda de rótulo/helper na UI, pedido item 2 da spec original).
+- **`where_you_serve`**: idem.
+- **`fee_range`**: ATIVO hoje mas **candidato a ficar órfão** no redesign — substituído por `base_fee_cents` como valor estruturado. Ver achado acima.
+- **`issues_invoice`**: canônico, ativo, consumido, já é Sim/Não/Prefiro-não-dizer — só precisa perder a 3ª opção na UI (regra do pedido: sem dropdown, sem "prefiro não informar").
+
+#### Legado de matching/perfil público confirmado nesta auditoria
+
+Colunas com **zero consumidor de IA e zero superfície de edição
+alcançável** hoje (perfil público desativado do nav, comentário
+explícito em `pro-configuracoes-view.tsx:34-37`: rota não apagada, só
+inalcançável): `instagram_url`, `portfolio_url`, `public_enabled`.
+`website_url`/`other_links` também sem consumidor, mas continuam
+editáveis em "Dados profissionais" hoje — candidatos a sair da nova UI
+por falta de função real (a fundadora pediu auditoria específica
+desses 2, não autorização automática pra remover). `genres` no mesmo
+caso.
+
+Colunas de matching puro, já fora de qualquer superfície de edição
+(confirmado, nenhuma delas aparece em `pro-artist-identity-form.tsx`
+nem `pro-work-context-form.tsx`): `subcategory`, `mercados`,
+`work_types`, `client_types`, `regions`, `languages`, `career_stage`,
+`help_areas`, `travels`, `serves_other_locations`,
+`accepts_out_of_city_work`. Todas preservadas no banco, nenhuma tocada
+por esta auditoria.
+
+#### Impacto em `getArtistMatchingCompletion` (Home)
+
+Confirma a regra já registrada: os 4 critérios atuais
+(`what_you_do`/`where_you_serve`/`fee_range`/`issues_invoice`, commit
+`fce024e`) **mudam** se este redesign trocar `fee_range` por
+`base_fee_cents`. Ajuste necessário quando a implementação acontecer:
+substituir o critério `fee_range` por "`base_fee_cents` preenchido OU
+`pricing_notes` com conteúdo" — exatamente a regra que a fundadora já
+tinha adiantado no pedido original ("não transformar Cachê de
+referência em requisito obrigatório se o profissional explicou em
+Informações extras"). Não é reabertura do bug, é consequência direta
+e esperada.
+
+#### Impacto nos toggles de Comunidade/Privacidade
+
+`community-privacy-form.tsx` tem toggles `showSpecialties` ("Mostrar
+minhas especialidades") e `showWorkTypes` ("Mostrar tipos de
+trabalho") — são flags booleanas próprias (não os dados em si).
+Auditoria de qual dado cada toggle efetivamente exibe na Comunidade
+fica pro item "Privacidade e dados" desta ordem (não investigado em
+profundidade aqui pra não sair do escopo) — só fica registrado que
+`work_types` já está fora de qualquer superfície de edição hoje, então
+o toggle "Mostrar tipos de trabalho" já pode estar apontando pra um
+dado congelado, independente do que este redesign fizer.
+
+#### Diferença Web/App
+
+**App não tem nenhuma superfície de edição de Perfil e trabalho hoje**
+— confirmado em `mobile/src/types/artistProfile.ts`: o tipo só tem
+`stage_name`/`category`/`bio`, nenhum campo de `what_you_do`,
+`where_you_serve`, cachê ou nota fiscal. Mesmo gap já documentado pro
+"Contexto profissional" (App exclui esse card de propósito, sem tela
+própria ainda). Este redesign, na prática, é Web-only nesta rodada;
+"Web + App usam mesma fonte de verdade" já está garantido porque o App
+simplesmente não edita nada ainda — não há dois modelos divergentes,
+há um modelo (Web) e uma ausência (App), registrada como pendência
+técnica de paridade visual, não como bug.
+
+#### Precisa de schema/migration?
+
+**Não.** Os 2 campos que o pedido pede ("Cachê de referência" +
+"Informações extras sobre seu cachê") já existem
+(`base_fee_cents`/`pricing_notes`), órfãos desde 07/09/2026, prontos
+pra reaproveitar. Nota fiscal já existe (`issues_invoice`). Nenhuma
+coluna nova, nenhuma migration. O trabalho é: UI (unificar em 3
+grupos, trocar dropdowns por copy/inputs aprovados), 1 action
+ajustada (escrever `base_fee_cents`/`pricing_notes` em vez de
+`fee_range`), 1 tool do Intelligence Core ajustada
+(`get-professional-business-context.ts`, trocar `feeRange` por
+`baseFeeCents`/manter `pricingNotes`), e 1 função de completude ajustada
+(`getArtistMatchingCompletion`).
+
+
 
 ## Como usar isso
 
