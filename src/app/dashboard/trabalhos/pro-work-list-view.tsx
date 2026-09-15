@@ -202,8 +202,14 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
             {count > 0 ? `Filtrar (${count})` : 'Filtrar'}
           </button>
 
+          {/* bg sólido (achado QA visual, 15/09/2026) — --pro-panel translúcido
+              (4% branco) + backdrop-blur deixava os cards/badges da lista logo
+              atrás visíveis por trás do popover, como se fizessem parte dele.
+              --pro-panel-solid já é o padrão usado por todo overlay flutuante
+              do sistema Pro (NotificationBell, menus de Comunidade) — mesmo
+              tratamento aqui, sem inventar nova superfície. */}
           {open && (
-            <div className="absolute right-0 z-20 mt-2 w-[280px] rounded-[16px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-4 shadow-[0_20px_50px_rgba(0,0,0,.5)] backdrop-blur-xl sm:w-[320px]">
+            <div className="absolute right-0 z-20 mt-2 w-[280px] rounded-[16px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] p-4 shadow-[0_20px_50px_rgba(0,0,0,.5)] sm:w-[320px]">
               <div className="flex flex-col gap-4">
                 <div>
                   <p className="font-doopla-mono text-[10.5px] uppercase tracking-[.06em] text-[var(--pro-tx-50)]">Status</p>
