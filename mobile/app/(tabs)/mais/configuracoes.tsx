@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, Share, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, Share, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 
 import { colors, fonts, radii } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
 import { apiBaseUrl, dooplaWhatsappNumber } from '@/lib/env';
+import { SUPPORT_EMAIL } from '@/lib/support';
 import { LoadingState, ErrorState } from '@/components/shared/ScreenState';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { ChevronRightIcon } from '@/components/icons/Icons';
@@ -57,6 +58,15 @@ type Phase = 'loading' | 'ready' | 'error';
 // em /orcamento/[slug]; nenhum identificador novo criado. Row antiga
 // "WhatsApp" (identidade do profissional) renomeada pra "Seu WhatsApp"
 // só pra deixar claro que não é o número oficial da Doopla.
+//
+// "Ajuda e suporte" simplificada (auditoria de legado, 15/09/2026,
+// mesma decisão do Web) — sheet 'ajuda' ganhou FAQ (Linking.openURL pro
+// #faq real da Home, via apiBaseUrl() — mesma env já usada pro link de
+// booking, nenhuma constante nova) e Suporte (mailto via SUPPORT_EMAIL,
+// novo mobile/src/lib/support.ts). Duplicação deliberada e registrada:
+// Web (src/lib/support.ts) e Mobile são pacotes sem workspace
+// compartilhado — ver comentário no arquivo novo. Disclaimer de IA
+// original preservado, só deixou de ser a única coisa no sheet.
 type SheetKey = 'perfil' | 'plano' | 'doopla-whatsapp' | 'whatsapp' | 'link' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
@@ -195,8 +205,21 @@ export default function ConfiguracoesScreen() {
 
       <BottomSheet visible={openSheet === 'ajuda'} onClose={() => setOpenSheet(null)}>
         <View>
-          <Text style={styles.sheetTitle}>Sobre a Doopla</Text>
-          <Text style={styles.aiDisclaimer}>
+          <Text style={styles.sheetTitle}>Ajuda e suporte</Text>
+          <Text style={styles.sheetSubtext}>Precisa de ajuda com a Doopla? Estamos aqui para ajudar.</Text>
+
+          <Text style={[styles.label, { marginTop: 20 }]}>FAQ</Text>
+          <Pressable style={styles.ghostBtn} onPress={() => Linking.openURL(`${apiBaseUrl()}/#faq`)}>
+            <Text style={styles.ghostBtnText}>Ver FAQ</Text>
+          </Pressable>
+
+          <Text style={[styles.label, { marginTop: 20 }]}>Suporte</Text>
+          <Text style={styles.sheetText}>{SUPPORT_EMAIL}</Text>
+          <Pressable style={[styles.submit, { marginTop: 10 }]} onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
+            <Text style={styles.submitText}>Enviar e-mail para o suporte</Text>
+          </Pressable>
+
+          <Text style={[styles.aiDisclaimer, { marginTop: 20 }]}>
             A Doopla usa inteligência artificial e pode cometer erros. Você continua no controle e aprova decisões
             importantes.
           </Text>

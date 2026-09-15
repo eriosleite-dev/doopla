@@ -88,6 +88,14 @@ import { ProSettingsRow } from './settings-ui';
 // duplicação de navegação). `paymentConfigured` removido da
 // assinatura — só existia pra alimentar essa linha. `/dashboard/perfil/recebimento`
 // vira redirect pra `/dashboard/dinheiro`.
+//
+// "Ajuda e suporte" simplificada (auditoria de legado, 15/09/2026) —
+// só FAQ + Suporte, nada mais. FAQ aponta pro `#faq` real (já existe
+// na Home, `src/app/_home/home.html` — nunca duplicado/reescrito
+// aqui, só linkado como destino; `/ajuda` continua intocada, é um
+// stub do universo Home/site, fora de escopo). Suporte usa
+// `SUPPORT_EMAIL` (`src/lib/support.ts`), única fonte no Web — nenhum
+// hardcode novo. Travessão removido da copy.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
@@ -190,17 +198,29 @@ export function ProConfiguracoesView({
         </ProAccordion>
 
         <ProAccordion title="Ajuda e suporte">
-          <div className="flex flex-col gap-2">
-            <p className="text-[12.5px] text-[var(--pro-tx-50)]">
-              Problema com sua conta, assinatura ou o painel? Isso é diferente de &ldquo;Falar com minha Doopla&rdquo;
-              (sua representante, na Home) — aqui é sobre o produto em si.
-            </p>
-            <a
-              href={`mailto:${SUPPORT_EMAIL}`}
-              className="self-start rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12.5px] font-semibold text-white"
-            >
-              Enviar e-mail para o suporte
-            </a>
+          <div className="flex flex-col gap-4">
+            <p className="text-[12.5px] text-[var(--pro-tx-50)]">Precisa de ajuda com a Doopla? Estamos aqui para ajudar.</p>
+
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">FAQ</p>
+              <Link
+                href="/#faq"
+                className="mt-2 inline-block self-start rounded-full border border-[var(--pro-line)] px-4 py-2 text-[12.5px] font-semibold text-[var(--pro-off)]"
+              >
+                Ver FAQ
+              </Link>
+            </div>
+
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">Suporte</p>
+              <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">{SUPPORT_EMAIL}</p>
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="mt-2 inline-block self-start rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12.5px] font-semibold text-white"
+              >
+                Enviar e-mail para o suporte
+              </a>
+            </div>
           </div>
         </ProAccordion>
 

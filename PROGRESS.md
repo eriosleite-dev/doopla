@@ -15162,6 +15162,113 @@ Perfil público legado, `payment_details`/RPC/RLS/Policy Gate/Business
 Context (arquitetura de segurança 100% preservada).
 
 
+### "Ajuda e suporte" — FAQ + Suporte, escopo mínimo, sem sistema novo — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Web
+
+`pro-configuracoes-view.tsx`: accordion "Ajuda e suporte" reescrito —
+copy de abertura *"Precisa de ajuda com a Doopla? Estamos aqui para
+ajudar."* (travessão da copy antiga removido), bloco "FAQ" (`Link
+href="/#faq"`, label "Ver FAQ") e bloco "Suporte" (e-mail exibido +
+botão "Enviar e-mail para o suporte", `mailto:${SUPPORT_EMAIL}`).
+`SUPPORT_EMAIL` já estava importado (`src/lib/support.ts`) — nenhum
+hardcode novo.
+
+#### 2. FAQ — só consumido, nunca duplicado
+
+`/#faq` aponta pra seção real já existente em `src/app/_home/home.html`
+(5+ perguntas reais sobre como a Doopla opera). **Nenhuma linha de
+`_home/**` tocada** — só linkado como destino, mesma âncora que
+`HomeMenuOverlay.tsx`/`SiteMenuOverlay.tsx` (Home-owned) já usam.
+Nenhuma pergunta/resposta duplicada dentro de Settings.
+
+#### 3. `/ajuda` — intocado, conforme instrução
+
+Rota pública stub (`src/app/ajuda/page.tsx`, `StubPage` de `_home/`)
+não foi tocada, não virou Central de Ajuda nesta rodada — Settings
+aponta direto pro `#faq`, nunca pro stub.
+
+#### 4. App
+
+`mobile/app/(tabs)/mais/configuracoes.tsx`: sheet 'ajuda' (row "Ajuda /
+Sobre a Doopla") ganhou "FAQ" (`Linking.openURL(`${apiBaseUrl()}/#faq`)`
+— reusa a mesma env `EXPO_PUBLIC_API_BASE_URL` já usada pro link de
+booking, nenhuma constante de URL nova) e "Suporte" (`Linking.openURL('mailto:...')`
+via `SUPPORT_EMAIL`). Disclaimer de IA original preservado, agora um
+bloco a mais no sheet, não mais o único conteúdo.
+
+**Fonte canônica do e-mail — decisão documentada**: Web
+(`src/lib/support.ts`) e Mobile são pacotes separados, sem
+workspace/monorepo (`package.json` do Mobile não tem `workspaces`,
+`tsconfig.json` do Mobile resolve `@/*` só dentro de `mobile/src`) —
+nenhum caminho de import limpo entre os dois confirmado antes de
+duplicar. Criado `mobile/src/lib/support.ts` com a mesma constante
+`SUPPORT_EMAIL = 'contato@doopla.pro'`, comentário no arquivo
+registrando explicitamente a duplicação como debt de centralização
+(nunca criar um pacote compartilhado só por causa disso — instrução
+direta da fundadora).
+
+#### 5. Rota órfã
+
+`/dashboard/perfil/suporte` (zero referências em todo `src/`,
+confirmado na auditoria) → `redirect('/dashboard/perfil')`.
+`SUPPORT_EMAIL`/`proPrimaryButtonClass` preservados (arquivo intocado).
+
+#### 6. Booker — intocado
+
+`dashboard-footer.tsx`/`legacy-shell.tsx` (os 2 links pro stub `/ajuda`,
+exclusivos de `role === 'booker'`) não foram tocados — ficam
+registrados como debt separado (já documentado na auditoria), fora de
+escopo Professional.
+
+#### Testes/validação
+
+- `npm run build`: limpo, 0 erros, todas as rotas geradas (incluindo
+  `/dashboard/perfil/suporte` como rota dinâmica de redirect).
+- `eslint` nos 2 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-ajuda` (Playwright) — screenshot
+  confirma a estrutura exata pedida: copy sem travessão, "FAQ"/"Ver
+  FAQ", "Suporte"/e-mail/"Enviar e-mail para o suporte". Rota de
+  preview e `.next` removidos antes do commit (`git status` confirma
+  só os arquivos de produto + `mobile/src/lib/support.ts` novo).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa do
+  arquivo após as edições: imports corretos (`Linking` adicionado ao
+  import de `react-native`, `SUPPORT_EMAIL` do novo arquivo), JSX
+  balanceado, todos os estilos reusados (`sheetTitle`/`sheetSubtext`/
+  `label`/`ghostBtn`/`ghostBtnText`/`sheetText`/`submit`/`submitText`/
+  `aiDisclaimer`) já existiam no `StyleSheet`, nenhum novo.
+- Checklist da fundadora (15 itens): (1) FAQ aponta pro FAQ real —
+  confirmado, `/#faq`/`${apiBaseUrl()}/#faq` apontam pra
+  `_home/home.html#faq`; (2) nenhuma pergunta duplicada — confirmado,
+  zero conteúdo de FAQ copiado pra Settings; (3) suporte usa
+  `contato@doopla.pro` — confirmado nos dois lados; (4) Web usa
+  `SUPPORT_EMAIL` — confirmado, já importado, sem hardcode novo; (5)
+  estratégia do App documentada — confirmado, ver item 4 acima; (6)
+  mailto funciona — confirmado por leitura (`Linking.openURL('mailto:...')`,
+  mesmo padrão já usado em `bookings/[id].tsx`/`FalarComDooplaCard.tsx`);
+  (7) `/perfil/suporte` redireciona — confirmado; (8) `/ajuda` intocado
+  — confirmado, `git diff` não lista esse arquivo; (9) `_home/**`
+  intocado — confirmado, `git diff --stat` não lista nenhum arquivo
+  lá; (10) Booker intocado — confirmado, `dashboard-footer.tsx`/
+  `legacy-shell.tsx` não tocados; (11) nenhum placeholder novo —
+  confirmado; (12) nenhum travessão na copy nova — confirmado; (13)
+  nenhum backend/migration — confirmado; (14) typecheck/lint/build —
+  limpos; (15) concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Financeiro, Onboarding, Ajustes no detalhe do booking,
+Decisões, Home (`_home/**`, incluindo `/ajuda` e o conteúdo do `#faq`),
+Booker (`dashboard-footer.tsx`/`legacy-shell.tsx` e financeiro),
+arquitetura da Comunidade, matching, Perfil público legado.
+
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
