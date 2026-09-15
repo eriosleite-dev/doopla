@@ -14296,6 +14296,80 @@ mesmo gap já existente antes desta rodada, não bloqueia a entrega Web.
    item ("Sua Doopla") — não tocado aqui, conforme instruído.
 
 
+### "Perfil e trabalho" — polimento visual (2ª rodada) — `[DELIVERED / aguardando QA visual]` — 15/09/2026
+
+Estrutura e campos já aprovados na rodada anterior não mudaram. Pedido
+explícito da fundadora: só polimento visual, sem mexer em modelo de
+dados/completude/Business Context. Protocolo de concorrência checado de
+novo (`git fetch`, 2 commits novos desde a última checagem — `41cae54`,
+`ecb713d` — ambos só `docs:` em `PROGRESS.md`, sem conflito).
+
+**O que mudou:**
+
+- 3 `ProCard` separados (1 por grupo) viraram **1 `ProCard` só**, com
+  divisórias leves (`border-t` + espaçamento) entre "Informações
+  profissionais" / "Seu trabalho" / "Valores e condições" — reduz a
+  sensação de "cards dentro de cards".
+- Títulos de grupo trocaram do estilo de label técnico de navegação
+  (uppercase, tracking largo, cinza pequeno — o mesmo de
+  `ProSettingsGroup`, feito pra linhas de menu) pro estilo de subtítulo
+  já usado em "Foto"/"Preferências comerciais" (`font-pro-sub`, bold,
+  14px, off-white) — mais legível, continua claramente menor que o
+  título da página.
+- Nome artístico, Categoria e Cachê de referência ganharam
+  `sm:max-w-[...]` (240px/240px/220px) — não esticam mais a largura
+  toda em desktop. Bio, "Conte um pouco sobre o seu trabalho", "Região
+  que atende" e "Informações extras" continuam largura total (são
+  textareas, fazem sentido largos). Regra só entra em telas `sm:` pra
+  cima — mobile continua full-width.
+- Cachê de referência: "R$" deixou de ser um `<span>` solto ao lado de
+  um input com a própria borda (2 caixas visuais) e virou 1 wrapper
+  bordado só (`proInputClass` no wrapper, input interno sem borda/bg
+  próprios) — lê como 1 campo monetário único. Nenhum componente novo.
+- Nota fiscal: Sim/Não sem mudança de comportamento, só herdou mais
+  espaço/respiro dentro do grupo (não fica mais "perdido" no fim do
+  formulário antigo).
+- **3 botões "Salvar" viraram 1 "Salvar alterações"**, no fim do
+  card. Auditoria confirmada: a separação em 2 actions
+  (`updateArtistProfileAction`/`updateArtistWorkContextAction`) só
+  existia porque eram 2 `<form>`/FormData diferentes — um UPDATE
+  disparado por um form só com os campos de identidade zeraria o
+  contexto de trabalho, e vice-versa. Com 1 form/1 FormData contendo
+  TODOS os campos, isso deixa de ser um risco: 1 UPDATE só, todos os
+  campos sempre presentes juntos. **Consolidadas numa action só**,
+  `updateProfileAndWorkContextAction` — não foi "alterar
+  actions/backend sem necessidade", foi exatamente a necessidade que a
+  fundadora descreveu (ela mesma autorizou consolidar se não houvesse
+  necessidade técnica de manter separado, e confirmei que não há).
+  Zero mudança de coluna, zero mudança de regra de completude/Business
+  Context.
+- Foto: mantida, sem mudança de comportamento (mesmo `ProAvatarUploader`
+  de sempre, só sem a caixa/borda própria ao redor — vive dentro do
+  card único agora).
+
+**Arquivos:**
+
+- Novo: `src/app/dashboard/perfil/pro-profile-work-form.tsx` (substitui
+  os 2 componentes antigos).
+- Removidos: `pro-artist-identity-form.tsx`, `pro-work-context-form.tsx`
+  (zero outro consumidor, confirmado por grep antes de apagar).
+- Alterados: `dados/page.tsx` (usa o componente novo), `actions.ts`
+  (action consolidada), `data.ts`/`trabalho/page.tsx` (só comentário,
+  referência ao arquivo renomeado).
+- **Nada tocado** em Home, `src/app/_home/**`, backend de decisões,
+  Sua Doopla, Canais, Privacidade, Financeiro — conforme o escopo
+  pedido.
+
+**Validação:** `tsc --noEmit` limpo, `eslint` limpo (exit 0), `npm run
+build` completo sem erros. QA visual: 2 rotas de preview temporárias
+recriadas (mesmo padrão da rodada anterior, sem auth/DB, componente
+real com dado mockado), screenshots tirados (desktop completo com
+cenário preenchido + cenário vazio, close-up de "Valores e condições",
+mobile), rotas de preview removidas de novo depois — nunca commitadas.
+
+**Pendente:** QA visual da fundadora antes de fechar o item.
+
+
 
 ## Como usar isso
 

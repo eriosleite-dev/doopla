@@ -1296,19 +1296,26 @@ export async function updatePublicLinksAction(
   return {};
 }
 
-// Settings V2 consolidado (09/09/2026) — decomposição de "Perfil
-// profissional" (antigo /dashboard/perfil/editar, uma página só) em
-// rotas por conceito ("Dados profissionais" / "Como você trabalha" /
-// "Perfil público"). Por isso esta action foi ESCOPADA só aos campos
-// de identidade — ela era originalmente uma única action pra tudo
-// (identidade + contexto de trabalho); mantê-la assim faria a página
-// "Dados profissionais" sozinha zerar travels/careerStage/workTypes/etc.
-// toda vez que alguém salvasse só o nome artístico, já que campos
-// ausentes do FormData de uma página só viram null/false na outra.
-// O contexto de trabalho ganhou a própria action (updateArtistWorkContextAction,
-// abaixo) — mesma tabela, mesma validação, só o campo de escrita
-// dividido em dois UPDATEs independentes.
-export async function updateArtistProfileAction(
+// Polimento visual "Perfil e trabalho" (15/09/2026, 2ª rodada) —
+// `updateArtistProfileAction` (identidade) e `updateArtistWorkContextAction`
+// (contexto de trabalho) eram 2 actions separadas desde o Settings V2
+// (09/09/2026) especificamente porque viviam em 2 FORMULÁRIOS/PÁGINAS
+// diferentes: um FormData só com os campos de identidade zeraria o
+// contexto de trabalho (e vice-versa) se as duas continuassem em UPDATEs
+// independentes disparados por forms diferentes. Essa restrição deixou
+// de existir quando a UI virou 1 formulário só (1 <form>, 1 FormData com
+// TODOS os campos, 1 botão "Salvar alterações") — um UPDATE único é
+// seguro porque todo campo sempre chega junto no mesmo envio. Por isso
+// as 2 actions viraram 1: `updateProfileAndWorkContextAction`. Mesma
+// tabela (artist_profiles), mesma validação, mesmo tratamento de campo
+// legado (omitido do payload, nunca sobrescrito pra null/vazio):
+// Subcategoria/Mercados/Gêneros/Site/Outros links (identidade),
+// work_types/client_types/regions/languages/help_areas/career_stage/
+// travels/serves_other_locations/accepts_out_of_city_work (contexto de
+// trabalho, chips antigos) e `fee_range`/`other_preferences` (substituídos
+// por `base_fee_cents`/`pricing_notes`, migrations 0001/0038, sem
+// migration nova).
+export async function updateProfileAndWorkContextAction(
   _prevState: { error?: string; success?: boolean },
   formData: FormData
 ): Promise<{ error?: string; success?: boolean }> {
@@ -1320,72 +1327,6 @@ export async function updateArtistProfileAction(
   const stageName = String(formData.get('stageName') ?? '').trim();
   const category = String(formData.get('category') ?? '').trim();
   const bio = String(formData.get('bio') ?? '').trim();
-
-  // Subcategoria, Mercados (14/09/2026) e agora Gêneros/estilos, Site e
-  // Outros links (redesign "Perfil e trabalho", 15/09/2026, achado:
-  // zero consumidor no Intelligence Context, nem a página pública
-  // exibe website_url/other_links) — nenhum aparece mais no FormData.
-  // Omitidos do payload de propósito, mesmo padrão de sempre: um UPDATE
-  // que os incluísse como null/vazio apagaria dado de quem já
-  // preencheu antes. Colunas preservadas.
-  await supabase
-    .from('artist_profiles')
-    .update({
-      stage_name: stageName || null,
-      category: category || null,
-      bio: bio || null,
-    })
-    .eq('profile_id', user.id);
-
-  revalidatePath('/dashboard/perfil/dados');
-  revalidatePath('/dashboard');
-  return { success: true };
-}
-
-// Contexto de trabalho ("Como você trabalha") — os campos que o
-// Runtime lê como conhecimento declarado pra representar o
-// profissional (get-professional-business-context.ts), nunca
-// autorização. Antes viviam dentro do modal "Preferências de
-// matching" da mesma action de identidade; esse conceito de produto
-// não existe mais (matching/busca/recomendação não são promessa do
-// produto) — o nome e a copy mudaram, os campos e a coluna não.
-//
-// Simplificação de beta (Settings V2, 14/09/2026): os 5 grupos de
-// chips (work_types/client_types/regions/languages/help_areas),
-// career_stage e os 3 booleans de disponibilidade pra viagem
-// (travels/serves_other_locations/accepts_out_of_city_work) saíram da
-// UI — auditoria confirmou que nenhum tem consumidor funcional além do
-// mesmo texto narrativo simples que o Intelligence Context recebe
-// (nunca filtro/ranking/lógica de agenda), e os booleans de viagem
-// duplicariam a mesma pergunta já coberta por "Onde você atende?".
-// Dois campos de texto livre (whatYouDo/whereYouServe, migration 0080)
-// entregam a mesma informação com menos fricção. Colunas antigas
-// preservadas, só não fazem mais parte do FormData — por isso omitidas
-// do payload abaixo (incluí-las como null/false apagaria dado de quem
-// já preencheu antes de hoje).
-//
-// Redesign "Perfil e trabalho" (15/09/2026) — grupo "Valores e
-// condições": `fee_range` (dropdown de faixas, "Prefiro não dizer")
-// para de ser editado aqui. Auditoria encontrou 2 colunas canônicas já
-// existentes e órfãs desde 07/09/2026 (`base_fee_cents`/`pricing_notes`,
-// migrations 0001/0038) — exatamente "Cachê de referência" (valor) +
-// "Informações extras sobre seu cachê" (texto livre), sem precisar de
-// migration nova. `fee_range` preservado (mesmo padrão de sempre,
-// omitido do payload) — vira legado, get-professional-business-context.ts
-// usa `base_fee_cents` como fonte primária agora (fallback pra
-// `fee_range` só se `base_fee_cents` for nulo). `other_preferences`
-// também sai: sem consumidor confirmado na auditoria e sem campo
-// próprio na estrutura aprovada (Seu trabalho / Valores e condições),
-// mesmo tratamento de preservar sem escrever.
-export async function updateArtistWorkContextAction(
-  _prevState: { error?: string; success?: boolean },
-  formData: FormData
-): Promise<{ error?: string; success?: boolean }> {
-  const ctx = await requireUserAndProfile();
-  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user, profile } = ctx;
-  if (profile.role !== 'artista') return { error: 'Só artistas têm esse perfil.' };
-
   const whatYouDo = String(formData.get('whatYouDo') ?? '').trim();
   const whereYouServe = String(formData.get('whereYouServe') ?? '').trim();
   const baseFeeCents = centsFromReais(formData.get('baseFee'));
@@ -1400,6 +1341,9 @@ export async function updateArtistWorkContextAction(
   await supabase
     .from('artist_profiles')
     .update({
+      stage_name: stageName || null,
+      category: category || null,
+      bio: bio || null,
       what_you_do: whatYouDo || null,
       where_you_serve: whereYouServe || null,
       base_fee_cents: baseFeeCents,

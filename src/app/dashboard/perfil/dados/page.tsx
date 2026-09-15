@@ -1,11 +1,8 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
-import { ProCard } from '../../pro-ui';
 import { getSessionProfile } from '../../session';
-import { ProAvatarUploader } from '../pro-avatar-uploader';
-import { ProArtistIdentityForm } from '../pro-artist-identity-form';
-import { ProWorkContextForm } from '../pro-work-context-form';
+import { ProProfileWorkForm } from '../pro-profile-work-form';
 import { ProSettingsDetailHeader } from '../settings-ui';
 
 export const metadata: Metadata = {
@@ -31,6 +28,11 @@ type ArtistProfileData = {
 // contexto. `/dashboard/perfil/trabalho` continua existindo como
 // redirect pra cá (links antigos, ex. Preferências da Doopla, nunca
 // quebram). Rota em si (`/dados`) preservada — só o conteúdo mudou.
+//
+// Polimento visual (15/09/2026, 2ª rodada) — os 3 grupos e o avatar
+// agora vivem dentro de 1 único ProProfileWorkForm/ProCard (1 form, 1
+// botão "Salvar alterações"), não mais 3 ProCards separados com título
+// técnico cada um — ver comentário em pro-profile-work-form.tsx.
 export default async function PerfilTrabalhoPage() {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard/perfil');
@@ -48,32 +50,18 @@ export default async function PerfilTrabalhoPage() {
         subtitle="Quem você é, o que faz e como cobra: o que ajuda sua Doopla a te representar melhor."
       />
 
-      <div className="flex flex-col gap-3.5">
-        <p className="px-1 text-[11.5px] font-semibold uppercase tracking-[.06em] text-[var(--pro-tx-30)]">
-          Informações profissionais
-        </p>
-        <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Foto</p>
-          <div className="mt-4">
-            <ProAvatarUploader currentUrl={profile.avatar_url} fallbackName={profile.full_name} />
-          </div>
-        </ProCard>
-        <ProCard>
-          <ProArtistIdentityForm
-            stageName={artist?.stage_name ?? null}
-            category={artist?.category ?? null}
-            bio={artist?.bio ?? null}
-          />
-        </ProCard>
-
-        <ProWorkContextForm
-          whatYouDo={artist?.what_you_do ?? null}
-          whereYouServe={artist?.where_you_serve ?? null}
-          baseFeeCents={artist?.base_fee_cents ?? null}
-          pricingNotes={artist?.pricing_notes ?? null}
-          issuesInvoice={artist?.issues_invoice ?? null}
-        />
-      </div>
+      <ProProfileWorkForm
+        avatarUrl={profile.avatar_url}
+        fallbackName={profile.full_name}
+        stageName={artist?.stage_name ?? null}
+        category={artist?.category ?? null}
+        bio={artist?.bio ?? null}
+        whatYouDo={artist?.what_you_do ?? null}
+        whereYouServe={artist?.where_you_serve ?? null}
+        baseFeeCents={artist?.base_fee_cents ?? null}
+        pricingNotes={artist?.pricing_notes ?? null}
+        issuesInvoice={artist?.issues_invoice ?? null}
+      />
     </main>
   );
 }

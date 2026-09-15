@@ -378,7 +378,7 @@ export type MatchingCompletion = { filled: number; total: number };
 // Correção 15/09/2026 (achado da fundadora) — este cálculo checava
 // `regions`/`career_stage`/`help_areas`, colunas do modelo antigo de
 // matching que a Simplificação de beta de 14/09/2026 (ver comentário
-// em `pro-work-context-form.tsx`) já tinha removido da UI de "Como
+// em `pro-profile-work-form.tsx`) já tinha removido da UI de "Como
 // você trabalha". Resultado: o card "Contexto profissional" nunca
 // chegava a N/N — 3 dos 4 critérios dependiam de colunas que o
 // profissional não tem mais como preencher, então a pendência nunca
