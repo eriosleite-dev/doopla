@@ -307,7 +307,10 @@
   /* ===== FAQ (mantido da Home anterior — sem seção equivalente no novo
      mockup; overlay do Menu referencia "FAQ" como destino, então a
      seção precisa continuar existindo. Ver relatório.) ===== */
-  #home-marketing .faq .narrow{ max-width:920px; margin:0 auto; }
+  /* Mesma largura útil das seções principais da Home (.two-col, .plans,
+     .with-you já usam 1180px) — não um número novo/arbitrário. A 760px
+     original deixava sobra lateral enorme comparado ao resto da página. */
+  #home-marketing .faq .narrow{ max-width:1180px; margin:0 auto; }
   #home-marketing .faq-list details{ border-bottom:1px solid var(--line); padding:16px 0; }
   #home-marketing .faq-list details:first-child{ border-top:1px solid var(--line); }
   #home-marketing .faq-list summary{ list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:16px; font-family:'Inter',sans-serif; font-weight:700; font-size:.94rem; color:var(--off); }
