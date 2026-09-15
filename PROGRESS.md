@@ -1674,7 +1674,50 @@ Fechamento da validação pedida pela fundadora antes de seguir pro redesign de 
 **Regressão encontrada**: nenhuma.
 **Pendência real**: nenhuma nova além da já registrada (external_participant não resolvido — client_contact ambíguo — e a confirmação em ambiente real de Supabase, acima).
 
-**Status final do Item 1: `DELIVERED + VALIDATED`.**
+**Status final do Item 1: `DELIVERED + VALIDATED`.** Confirmação final em `doopla-qa-staging` real segue registrada separadamente como pendência (item 9 da validação acima), não incluída neste status.
+
+## Redesign de `/orcamento/[slug]` — `[DELIVERED — Web, aguardando QA visual da fundadora]` — 15/09/2026
+
+Auditoria da página atual antes de mexer, como pedido:
+
+- **Estrutura**: Server Component (`page.tsx`, resolve nome do artista por slug) + Client Component (`orcamento-form.tsx`, `useActionState`) + Server Action (`actions.ts`, chama a RPC `submit_orcamento_request`).
+- **Campos**: nome (obrigatório), telefone ou e-mail (obrigatório), descrição do evento (opcional), data (opcional), local (opcional), valor sugerido (opcional). Os 3 últimos já eram opcionais no backend desde sempre.
+- **Dados enviados ao RPC**: `p_artist_slug`, `p_description`, `p_client_name`, `p_client_contact`, `p_event_date`, `p_location`, `p_offered_cents` — contrato inalterado, já validado no Item 1.
+- **Dado público do profissional**: só o nome (`stage_name || full_name`). Nenhuma bio, categoria, avatar ou portfólio — já minimalista nesse ponto, nenhum resíduo de vitrine/marketplace encontrado nesta página específica.
+- **Loading/erro/sucesso**: botão desabilitado + texto "Enviando…" durante `pending`; erro em texto vermelho; sucesso troca o formulário por uma confirmação inline (sem navegação de rota).
+- **Double submit**: já protegido por `disabled={pending}` do `useActionState` — confirmado, preservado sem mudança.
+- **Responsivo**: coluna única, `max-w-md`, já funcional em mobile, mas com inputs a `text-sm` (14px, risco de zoom automático do Safari iOS no foco) e paleta antiga (`bg-white`/`--paper`/`--ink`), visualmente destoante da identidade atual (Home pública já é escura desde o Bloco 6).
+- **Linguagem**: nenhum resíduo literal de "oportunidade"/"booker"/"matching" nesta tela, mas linguagem burocrática de orçamento comercial ("Pedir orçamento", "Enviar solicitação", "Você será contatado em breve" — promessa genérica de contato não necessariamente sustentada operacionalmente) e um "(ou quem cuida da agenda)" que sugere um humano/booker por trás, contrário ao modelo atual (é a Doopla quem conduz).
+
+**Nenhum blocker estrutural encontrado** — implementado o redesign.
+
+### O que mudou
+
+**Identidade visual**: trocado o tema claro (`--paper`/`--ink`) pelos tokens `--pro-*` já usados em todo o Professional Shell (`globals.css`, classe `.pro-shell`/`.pro-glow-bg`) — mesma identidade escura com glow vermelho já aprovada e em uso no resto do produto, sem inventar um terceiro sistema visual nem depender do CSS da Home de marketing (escopado só a `#home-marketing`, não portável). Fontes já carregadas globalmente no layout raiz, nenhuma dependência nova.
+
+**Copy** (nenhum travessão em texto de produto novo):
+- Título: "Fale com a Doopla de {nome}" (nome do profissional embutido numa frase natural, discreto, nunca um bloco de perfil separado).
+- Subtítulo: "Você conta o que precisa. A Doopla cuida do atendimento."
+- CTA: "Falar com a Doopla" (era "Enviar solicitação") — evita linguagem de "enviar solicitação de orçamento", comunica início de atendimento.
+- Sucesso: "Atendimento iniciado" / "A Doopla de {nome} recebeu o que você contou e já está cuidando do seu pedido." — removida a promessa genérica "você será contatado em breve" (não é um comportamento confirmado/operacional agendado; a Doopla já está com o pedido, mas o texto não promete um outbound específico que hoje não é garantido). O link de WhatsApp continua visível embaixo do card mesmo depois do sucesso (coexistência já decidida antes), pra quem quiser continuar na hora.
+- WhatsApp CTA: "Prefere falar direto no WhatsApp?" (era "Prefere falar pelo WhatsApp?"), mesmo `buildWhatsappCtaUrl`/token de slug, comportamento intocado.
+
+**Formulário — campos preservados/removidos**: preservados `clientName` (obrigatório) e `clientContact` (obrigatório) — únicos dados necessários pra identificar/contatar o cliente. `description` preservado, opcional, reformulado como "O que você precisa" com placeholder mais coloquial. **Removidos da tela inicial**: data do evento, local e valor sugerido — os 3 já eram opcionais pro `submit_orcamento_request` (aceita `null` nos três), então a Doopla continua podendo perguntar isso na conversa depois, como a fundadora pediu. `actions.ts` **não foi tocado**: os 3 campos ausentes do FormData já caem no mesmo fallback `''`/`null` que a action sempre teve pra campos opcionais — zero mudança de contrato ou de backend.
+
+**Double submit**: mantido exatamente como estava (`disabled={pending}`, texto "Enviando…") — nenhuma mudança na estratégia transacional do backend, como pedido.
+
+**Mobile/responsivo**: inputs subiram pra `text-base` (16px, evita zoom automático do iOS no foco), botão com área de toque maior (`py-3.5`), cartão com `max-w-[420px]` e paddings confortáveis em qualquer largura, contraste dos tokens `--pro-*` já auditado/corrigido numa rodada anterior desta sessão (--pro-tx-70/50 nunca --pro-tx-30 pra texto normal).
+
+### Arquivos alterados
+
+- `src/app/orcamento/[slug]/page.tsx` — reescrito (visual + copy).
+- `src/app/orcamento/[slug]/orcamento-form.tsx` — reescrito (3 campos, visual + copy, mesma lógica de submissão).
+- `src/app/orcamento/[slug]/actions.ts` — **não alterado**.
+- Nenhuma migration, nenhuma mudança em `submit_orcamento_request`/`create_conversation`/`_create_conversation_core`, nenhum toque em Booker, WhatsApp inbound ou `bookings.booker_profile_id`.
+
+`npx tsc --noEmit` e `npx eslint` limpos nos 2 arquivos tocados. Nenhum travessão em texto de produto (só nos comentários de código, convenção já usada em todo o repositório).
+
+**Pendência real**: nenhuma nova. QA visual da fundadora pendente antes de qualquer próximo passo (instrução explícita: parar aqui).
 
 ## Categoria B — variáveis de ambiente do Supabase QA/Staging
 
