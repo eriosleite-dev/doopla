@@ -15863,6 +15863,312 @@ Booker, Home (`_home/**`) e runtime/Approval Engine/Policy Gate
 permanecem 100% intocados do início ao fim.
 
 
+## 107. Sessão paralela (Home) — pacote de 7 ajustes pontuais de UI fechado — `[CORRIGIDO — item 7 reaberto, ver §108]` — 15/09/2026
+
+**Correção (ver §108 abaixo):** a fundadora reabriu o item 7 depois
+deste bloco ser escrito — a avaliação "já estava correto" abaixo foi
+insuficiente. Pacote **não é mais 7/7** até o item 7 ser reaprovado.
+Mantendo o resto deste bloco como registro histórico do que foi feito
+e avaliado nesta rodada, sem reescrever.
+
+Continuação do §106. Fundadora confirmou que esta terceira sessão É a
+sessão da Home (não uma quarta sessão distinta) e que o pacote correto
+é de **7 itens**, não 10 — os 3 "faltando" eram engano de organização,
+não itens reais. Auditoria refeita contra o `home.html`/`home.css`/
+`home.js` ATUAIS (pós-redesign "Nova Home V2 a partir do
+doopla-home-mockup.html", não a versão antiga usada por engano na
+primeira tentativa desta sessão) antes de qualquer código — ver
+resposta desta sessão pra tabela completa item a item.
+
+**Status final dos 7 itens — todos `DELIVERED`:**
+
+| # | Item | Resultado |
+|---|---|---|
+| 1 | Olhos do logo (header/footer) | Bola clara + pupila escura, invertido em `home.css` (Home) e `site-chrome.css` (chrome institucional) |
+| 2 | "Booking de um jeito novo" sobre o celular | Sobreposição (medida: 42-59px no desktop de 2 colunas) eliminada só na faixa `min-width:1081px`; mobile/tablet intocados |
+| 3 | Avatares da conversa | Cliente ganhou olhos da marca (antes: bola vermelha vazia); avatar da doopla no bubble-group aumentado de 16px→20px com olhos reduzidos de 8px→6px |
+| 4 | Idle wander das pupilas | Um deslocamento sorteado por PAR de olhos (não por pupila) em `initMascotEyes`/`startIdleWander` — verificado em runtime, pupilas do mesmo par sempre com o mesmo transform depois de ~1.5s parado. Cursor tracking e os olhos grandes de "Sempre com você" (`legacyEyesCol*`) preservados sem nenhuma alteração |
+| 5 | CTAs Básico/Pro | `.plan-cta{margin-top:8px}` → `margin-top:auto`; diferença de alinhamento caiu de ~27px pra ~2px |
+| 6 | Largura do FAQ | Duas rodadas: 760px→920px (rejeitado pela fundadora, "ainda estreito") → **760px→1180px**, igualando exatamente `.two-col`/`.plans`/`.with-you` (não um número novo, o valor que a Home já usava). Confirmado por medição em 1440px e 1024px: `.faq .narrow` sempre com a mesma largura de `.plans` nas duas resoluções |
+| 7 | Seção final + footer | ~~Avaliado visualmente, nenhuma alteração feita~~ — **REABERTO pela fundadora, ver §108: card estreito demais e footer longe demais do card, avaliação abaixo estava errada** |
+
+**Arquivos alterados** (só estes 4, nada fora de `src/app/_home/`):
+`home.css`, `home.html`, `home.js`, `site-chrome.css`.
+
+**Commits do pacote** (branch `claude/home-pacote-7-ajustes-ui-4tq8lz`,
+a partir da base `c2fcda2` da linha Professional):
+- `2531116` — itens 1-6 (primeira rodada, incluindo o FAQ em 920px que foi depois revisado)
+- `d7e7204` — revisão do item 6 (FAQ pra 1180px)
+
+**Validações**: `tsc --noEmit` limpo; `npm run lint` sem nenhum erro
+novo em `src/app/_home/` (os 44 erros/4 warnings pré-existentes são
+todos em `mobile/` e `src/app/layout.tsx`, não tocados por este
+pacote). `git status` limpo no fechamento.
+
+**Confirmação de não-sobrescrita**: fetch feito antes de fechar —
+`categoria-b-supabase-env-qsbdq9` avançou de `c2fcda2` (base) até
+`41cae54` (docs), zero commits tocando `src/app/_home/**` ou
+`src/app/page.tsx` nesse intervalo. Os outros 4 branches remotos
+(`ficoou-algo-para-tras-t9tfvd`, `doopla-bloco-4-5-opportunities-5f15n6`,
+`new-session-3hdkui`, `doopla-backend-login-db-fj5j3y`) seguem exatamente
+nos mesmos commits da auditoria original — nenhum foi tocado, nenhum
+trabalho de outra sessão foi sobrescrito.
+
+**Nada foi integrado à linha canônica.** Sem push, sem merge/rebase/
+cherry-pick — tudo segue isolado em `claude/home-pacote-7-ajustes-ui-4tq8lz`,
+aguardando decisão da fundadora sobre quando reconciliar com o HEAD
+canônico mais atual (não necessariamente `41cae54` — vai depender do
+que a linha Professional tiver avançado até lá).
+
+## 108. Item 7 (seção final + footer) reaberto e corrigido — `[DELIVERED — aprovado pela fundadora]` — 15/09/2026
+
+Correção do §107: a fundadora olhou o render e apontou 2 problemas
+reais que a avaliação anterior não pegou:
+
+1. **Card estreito**: `.cta-final{max-width:1080px}` era o único
+   container mais estreito que o padrão da Home (`.two-col`/`.plans`/
+   `.with-you`/`.faq .narrow`, todos 1180px) — sobrava margem lateral
+   visível comparado às outras seções. Corrigido pra `max-width:1180px`
+   (mesmo valor, não um número novo). Confirmado por medição:
+   `.cta-final` agora nos mesmos `x` que `.plans` em 1440px e mobile.
+2. **Footer longe do card**: `.cta-final-wrap{padding:88px 44px 100px}`
+   deixava 100px de padding + 48px do padding-top do próprio `footer`
+   = 148px de vazio entre o fim do card e o início do conteúdo do
+   footer. Reduzido só o padding INFERIOR do wrap (88px no topo
+   intocado): desktop 100px→48px (gap final: 96px), mobile 64px→32px
+   (gap final: 80px) — mais compacto sem colar.
+
+Preservado sem nenhuma mudança: mascote, textos, CTA, glow, grid
+`auto 1fr auto` (estrutura horizontal desktop), estrutura mobile
+(`grid-template-columns:1fr`), conteúdo do footer, e os itens 1-6
+(nenhum arquivo além de `home.css` tocado nesta rodada, e só as 2
+regras acima). FAQ (item 6) não foi alterado de novo.
+
+**Arquivo alterado**: só `home.css` (2 regras: `.cta-final-wrap`,
+`.cta-final`, mais o override mobile de `.cta-final-wrap`).
+
+**Validado**: `tsc --noEmit` limpo; lint sem novos erros em
+`src/app/_home/`.
+
+**Status**: aprovado pela fundadora após o render de correção. Item 7
+`DELIVERED`. **Pacote Home fechado 7/7.**
+
+Fetch de concorrência refeito no fechamento: `categoria-b-supabase-env-qsbdq9`
+avançou de `c2fcda2` (nossa base) até `ecb713d` (docs), zero commits
+tocando `src/app/_home/**` ou `src/app/page.tsx` nesse intervalo. Os
+outros 4 branches remotos seguem nos mesmos commits da auditoria
+original. Nenhuma sessão foi sobrescrita.
+
+Branch `claude/home-pacote-7-ajustes-ui-4tq8lz`, HEAD `fa3f409`, working
+tree limpo. Nada integrado à linha canônica — sem push, sem merge/
+rebase/cherry-pick. Aguardando decisão da fundadora sobre quando
+reconciliar com o HEAD canônico mais atual (não necessariamente
+`ecb713d` — vai depender do que a linha Professional tiver avançado
+até lá).
+
+## 109. Novo pacote Home — reposicionamento de comunicação "Doopla 2.5" — `[AGUARDANDO QA VISUAL]` — 15/09/2026
+
+Pacote **separado** do pacote visual (§106-108, 7/7 aprovado e
+encerrado — preservado integralmente, nada dele foi revisitado aqui).
+Este é só comunicação/copy: a Doopla deixa de ser vendida como "IA de
+representação" e passa a ser "uma nova forma de agenciamento" —
+democratiza agenciamento pra profissionais independentes. Mesmo
+branch, mesmo commit-base (`c2fcda2`), continua isolado.
+
+Fetch de concorrência refeito antes de começar: Professional avançou
+de `ecb713d` até `c40c445` (runtime/RLS, nada em `_home/`). Zero
+overlap.
+
+**COPY ALTERADA** (arquivo `home.html`, nenhuma mudança de arquitetura):
+hero (eyebrow/headline/lead/badge), conversa do iPhone do hero (era
+cliente↔doopla negociando, virou 7 balões da doopla em 1ª pessoa,
+contato do chat renomeado "Sua Doopla"), "Você cuida do seu trabalho"
+(texto + as 4 capacidades no lugar das 4 perguntas antigas), "Para
+profissionais independentes" (nova headline + lista de 7→10 profissões),
+"Como funciona" (headline + os 4 passos), WhatsApp (só o parágrafo),
+Planos (só o título), FAQ (+4 perguntas novas, 1 reescrita pra tirar
+"IA", resto preservado), CTA final (eyebrow/headline/texto).
+
+**SEÇÕES NOVAS** (`home.css` só ganhou classes reaproveitando tokens
+já existentes — cor, radius, fonte — nenhuma estética nova):
+- "Cliente chamou? Manda pra Doopla." — `.centered-copy`, só
+  `.eyebrow`/`h2`/`p.lead`/`.btn` já existentes, zero CSS novo de
+  verdade (a classe só centraliza).
+- "Sua Doopla também encontra trabalho para você." — `.two-col` +
+  `.job-demo` (novo), reaproveitando `.bubble`/`.bubble.in`/
+  `.bubble.out` (já usados no telefone do hero) pra simular a
+  qualificação do pedido, e o padrão visual de `.plan-card`
+  (painel + borda + radius) pro card de oportunidade.
+- "Por que a Doopla existe" (manifesto) — mesma `.centered-copy`,
+  curta, 2 parágrafos + fechamento em negrito.
+
+Ordem de inserção: as 2 primeiras entram entre "você cuida" e
+"WhatsApp"; o manifesto entra entre "Como funciona" e "Planos" — a
+ordem das 8 seções já aprovadas foi preservada 100%, só houve adição,
+nunca reordenação.
+
+**VISUAL PRESERVADO** (confirmado por diff, nenhuma linha tocada):
+mascotes (corpo/olhos/piscada), olhos legados de "Sempre com você"
+(`.legacy-eyes-*`, animação intacta), logo/olhos do header-footer,
+grid/cores/tipografia, `home.js` inteiro (zero mudança — nenhuma nova
+interação/animação precisou de JS).
+
+**PENDÊNCIAS DE PRODUTO** (marcado, não implementado):
+- Planos: Básico x Pro não foram revisados pra visão universal do
+  agenciamento — só o título mudou. Fica pendente decisão separada
+  antes de tocar em benefícios/preço.
+
+**CONFLITOS ENCONTRADOS**:
+- Nenhum conflito de copy com regras/backend existentes.
+- Achado de layout **pré-existente** (não introduzido nesta rodada,
+  confirmado por diff contra o HEAD congelado `b0db655`): no hero
+  mobile (≤760px), `.mascot-hero` fica `position:static` ao lado do
+  `.phone` sem `flex-wrap`, e a ponta do mascote invade visualmente o
+  topo do telefone. Não é efeito das novas mensagens (altura do
+  `.phone` é fixa, não cresce com conteúdo). Fora do escopo "só copy"
+  desta rodada — reportado pra decisão, não corrigido.
+- Decisão de posicionamento tomada sem confirmação explícita: a
+  ordem das 3 seções novas (inseridas, não reordenando as 8
+  existentes) foi minha interpretação mais conservadora do brief —
+  o documento numerava os blocos 1-12 numa sequência que, se seguida
+  ao pé da letra, exigiria reordenar 2 seções já aprovadas
+  (profissões↔"você cuida", WhatsApp movendo pra depois de "como
+  funciona"). Preservei a ordem aprovada e só adicionei — sinalizado
+  pra fundadora confirmar se a ordem ficou como pretendido.
+
+**Arquivos alterados**: `home.css`, `home.html`. `home.js` intocado.
+
+**Validado**: `tsc --noEmit` limpo, lint sem novos erros em `_home/`,
+QA visual desktop 1440px e mobile 390px em todas as seções tocadas
+(screenshots na resposta desta sessão).
+
+**Status**: commitado (`96015d6`), branch isolado, sem push. Aguardando
+QA visual da fundadora antes de fechar.
+
+## 110. QA do pacote de reposicionamento — ajustes pedidos, ainda não fechado — `[AGUARDANDO NOVO QA VISUAL]` — 15/09/2026
+
+Direção geral do §109 **aprovada**, mas fundadora pediu 4 ajustes antes
+do fechamento (item 5 "não reordenar" e item 6 "manter seções novas"
+já estavam corretos, sem ação). Fetch de concorrência refeito antes de
+começar: Professional avançou de `c40c445` até `b426503` (docs), zero
+overlap com `_home/`.
+
+1. **Balões do iPhone** — copy final: "Negocio valores e condições."
+   (era "Negocio."), "Acompanho cada trabalho do início ao fim." (era
+   "Faço os follow-ups.") — linguagem menos jargão de booking.
+2. **Hierarquia de cor** — só o 1º e o 7º balão continuam vermelhos
+   (`.bubble.out`); os 5 do meio ganharam `.bubble.neutral` (nova
+   classe, mesma cor escura de `.bubble.in`, alinhada à direita como
+   `.out`) — tira o peso de tudo vermelho, cria o ritmo
+   vermelho→escuro→vermelho pedido, sem virar card de feature.
+3. **Texto lateral** — "Booking de um jeito novo." → "Sua Doopla
+   trabalhando por você.", mesma composição (quadradinho + mono).
+4. **Bug mobile do mascote, corrigido** — durante a correção descobri
+   que eram **2 problemas**, não 1:
+   - `.hero-visual` continuava `display:flex` em ROW no mobile (só
+     `justify-content` mudava antes) — sem `flex-wrap`, telefone +
+     mascote + legenda tentavam caber lado a lado e colidiam. Fix:
+     `flex-direction:column` só no media query mobile.
+   - Achado novo, mais sério: `.mascot-hero` virava
+     `position:static` no mobile pra empilhar, mas isso quebrava a
+     referência de posicionamento dos próprios filhos (`.eyes-row`/
+     `.mascot-smile`/patas são `position:absolute` esperando o
+     mascote como bloco de referência, como no desktop). Com
+     `static`, os olhos "escapavam" pro único ancestral com
+     `position:relative` (`.hero-visual`), renderizando longe do
+     corpo — por isso a bolinha aparecia sem olhos em alguns crops do
+     QA anterior. Fix: `position:relative` no lugar de `static` —
+     mesmo lugar no fluxo (sem `top`/`left` setados), referência de
+     posicionamento devolvida.
+   Verificado nos 4 breakpoints pedidos (320/375/390/430px):
+   `overlapY:0` em todos entre `.mascot-hero` e `.phone`. Desktop
+   intocado (`.mascot-hero` nunca deixou de ser `position:absolute`
+   lá).
+
+**Confirmações pedidas**:
+- `home.js`: zero diff desde o HEAD congelado do pacote visual
+  (`b0db655`) — nunca tocado, nas duas rodadas.
+- Planos: zero diff nesta rodada (só o título mudou no §109, mantido).
+- Working tree: limpo, HEAD `37f9bc8`.
+
+**Arquivos alterados**: `home.css`, `home.html`.
+
+**Validado**: `tsc --noEmit` limpo, lint sem novos erros em `_home/`.
+Screenshots enviados: hero desktop, close-up do iPhone (hierarquia de
+cor + 7 balões + texto lateral visíveis), hero mobile nos 4
+breakpoints, mascote+telefone sem colisão, "Sua Doopla também
+encontra trabalho para você." (preservada, não redesenhada), Home
+desktop completa (8 capturas) e Home mobile completa (12 capturas).
+
+**Status**: commitado (`37f9bc8`), branch isolado, sem push, sem
+integração. **Pacote ainda não fechado** — aguardando novo QA visual
+da fundadora.
+
+## 111. Correção da correção — intercalar cor dos balões, cinza sem verde, profissões — `[AGUARDANDO QA VISUAL]` — 15/09/2026
+
+Fetch de concorrência refeito: Professional em `b426503`, mesmo do
+bloco anterior, zero overlap com `_home/`.
+
+- **Balões**: o padrão vermelho→5 escuros em bloco→vermelho (§110)
+  ficou pesado no centro e lido como bloco separado. Corrigido pra
+  intercalar a cada balão: 1/3/5/7 vermelhos, 2/4/6 cinza
+  (`.bubble.out`/`.bubble.neutral` alternados na marcação).
+- **Cor do cinza**: `.bubble.neutral` estava reaproveitando o mesmo
+  `#1c211d` de `.bubble.in`, que tem viés esverdeado real (G>R,B) —
+  sinalizado explicitamente como indesejado. Agora tem cor própria,
+  `#1d1c1c`, cinza neutro sem verde. `.bubble.in` não foi tocado (usado
+  em outro lugar, fora do pedido).
+- **Profissões**: Encanadores + Pedreiros → Serviços gerais (1 item no
+  lugar de 2, ícone de caixa de ferramentas). Lista final: DJs,
+  Fotógrafos, Beauty, Músicos, Professores, Eletricistas, Serviços
+  gerais, Freelancers, e muito mais (9 itens). Espaçamento
+  (`gap:36px`, flex-wrap) já ficou equilibrado com 9 itens, confirmado
+  no render — nenhum ajuste de CSS extra precisou ser feito.
+
+Nada mais tocado: copy dos balões preservada, tamanho/posição/
+alinhamento preservados, resto da Home intocado, `home.js` continua
+com zero diff desde `b0db655`.
+
+**Arquivos alterados**: `home.css`, `home.html`.
+
+**Validado**: `tsc --noEmit` limpo, lint sem novos erros em `_home/`.
+
+**Status**: commitado (`4419d4e`), branch isolado, sem push, sem
+integração. **Pacote ainda não fechado** — aguardando QA visual.
+
+## 112. Pacote de reposicionamento de comunicação da Home — FECHADO — `[DELIVERED + VISUAL QA APPROVED]` — 15/09/2026
+
+Fundadora aprovou o QA visual da rodada §111. Pacote de reposicionamento
+("uma nova forma de agenciamento", §109-111) **fechado oficialmente**.
+
+**Aprovado nesta rodada**: nova comunicação de agenciamento; Hero;
+iPhone e copy das capacidades; balões intercalados vermelho/cinza;
+"SUA DOOPLA TRABALHANDO POR VOCÊ."; faixa de profissionais com
+"Serviços gerais"; as 3 seções novas ("Cliente chamou? Manda pra
+Doopla.", "Sua Doopla também encontra trabalho para você.",
+"Por que a Doopla existe"); correção responsiva do mascote mobile;
+Home desktop completa; Home mobile completa; ordem atual das 11
+seções (8 aprovadas + 3 novas, nenhuma reordenada).
+
+**Explicitamente fora desta aprovação**: Planos Básico x Pro seguem
+como **PENDÊNCIA DE PRODUTO separada** — só o título ("Escolha sua
+Doopla.") foi alterado; os benefícios/limites/preço atuais **não**
+foram revisados nem aprovados por este QA, ficam para uma rodada
+própria quando a visão universal do agenciamento for decidida.
+
+Resumo do que os dois pacotes (visual §106-108 + comunicação §109-112)
+deixam na Home, juntos: identidade visual (olhos/mascotes/grid/cores)
+100% preservada do redesign original; copy e composição atualizadas
+pra "agenciamento" em vez de "IA de representação"; 3 seções novas;
+`home.js` nunca tocado em nenhuma das duas rodadas.
+
+**Branch**: `claude/home-pacote-7-ajustes-ui-4tq8lz`, isolado,
+preservado. **HEAD**: `51f60cf`. Working tree limpo. **Sem push, sem
+merge/rebase/cherry-pick, sem integração com a linha canônica** —
+segue aguardando o checkpoint de integração combinado no início desta
+sessão (reconciliar contra o HEAD canônico mais recente daquele
+momento, preservando o trabalho das outras sessões).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

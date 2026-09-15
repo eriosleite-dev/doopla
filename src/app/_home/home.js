@@ -41,8 +41,15 @@ function initMascotEyes() {
 
   var mascots = Array.prototype.slice.call(document.querySelectorAll('#home-marketing .mascot, #home-marketing .nav-logo, #home-marketing .foot-logo'));
   var pupils = [];
+  // pupilGroups: um array por mascote/logo (par de olhos do MESMO rosto),
+  // não por pupila solta — precisa pra o wander ocioso abaixo sortear UM
+  // deslocamento por par, nunca um por pupila (senão as duas pupilas do
+  // mesmo rosto podem sortear direções diferentes/opostas entre si).
+  var pupilGroups = [];
   mascots.forEach(function (root) {
-    pupils = pupils.concat(Array.prototype.slice.call(root.querySelectorAll('.mascot-pupil')));
+    var group = Array.prototype.slice.call(root.querySelectorAll('.mascot-pupil'));
+    if (group.length) pupilGroups.push(group);
+    pupils = pupils.concat(group);
   });
   if (pupils.length === 0) return;
 
@@ -56,14 +63,21 @@ function initMascotEyes() {
   // parado reagenda o wander, mouse se movendo sempre cancela e
   // sobrescreve o wander em andamento. Nunca os dois brigando pelo
   // mesmo pupil.style.transform ao mesmo tempo (causa de jitter).
+  //
+  // Um (rx,ry) sorteado por GRUPO (par de olhos do mesmo mascote/logo),
+  // nunca por pupila — cada pupila do par escala esse MESMO (rx,ry) pelo
+  // tamanho do seu próprio olho, então as duas sempre miram o mesmo lado,
+  // nunca uma pra um lado e a outra pro lado oposto.
   function startIdleWander() {
-    pupils.forEach(function (pupil) {
-      var eye = pupil.parentElement;
-      var eyeSize = (eye && eye.getBoundingClientRect().width) || 20;
-      var max = eyeSize * 0.16; // sutil — nunca "googly eyes"
-      var ox = (Math.random() * 2 - 1) * max;
-      var oy = (Math.random() * 2 - 1) * max * 0.7;
-      setPupilOffset(pupil, ox, oy, 900);
+    pupilGroups.forEach(function (group) {
+      var rx = Math.random() * 2 - 1;
+      var ry = Math.random() * 2 - 1;
+      group.forEach(function (pupil) {
+        var eye = pupil.parentElement;
+        var eyeSize = (eye && eye.getBoundingClientRect().width) || 20;
+        var max = eyeSize * 0.16; // sutil — nunca "googly eyes"
+        setPupilOffset(pupil, rx * max, ry * max * 0.7, 900);
+      });
     });
     window.__homeMarketingIdleTimer = setTimeout(startIdleWander, 1400 + Math.random() * 1600);
   }
