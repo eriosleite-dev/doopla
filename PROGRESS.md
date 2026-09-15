@@ -13723,6 +13723,62 @@ devem ser adicionados aqui, nunca substituir esta lista.
 | # | Finding | Classificação | Origem | Status |
 |---|---|---|---|---|
 | 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
+| 2 | `send-outbound-intents` (cron real, `vercel.json`, 1×/min) auto-envia via WhatsApp Graph API qualquer `outbound_intent` em `policy_allowed`/`queued`/`failed_transient`, sem nenhum gate de revisão humana no meio — reproduzido ao vivo no harness local (`claim_outbound_intent_for_send` como `service_role` transiciona `policy_allowed`→`sending` numa chamada só). Contradiz a premissa escrita em `src/lib/conversations/state.ts` ("nenhum worker de auto-send existe além de policy_allowed"), premissa da qual `doopla-intervention.ts`/"Precisa de você" depende. Autorização em si está correta (`authenticated` é bloqueado, só `service_role` chama); o achado é semântico/arquitetural, não uma falha de segurança. | `FINDING — NÃO CORRIGIDO, aguardando decisão da fundadora` | Sessão Central, P0 backend/E2E (§106) | **OPEN** |
+| 3 | `_create_conversation_core` (migração 0082): o `revoke` cobre só `anon, authenticated`, nunca `service_role` — confirmado no harness que `service_role` tem `EXECUTE` direto na função, contra a intenção declarada da própria migração ("núcleo interno... só chamável função-a-função"). Baixa severidade (`service_role` já bypassa RLS e nenhum código chama a função diretamente hoje). Correção proposta, não aplicada: nova migração com `revoke execute on function public._create_conversation_core from service_role;`. | `FINDING NÃO-BLOQUEANTE — não corrigido` | Sessão Central, P0 backend/E2E (§106) | **OPEN** |
+
+## 106. Sessão Central — P0 QA/E2E: aprovação/rejeição de decisão, persistência, isolamento cross-tenant, RLS — `[P0: PASS]` — 15/09/2026
+
+Escopo desta rodada, per instrução explícita da fundadora: retomar o
+P0 de backend/autorização/isolamento da Sessão Central, sem colidir
+com Sessão Painel (Professional/Settings/UX) nem Sessão Home
+(`src/app/_home/**`, `src/app/page.tsx`, Home em geral). Pré-checagem:
+`git fetch` + comparação das 5 branches remotas não mostrou avanço
+novo de nenhuma outra sessão nesta janela (limitação estrutural
+registrada: containers isolados por sessão não expõem trabalho não
+commitado de outras sessões).
+
+Achado de arquitetura confirmado antes do teste: o mecanismo real de
+"aprovação de decisão" NÃO é um botão simples de aprovar/rejeitar no
+Painel — é o Approval Engine (`try_acquire_approval_resolution_claim`
++ `commit_approval_resolution`, migração 0045, revisado em 0047/0048/
+0051), disparado pela classificação LLM da própria mensagem do
+profissional (`author_type='professional'`). Testável no nível de
+autorização/persistência sem o passo de LLM (que fica de fora deste
+harness, sem rede).
+
+### TESTE | RESULTADO | EVIDÊNCIA | BLOQUEIO | CORREÇÃO NECESSÁRIA
+
+| TESTE | RESULTADO | EVIDÊNCIA | BLOQUEIO | CORREÇÃO NECESSÁRIA |
+|---|---|---|---|---|
+| 1. `try_acquire_approval_resolution_claim` como o próprio profissional dono da mensagem | **PASS** | `granted=true`, `lease_token` emitido | Nenhum | Nenhuma |
+| 2. `commit_approval_resolution` com decisão válida (`professional_initiated`, sem candidatos comunicados) | **PASS** | `committed=true`, `approval_resolution_id` retornado | Nenhum | Nenhuma |
+| 3. Persistência real (leitura direta, superuser) | **PASS** | Linha em `approval_records` com `professional_id`, `commercial_root_id`, `decision_category`, `subject_key`, `version=1`, `operation_type`, `approved_value` corretos | Nenhum | Nenhuma |
+| 4. RLS — dono vê o próprio `approval_record` | **PASS** | `count=1` como `authenticated` com `sub` do próprio profissional | Nenhum | Nenhuma |
+| 5. RLS — outro profissional (cross-tenant) NÃO vê o `approval_record` | **PASS** | `count=0` como `authenticated` com `sub` de um segundo profissional | Nenhum | Nenhuma |
+| 6. Isolamento cross-tenant — outro profissional tenta `try_acquire_approval_resolution_claim` numa mensagem alheia | **PASS** | `ERROR: not_authorized` (exceção, não `deny_reason`) | Nenhum | Nenhuma |
+| 7. Replay/idempotência — novo acquire na mesma mensagem já resolvida | **PASS** | `granted=false`, `deny_reason='already_resolved'` | Nenhum | Nenhuma |
+| 8. `anon` tenta `try_acquire_approval_resolution_claim` | **PASS** | `ERROR: permission denied for function try_acquire_approval_resolution_claim` | Nenhum | Nenhuma |
+| 9. Golden suites (LLM real) | **BLOCKED ENVIRONMENT** (reconfirmado) | Sandbox sem rede para Anthropic API | Ambiente | Retomar na Categoria B |
+| 10. Achado — auto-send de `outbound_intent` sem gate humano | **FINDING, não-bloqueante pro P0, registrado** | Ver finding #2 da tabela de Open Findings acima; reproduzido ao vivo (`policy_allowed`→`sending` via `service_role`, zero etapa intermediária) | Nenhum (não é bug de autorização) | Proposta pendente de decisão da fundadora — envolve `state.ts`/`doopla-intervention.ts` |
+| 11. Achado — `_create_conversation_core` sem revoke explícito de `service_role` | **FINDING, baixa severidade, registrado** | `service_role` com `EXECUTE` confirmado no harness | Nenhum | Nova migração com `revoke`, não aplicada, aguardando sign-off |
+
+**Limitação explícita**: esta validação é 100% harness local (Postgres
+16 + réplica das 82 migrações reais + stubs de `auth`/`storage`),
+nunca contra `doopla-qa-staging` real — mesma limitação já registrada
+nos blocos anteriores desta sessão. Ponto 6 do pedido original
+("regressão no fluxo completo até o estado final") foi validado até a
+escrita em `approval_records`; a ponta seguinte (reconciler resolvendo
+`runtime_pending_replies` a partir de um `approval_record` novo) não
+foi exercida nesta rodada — depende de lógica do orquestrador em
+TypeScript fora do escopo de um harness só-SQL, e não foi simulada por
+decisão de manter o escopo fechado no que a fundadora pediu.
+
+**Não alterado nesta rodada**: nenhum arquivo de produto. Só leitura
+de migrações/código-fonte e testes no harness local (`/tmp/
+p0_approval_test.sql`, `/tmp/p0_outbound_intent_test.sql`, ambos fora
+do repositório). P1 (Agenda, Financeiro, Comunidade, Notificações,
+Avatar/Storage, Settings, encerramento de conta) e Painel Admin **não
+iniciados**, per instrução explícita.
 
 ## Como usar isso
 
