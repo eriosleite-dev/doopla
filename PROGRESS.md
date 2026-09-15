@@ -1676,7 +1676,7 @@ Fechamento da validação pedida pela fundadora antes de seguir pro redesign de 
 
 **Status final do Item 1: `DELIVERED + VALIDATED`.** Confirmação final em `doopla-qa-staging` real segue registrada separadamente como pendência (item 9 da validação acima), não incluída neste status.
 
-## Redesign de `/orcamento/[slug]` — `[DELIVERED — Web, aguardando QA visual da fundadora]` — 15/09/2026
+## Redesign de `/orcamento/[slug]` — `[DELIVERED + VALIDATED]` — 15/09/2026
 
 Auditoria da página atual antes de mexer, como pedido:
 
@@ -1717,7 +1717,26 @@ Auditoria da página atual antes de mexer, como pedido:
 
 `npx tsc --noEmit` e `npx eslint` limpos nos 2 arquivos tocados. Nenhum travessão em texto de produto (só nos comentários de código, convenção já usada em todo o repositório).
 
-**Pendência real**: nenhuma nova. QA visual da fundadora pendente antes de qualquer próximo passo (instrução explícita: parar aqui).
+### QA visual — aprovado pela fundadora — 15/09/2026
+
+**Método**: sem acesso de rede ao `doopla-qa-staging` real neste ambiente (limitação de toda a sessão), a página foi renderizada via `next dev` local e capturada com Playwright/Chromium — desktop (1440×900) e mobile (390×844), 4 estados cada (inicial, loading, sucesso, erro). Como `getArtistName` depende do Supabase real, usei uma rota temporária (`/dev/orcamento-preview`) com o mesmo JSX/classes exatas de `page.tsx` e uma cópia de `orcamento-form.tsx` só trocando a Server Action real por um mock local (mesmo delay/sucesso/erro) — **removida por completo depois das capturas** (confirmado: `git status` limpo, nenhum arquivo temporário de QA restante no produto nem em `.next/`).
+
+**Aprovado pela fundadora**:
+- desktop;
+- mobile;
+- estado de loading (CTA desabilitado, "Enviando…");
+- estado de sucesso ("Atendimento iniciado").
+
+**Confirmado nesta rodada, sem alteração de código**:
+- fluxo funcional permanece exatamente o mesmo validado no Item 1 (`submit_orcamento_request` → `opportunity` → `conversation` vinculada por `related_opportunity_id` → `origin/channel='public_link'`) — o redesign não tocou `actions.ts` nem nenhuma function/migration do backend;
+- nenhuma promessa de contato outbound foi introduzida na copy (nem existia antes desta rodada em nenhum texto novo);
+- nome e contato obrigatórios, "o que você precisa" opcional, exatamente como o contrato real do RPC já exigia;
+- nenhuma copy de marketplace/booker/oportunidade;
+- nenhum travessão em copy de produto.
+
+**Pendência real, já conhecida, não nova**: confirmação final contra o `doopla-qa-staging` real (Supabase de verdade, fora do alcance de rede deste ambiente) segue como pendência de ambiente, igual à registrada no fechamento do Item 1 — nunca incluída no status `DELIVERED + VALIDATED` deste redesign, que cobre o que é validável dentro deste ambiente (lógica, contrato, backend inalterado, visual aprovado pela fundadora).
+
+**Status final: `DELIVERED + VALIDATED`.**
 
 ## Categoria B — variáveis de ambiente do Supabase QA/Staging
 
