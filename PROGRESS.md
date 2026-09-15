@@ -9,7 +9,46 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-08-18.
+Última atualização: 2026-09-15.
+
+---
+
+## Pacote final do site institucional (Sobre/Termos/Privacidade/Contato + footer)
+
+- ✅ Header/footer/tokens visuais já estavam migrados pro sistema canônico
+  da Home desde a sessão anterior (`PageShell`/`SiteHeader`/`SiteFooter`/
+  `site-chrome.css`) — auditado antes de mexer, não precisou de
+  redesenho, só copy e ajustes pontuais.
+- ✅ **Sobre**: copy reescrita (profissionais independentes, 3 pilares
+  "Encontra trabalhos/Cuida de tudo/Você decide", CTA "Criar conta").
+- ✅ **Termos**: seções 1, 3, 4, 5, 6 revisadas pra refletir agenciamento
+  de trabalhos (não só bookings) e IA sob autorização do usuário; 2 e
+  7–11 preservadas.
+- ✅ **Privacidade**: seções 1, 2, 3 ampliadas com base em auditoria real
+  do schema (conversas/mensagens, dados de clientes/contratantes,
+  documentos gerados) — sem inventar fornecedor, retenção ou coleta que
+  o produto não faz.
+- ✅ **Data de "Última atualização" de Termos e Privacidade** atualizada
+  de 20/08/2026 pra 15/09/2026, por causa da alteração material acima
+  (decisão do próprio usuário, não assumida por mim).
+- ✅ **Footer público**: ganhou o link "Sobre" (fazia parte do escopo
+  aprovado, não existia antes) e a tagline "Toda carreira merece sua
+  Doopla." — só afeta as páginas institucionais (`SiteFooter`); a Home
+  usa markup próprio (`home.html`), não regride.
+- 🔧 **Contato — pendência registrada, não fechada**: layout reorganizado
+  (removida a coluna "E-mail" gigante, e-mail agora é uma linha discreta
+  abaixo do formulário), mas **Formulário de Contato: UI entregue, mas
+  envio funcional pendente. Atualmente utiliza `mailto:` e depende do
+  cliente de e-mail local do usuário. Implementar posteriormente envio
+  real com tratamento de sucesso/erro.** `/contato` não deve ser
+  considerado 100% concluído funcionalmente enquanto isso não for feito.
+- ❌ **Fora de escopo, deliberadamente não antecipado**: o novo sistema de
+  oportunidades/matching/agenciamento (pool opt-in, matching,
+  oportunidades geradas pela Doopla, localização/área de atendimento,
+  apresentação de profissionais, sourcing assistido no beta, Trust &
+  Safety) ainda está em desenho paralelo — Termos e Privacidade NÃO
+  foram alterados pra contemplá-lo. Isso terá revisão jurídica própria
+  quando esse produto estiver definido.
 
 ---
 

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'Regras para utilização da plataforma Doopla.',
 };
 
-const UPDATED = '20 de agosto de 2026';
+const UPDATED = '15 de setembro de 2026';
 
 export default function TermosPage() {
   return (

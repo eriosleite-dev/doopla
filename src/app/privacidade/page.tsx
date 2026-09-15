@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: 'Como a Doopla coleta, utiliza e protege informações pessoais.',
 };
 
-const UPDATED = '20 de agosto de 2026';
+const UPDATED = '15 de setembro de 2026';
 
 export default function PrivacidadePage() {
   return (
