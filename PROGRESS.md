@@ -14370,6 +14370,78 @@ mobile), rotas de preview removidas de novo depois — nunca commitadas.
 **Pendente:** QA visual da fundadora antes de fechar o item.
 
 
+### "Perfil e trabalho" — último polimento visual/copy (3ª rodada) — `[DELIVERED + VISUAL QA APPROVED]` — 15/09/2026
+
+Estrutura/campos aprovados nas rodadas anteriores não mudaram. Protocolo
+de concorrência checado de novo antes de editar (`git fetch`): 1 commit
+novo na linha canônica desde a última checagem (`c40c445`, backend de
+`outbound_intents`/runtime, fora do escopo desta página). **Achado
+intermediário que virou falso alarme**: o diff bruto entre esta branch
+e a canônica mostrava `pro-work-context-form.tsx` "mudando" do lado
+canônico — investigado antes de tocar em qualquer arquivo, e
+confirmado (`git diff ff77afc origin/... -- <arquivos>`, saída vazia)
+que a linha canônica nunca tocou nenhum arquivo de "Perfil e trabalho"
+desde `ff77afc`; o diff era só o acúmulo dos meus 2 commits anteriores
+contra o estado original deles, não uma edição concorrente real. Sem
+conflito, seguiu.
+
+**Ajustes desta rodada** (só apresentação, nenhum campo/estrutura
+reaberto):
+
+- Densidade de texto em "Seu trabalho"/"Valores e condições": helper
+  reduzido de 12px pra 11.5px com `leading-snug`, gap entre campos
+  reduzido de `gap-5` pra `gap-4` nesses 2 grupos. Nenhuma palavra de
+  label/helper/placeholder foi cortada — nenhum par claramente
+  redundante foi encontrado que pudesse ser removido sem perder
+  explicação real (ex.: o helper de "Cachê de referência" explica o
+  "porquê" pro profissional, não é só repetição do label). Registrado
+  aqui pra decisão consciente: se a fundadora ainda achar denso depois
+  deste ajuste, o próximo passo seria cortar copy de verdade, não só
+  espaçamento.
+- Cachê de referência: largura em desktop de `sm:max-w-[220px]` pra
+  `sm:max-w-[300px]` — mais confortável pro tipo de dado. Mobile
+  continua full-width (a regra só entra em `sm:` pra cima).
+- "Região que atende": copy mantida exatamente ("Região que atende" +
+  "Onde você costuma aceitar trabalhos?"), nenhuma mudança. Confirmado
+  visualmente que o placeholder ("Ex.: São Paulo e região...") usa
+  `placeholder:text-[var(--pro-tx-30)]` (cinza fraco) contra
+  `text-[var(--pro-off)]` (branco cheio) do texto real digitado — já
+  diferenciado o bastante, nenhuma mudança de código necessária aqui.
+- Nota fiscal: lógica intocada, só herdou o `gap-4` do grupo.
+
+**Verificação de segurança do CTA único** (item pedido: "mantenha
+somente se os testes confirmarem que salvar parcialmente não apaga
+campos de outros grupos"). Sem Supabase real neste ambiente pra rodar
+um teste de ponta a ponta, a verificação possível foi estrutural/
+estática, e é conclusiva: confirmado por grep que existe exatamente 1
+`<form>` no componente, os 8 campos (`stageName`, `category`, `bio`,
+`whatYouDo`, `whereYouServe`, `baseFee`, `pricingNotes`,
+`issuesInvoice` como hidden input) são inputs nomeados incondicionais
+dentro dele (nenhuma renderização condicional exclui algum), e a action
+(`updateProfileAndWorkContextAction`) faz exatamente 1 `.update()` só,
+escrevendo as 8 colunas juntas sempre. Como só existe 1 form, TODO
+submit sempre carrega o estado atual dos 8 campos, editados ou não —
+estruturalmente impossível um "salvar parcial" zerar outro grupo,
+porque não existe mais "outro grupo" no momento do envio. `base_fee_cents`,
+`pricing_notes`, Business Context e a regra de completude não foram
+tocados nesta rodada. Nenhuma migration/schema alterado.
+
+**Escopo confirmado intocado**: Home, `src/app/_home/**`, backend de
+decisões, Sua Doopla, Canais da sua Doopla, Privacidade e dados,
+Financeiro.
+
+**Validação**: `tsc --noEmit` limpo, `eslint` limpo (exit 0), `npm run
+build` completo sem erros/warnings. QA visual: rota de preview
+temporária recriada de novo (mesmo padrão, sem auth/DB), screenshots
+finais (desktop com cenário preenchido + vazio, mobile) tirados e
+aprovados pela fundadora, rota removida de novo depois — nunca
+commitada.
+
+**Status final: `DELIVERED + VISUAL QA APPROVED`.** Item "Perfil e
+trabalho" fechado. Próximo item da ordem revisada: "Sua Doopla" —
+aguardando autorização explícita pra começar.
+
+
 
 ## Como usar isso
 

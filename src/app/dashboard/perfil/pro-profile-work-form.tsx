@@ -8,7 +8,12 @@ import { proGhostButtonClass, proInputClass, proLabelClass } from '../pro-format
 import { ProAvatarUploader } from './pro-avatar-uploader';
 
 const labelClass = 'flex flex-col gap-1.5';
-const helperClass = 'text-[12px] text-[var(--pro-tx-50)]';
+// Polimento visual (15/09/2026, 3ª rodada) — helper um pouco menor e
+// com leading mais justo (era text-[12px] solto) pra pesar menos ao
+// lado do label + placeholder, sem cortar nenhuma explicação (achado
+// da fundadora: "Seu trabalho"/"Valores e condições" pareciam
+// carregados de texto).
+const helperClass = 'text-[11.5px] leading-snug text-[var(--pro-tx-50)]';
 // Título de grupo mais elegante (polimento visual, 15/09/2026, 2ª
 // rodada) — antes era o mesmo estilo de label técnico de navegação
 // (uppercase, tracking largo, cinza pequeno) usado em ProSettingsGroup
@@ -112,7 +117,7 @@ export function ProProfileWorkForm({
           </label>
         </div>
 
-        <div className={`flex flex-col gap-5 ${sectionDividerClass}`}>
+        <div className={`flex flex-col gap-4 ${sectionDividerClass}`}>
           <p className={sectionTitleClass}>Seu trabalho</p>
 
           <label className={labelClass}>
@@ -140,10 +145,10 @@ export function ProProfileWorkForm({
           </label>
         </div>
 
-        <div className={`flex flex-col gap-5 ${sectionDividerClass}`}>
+        <div className={`flex flex-col gap-4 ${sectionDividerClass}`}>
           <p className={sectionTitleClass}>Valores e condições</p>
 
-          <label className={`${labelClass} sm:max-w-[220px]`}>
+          <label className={`${labelClass} sm:max-w-[300px]`}>
             <span className={proLabelClass}>Cachê de referência</span>
             <p className={helperClass}>Qual valor sua Doopla pode usar como referência ao receber um novo pedido?</p>
             <div className={`${proInputClass} flex items-center gap-1.5`}>
