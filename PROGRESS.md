@@ -14139,6 +14139,163 @@ ajustada (escrever `base_fee_cents`/`pricing_notes` em vez de
 (`getArtistMatchingCompletion`).
 
 
+### Item da ordem revisada #1 — "Perfil e trabalho": IMPLEMENTADO — `[DELIVERED — Web / App gap registrado]` — 15/09/2026
+
+Protocolo de concorrência checado de novo antes de escrever código:
+mesmos 2 commits (`baa50b9`, `c2fcda2`) já vistos na auditoria, nenhum
+arquivo novo tocado, nenhum conflito. Não mexido em `src/app/_home/**`
+nem `src/app/page.tsx` (propriedade da Sessão Home) — todos os arquivos
+tocados são do Professional dashboard (`src/app/dashboard/**`) ou do
+Intelligence Core (`src/lib/intelligence/**`).
+
+#### Antes / depois
+
+**Antes**: 2 rotas sob "Perfil e trabalho" (`/dashboard/perfil/dados`
+"Dados profissionais" + `/dashboard/perfil/trabalho` "Como você
+trabalha"), `fee_range` (dropdown, "Prefiro não dizer") como cachê,
+"Você emite nota fiscal?" com 3 opções (dropdown), Gêneros/Site/Outros
+links editáveis sem consumidor confirmado.
+
+**Depois**: 1 página unificada (`/dashboard/perfil/dados`, título
+"Perfil e trabalho"), 3 grupos visuais (Informações profissionais / Seu
+trabalho / Valores e condições), "Cachê de referência" (input R$ ligado
+a `base_fee_cents`) + "Informações extras sobre seu cachê" (`Opcional`,
+ligado a `pricing_notes`) substituindo o dropdown de faixas, "Você
+emite nota fiscal?" como 2 botões Sim/Não (sem 3ª opção). Gêneros/Site/
+Outros links/Outras preferências saíram da UI. `/dashboard/perfil/
+trabalho` agora é um redirect pra `/dashboard/perfil/dados` (nenhum
+link antigo quebra).
+
+#### Campos finais expostos na UI
+
+| Grupo | Campo | Coluna |
+|---|---|---|
+| Informações profissionais | Foto, Nome artístico, Categoria, Bio | `avatar_url`, `stage_name`, `category`, `bio` |
+| Seu trabalho | Conte um pouco sobre seu trabalho / Região que atende | `what_you_do`, `where_you_serve` |
+| Valores e condições | Cachê de referência / Informações extras sobre seu cachê (Opcional) / Você emite nota fiscal? | `base_fee_cents`, `pricing_notes`, `issues_invoice` |
+
+#### Decisão não explicitada literalmente no pedido: `other_preferences` saiu da UI
+
+O pedido não citou `other_preferences` ("Outras preferências") nos 13
+pontos aprovados. A estrutura final aprovada (Seu trabalho: 2 campos;
+Valores e condições: 3 campos) não tem espaço pra um 4º campo livre
+genérico, e a auditoria não confirmou consumidor pra ele no Intelligence
+Context. Tratado com o mesmo cuidado dos outros campos removidos:
+**coluna preservada, action para de escrevê-la** (nunca sobrescrita pra
+null). Registrado aqui pra reversão fácil caso a fundadora discorde.
+
+#### Actions alteradas
+
+- `updateArtistProfileAction` (`actions.ts`): para de escrever
+  `genres`/`website_url`/`other_links` (omitidos do payload, mesmo
+  padrão já usado pra `subcategory`/`mercados`). Continua escrevendo
+  `stage_name`/`category`/`bio`.
+- `updateArtistWorkContextAction` (`actions.ts`): para de escrever
+  `fee_range`/`other_preferences`. Passa a escrever `base_fee_cents`
+  (via `centsFromReais`, mesmo helper já usado em
+  `publishOpportunityAction`) e `pricing_notes`. `issues_invoice`
+  mantido, agora só 2 valores possíveis pela UI (`true`/`false`, string
+  vazia continua possível só se o campo nunca for tocado, o que não
+  acontece mais na prática já que os 2 botões cobrem toda interação).
+  `revalidatePath` trocado de `/dashboard/perfil/trabalho` pra
+  `/dashboard/perfil/dados`.
+
+#### Consumidores alterados (Business Context)
+
+`get-professional-business-context.ts`: adiciona `baseFeeCents`
+(`base_fee_cents`) ao schema/select/output. **`feeRange` NÃO foi
+removido da interface** — compatibilidade primeiro, é dado que ainda
+pode existir de quem preencheu entre 09/09 e 15/09/2026.
+`sections.ts` (único consumidor real do campo, confirmado por grep
+antes de mexer): passa a enviar `baseFeeCents` como fato primário
+quando presente, cai pra `feeRange` só quando `baseFeeCents` é nulo —
+mesmo padrão de precedência já usado no arquivo pra
+`whatYouDo`/`whereYouServe` sobre os arrays antigos. Nenhum profissional
+perde contexto já declarado.
+
+#### Regra final de completude
+
+`getArtistMatchingCompletion` (`data.ts`): critério de cachê agora é
+`base_fee_cents != null OU pricing_notes preenchido` (união, não
+interseção) — exatamente a regra pedida, pra profissional sem
+cachê-base único não ficar bloqueado. Os outros 3 critérios
+(`what_you_do`, `where_you_serve`, `issues_invoice != null`) não
+mudaram.
+
+**Rename da função**: avaliado e **não feito nesta rodada**. 2
+consumidores reais (`professional-home-view.tsx`,
+`booker-home-view.tsx`) — risco baixo, mas fora do escopo mínimo deste
+item. Registrado como dívida técnica: `getArtistMatchingCompletion`
+não é mais um nome semanticamente correto (matching não é conceito do
+produto), mas segue preservado por instrução explícita da fundadora
+até uma rodada dedicada a isso.
+
+#### Situação Web/App
+
+**Web**: entregue, single page, 3 grupos, build/typecheck/lint limpos.
+**App**: confirmado na auditoria que não existe superfície de edição
+hoje (`mobile/src/types/artistProfile.ts` só tem
+stage_name/category/bio) — nenhuma arquitetura paralela criada.
+Modelo/colunas usados (`base_fee_cents`/`pricing_notes`/`what_you_do`/
+`where_you_serve`/`issues_invoice`) são os mesmos que qualquer tela
+futura do App vai precisar ler/escrever — nada Web-only foi inventado.
+Comentário em `mobile/app/(tabs)/index.tsx` atualizado só pra não citar
+`fee_range` como se ainda fosse o campo relevante. **Pendência de
+paridade registrada**: App ainda não tem tela de "Perfil e trabalho" —
+mesmo gap já existente antes desta rodada, não bloqueia a entrega Web.
+
+#### Arquivos alterados (13, nenhum arquivo novo, nenhuma migration)
+
+`src/app/dashboard/perfil/pro-artist-identity-form.tsx`,
+`src/app/dashboard/perfil/pro-work-context-form.tsx`,
+`src/app/dashboard/perfil/dados/page.tsx`,
+`src/app/dashboard/perfil/trabalho/page.tsx` (agora redirect),
+`src/app/dashboard/perfil/pro-configuracoes-view.tsx`,
+`src/app/dashboard/perfil/preferencias/page.tsx` (copy/link + comentário),
+`src/app/dashboard/actions.ts`,
+`src/app/dashboard/data.ts`,
+`src/app/dashboard/professional-home-view.tsx` (link + comentário),
+`src/lib/intelligence/tools/get-professional-business-context.ts`,
+`src/lib/intelligence/context-builder/sections.ts`,
+`src/app/cadastro/actions.ts` (comentário),
+`mobile/app/(tabs)/index.tsx` (comentário).
+
+#### Testes/checks executados
+
+- `npx tsc --noEmit`: limpo nos arquivos tocados (3 erros pré-existentes
+  em `PageProps`/`LayoutProps`, arquivos não tocados por esta rodada,
+  artefato de typegen do Next.js que só se resolve com `next dev`/
+  `next build` — confirmado que já existiam antes desta mudança).
+- `npx eslint` nos 13 arquivos tocados: limpo, exit 0.
+- `npm run build`: build de produção completo sem erros nem warnings,
+  incluindo `/dashboard/perfil/dados` e `/dashboard/perfil/trabalho`
+  (redirect) compilando normalmente.
+- Verificação manual de lógica pura (sem DB disponível neste ambiente,
+  mesma limitação já documentada de sessões anteriores — sem
+  `.env.local`/Supabase real neste worktree): `centsFromReais`
+  ("150,50" → 15050; "" → `null`; entrada inválida → `null`, nunca
+  quebra); `getArtistMatchingCompletion` traçado manualmente pros 4
+  cenários pedidos (só `base_fee_cents`; só `pricing_notes`; nenhum dos
+  dois; ambos) — todos batem com a regra aprovada.
+- **Não executado** (sem ambiente disponível nesta sessão):
+  salvar/recarregar contra Supabase real, confirmar
+  Home atualizando de fato sem reload. Fica como validação pendente
+  pra QA da fundadora ou sessão com credenciais reais — mesma
+  transparência já praticada no restante do projeto (nunca fingir
+  validação que não rodou).
+
+#### Pendências
+
+1. QA manual com dado real (Supabase) — salvar/recarregar/Home,
+   listado acima como não executável neste ambiente.
+2. Paridade visual do App — tela de "Perfil e trabalho" ainda não
+   existe no App (gap pré-existente, não criado por esta rodada).
+3. Dívida técnica registrada: nome de `getArtistMatchingCompletion`
+   semanticamente desatualizado, preservado por decisão explícita.
+4. `negotiation_notes` fica pendente de decisão na auditoria do próximo
+   item ("Sua Doopla") — não tocado aqui, conforme instruído.
+
+
 
 ## Como usar isso
 

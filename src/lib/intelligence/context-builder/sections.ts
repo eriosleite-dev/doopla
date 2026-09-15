@@ -169,6 +169,7 @@ export async function buildProfessionalBusinessContextSection(toolCtx: ToolConte
     | {
         found: true;
         businessContext: {
+          baseFeeCents: number | null;
           feeRange: string | null;
           feeVariesByJobType: boolean | null;
           pricingNotes: string | null;
@@ -201,7 +202,18 @@ export async function buildProfessionalBusinessContextSection(toolCtx: ToolConte
   const sourceId = toolCtx.representedProfessionalId;
   const loadedAt = now.toISOString();
   const facts: ContextFact[] = [];
-  pushFact(facts, 'professional_business_context', sourceId, 'feeRange', businessContext.feeRange, loadedAt);
+  // Redesign "Perfil e trabalho" (15/09/2026) — `baseFeeCents` é a
+  // fonte primária de cachê agora (UI parou de editar `fee_range`,
+  // migrations 0001/0038 já existiam órfãs). Mesma regra de precedência
+  // já usada abaixo pra whatYouDo/whereYouServe: campo novo primeiro,
+  // legado como fallback só quando o novo está vazio, nunca os dois
+  // juntos — profissional que preencheu `fee_range` entre 09/09 e
+  // 15/09/2026 não perde o contexto já declarado.
+  if (businessContext.baseFeeCents != null) {
+    pushFact(facts, 'professional_business_context', sourceId, 'baseFeeCents', businessContext.baseFeeCents, loadedAt);
+  } else {
+    pushFact(facts, 'professional_business_context', sourceId, 'feeRange', businessContext.feeRange, loadedAt);
+  }
   pushFact(facts, 'professional_business_context', sourceId, 'feeVariesByJobType', businessContext.feeVariesByJobType, loadedAt);
   if (businessContext.pricingNotes) {
     const t = truncateText(businessContext.pricingNotes, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);

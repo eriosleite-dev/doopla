@@ -21,6 +21,16 @@ const outputSchema = z.discriminatedUnion('found', [
   z.object({
     found: z.literal(true),
     businessContext: z.object({
+      // Redesign "Perfil e trabalho" (15/09/2026) — `baseFeeCents`
+      // (valor fixo, `base_fee_cents`) passa a ser a fonte primária de
+      // cachê pro Context Builder; `feeRange` some da UI (vira legado)
+      // mas continua exposta aqui de propósito — nunca alteração
+      // destrutiva de contrato interno só pra limpar nomenclatura.
+      // sections.ts usa `baseFeeCents` quando presente, cai pra
+      // `feeRange` só se `baseFeeCents` for nulo (profissional que
+      // preencheu a faixa entre 09/09 e 15/09/2026 não perde contexto
+      // já declarado).
+      baseFeeCents: z.number().nullable(),
       feeRange: z.string().nullable(),
       feeVariesByJobType: z.boolean().nullable(),
       pricingNotes: z.string().nullable(),
@@ -49,12 +59,13 @@ async function execute(_input: Input, ctx: ToolContext): Promise<ToolExecutionOu
   const { data: artistProfile, error } = await supabase
     .from('artist_profiles')
     .select(
-      'fee_range, fee_varies_by_job_type, pricing_notes, negotiation_notes, typical_job_duration, what_you_do, where_you_serve, work_types, client_types, regions, travels, accepts_out_of_city_work, attention_channel, help_areas, career_stage, issues_invoice'
+      'base_fee_cents, fee_range, fee_varies_by_job_type, pricing_notes, negotiation_notes, typical_job_duration, what_you_do, where_you_serve, work_types, client_types, regions, travels, accepts_out_of_city_work, attention_channel, help_areas, career_stage, issues_invoice'
     )
     .eq('profile_id', ctx.representedProfessionalId)
     .maybeSingle<
       Pick<
         ArtistProfile,
+        | 'base_fee_cents'
         | 'fee_range'
         | 'fee_varies_by_job_type'
         | 'pricing_notes'
@@ -91,6 +102,7 @@ async function execute(_input: Input, ctx: ToolContext): Promise<ToolExecutionOu
     output: {
       found: true,
       businessContext: {
+        baseFeeCents: artistProfile.base_fee_cents,
         feeRange: artistProfile.fee_range,
         feeVariesByJobType: artistProfile.fee_varies_by_job_type,
         pricingNotes: artistProfile.pricing_notes,

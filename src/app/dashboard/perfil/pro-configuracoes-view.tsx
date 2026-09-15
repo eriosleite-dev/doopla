@@ -102,9 +102,13 @@ export function ProConfiguracoesView({
         </ProAccordion>
 
         <ProAccordion title="Perfil e trabalho">
+          {/* Redesign 15/09/2026 — "Dados profissionais" e "Como você
+              trabalha" eram 2 rotas separadas sob este mesmo accordion;
+              unificadas numa página só (/dashboard/perfil/dados, 3
+              grupos: Informações profissionais / Seu trabalho / Valores
+              e condições), então este accordion agora tem 1 destino só. */}
           <RowList>
-            <ProSettingsRow href="/dashboard/perfil/dados" label="Dados profissionais" />
-            <ProSettingsRow href="/dashboard/perfil/trabalho" label="Como você trabalha" />
+            <ProSettingsRow href="/dashboard/perfil/dados" label="Editar perfil e trabalho" />
           </RowList>
         </ProAccordion>
 

@@ -1320,28 +1320,20 @@ export async function updateArtistProfileAction(
   const stageName = String(formData.get('stageName') ?? '').trim();
   const category = String(formData.get('category') ?? '').trim();
   const bio = String(formData.get('bio') ?? '').trim();
-  const genresRaw = String(formData.get('genres') ?? '').trim();
-  const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
-  const otherLinks = String(formData.get('otherLinks') ?? '').trim();
 
-  const genres = genresRaw
-    ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
-    : [];
-
-  // Subcategoria e Mercados saem da UI do beta (Settings V2,
-  // 14/09/2026, achado: sem consumidor confirmado pro Intelligence
-  // Context) — por isso não aparecem mais no FormData. Omitidos do
-  // payload de propósito: um UPDATE que os incluísse como null
-  // apagaria dado de quem já preencheu antes. Coluna preservada.
+  // Subcategoria, Mercados (14/09/2026) e agora Gêneros/estilos, Site e
+  // Outros links (redesign "Perfil e trabalho", 15/09/2026, achado:
+  // zero consumidor no Intelligence Context, nem a página pública
+  // exibe website_url/other_links) — nenhum aparece mais no FormData.
+  // Omitidos do payload de propósito, mesmo padrão de sempre: um UPDATE
+  // que os incluísse como null/vazio apagaria dado de quem já
+  // preencheu antes. Colunas preservadas.
   await supabase
     .from('artist_profiles')
     .update({
       stage_name: stageName || null,
       category: category || null,
       bio: bio || null,
-      genres,
-      website_url: websiteUrl || null,
-      other_links: otherLinks || null,
     })
     .eq('profile_id', user.id);
 
@@ -1371,6 +1363,20 @@ export async function updateArtistProfileAction(
 // preservadas, só não fazem mais parte do FormData — por isso omitidas
 // do payload abaixo (incluí-las como null/false apagaria dado de quem
 // já preencheu antes de hoje).
+//
+// Redesign "Perfil e trabalho" (15/09/2026) — grupo "Valores e
+// condições": `fee_range` (dropdown de faixas, "Prefiro não dizer")
+// para de ser editado aqui. Auditoria encontrou 2 colunas canônicas já
+// existentes e órfãs desde 07/09/2026 (`base_fee_cents`/`pricing_notes`,
+// migrations 0001/0038) — exatamente "Cachê de referência" (valor) +
+// "Informações extras sobre seu cachê" (texto livre), sem precisar de
+// migration nova. `fee_range` preservado (mesmo padrão de sempre,
+// omitido do payload) — vira legado, get-professional-business-context.ts
+// usa `base_fee_cents` como fonte primária agora (fallback pra
+// `fee_range` só se `base_fee_cents` for nulo). `other_preferences`
+// também sai: sem consumidor confirmado na auditoria e sem campo
+// próprio na estrutura aprovada (Seu trabalho / Valores e condições),
+// mesmo tratamento de preservar sem escrever.
 export async function updateArtistWorkContextAction(
   _prevState: { error?: string; success?: boolean },
   formData: FormData
@@ -1382,15 +1388,13 @@ export async function updateArtistWorkContextAction(
 
   const whatYouDo = String(formData.get('whatYouDo') ?? '').trim();
   const whereYouServe = String(formData.get('whereYouServe') ?? '').trim();
-  const otherPreferences = String(formData.get('otherPreferences') ?? '').trim();
-  const feeRange = String(formData.get('feeRange') ?? '').trim();
-  // "Emite nota fiscal?" (Settings V2, 08/09/2026) — deixa de ser
-  // write-once do onboarding (achado da auditoria do Bloco 4): mesma
-  // coluna (artist_profiles.issues_invoice, migration 0037), agora
-  // editável aqui — a superfície de contexto de trabalho, nunca em
-  // Conta. Checkbox ausente no FormData (nunca marcado) não distingue
-  // "não emite" de "não respondido" — por isso um <select> com 3
-  // estados no form, não um checkbox.
+  const baseFeeCents = centsFromReais(formData.get('baseFee'));
+  const pricingNotes = String(formData.get('pricingNotes') ?? '').trim();
+  // "Emite nota fiscal?" — 2 botões visíveis (Sim/Não), sem 3ª opção.
+  // Mesma coluna (artist_profiles.issues_invoice, migration 0037).
+  // Nenhum dos dois botões apertado ainda (FormData vazio) não distingue
+  // de "respondeu Não" — por isso o campo continua com 3 estados no
+  // banco (true/false/null), só a UI que não oferece mais um 3º botão.
   const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
 
   await supabase
@@ -1398,13 +1402,13 @@ export async function updateArtistWorkContextAction(
     .update({
       what_you_do: whatYouDo || null,
       where_you_serve: whereYouServe || null,
-      other_preferences: otherPreferences || null,
-      fee_range: feeRange || null,
+      base_fee_cents: baseFeeCents,
+      pricing_notes: pricingNotes || null,
       issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
     })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil/trabalho');
+  revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
   return { success: true };
 }

@@ -18,10 +18,10 @@ type ArtistAttention = { attention_channel: 'whatsapp' | 'painel' | 'ambos' | nu
 // Conhecimento declarado aqui é sempre contexto, nunca autorização —
 // Mandate/Approval Gate/Policy Gate continuam sendo a autoridade real
 // sobre o que a Doopla pode fazer sozinha, sem nenhuma mudança aqui. O
-// enriquecimento mais amplo (regiões, estágio de carreira, tipos de
-// trabalho) mora em "Como você trabalha" (/dashboard/perfil/trabalho)
-// — rota própria dentro do grupo "Perfil e trabalho", só linkada daqui
-// (nunca duplicada dentro de Configurações).
+// enriquecimento mais amplo (o que faz, onde atende, cachê de
+// referência, nota fiscal) mora em "Perfil e trabalho"
+// (/dashboard/perfil/dados, unificado no redesign de 15/09/2026), só
+// linkado daqui (nunca duplicado dentro de Configurações).
 export default async function PreferenciasPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
@@ -51,12 +51,12 @@ export default async function PreferenciasPage() {
         )}
 
         <ProCard>
-          <p className="font-pro-sub text-[13.5px] font-bold">Como você trabalha</p>
+          <p className="font-pro-sub text-[13.5px] font-bold">Perfil e trabalho</p>
           <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">
-            Estágio de carreira, tipos de trabalho, regiões de atuação, faixa de cachê e se você emite nota fiscal — o que
-            sua Doopla usa como conhecimento declarado, nunca como autorização.
+            O que você faz, onde atende, seu cachê de referência e se você emite nota fiscal: o que sua Doopla usa como
+            conhecimento declarado, nunca como autorização.
           </p>
-          <Link href="/dashboard/perfil/trabalho" className={`${proGhostButtonClass} mt-3 inline-block`}>
+          <Link href="/dashboard/perfil/dados" className={`${proGhostButtonClass} mt-3 inline-block`}>
             Editar
           </Link>
         </ProCard>

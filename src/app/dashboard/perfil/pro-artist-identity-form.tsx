@@ -7,32 +7,24 @@ import { proGhostButtonClass, proInputClass, proLabelClass } from '../pro-format
 
 const labelClass = 'flex flex-col gap-1.5';
 
-// Settings V2 consolidado (09/09/2026) — "Dados profissionais", um dos
-// 3 conceitos em que o antigo /dashboard/perfil/editar (uma página só)
-// foi decomposto. Só identidade/apresentação (nome artístico,
-// categoria, bio, gêneros, site, outros links) — contexto de
-// trabalho/representação virou rota própria ("Como você trabalha",
-// pro-work-context-form.tsx) com sua própria action, pra um salvar não
-// zerar os campos do outro.
-//
-// Subcategoria/Mercados saíram da UI do beta (Settings V2, 14/09/2026)
-// — achado da auditoria: nenhum consumidor confirmado no Intelligence
-// Context, único uso real era a vitrine pública ("Perfil público"),
-// que também saiu do beta. Colunas preservadas no banco.
+// Redesign "Perfil e trabalho" (15/09/2026) — grupo "Informações
+// profissionais". Antes desta rodada existiam também Gêneros/estilos,
+// Site e Outros links: auditoria confirmou zero consumidor no
+// Intelligence Context pros 3 (nem sequer a página pública do
+// profissional exibe website_url/other_links) — critério do pedido
+// ("que decisão da Doopla melhora por conhecer isso?") não se sustenta
+// pra nenhum. Colunas preservadas no banco (genres/website_url/
+// other_links), só não fazem mais parte desta UI — por isso a action
+// (updateArtistProfileAction) para de escrever essas 3 chaves, nunca
+// as sobrescreve pra null.
 export function ProArtistIdentityForm({
   stageName,
   category,
   bio,
-  genres,
-  websiteUrl,
-  otherLinks,
 }: {
   stageName: string | null;
   category: string | null;
   bio: string | null;
-  genres: string[];
-  websiteUrl: string | null;
-  otherLinks: string | null;
 }) {
   const [state, formAction, pending] = useActionState(updateArtistProfileAction, {});
 
@@ -53,34 +45,6 @@ export function ProArtistIdentityForm({
         <span className={proLabelClass}>Bio</span>
         <textarea name="bio" rows={3} defaultValue={bio ?? ''} className={proInputClass} />
       </label>
-
-      <label className={labelClass}>
-        <span className={proLabelClass}>Gêneros / estilos (separe por vírgula)</span>
-        <input type="text" name="genres" defaultValue={genres.join(', ')} className={proInputClass} />
-      </label>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className={labelClass}>
-          <span className={proLabelClass}>Site</span>
-          <input
-            type="url"
-            name="websiteUrl"
-            defaultValue={websiteUrl ?? ''}
-            placeholder="https://..."
-            className={proInputClass}
-          />
-        </label>
-        <label className={labelClass}>
-          <span className={proLabelClass}>Outros links</span>
-          <input
-            type="text"
-            name="otherLinks"
-            defaultValue={otherLinks ?? ''}
-            placeholder="Spotify, SoundCloud, YouTube..."
-            className={proInputClass}
-          />
-        </label>
-      </div>
 
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className={proGhostButtonClass}>
