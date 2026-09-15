@@ -33,6 +33,14 @@ alter table public.contact_messages enable row level security;
 -- ninguém (anon/authenticated) lê, escreve ou apaga direto na tabela.
 -- Escrita só pelas 2 functions security definer abaixo; leitura só via
 -- service_role (Supabase Studio).
+--
+-- Revoke explícito de privilégio de tabela abaixo, mesmo já bloqueado
+-- por RLS+zero-policies: mesmo racional do achado documentado em 0039
+-- (comentário "Privilégios de tabela") — este projeto concede
+-- select/insert/update/delete por padrão pra anon/authenticated em
+-- tabela nova, então a trava fica estrutural (nível de privilégio), não
+-- só uma policy que uma migration futura poderia enfraquecer sem querer.
+revoke select, insert, update, delete on public.contact_messages from anon, authenticated;
 
 -- 1. Registrar a mensagem (chamada pelo Server Action no submit).
 -- Formato de e-mail já validado antes, no Server Action (zod) — aqui só

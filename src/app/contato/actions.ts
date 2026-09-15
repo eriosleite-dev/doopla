@@ -86,18 +86,26 @@ export async function sendContactMessageAction(
     return { status: 'error', message: GENERIC_ERROR, values: raw };
   }
 
-  // Passo 2: notificar (best-effort). A mensagem já está salva — se
-  // isso falhar, o usuário ainda vê sucesso (a mensagem chegou pra
-  // Doopla, só a notificação por e-mail que não saiu), e o resultado
-  // fica registrado em contact_messages.notification_status pra
-  // acompanhamento manual.
-  const notification = await sendContactNotification({ name, email, subject, message });
+  // Passo 2: notificar (best-effort, PENDENTE até o Resend estar
+  // configurado — ver RESEND_API_KEY). A mensagem já está salva: a
+  // regra canônica é "persistiu no Supabase = recebido pela Doopla",
+  // então nada neste bloco pode virar erro pro usuário. O try/catch é
+  // deliberadamente mais largo que só a chamada ao Resend — cobre
+  // também a própria chamada de bookkeeping, pra uma falha inesperada
+  // aqui (rede, RPC) nunca voltar como erro depois de já ter persistido
+  // com sucesso.
+  try {
+    const notification = await sendContactNotification({ name, email, subject, message });
 
-  await supabase.rpc('mark_contact_message_notification', {
-    p_id: messageId,
-    p_status: notification.ok ? 'sent' : 'failed',
-    p_error: notification.ok ? null : notification.error,
-  });
+    await supabase.rpc('mark_contact_message_notification', {
+      p_id: messageId,
+      p_status: notification.ok ? 'sent' : 'failed',
+      p_error: notification.ok ? null : notification.error,
+    });
+  } catch {
+    // Best-effort mesmo em falha inesperada — a mensagem já está
+    // persistida, então isso nunca deve impedir o retorno de sucesso.
+  }
 
   return { status: 'success' };
 }

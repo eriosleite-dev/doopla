@@ -13,7 +13,7 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 ---
 
-## Contato: envio real (Supabase + Resend), fecha a pendência funcional
+## Contato: formulário concluído (Supabase real + Resend preparado, não obrigatório)
 
 Auditoria antes de implementar: confirmado que o projeto não tinha
 nenhuma infraestrutura de e-mail (sem Resend/Nodemailer/SendGrid/SMTP
@@ -23,61 +23,53 @@ cadastro, que passa pelo SMTP interno e fechado do Supabase Auth — não
 serve pra mandar conteúdo arbitrário de formulário. Decisão (aprovada
 pelo usuário): Supabase pra persistência real + Resend pra notificação,
 sem Nodemailer/SMTP, chamando a API REST do Resend direto por `fetch`
-(sem SDK novo).
+(sem SDK novo) — e, nesta rodada, **sem configurar o Resend de verdade
+ainda**: fica preparado no código, mas desligado até você configurar
+domínio/DNS/chave.
 
-- ✅ **Migration `0045_contact_messages.sql`**: tabela `contact_messages`
-  (RLS habilitada, zero policies — só `service_role`/Supabase Studio lê;
-  ninguém, nem authenticated, tem select/update/delete direto). Único
-  caminho de escrita são 2 functions `security definer`, mesmo padrão já
-  usado em `submit_orcamento_request` (0023) e `get_invite_by_token`
-  (0034) pra fluxos públicos sem conta:
-  - `submit_contact_message`: valida campos não vazios e aplica um
-    limite básico de frequência (máx. 3 mensagens por e-mail a cada 10
-    minutos) — proteção simples contra spam sem introduzir
-    infraestrutura nova (captcha/WAF).
-  - `mark_contact_message_notification`: bookkeeping pós-tentativa de
-    envio pelo Resend (`notification_status`: pending/sent/failed +
-    `notification_error`), só transiciona `pending -> sent/failed`, e o
-    `id` da mensagem nunca sai do servidor (nunca volta pro client), o
-    que fecha a única via de abuso óbvia dessa function.
-  - ⏳ **Falta você rodar esta migration no Supabase SQL Editor** (mesmo
-    fluxo manual já usado pras migrations anteriores, ex. 0029).
-- ✅ `src/lib/supabase/types.ts`: tipos manuais adicionados
-  (`ContactMessage`, entrada em `Tables`/`Functions`) — mesma convenção
-  hand-maintained já usada pro resto do schema.
-- ✅ **Server Action reescrita** (`src/app/contato/actions.ts`):
-  validação server-side com `zod` (já era dependência do projeto, usada
-  no Intelligence OS — nenhuma lib nova). Fluxo: persiste em
-  `contact_messages` primeiro; só depois tenta notificar via Resend
-  (best-effort) — se o Resend falhar, a mensagem já está salva e o
-  usuário ainda vê sucesso (a falha fica só registrada em
-  `notification_status='failed'` pra follow-up manual, nunca é perdida).
-- ✅ `src/lib/contact/notify.ts`: chama `https://api.resend.com/emails`
-  via `fetch`, lê `RESEND_API_KEY` (server-only, nunca
-  `NEXT_PUBLIC_`) e `CONTACT_EMAIL_FROM` (opcional) só nesse módulo,
-  nunca importado por componente client — a chave nunca chega no bundle
-  do browser.
-- ✅ **`ContactForm.tsx` reescrito** com `useActionState` (mesmo padrão
-  já usado em `LoginForm`/`CreateAccountForm`/etc.): loading (
-  "Enviando…", botão e campos desabilitados), duplo envio prevenido pelo
-  próprio `pending` do React, honeypot invisível (campo "company", CSS +
-  fora da ordem de tab) que finge sucesso sem persistir nada se
-  preenchido, mensagens de sucesso/erro em região `aria-live` (
-  `role="alert"` no erro, `role="status"` no sucesso), e dados
-  preservados em caso de erro por serem inputs não controlados
-  (`defaultValue`, nunca resetados no re-render — só no sucesso, via
-  `formRef.current.reset()`).
-- ✅ Removido o `mailto:` — o formulário agora envia dentro do próprio
-  site, sem abrir cliente de e-mail.
-- ❌ Não alterado: design/copy de `/contato` (só o `ContactForm`
-  internamente), Termos, Privacidade, nenhuma outra página.
-- 🔒 **Bloqueado até configuração externa do Resend** (fora do código,
-  reportado ao usuário em detalhe na conversa): domínio verificado,
-  `RESEND_API_KEY` e `CONTACT_EMAIL_FROM` nas variáveis de ambiente de
-  produção. Até lá, o formulário já funciona ponta a ponta pro que
-  depende só de código — a mensagem é persistida normalmente — mas a
-  notificação por e-mail fica `notification_status='failed'` (chave
-  ausente) até essas duas coisas serem feitas.
+**Regra canônica implementada e reforçada**: formulário enviado →
+mensagem persistida no Supabase → considerado recebido pela Doopla. A
+ausência de `RESEND_API_KEY` ou qualquer falha do Resend nunca impede a
+persistência nem vira erro pro usuário — o passo de notificação
+(`sendContactNotification` + `mark_contact_message_notification`) roda
+dentro de um `try/catch` que nunca propaga, exatamente pra garantir essa
+regra mesmo numa falha inesperada (não só a falta de chave, que já era
+tratada, mas qualquer erro de rede/RPC nesse bloco).
+
+- ✅ **`/contato`: formulário considerado concluído.** Envia dentro do
+  próprio site (sem `mailto:`), Server Action, validação server-side
+  (`zod`, já era dependência do projeto), honeypot, rate limit,
+  prevenção de duplo envio, loading/sucesso/erro, dados preservados no
+  erro, nenhuma secret no client. Ver seção anterior no arquivo pra
+  detalhe de cada peça (`ContactForm.tsx`, `actions.ts`,
+  `lib/contact/notify.ts`).
+- ✅ **Persistência no Supabase: implementada.** Migration
+  `0045_contact_messages.sql` auditada uma segunda vez a pedido do
+  usuário antes de aplicar — confirmado: não altera nem destrói nada
+  existente (só `CREATE TABLE`/`CREATE FUNCTION` novos), `contact_messages`
+  criada com RLS habilitada e zero policies, privilégio de tabela
+  (`select/insert/update/delete`) explicitamente revogado de
+  `anon`/`authenticated` (endurecimento adicional desta rodada, mesmo
+  racional já documentado em 0039), único caminho de escrita é
+  `submit_contact_message` (security definer), rate limit (3 msgs/e-mail/
+  10 min) funciona antes do insert, e nada disso depende do Resend.
+  ⏳ **Aguardando você rodar a migration no SQL Editor do Supabase** —
+  conteúdo completo entregue na conversa, pronto pra copiar/colar.
+- 🔒 **Resend: integração preparada, configuração externa e notificação
+  automática PENDENTES.** `RESEND_API_KEY` não configurada.
+  Domínio/DNS de `doopla.pro` no Resend não configurado. Enquanto isso
+  não acontecer, toda mensagem persistida fica com
+  `notification_status='failed'` (motivo: chave ausente) — isso é
+  esperado e não é um bug. **Não considerar a notificação por e-mail
+  concluída** até essa configuração externa acontecer.
+- ❌ Não alterado nesta rodada: design/copy de `/contato` ou de qualquer
+  outra página pública, SMTP (não configurado, não vamos usar), nenhum
+  provider novo além do Resend já decidido.
+- ❌ **Termos/Privacidade do novo sistema de Agenciamento/Discovery**
+  (pool opt-in, matching, oportunidades geradas pela Doopla, localização/
+  área de atendimento, apresentação de profissionais, sourcing assistido
+  no beta, Trust & Safety) continuam **fora de escopo** — não foram e não
+  devem ser alterados até esse produto ser definido.
 
 ---
 
