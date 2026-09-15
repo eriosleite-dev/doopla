@@ -974,6 +974,26 @@ export async function getMyOpportunities(
   return data ?? [];
 }
 
+// Pedido individual, escopado ao dono (correção 15/09/2026) — usada
+// pelo detalhe compacto de Pedidos, que não precisa mais de
+// interests/invitations/invitableBookers (mecânica de matching/booker
+// removida da UI). getOpportunityManageDetail abaixo continua existindo
+// (tabelas/RPC de matching não foram apagadas), só deixou de ser
+// chamada por essa tela.
+export async function getMyOpportunityById(
+  opportunityId: string,
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<Opportunity | null> {
+  const { data } = await supabase
+    .from('opportunities')
+    .select('*')
+    .eq('id', opportunityId)
+    .eq('artist_profile_id', artistId)
+    .maybeSingle<Opportunity>();
+  return data ?? null;
+}
+
 export type OpportunityManageDetail = {
   opportunity: Opportunity;
   interests: (OpportunityInterest & { bookerName: string; ratingAverage: number | null; ratingCount: number })[];

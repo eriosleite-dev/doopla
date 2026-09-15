@@ -1,14 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { listConversationOperationalFacts, mapConversationIdsByBookingId } from '@/lib/conversations/data';
+import { listConversationOperationalFacts } from '@/lib/conversations/data';
 
-import { getPendingReviewsToWrite, getUserBookings } from '../data';
+import { getMyOpportunities, getPendingReviewsToWrite, getUserBookings } from '../data';
 import { JobPicker } from '../job-picker';
 import { ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
 import { eyebrowClass } from '../ui';
-import { ProTrabalhosView } from './pro-trabalhos-view';
+import { buildWorkItems } from '../work-items';
+import { ProWorkListView } from './pro-work-list-view';
 import { TrabalhosList } from './trabalhos-list';
 
 export const metadata: Metadata = {
@@ -52,24 +53,34 @@ export default async function TrabalhosPage() {
     );
   }
 
-  const [bookings, conversationFacts, pendingReviews] = await Promise.all([
+  // Bookings unificado (correção 15/09/2026, achado da fundadora) —
+  // "Bookings" passa a ser a superfície única dos trabalhos, qualquer
+  // que seja o canal de entrada. `buildWorkItems` (work-items.ts) junta
+  // bookings de verdade com pedidos recebidos pelo link ainda não
+  // convertidos (opportunities.source='artist_link') numa lista só,
+  // ordenada por urgência+relevância temporal. A antiga rota/nav
+  // "Pedidos" saiu do shell (ver pro-shell.tsx) — o pedido individual
+  // continua existindo como registro e como destino de detalhe
+  // (/dashboard/oportunidades/[id]), só não é mais uma área separada.
+  const [bookings, pedidos, conversationFacts, pendingReviews] = await Promise.all([
     getUserBookings(user.id, profile.role, supabase),
+    getMyOpportunities(user.id, supabase),
     listConversationOperationalFacts(supabase),
     getPendingReviewsToWrite(user.id, supabase),
   ]);
-  const conversationIdByBookingId = mapConversationIdsByBookingId(conversationFacts);
-  const pendingReviewBookingIds = pendingReviews.map((r) => r.booking_id);
+  const pedidosRecebidos = pedidos.filter((o) => o.source === 'artist_link');
+  const items = buildWorkItems({
+    bookings,
+    pedidos: pedidosRecebidos,
+    userId: user.id,
+    conversationFacts,
+    pendingReviewBookingIds: pendingReviews.map((r) => r.booking_id),
+  });
 
   return (
     <main>
-      <ProPageHeader title="Bookings" subtitle="Todos os seus bookings, negociados pela Doopla ou por você." />
-      <ProTrabalhosView
-        bookings={bookings}
-        role={profile.role}
-        userId={user.id}
-        conversationIdByBookingId={conversationIdByBookingId}
-        pendingReviewBookingIds={pendingReviewBookingIds}
-      />
+      <ProPageHeader title="Bookings" subtitle="Todos os seus trabalhos, do primeiro contato até a conclusão." />
+      <ProWorkListView items={items} />
     </main>
   );
 }

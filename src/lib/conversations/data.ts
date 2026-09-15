@@ -24,6 +24,10 @@ export type ConversationOperationalFacts = {
   conversationType: 'external_inquiry' | 'professional_self';
   status: 'open' | 'closed' | 'archived';
   mandate: string;
+  // Bookings unificado (0081) — origem/canal da conversa
+  // ('whatsapp' | 'public_link' | 'email' | 'painel' | 'outro'),
+  // exposta pra lista de Bookings mostrar o canal sem consulta extra.
+  channel: string;
   lastActivityAt: string;
   relatedBookingId: string | null;
   relatedOpportunityId: string | null;
@@ -44,6 +48,7 @@ type RawOperationalFactsRow = {
   conversation_type: 'external_inquiry' | 'professional_self';
   status: 'open' | 'closed' | 'archived';
   mandate: string;
+  channel: string;
   last_activity_at: string;
   related_booking_id: string | null;
   related_opportunity_id: string | null;
@@ -64,6 +69,7 @@ function mapOperationalFactsRow(row: RawOperationalFactsRow): ConversationOperat
     conversationType: row.conversation_type,
     status: row.status,
     mandate: row.mandate,
+    channel: row.channel,
     lastActivityAt: row.last_activity_at,
     relatedBookingId: row.related_booking_id,
     relatedOpportunityId: row.related_opportunity_id,

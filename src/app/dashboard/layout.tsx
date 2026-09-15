@@ -18,11 +18,14 @@ import { ReferralModal } from './referral-modal';
 import { ReferralModalProvider } from './referral-modal-context';
 import { getSessionProfile } from './session';
 
-// FAIL BLOCKER corrigido (14/09/2026): pedido recebido pelo link
-// individual de orçamento (opportunities.source='artist_link',
-// status='aberta') não tinha nenhum sinal na sidebar nem na Home —
-// mesma tabela/filtro já usado em getMyOpportunities/
-// professional-home-view.tsx, só como contagem leve pro badge.
+// Contagem de pedidos recebidos pelo link ainda em aberto — somada ao
+// badge de Bookings desde a reestruturação Bookings unificado
+// (15/09/2026, achado da fundadora): "Pedidos" não é mais um item de
+// navegação próprio, então este número deixou de ser um badge
+// separado (era o FAIL BLOCKER original de 14/09/2026) e passou a
+// compor o mesmo badge de "Bookings" (ver ProfessionalShellGate
+// abaixo). Mesma tabela/filtro de sempre (getMyOpportunities/
+// professional-home-view.tsx), só como contagem leve.
 async function getPedidosAbertosCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
@@ -180,9 +183,8 @@ async function ProfessionalShellGate({
         email={email}
         avatarUrl={avatarUrl}
         hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
-        bookingsAwaitingCount={homeFacts?.bookingsAwaitingResponseCount ?? 0}
+        bookingsAwaitingCount={(homeFacts?.bookingsAwaitingResponseCount ?? 0) + pedidosAbertosCount}
         decisionsCount={conversationSummary.needsYouCount}
-        pedidosAbertosCount={pedidosAbertosCount}
         referralEligible={referralEligible}
       >
         {children}

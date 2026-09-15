@@ -1251,6 +1251,235 @@ backend real**.
   que Bookings já faz certo. Aguardando decisão da fundadora sobre o
   destino exato antes de qualquer código.
 
+  **Decisão da fundadora sobre a zona cinzenta (15/09/2026)**: remover
+  "Bookers convidados" e qualquer convite/delegação de booker da
+  experiência de Pedidos do Professional beta — "Minha equipe" continua
+  existindo, mas uma futura atribuição de trabalho a alguém da equipe
+  ganha desenho próprio, nunca reaproveitando essa mecânica antiga.
+
+  **Correção implementada (15/09/2026)** — antes de qualquer código,
+  auditoria explícita do zona cinzenta + reconstrução da lista/detalhe:
+  removida da UI de `/dashboard/oportunidades/[id]/page.tsx` toda a
+  seção legada ("Oportunidade publicada", "Buscar ajuda de um booker",
+  "Bookers interessados", "Bookers convidados" + convite/seleção de
+  booker) — tela reconstruída compacta (`ProPageHeader` + 3 `ProCard`
+  objetivos: contato do cliente, o trabalho, "precisa de você agora?"),
+  respondendo as 5 perguntas da fundadora sem card-dentro-de-card.
+  Infra antiga preservada no código/banco por instrução explícita:
+  `getOpportunityManageDetail`, `inviteBookerToOpportunityAction`,
+  `selectBookerForOpportunityAction`, `select-booker-button.tsx` e as
+  tabelas/RPC de matching continuam existindo, só pararam de ser
+  chamadas por essa tela. Lista "Pedidos" reconstruída como lista
+  compacta (`ProSearchFilter`, mesmo padrão de Bookings), ordenada por
+  urgência+cronológico — **depois totalmente superada e substituída
+  pela unificação Bookings descrita abaixo**, no mesmo turno.
+
+## BOOKING — reestruturação da experiência Web (Bookings unificado) — `[DELIVERED — Web]`, App registrado como pendência — 15/09/2026
+
+Pedido da fundadora, recebido enquanto a correção acima ainda estava
+sendo finalizada: "Pedidos" deixa de ser uma área própria do
+Professional. Bookings passa a ser a superfície única dos trabalhos,
+qualquer que seja o canal de entrada (WhatsApp, link de booking,
+futuramente e-mail) — canal vira atributo do trabalho, não uma seção
+separada do produto. Instrução explícita: auditar antes de mexer em
+schema, reutilizar o máximo de arquitetura/componentes existentes,
+nunca criar sistema paralelo, e **parar e explicar** se a auditoria
+revelasse risco real de absorver `opportunities` agora.
+
+### 1. Arquitetura encontrada (auditoria, antes de qualquer código)
+
+- `opportunities` (Pedidos/mural) e `bookings` são entidades
+  estruturalmente incompatíveis hoje: enums de status diferentes, e
+  `bookings.booker_profile_id` é `NOT NULL` com
+  `check (artist_profile_id <> booker_profile_id)` — um booking sempre
+  exige duas partes reais e distintas. Um pedido que o próprio artista
+  conduz sozinho (sem booker) **não pode virar uma linha de `bookings`**
+  sem mudança de schema. `selectBookerForOpportunityAction` cria um
+  `bookings` novo copiando dados da oportunidade, mas não existe FK de
+  volta (`bookings` não tem `opportunity_id`) — a ligação é só na hora
+  da conversão, nunca uma relação viva.
+- **A peça que já existe pronta pra isso é `conversations`**
+  (migration 0039, "Doopla Intelligence OS"): já tem `channel`/`origin`
+  (`whatsapp`/`public_link`/`email`/`painel`/`outro`),
+  `related_opportunity_id` E `related_booking_id` (as duas nullable,
+  FK composta de isolamento de tenant) e um estado operacional já
+  pronto pra UX (`get_conversation_operational_facts` + `deriveConversationState`
+  → `needs_you`/`waiting_client`/`in_progress`/`closed`, já usado hoje
+  pela Home). Esta é a "camada de leitura/adaptação segura" certa —
+  ela já foi desenhada pra representar exatamente isto.
+- **Gap real encontrado (não é risco de dado, é um buraco de
+  integração)**: WhatsApp inbound (`intake-orchestration.ts`) sempre
+  cria uma `conversations` via RPC `create_conversation` — por isso um
+  trabalho vindo de WhatsApp já aparece corretamente com canal/estado.
+  Já um pedido vindo de `/orcamento/[slug]` (RPC pública
+  `submit_orcamento_request`, migration 0023) **nunca criou uma
+  conversation** — só insere em `opportunities`. Essa lacuna é anterior
+  a esta correção (existia desde a migration 0023, que é de antes de
+  `conversations` existir).
+- **Bloqueio técnico real pra fechar esse gap agora (achado da
+  auditoria, não implementado — decisão explícita de parar aqui)**:
+  `create_conversation()` exige `auth.uid() = p_represented_professional_id`,
+  com uma única exceção deliberada (`is_system_caller()`, migration
+  0062) usada hoje só pelo webhook de WhatsApp, chamado com um client
+  `service_role`. O envio do formulário público de orçamento
+  (`submitOrcamentoRequestAction`) roda com o client de sessão comum
+  (anônimo, sem `service_role`) — chamar `create_conversation` a partir
+  dali falharia com `not_authorized`. Dar a esse fluxo público acesso
+  equivalente a `service_role`, ou duplicar a lógica de
+  `create_conversation` dentro de `submit_orcamento_request` (violando
+  o próprio contrato documentado da function — "único caminho de
+  criação", sempre com os 2 eventos de nascimento), são as duas únicas
+  saídas, e as duas mexem em fronteira de autenticação/autorização de
+  um fluxo público. **Isso não foi implementado nesta rodada** — fica
+  registrado como pendência real (ver seção 10), pra decisão explícita
+  da fundadora, não uma correção que eu deveria decidir sozinho.
+
+### 2. Como link e WhatsApp passam a aparecer em Bookings
+
+Sem mexer em schema nem no fluxo de autenticação acima: `work-items.ts`
+(novo) é uma camada de leitura pura que junta, só pra apresentação,
+`bookings` (via `getUserBookings`, já existente) com `opportunities`
+`source='artist_link'` ainda não convertidas (via `getMyOpportunities`,
+já existente), e resolve o canal de cada `booking` pela conversation
+mais recente vinculada (`related_booking_id`, via
+`listConversationOperationalFacts` — RPC estendida, ver item 6). Um
+pedido do link mostra canal "Link de booking" direto do
+`opportunities.source` (fato já verdadeiro na própria linha, sem
+precisar de conversation). Nenhuma tabela nova, nenhuma escrita nova.
+
+### 3. O que mudou na lista
+
+`/dashboard/trabalhos` (Bookings) trocou `ProTrabalhosView`/
+`ProSearchFilter` (barra permanente de chips TODOS/PRECISA DE VOCÊ/...)
+por `ProWorkListView` (novo): busca ocupando a área principal + botão
+"Filtrar" (ícone de sliders) à direita, abrindo um popover compacto
+ancorado ao botão (nunca modal grande) com Status (checkboxes),
+Origem (WhatsApp/Link de booking — e-mail de propósito fora, não tem
+integração real ainda), Período (Próximos/Este mês/Personalizado) +
+Limpar filtros/Aplicar. Sem filtro nenhum aplicado, mostra só
+precisa-de-você + em-andamento + confirmados (concluídos/cancelados
+somem da primeira vista, só voltam via filtro explícito). Linhas
+compactas (1 por trabalho: trabalho+cliente, data·local·valor, canal
+em texto pequeno secundário, pill de status à direita) — testado
+mentalmente pra 50+ itens, nunca cards grandes. Avaliação pendente
+(`getPendingReviewsToWrite`) também vira "precisa de você" com label
+"Avaliar", preservando o que `ProTrabalhosView` já fazia à parte.
+`ProTrabalhosView`/`ProSearchFilter` (o componente genérico) não foram
+apagados — só pararam de ser referenciados por esta tela.
+
+### 4. O que mudou no detalhe
+
+Nenhuma unificação de detalhe: um booking de verdade continua abrindo
+`/dashboard/bookings/[id]` (`ProBookingDetailView`, intocado); um
+pedido do link ainda sem booking continua abrindo
+`/dashboard/oportunidades/[id]` — a versão compacta já reconstruída
+(ver item acima), sem nenhum conteúdo de matching/booker. As duas
+telas usam o mesmo vocabulário visual (`ProPageHeader`+`ProCard`,
+mesmas pills de status) e respondem às mesmas 7 perguntas da fundadora,
+mas continuam sendo dois registros/rotas diferentes por baixo — nunca
+um "Booking" fake pra pedido nenhum, exatamente pra não forçar
+`opportunities` a virar `bookings` sem uma migração real de dado.
+
+### 5. O que aconteceu com a antiga navegação "Pedidos"
+
+Removida do shell (`pro-shell.tsx`): item "Pedidos" saiu de
+`primaryLinks`; o badge (`pedidosAbertosCount`) passou a somar dentro
+do badge de "Bookings" (`layout.tsx`). A rota
+`/dashboard/oportunidades` (lista, branch artista) agora só faz
+`redirect('/dashboard/trabalhos')` — nunca apagada, um link
+salvo/histórico continua funcionando, só não é mais navegação de
+primeira classe. `/dashboard/oportunidades/[id]` continua sendo o
+destino de detalhe de um pedido. Branch booker (mural/`DiscoverWorkDeck`)
+100% intocado.
+
+### 6. O que de `opportunities`/matching continua só internamente
+
+`opportunities` (tabela, RLS, RPCs `select_booker_for_opportunity`/
+`submit_orcamento_request`), `opportunity_interests`,
+`opportunity_invitations`, `getOpportunityManageDetail`,
+`inviteBookerToOpportunityAction`, `selectBookerForOpportunityAction`,
+`select-booker-button.tsx`, a rota `/dashboard/publicar-trabalho` e a
+seção "O que você publicou" do mural (já removida da UI desde a
+correção anterior) — nada disso foi apagado. Continuam existindo pra
+não quebrar dado histórico e pra manter aberta a porta de uma futura
+funcionalidade real de "atribuir a alguém da equipe", que a fundadora
+já disse que será desenho próprio, não um retorno desta mecânica.
+
+### 7. Filtros e ordenação implementados
+
+Status (Precisa de você/Em negociação/Confirmados/Concluídos/
+Cancelados, múltipla escolha), Origem (WhatsApp/Link de booking,
+múltipla escolha), Período (Próximos = `event_date >= hoje`; Este mês;
+Personalizado = intervalo de datas) — combináveis. Sem filtro = visão
+padrão (ativos). Ordenação (`buildWorkItems`): urgência primeiro
+(precisa de você > em andamento > confirmado > concluído/cancelado);
+dentro de precisa-de-você/em-andamento, mais recente primeiro; dentro
+de confirmado, data do evento mais próxima primeiro — nunca
+`created_at` cru.
+
+### 8. Impacto Web + App
+
+**Web**: entregue (`/dashboard/trabalhos`, `/dashboard/oportunidades*`,
+`pro-shell.tsx`, `layout.tsx`, `work-items.ts`, migration 0081).
+**App**: **nenhuma mudança nesta rodada** — o App não tem hoje nem lista
+unificada nem detalhe de Pedido. Registrado como **pendência
+obrigatória da primeira build** (não bloqueia o QA manual Web, por
+instrução explícita da fundadora): Bookings do App precisa da mesma
+lógica de `work-items.ts` (ou equivalente) pra também misturar
+`bookings` + pedidos do link por canal, e a Home do App
+(`mobile/app/(tabs)/index.tsx`) já linka pedidos pra
+`/dashboard/oportunidades/[id]` (rota Web) sem ter uma tela própria de
+detalhe no App — isso precisa virar tela real no App antes do beta público
+no celular. Nunca dois modelos de Booking diferentes: quando essa tela
+nascer no App, consome os mesmos dados/regras (`classifyBookingAttention`,
+`classifyPedidoAttention`, `buildWorkItems` ou uma porta dele) — mesma
+disciplina já usada em `booking-attention.ts` (duplicado
+deliberadamente entre Web/App, mesma regra, nunca comportamento
+diferente por superfície).
+
+### 9. Testes/typecheck/lint
+
+`npx tsc --noEmit`: limpo (só os 3 erros pré-existentes de
+`PageProps`/`LayoutProps`, tipos gerados pelo Next.js ausentes neste
+sandbox — não relacionados a nenhuma mudança desta rodada).
+`npx eslint .`: limpo em todos os arquivos tocados (os 44
+erros/4 warnings que aparecem no lint completo do repositório são
+100% pré-existentes em `mobile/src/components/shared/MascotBall.tsx` e
+`mobile/src/hooks/useAuth.tsx`, não relacionados a esta correção). Sem
+acesso a rede neste ambiente — nenhum teste manual Web possível por
+mim; QA manual continua sendo conduzido pela fundadora contra
+`doopla-qa-staging`.
+
+### 10. Pendências reais pro beta
+
+- **Pedido do link ainda não gera `conversations`** (gap técnico
+  descrito no item 1) — hoje ele aparece em Bookings corretamente
+  (canal "Link de booking", via `opportunities.source`), mas não tem
+  conversa/thread associada como um item de WhatsApp tem. Fechar isso
+  de verdade (pedido do link nascer com uma `conversation`, igual
+  WhatsApp) exige uma decisão de fronteira de autenticação
+  (`service_role` pro fluxo público, ou uma extensão desenhada de
+  propósito em `create_conversation`/`is_system_caller()`) — **não
+  decidido nem implementado aqui**, fica pra a fundadora decidir antes
+  de qualquer código nessa direção.
+  - **Consequência prática**: no card "O que a Doopla já fez?" do
+    detalhe do pedido (`/dashboard/oportunidades/[id]`), a única coisa
+    que dá pra mostrar hoje é "recebido pelo seu link" + data — nunca
+    um histórico de mensagens, porque não existe conversation nem
+    thread pra esse tipo de pedido ainda.
+- **App**: pendência obrigatória registrada no item 8 — Bookings/detalhe
+  de pedido no App ainda não existem, não bloqueia QA manual Web.
+- Não existe hoje, em nenhum dos dois modelos, uma ação de "eu mesma
+  fechei esse pedido sem booker" — o único caminho de
+  `opportunities` → `bookings` continua sendo escolher um booker
+  (`selectBookerForOpportunityAction`), que exige uma segunda pessoa
+  real por causa do `NOT NULL`/`check` de `bookings.booker_profile_id`
+  (item 1). Pra um artista solo sem equipe, um pedido do link fica
+  "aberta" indefinidamente sem um jeito formal de marcar como resolvido
+  dentro do produto — resolvido hoje só por fora (WhatsApp/e-mail
+  direto com o cliente). Registrado como gap real, não implementado
+  (seria nova lógica de mutação, fora do escopo desta correção de UX).
+
 - ⏳ Decisões / "Precisa de você"
 - ⏳ Aprovação/rejeição com sessão autenticada (onde automatizável)
 - ⏳ Persistência e isolamento cross-tenant
