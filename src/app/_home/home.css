@@ -201,11 +201,13 @@
   #home-marketing .bubble.in{ align-self:flex-start; background:#1c211d; color:var(--tx-70); border-bottom-left-radius:4px; }
   #home-marketing .bubble.out{ align-self:flex-end; background:var(--red); color:var(--off); border-bottom-right-radius:4px; }
   /* variante neutra: mesma mensagem da doopla (1ª pessoa, alinhada à
-     direita como .out), só sem o vermelho — cria hierarquia vermelho
-     -> escuro -> vermelho na sequência de balões do hero, em vez de
-     tudo vermelho pesado. Mesma cor de fundo de .bubble.in, de
-     propósito (já é a cor "neutra" comprovada da interface do telefone). */
-  #home-marketing .bubble.neutral{ align-self:flex-end; background:#1c211d; color:var(--tx-70); border-bottom-right-radius:4px; }
+     direita como .out), só sem o vermelho — intercalada com .out pra
+     criar o ritmo vermelho/cinza/vermelho/cinza pedido, em vez de tudo
+     vermelho pesado. Cor própria (#1d1c1c), não a mesma de .bubble.in
+     (#1c211d tem leve viés esverdeado — sinalizado explicitamente
+     como indesejado): cinza neutro de verdade, sem verde, ainda assim
+     coerente com a paleta escura e quente do resto da interface. */
+  #home-marketing .bubble.neutral{ align-self:flex-end; background:#1d1c1c; color:var(--tx-70); border-bottom-right-radius:4px; }
   #home-marketing .bubble .time{ display:block; margin-top:4px; font-size:.58rem; opacity:.65; text-align:right; }
   #home-marketing .bubble-group{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
   #home-marketing .bubble-sender{ display:flex; align-items:center; gap:5px; font-size:.62rem; font-weight:600; color:var(--tx-50); padding-right:2px; }
