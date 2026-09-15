@@ -1,7 +1,6 @@
 import Link from 'next/link';
 
 import { formatCentsAsBRL, formatPercent, formatRelativeDate } from '@/lib/format';
-import type { ConversationOperationalFacts } from '@/lib/conversations/data';
 import type { Checkpoint } from '../../data';
 
 import {
@@ -16,9 +15,9 @@ import {
   respondBookingAction,
 } from '../../actions';
 import type { BookingWithOtherParty } from '../../data';
-import { CONVERSATION_STATE_LABELS, STATUS_LABELS } from '../../ui';
+import { STATUS_LABELS } from '../../ui';
 import { ProCard, ProPageHeader } from '../../pro-ui';
-import { bookingStatusTone, PRO_CONVERSATION_STATE_TONE, proGhostButtonClass, proPrimaryButtonClass, proStatusPillClass } from '../../pro-format';
+import { bookingStatusTone, proGhostButtonClass, proPrimaryButtonClass, proStatusPillClass } from '../../pro-format';
 import { DISPUTE_LABELS, PAYMENT_DUE_LABELS, invoiceStages, paymentDueState, paymentPolicySummary } from './booking-detail-shared';
 import { ProCancelBookingForm } from './pro-cancel-booking-form';
 import { ProContractSection } from './pro-contract-section';
@@ -26,10 +25,6 @@ import { ProCounterForm } from './pro-counter-form';
 import { ProInvoiceTermForm } from './pro-invoice-term-form';
 import { ProRescheduleForm } from './pro-reschedule-form';
 import { ProReviewPanel } from './pro-review-panel';
-
-function conversationStatePill(state: string): string {
-  return proStatusPillClass(PRO_CONVERSATION_STATE_TONE[state] ?? 'neutral');
-}
 
 function proCpDotClass(done: boolean): string {
   return `mx-auto flex h-[22px] w-[22px] items-center justify-center rounded-full font-doopla-mono text-[11px] ${
@@ -63,6 +58,23 @@ function initials(name: string): string {
 // segunda implementação de regra de negócio, só apresentação. Ver
 // legacy-booking-detail-view.tsx pra comparação lado a lado de cada
 // branch de status/role.
+//
+// PENDING INTEGRATION — booking ↔ conversation (auditoria 15/09/2026).
+// O card "Conversa com X" (props conversationId/conversationFacts) foi
+// removido — auditoria confirmou que `conversations.related_booking_id`
+// nunca é escrito com um valor real em nenhum caminho de código atual
+// (só limpo pra null, migration 0051), então esse card nunca renderiza
+// de verdade pra nenhum booking hoje. Não é uma remoção de feature —
+// é desconectar uma UI estruturalmente morta. `getConversationIdForBooking`/
+// `getConversationOperationalFacts` (src/lib/conversations/data.ts)
+// continuam intactos, só sem chamador aqui — reconectar quando o
+// vínculo booking↔conversation existir de verdade (fora desta branch,
+// ver PROGRESS.md). Pelo mesmo motivo, NENHUMA seção "Precisa de
+// você"/"Sua Doopla está cuidando" foi adicionada nesta tela:
+// `resolveDooplaIntervention` (doopla-intervention.ts) depende da
+// mesma conversation que nunca existe aqui — mostrar esse bloco seria
+// inventar uma intervenção sem fonte real. Registrado como PENDING
+// INTEGRATION, não implementado.
 export function ProBookingDetailView({
   booking,
   events,
@@ -70,8 +82,6 @@ export function ProBookingDetailView({
   checkpoints,
   hasActiveCheckpoints,
   reviews,
-  conversationId,
-  conversationFacts,
   role,
   userId,
 }: {
@@ -81,8 +91,6 @@ export function ProBookingDetailView({
   checkpoints: Checkpoint[];
   hasActiveCheckpoints: boolean;
   reviews: { myReview: import('@/lib/supabase/types').Review | null; reviewOfMe: import('@/lib/supabase/types').Review | null } | null;
-  conversationId: string | null;
-  conversationFacts: ConversationOperationalFacts | null;
   role: 'artista' | 'booker' | 'agencia';
   userId: string;
 }) {
@@ -126,25 +134,6 @@ export function ProBookingDetailView({
           </span>
         }
       />
-
-      {conversationId && conversationFacts && (
-        <ProCard className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Conversa com {booking.otherPartyName}</p>
-            <p className="mt-1 text-sm text-[var(--pro-tx-70)]">
-              {conversationFacts.lastMessageCreatedAt
-                ? `Última mensagem ${formatRelativeDate(conversationFacts.lastMessageCreatedAt)}`
-                : 'Nenhuma mensagem ainda'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className={conversationStatePill(conversationFacts.state)}>{CONVERSATION_STATE_LABELS[conversationFacts.state]}</span>
-            <Link href={`/dashboard/bookings/${booking.id}/conversa/${conversationId}`} className={proGhostButtonClass}>
-              Ver conversa
-            </Link>
-          </div>
-        </ProCard>
-      )}
 
       <ProCard>
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

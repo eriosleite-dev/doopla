@@ -15045,6 +15045,56 @@ fundadora): nenhuma booking artificial criada; nenhum Booker fake;
 mudança em `conversations`/`/orcamento`/RPC/runtime. Fica só
 registrado aqui pra reconciliação futura com a Sessão Central.
 
+#### Atualização (auditoria de Booking Detail + Contratos, 15/09/2026) — impacto em Contratos e achado novo em `requires_professional_review`
+
+**Impacto em Contratos, confirmado**: `booking_contracts.booking_id` é
+FK obrigatória — contrato depende 100% de existir uma `booking` real.
+Mesma causa-raiz do P0 acima se propaga: um artista sem Booker, mesmo
+fechando um trabalho de verdade via conversa direta, **nunca tem
+acesso à função "Gerar contrato com a doopla"**, porque nunca existe
+uma `booking` pra esse contrato se prender. Além disso, o template
+atual (`contratos/template.ts`) **sempre menciona um Booker como
+intermediário** ("com intermediação de {booker}") e inclui a comissão
+dele — o contrato padrão de hoje foi desenhado assumindo o modelo
+Booker/agência, não o modelo cliente→Doopla→profissional direto.
+
+**Direção futura registrada** (não implementada nesta branch, decisão
+da fundadora): o fluxo que precisa existir é `cliente → Doopla →
+conversation → booking direto → contrato padrão Doopla`, **sem**
+Booker fake, sem intermediação fictícia, sem comissão fictícia. Isso
+depende da resolução do P0 acima (conversation virar booking sem
+Booker) antes de fazer sentido tocar no gerador de contrato.
+
+**Achado novo, mesma família, causa raiz distinta**: rastreei a
+propagação de `decision.requiresProfessionalReviewBeforeSend` (Bloco 4,
+Planner) até `outbound_intents.requires_professional_review` e
+encontrei uma lacuna adicional à já conhecida (fail-closed do worker de
+envio, já corrigido pela Sessão Central). `resolveRuntimeDisposition()`
+(`src/lib/runtime/disposition.ts:11-18`) calcula corretamente
+`'professional_action_required'` vs `'auto_send_eligible'` — mas em
+`src/lib/runtime/pipeline.ts`, `createOutboundIntent()` é chamado nas
+linhas 443-451, **antes** de `disposition` ser calculado (linha 495), e
+o objeto passado não inclui `requiresProfessionalReview` em nenhum
+campo. `disposition` só é usado depois pra gravar auditoria
+(`finishOrchestratorRun`), nunca propagado pro outbound_intent criado.
+**Consequência**: hoje, todo outbound_intent é criado com
+`requires_professional_review = false`, independente do que o Planner
+calculou — a proteção fail-closed do worker de envio não tem, na
+prática, nenhuma linha real pra proteger. Confirmei também que
+`requires_professional_review`/`requiresProfessionalReview` não
+aparece em nenhum arquivo de `decisions/data.ts`, `doopla-intervention.ts`
+ou `work-items.ts` — a camada de Decisões/"Precisa de você" não tem
+hoje nenhuma consciência desse sinal, nem pra usar nem pra ignorar
+errado. **NÃO corrigido nesta branch** (runtime/pipeline fora de
+escopo Professional) — registrado pra reconciliação com a Sessão
+Central junto da arquitetura de Decisões/Precisa de você.
+
+**Busca Global — decisão de roadmap registrada** (não implementada): o
+painel terá futuramente uma busca global (cliente/trabalho/booking/
+data/local/contrato/outros), permitindo por exemplo "contrato Mariana"
+→ achar o Booking → chegar ao contrato. Não é escopo desta rodada nem
+uma busca exclusiva de contratos — é uma capacidade transversal futura.
+
 
 ### "Financeiro" — Dados de recebimento como superfície única, métricas semanticamente fiéis, Booker Web/App intocado — `[DELIVERED]` — 15/09/2026
 
@@ -15267,6 +15317,127 @@ Doopla, Financeiro, Onboarding, Ajustes no detalhe do booking,
 Decisões, Home (`_home/**`, incluindo `/ajuda` e o conteúdo do `#faq`),
 Booker (`dashboard-footer.tsx`/`legacy-shell.tsx` e financeiro),
 arquitetura da Comunidade, matching, Perfil público legado.
+
+
+### "Booking Detail" — UI morta de conversa desconectada, filtro de Contrato (Todos/Com/Sem), Contratos confirmado sem sidebar — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Booking Detail — card de conversa morto desconectado (Web + App)
+
+Auditoria anterior confirmou que `conversations.related_booking_id`
+nunca é escrito com um valor real em nenhum caminho de código atual
+(só limpo pra `null`, migration 0051) — o card "Conversa com X" em
+`ProBookingDetailView` (Web) e a seção "Conversa" em
+`bookings/[id].tsx` (App) nunca renderizavam de verdade pra nenhum
+booking. Removidos dos dois lados: JSX, estado local, e a
+busca/chamada (`getConversationIdForBooking`/`getConversationOperationalFacts`
+no Web; `fetchConversationIdForBooking`/`fetchConversationOperationalFacts`
+no App). **Preservados intactos**: as 4 funções em
+`src/lib/conversations/data.ts` (Web) e `@/lib/data/conversations`
+(App) — só perderam este caller, seguem existindo pra reconciliação
+futura. Comportamento do Booker (`legacy-booking-detail-view.tsx`,
+arquivo intocado) **idêntico ao de antes**: `page.tsx` já só disparava
+essa busca pra `role === 'artista'` dono do booking — o Booker sempre
+recebeu `conversationId: null` antes desta mudança, e continua
+recebendo exatamente o mesmo valor agora (só sem a query desperdiçada
+no caminho do artista). Registrado como comentário `PENDING
+INTEGRATION` nos 3 arquivos tocados (Web ×2, App ×1) — nenhuma
+associação booking↔conversation artificial foi criada.
+
+#### 2. "Precisa de você" / "Sua Doopla está cuidando" — NÃO adicionado, por decisão explícita
+
+Confirmado: `resolveDooplaIntervention` (`doopla-intervention.ts`)
+depende de uma `ConversationOperationalFacts` real — e como o item 1
+confirma que Booking Detail nunca tem uma conversation real vinculada,
+qualquer tentativa de mostrar "Precisa de você" ou "Sua Doopla está
+cuidando" aqui seria inventar uma intervenção sem fonte. Não
+implementado, registrado como `PENDING INTEGRATION` (mesmo comentário
+do item 1) — nenhuma lógica de intervenção paralela criada, nenhuma
+conversation fabricada.
+
+#### 3. Contratos — decisão canônica confirmada, nada de código necessário
+
+Confirmado: Contratos já não tinha (e continua sem ter) item próprio
+no sidebar (`pro-shell.tsx`, intocado) — decisão já era essa na
+prática, só formalizada agora. Contrato continua vivendo só dentro do
+Booking Detail (`ProContractSection`/`contract-section.tsx`,
+intocados — geração e anexo de contrato externo preservados
+exatamente como estavam). Direção futura de "Contrato padrão Doopla"
+(geração conduzida pela própria Doopla numa conversa) e "Contrato
+externo" (anexo pelo profissional — preservado; ingestão automática
+via conversa — futura) registradas no bloco P0 acima, não
+implementadas nesta rodada.
+
+#### 4. Filtro de Contrato — Todos / Com contrato / Sem contrato (Web + App)
+
+`WorkItem` (`work-items.ts`) ganhou `hasContract: boolean` — derivado
+só de `bookings.contract_url` (bookingWorkItem: `b.contract_url !=
+null`; pedidoWorkItem: sempre `false`, já que `opportunities` nunca
+tem essa coluna). Nenhuma coluna nova, nenhuma migration, nenhum
+`contract_type` inventado. Web: novo grupo "Contrato" no popover de
+filtro (`pro-work-list-view.tsx`), mesmo padrão visual do "Período"
+(radio Todos/Com contrato/Sem contrato), contabilizado em
+`activeFilterCount`. App: nova segunda linha de chips horizontal em
+`bookings/index.tsx` (`CONTRACT_CHIPS`), combinada ao filtro de status
+já existente na mesma função `filtered`.
+
+**CONTRATOS WEB ↔ APP PARITY = PENDING FUTURE CONTRACT BLOCK** — gap
+já auditado (App só visualiza `contract_url` existente; gerar/anexar
+continua exclusivo do Web) permanece **não resolvido nesta rodada**,
+por instrução explícita — só o filtro ganhou paridade, não a
+capacidade de gerar/anexar.
+
+#### Testes/validação
+
+- `npm run build`: limpo, 0 erros, todas as rotas geradas.
+- `eslint` nos 4 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-bookings-filter` (Playwright) —
+  screenshot confirma o grupo "Contrato" no popover e o filtro "Com
+  contrato" excluindo corretamente o item sem `contract_url`. Rota de
+  preview e `.next` removidos antes do commit (`git status` confirma
+  só os 6 arquivos de produto no diff).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa
+  dos 2 arquivos após as edições: JSX balanceado, estados/imports
+  consistentes (nenhuma referência solta a `conversationId`/
+  `conversationFacts`/`fetchConversationIdForBooking` sobrevive fora
+  do comentário `PENDING INTEGRATION`), estilos novos (`contractChips`/
+  `contractChip`) definidos no `StyleSheet`.
+- Checklist da fundadora (21 itens): (1) Contratos continuam dentro de
+  Booking — confirmado; (2) sidebar sem Contratos — confirmado,
+  `pro-shell.tsx` intocado; (3) Booking Detail Professional continua
+  funcional — confirmado (build limpo, ações/checkpoints/contrato/
+  histórico/avaliação intactos); (4) nenhuma intervenção falsa criada
+  — confirmado; (5) nenhuma conversation falsa associada — confirmado;
+  (6) UI morta de conversa tratada sem apagar infra — confirmado,
+  helpers intactos; (7)-(9) filtros Todos/Com/Sem contrato funcionam —
+  confirmado via QA visual (Web) e leitura (App); (10) Web + App —
+  confirmado, paridade do filtro; (11) `contract_url` como fonte real
+  — confirmado, único campo usado; (12) geração/anexo preservados —
+  confirmado, `pro-contract-section.tsx`/`contract-section.tsx`
+  intocados; (13) nenhum `contract_type` inventado — confirmado; (14)
+  Booker intocado — confirmado, `legacy-booking-detail-view.tsx`/
+  `legacy-shell.tsx`/`dashboard-footer.tsx` não tocados; (15)
+  runtime/pipeline intocados — confirmado, nenhum arquivo de
+  `src/lib/runtime/**` tocado; (16) P0 atualizado — confirmado, seção
+  acima; (17) Busca Global futura registrada — confirmado; (18)
+  Contrato padrão Doopla futuro registrado — confirmado; (19) Contrato
+  externo futuro registrado — confirmado; (20) typecheck/lint/build —
+  limpos; (21) concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Financeiro, Ajuda e suporte, Onboarding, Decisões, Home
+(`_home/**`, `professional-home-view.tsx`), Booker (Booking Detail,
+Contratos, financeiro e infraestrutura, `legacy-shell.tsx`,
+`dashboard-footer.tsx`), arquitetura da Comunidade, matching, Perfil
+público legado, runtime/pipeline/Planner/Policy Gate/Approval
+Engine/`outbound_intents`/`requires_professional_review` (só
+documentados, nenhuma linha tocada).
 
 
 ## Como usar isso

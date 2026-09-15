@@ -19,6 +19,14 @@ import { WORK_CHANNEL_LABEL, type WorkAttention, type WorkChannel, type WorkItem
 // temporal já vem pronta de `buildWorkItems` (work-items.ts); este
 // componente só busca/filtra em cima da ordem recebida, nunca reordena
 // por conta própria.
+//
+// Filtro de Contrato (auditoria de Booking Detail/Contratos,
+// 15/09/2026) — Todos/Com contrato/Sem contrato, baseado só em
+// WorkItem.hasContract (bookings.contract_url real). Contratos não
+// ganharam área própria no sidebar — continuam pertencendo ao Booking,
+// e este filtro é como o profissional escala isso: procurar o
+// trabalho, não abrir uma biblioteca separada. Nunca distingue Padrão
+// Doopla × Externo (contract_type não existe no backend hoje).
 const STATUS_OPTIONS: { value: WorkAttention; label: string }[] = [
   { value: 'precisa_de_voce', label: 'Precisa de você' },
   { value: 'em_andamento', label: 'Em negociação' },
@@ -37,6 +45,11 @@ const CHANNEL_OPTIONS: { value: WorkChannel; label: string }[] = [
 ];
 
 type Period = 'todos' | 'proximos' | 'este_mes' | 'personalizado';
+// Filtro de Contrato (auditoria de Booking Detail/Contratos,
+// 15/09/2026) — só reflete WorkItem.hasContract (bookings.contract_url
+// real), nunca um contract_type/distinção Padrão Doopla × Externo
+// (o backend não tem essa distinção confiável hoje).
+type ContractFilter = 'todos' | 'com' | 'sem';
 
 type AppliedFilters = {
   status: WorkAttention[] | null;
@@ -44,10 +57,11 @@ type AppliedFilters = {
   period: Period;
   customFrom: string | null;
   customTo: string | null;
+  contract: ContractFilter;
 };
 
 const DEFAULT_VIEW_STATUS: WorkAttention[] = ['precisa_de_voce', 'em_andamento', 'confirmado'];
-const NO_FILTERS: AppliedFilters = { status: null, channel: null, period: 'todos', customFrom: null, customTo: null };
+const NO_FILTERS: AppliedFilters = { status: null, channel: null, period: 'todos', customFrom: null, customTo: null, contract: 'todos' };
 
 function isTodayOrAfter(dateStr: string): boolean {
   const today = new Date();
@@ -74,11 +88,18 @@ function matchesPeriod(item: WorkItem, filters: AppliedFilters): boolean {
   return true;
 }
 
+function matchesContract(item: WorkItem, filters: AppliedFilters): boolean {
+  if (filters.contract === 'todos') return true;
+  if (filters.contract === 'com') return item.hasContract;
+  return !item.hasContract;
+}
+
 function activeFilterCount(filters: AppliedFilters): number {
   let n = 0;
   if (filters.status) n += filters.status.length;
   if (filters.channel) n += filters.channel.length;
   if (filters.period !== 'todos') n += 1;
+  if (filters.contract !== 'todos') n += 1;
   return n;
 }
 
@@ -118,6 +139,7 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
       if (!statusSet.has(item.attention)) return false;
       if (channelSet && !channelSet.has(item.channel)) return false;
       if (!matchesPeriod(item, applied)) return false;
+      if (!matchesContract(item, applied)) return false;
       if (!normalizedTerm) return true;
       const text = normalize(`${item.clientName} ${item.summary} ${item.location ?? ''}`);
       return text.includes(normalizedTerm);
@@ -257,6 +279,30 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
                       />
                     </div>
                   )}
+                </div>
+
+                <div>
+                  <p className="font-doopla-mono text-[10.5px] uppercase tracking-[.06em] text-[var(--pro-tx-50)]">Contrato</p>
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    {(
+                      [
+                        { value: 'todos', label: 'Todos' },
+                        { value: 'com', label: 'Com contrato' },
+                        { value: 'sem', label: 'Sem contrato' },
+                      ] as { value: ContractFilter; label: string }[]
+                    ).map((opt) => (
+                      <label key={opt.value} className="flex items-center gap-2 text-[13px] text-[var(--pro-off)]">
+                        <input
+                          type="radio"
+                          name="contrato"
+                          checked={draft.contract === opt.value}
+                          onChange={() => setDraft((d) => ({ ...d, contract: opt.value }))}
+                          className="h-4 w-4 border-[var(--pro-line)]"
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-3 border-t border-[var(--pro-line)] pt-3">
