@@ -225,7 +225,11 @@
   #home-marketing .mascot-hero{ width:150px; height:126px; position:absolute; right:-6px; bottom:6%; z-index:3; }
   #home-marketing .mascot-hero .mascot-eye{ width:30px; height:30px; }
   #home-marketing .mascot-hero .mascot-pupil{ width:13px; height:13px; }
-  #home-marketing .mascot-hero .mascot-smile{ width:26px; height:14px; top:64%; left:50%; transform:translateX(-50%); }
+  /* Ajuste pontual pós-integração (16/09/2026): mesma boca já existente,
+     só mais visível/simpática — contraste maior, sem mudar largura,
+     altura, posição ou proporção do rosto. Escopo só .mascot-hero,
+     .mascot-cta preservado exatamente como estava. */
+  #home-marketing .mascot-hero .mascot-smile{ width:30px; height:11px; top:65%; left:50%; transform:translateX(-50%); border-bottom-width:3.5px; border-bottom-color:rgba(0,0,0,.62); }
   #home-marketing .mascot-hero::before,
   #home-marketing .mascot-hero::after{ width:34px; height:20px; bottom:-8%; }
   #home-marketing .mascot-hero::before{ left:-8px; }
@@ -301,6 +305,17 @@
   #home-marketing .job-card-details li{ padding-left:16px; position:relative; }
   #home-marketing .job-card-details li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
   #home-marketing .job-card-cta{ align-self:flex-start; padding:10px 20px; font-size:.78rem; }
+
+  /* Ajustes pontuais pós-integração (16/09/2026) — demonstração "Novos
+     trabalhos" refeita pra deixar explícito que é uma conversa de
+     WhatsApp e que cliente↔Doopla / Doopla↔profissional são duas
+     partes do MESMO fluxo. Reaproveita .bubble/.job-card já existentes
+     — só 3 seletores novos, nenhum componente do zero. */
+  #home-marketing .job-demo-channel{ display:flex; align-items:center; gap:6px; font-size:.68rem; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:var(--tx-50); }
+  #home-marketing .job-demo-channel svg{ flex-shrink:0; }
+  #home-marketing .job-demo-messages{ display:flex; flex-direction:column; gap:8px; }
+  #home-marketing .job-demo-arrow{ display:flex; flex-direction:column; align-items:center; gap:4px; color:var(--tx-50); align-self:center; }
+  #home-marketing .job-demo-arrow span{ font-size:.72rem; text-align:center; }
 
   /* sempre com você (WhatsApp) — fundo vermelho sólido, olhos grandes
      reaproveitados à direita */
