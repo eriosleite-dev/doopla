@@ -13762,7 +13762,7 @@ aguardando decisão da fundadora sobre quando reconciliar com o HEAD
 canônico mais atual (não necessariamente `41cae54` — vai depender do
 que a linha Professional tiver avançado até lá).
 
-## 108. Item 7 (seção final + footer) reaberto e corrigido — `[PENDING — aguardando QA visual]` — 15/09/2026
+## 108. Item 7 (seção final + footer) reaberto e corrigido — `[DELIVERED — aprovado pela fundadora]` — 15/09/2026
 
 Correção do §107: a fundadora olhou o render e apontou 2 problemas
 reais que a avaliação anterior não pegou:
@@ -13792,9 +13792,21 @@ regras acima). FAQ (item 6) não foi alterado de novo.
 **Validado**: `tsc --noEmit` limpo; lint sem novos erros em
 `src/app/_home/`.
 
-**Status**: commitado neste branch (mesmo padrão do item 6: commit logo
-após implementar, fechamento definitivo só depois do QA visual da
-fundadora). Pacote Home segue **NÃO fechado 7/7** até essa aprovação.
+**Status**: aprovado pela fundadora após o render de correção. Item 7
+`DELIVERED`. **Pacote Home fechado 7/7.**
+
+Fetch de concorrência refeito no fechamento: `categoria-b-supabase-env-qsbdq9`
+avançou de `c2fcda2` (nossa base) até `ecb713d` (docs), zero commits
+tocando `src/app/_home/**` ou `src/app/page.tsx` nesse intervalo. Os
+outros 4 branches remotos seguem nos mesmos commits da auditoria
+original. Nenhuma sessão foi sobrescrita.
+
+Branch `claude/home-pacote-7-ajustes-ui-4tq8lz`, HEAD `fa3f409`, working
+tree limpo. Nada integrado à linha canônica — sem push, sem merge/
+rebase/cherry-pick. Aguardando decisão da fundadora sobre quando
+reconciliar com o HEAD canônico mais atual (não necessariamente
+`ecb713d` — vai depender do que a linha Professional tiver avançado
+até lá).
 
 ## Como usar isso
 
