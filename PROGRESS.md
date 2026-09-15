@@ -13705,7 +13705,13 @@ devem ser adicionados aqui, nunca substituir esta lista.
 |---|---|---|---|---|
 | 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
 
-## 107. Sessão paralela (Home) — pacote de 7 ajustes pontuais de UI fechado — `[DELIVERED, aguardando integração]` — 15/09/2026
+## 107. Sessão paralela (Home) — pacote de 7 ajustes pontuais de UI fechado — `[CORRIGIDO — item 7 reaberto, ver §108]` — 15/09/2026
+
+**Correção (ver §108 abaixo):** a fundadora reabriu o item 7 depois
+deste bloco ser escrito — a avaliação "já estava correto" abaixo foi
+insuficiente. Pacote **não é mais 7/7** até o item 7 ser reaprovado.
+Mantendo o resto deste bloco como registro histórico do que foi feito
+e avaliado nesta rodada, sem reescrever.
 
 Continuação do §106. Fundadora confirmou que esta terceira sessão É a
 sessão da Home (não uma quarta sessão distinta) e que o pacote correto
@@ -13726,7 +13732,7 @@ resposta desta sessão pra tabela completa item a item.
 | 4 | Idle wander das pupilas | Um deslocamento sorteado por PAR de olhos (não por pupila) em `initMascotEyes`/`startIdleWander` — verificado em runtime, pupilas do mesmo par sempre com o mesmo transform depois de ~1.5s parado. Cursor tracking e os olhos grandes de "Sempre com você" (`legacyEyesCol*`) preservados sem nenhuma alteração |
 | 5 | CTAs Básico/Pro | `.plan-cta{margin-top:8px}` → `margin-top:auto`; diferença de alinhamento caiu de ~27px pra ~2px |
 | 6 | Largura do FAQ | Duas rodadas: 760px→920px (rejeitado pela fundadora, "ainda estreito") → **760px→1180px**, igualando exatamente `.two-col`/`.plans`/`.with-you` (não um número novo, o valor que a Home já usava). Confirmado por medição em 1440px e 1024px: `.faq .narrow` sempre com a mesma largura de `.plans` nas duas resoluções |
-| 7 | Seção final + footer | Avaliado visualmente (desktop + mobile) depois dos outros 6 prontos — card já horizontal (mascote/texto/CTA em uma linha no desktop), padding do wrap (88/100px desktop, 54/64px mobile) consistente com o ritmo do resto das seções (176px/108px). **Nenhuma alteração feita** — já estava correto |
+| 7 | Seção final + footer | ~~Avaliado visualmente, nenhuma alteração feita~~ — **REABERTO pela fundadora, ver §108: card estreito demais e footer longe demais do card, avaliação abaixo estava errada** |
 
 **Arquivos alterados** (só estes 4, nada fora de `src/app/_home/`):
 `home.css`, `home.html`, `home.js`, `site-chrome.css`.
@@ -13755,6 +13761,40 @@ cherry-pick — tudo segue isolado em `claude/home-pacote-7-ajustes-ui-4tq8lz`,
 aguardando decisão da fundadora sobre quando reconciliar com o HEAD
 canônico mais atual (não necessariamente `41cae54` — vai depender do
 que a linha Professional tiver avançado até lá).
+
+## 108. Item 7 (seção final + footer) reaberto e corrigido — `[PENDING — aguardando QA visual]` — 15/09/2026
+
+Correção do §107: a fundadora olhou o render e apontou 2 problemas
+reais que a avaliação anterior não pegou:
+
+1. **Card estreito**: `.cta-final{max-width:1080px}` era o único
+   container mais estreito que o padrão da Home (`.two-col`/`.plans`/
+   `.with-you`/`.faq .narrow`, todos 1180px) — sobrava margem lateral
+   visível comparado às outras seções. Corrigido pra `max-width:1180px`
+   (mesmo valor, não um número novo). Confirmado por medição:
+   `.cta-final` agora nos mesmos `x` que `.plans` em 1440px e mobile.
+2. **Footer longe do card**: `.cta-final-wrap{padding:88px 44px 100px}`
+   deixava 100px de padding + 48px do padding-top do próprio `footer`
+   = 148px de vazio entre o fim do card e o início do conteúdo do
+   footer. Reduzido só o padding INFERIOR do wrap (88px no topo
+   intocado): desktop 100px→48px (gap final: 96px), mobile 64px→32px
+   (gap final: 80px) — mais compacto sem colar.
+
+Preservado sem nenhuma mudança: mascote, textos, CTA, glow, grid
+`auto 1fr auto` (estrutura horizontal desktop), estrutura mobile
+(`grid-template-columns:1fr`), conteúdo do footer, e os itens 1-6
+(nenhum arquivo além de `home.css` tocado nesta rodada, e só as 2
+regras acima). FAQ (item 6) não foi alterado de novo.
+
+**Arquivo alterado**: só `home.css` (2 regras: `.cta-final-wrap`,
+`.cta-final`, mais o override mobile de `.cta-final-wrap`).
+
+**Validado**: `tsc --noEmit` limpo; lint sem novos erros em
+`src/app/_home/`.
+
+**Status**: commitado neste branch (mesmo padrão do item 6: commit logo
+após implementar, fechamento definitivo só depois do QA visual da
+fundadora). Pacote Home segue **NÃO fechado 7/7** até essa aprovação.
 
 ## Como usar isso
 

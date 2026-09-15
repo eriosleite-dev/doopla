@@ -324,9 +324,15 @@
   #home-marketing .btn-ghost{ background:transparent; color:var(--off); border:1px solid var(--line-strong); }
 
   /* ===== CTA FINAL ===== */
-  #home-marketing .cta-final-wrap{ padding:88px 44px 100px; }
+  /* padding inferior reduzido (era 100px): sobrava vazio excessivo antes
+     do footer (footer já tem 48px de padding-top próprio, então 48+48
+     dá uma transição compacta sem colar) — achado real, não estético. */
+  #home-marketing .cta-final-wrap{ padding:88px 44px 48px; }
+  /* max-width igual a .two-col/.plans/.with-you/.faq .narrow — mesmo
+     grid principal da Home, não um número novo. Estava em 1080px,
+     sobrando margem lateral visível comparado às outras seções. */
   #home-marketing .cta-final{
-    max-width:1080px; margin:0 auto; border-radius:22px; background:linear-gradient(120deg,var(--panel-solid),var(--bg));
+    max-width:1180px; margin:0 auto; border-radius:22px; background:linear-gradient(120deg,var(--panel-solid),var(--bg));
     border:1px solid var(--line); display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:40px;
     padding:44px 48px; position:relative; overflow:hidden;
   }
@@ -386,7 +392,7 @@
     #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px 10px; }
     #home-marketing .prof-item{ align-items:center; text-align:center; }
     #home-marketing section.block{ padding:54px 22px; }
-    #home-marketing .cta-final-wrap{ padding:54px 22px 64px; }
+    #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
     #home-marketing .with-you-visual{ padding-top:8px; }
     #home-marketing .steps{ grid-template-columns:1fr 1fr; gap:26px 20px; }
     #home-marketing .step{ padding:0 4px; }
