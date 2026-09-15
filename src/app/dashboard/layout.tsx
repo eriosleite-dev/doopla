@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
+import { deriveConversationState } from '@/lib/conversations/state';
 import { siteOrigin } from '@/lib/site-url';
 import type { Profile } from '@/lib/supabase/types';
 
@@ -12,31 +13,28 @@ import { ProModalProvider } from './booker-pro/pro-modal-context';
 import { getAttentionItems, getReferralSummary, getSubscription, getUserBookings } from './data';
 import { LegacyDashboardShell } from './legacy-shell';
 import { NotificationsProvider } from './notifications-context';
-import { getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
+import { getCachedConversationOperationalFacts, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProfessionalShell } from './pro-shell';
 import { ReferralModal } from './referral-modal';
 import { ReferralModalProvider } from './referral-modal-context';
 import { getSessionProfile } from './session';
 
-// Contagem de pedidos recebidos pelo link ainda em aberto — somada ao
+// Contagem de pedidos que REALMENTE precisam de você agora — somada ao
 // badge de Bookings desde a reestruturação Bookings unificado
 // (15/09/2026, achado da fundadora): "Pedidos" não é mais um item de
-// navegação próprio, então este número deixou de ser um badge
-// separado (era o FAIL BLOCKER original de 14/09/2026) e passou a
-// compor o mesmo badge de "Bookings" (ver ProfessionalShellGate
-// abaixo). Mesma tabela/filtro de sempre (getMyOpportunities/
-// professional-home-view.tsx), só como contagem leve.
-async function getPedidosAbertosCount(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
-): Promise<number> {
-  const { count } = await supabase
-    .from('opportunities')
-    .select('id', { count: 'exact', head: true })
-    .eq('artist_profile_id', userId)
-    .eq('source', 'artist_link')
-    .eq('status', 'aberta');
-  return count ?? 0;
+// navegação próprio, então este número compõe o mesmo badge de
+// "Bookings" (ver ProfessionalShellGate abaixo).
+//
+// Correção 15/09/2026, 2ª rodada (achado da fundadora): antes contava
+// todo pedido `status='aberta'` — errado, "precisa de você" nunca pode
+// vir de onde o trabalho veio. Agora conta só pedidos cuja conversation
+// vinculada está em estado `needs_you` de verdade (mesma fonte do
+// detalhe do pedido e da lista de Bookings — doopla-intervention.ts).
+// Sem conversation ainda (o caso comum hoje), um pedido nunca entra
+// aqui.
+async function getPedidosNeedingYouCount(supabase: AnySupabaseClient): Promise<number> {
+  const facts = await getCachedConversationOperationalFacts(supabase);
+  return facts.filter((f) => f.relatedOpportunityId != null && deriveConversationState(f) === 'needs_you').length;
 }
 
 async function getOpportunitiesBadgeCount(
@@ -109,7 +107,6 @@ export default async function DashboardLayout({
         {profile.role !== 'booker' ? (
           <ProfessionalShellGate
             supabase={supabase}
-            userId={user.id}
             fullName={profile.full_name}
             email={user.email ?? ''}
             avatarUrl={profile.avatar_url}
@@ -149,7 +146,6 @@ export default async function DashboardLayout({
 
 async function ProfessionalShellGate({
   supabase,
-  userId,
   fullName,
   email,
   avatarUrl,
@@ -157,17 +153,16 @@ async function ProfessionalShellGate({
   children,
 }: {
   supabase: AnySupabaseClient;
-  userId: string;
   fullName: string;
   email: string;
   avatarUrl: string | null;
   referralEligible: boolean;
   children: React.ReactNode;
 }) {
-  const [homeFacts, conversationSummary, pedidosAbertosCount] = await Promise.all([
+  const [homeFacts, conversationSummary, pedidosNeedingYouCount] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
     getCachedConversationStateSummary(supabase),
-    getPedidosAbertosCount(supabase, userId),
+    getPedidosNeedingYouCount(supabase),
   ]);
   return (
     // NotificationsProvider aqui (não em DashboardLayout) — Booker não
@@ -183,7 +178,7 @@ async function ProfessionalShellGate({
         email={email}
         avatarUrl={avatarUrl}
         hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
-        bookingsAwaitingCount={(homeFacts?.bookingsAwaitingResponseCount ?? 0) + pedidosAbertosCount}
+        bookingsAwaitingCount={(homeFacts?.bookingsAwaitingResponseCount ?? 0) + pedidosNeedingYouCount}
         decisionsCount={conversationSummary.needsYouCount}
         referralEligible={referralEligible}
       >

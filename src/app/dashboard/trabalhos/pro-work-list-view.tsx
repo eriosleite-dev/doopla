@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { formatCentsAsBRL } from '@/lib/format';
 
-import { proGhostButtonClass, proPrimaryButtonClass, proStatusPillClass } from '../pro-format';
+import { capitalizeFirstLetter, capitalizeName, proGhostButtonClass, proPrimaryButtonClass, proStatusPillClass } from '../pro-format';
 import { ProEmptyState } from '../pro-ui';
 import { WORK_CHANNEL_LABEL, type WorkAttention, type WorkChannel, type WorkItem } from '../work-items';
 
@@ -157,7 +157,7 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
             value={term}
             onChange={(e) => setTerm(e.target.value)}
             placeholder="Buscar cliente, trabalho, local..."
-            className="w-full bg-transparent text-[13px] text-[var(--pro-off)] outline-none placeholder:text-[var(--pro-tx-30)]"
+            className="w-full bg-transparent text-[13px] text-[var(--pro-off)] outline-none placeholder:text-[var(--pro-tx-50)]"
           />
         </div>
 
@@ -300,14 +300,15 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13.5px] font-bold text-[var(--pro-off)]">
-                  {item.summary} <span className="font-normal text-[var(--pro-tx-50)]">· {item.clientName}</span>
+                  {capitalizeFirstLetter(item.summary)}{' '}
+                  <span className="font-normal text-[var(--pro-off)]">· {capitalizeName(item.clientName)}</span>
                 </p>
-                <p className="font-doopla-mono mt-1 text-[10.5px] text-[var(--pro-tx-30)]">
+                <p className="font-doopla-mono mt-1 text-[10.5px] text-[var(--pro-tx-70)]">
                   {item.eventDate ? formatEventDate(item.eventDate) : 'Data a combinar'}
-                  {item.location ? ` · ${item.location}` : ''}
+                  {item.location ? ` · ${capitalizeName(item.location)}` : ''}
                   {item.valueCents != null ? ` · ${formatCentsAsBRL(item.valueCents)}` : ''}
                 </p>
-                <p className="mt-1 text-[10.5px] text-[var(--pro-tx-30)]">{WORK_CHANNEL_LABEL[item.channel]}</p>
+                <p className="mt-1 text-[10.5px] text-[var(--pro-tx-50)]">{WORK_CHANNEL_LABEL[item.channel]}</p>
               </div>
               <span className={`flex-none ${proStatusPillClass(item.statusTone)}`}>{item.statusLabel}</span>
             </Link>

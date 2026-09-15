@@ -19,6 +19,17 @@ export function capitalizeName(name: string): string {
     .join(' ');
 }
 
+// Passe de legibilidade da lista de Bookings (15/09/2026, achado da
+// fundadora) — só maiúscula a PRIMEIRA letra da string, nunca
+// palavra-a-palavra: usado em texto livre de frase (descrição/resumo
+// do trabalho, ex. "casamento, 20 pessoas..." -> "Casamento, 20
+// pessoas..."), nunca em nome próprio/cidade (capitalizeName acima é o
+// certo pra isso). Nunca altera o valor armazenado, só a apresentação.
+export function capitalizeFirstLetter(text: string): string {
+  if (!text) return text;
+  return text.charAt(0).toLocaleUpperCase('pt-BR') + text.slice(1);
+}
+
 export function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60000);

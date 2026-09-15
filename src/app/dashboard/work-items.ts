@@ -1,9 +1,11 @@
 import type { Opportunity } from '@/lib/supabase/types';
-import type { ConversationOperationalFacts } from '@/lib/conversations/data';
+import { latestConversationByRelatedId, type ConversationOperationalFacts } from '@/lib/conversations/data';
+import { groupDecisionsByConversation, type DecisionItem } from '@/lib/decisions/data';
 
 import { classifyBookingAttention, wasBookingProposedByViewer } from './booking-attention';
 import type { BookingWithOtherParty } from './data';
-import { classifyPedidoAttention, PEDIDO_STATUS_LABEL, pedidoStatusTone } from './pedido-attention';
+import { resolveDooplaIntervention } from './doopla-intervention';
+import { PEDIDO_STATUS_LABEL, pedidoStatusTone } from './pedido-attention';
 import { bookingStatusTone, type ProPillTone } from './pro-format';
 import { STATUS_LABELS } from './ui';
 
@@ -24,18 +26,20 @@ import { STATUS_LABELS } from './ui';
 //
 // Auditoria (15/09/2026): hoje só bookings têm chance real de ter uma
 // conversation vinculada (`related_booking_id`) — pedidos recebidos
-// pelo link (`source='artist_link'`) NASCEM sem conversation, porque
-// `submit_orcamento_request` (migration 0023, RPC pública/anônima) não
-// pode chamar `create_conversation()` sem um caminho de sistema
-// (service_role/`is_system_caller()`, adicionado em 0062 só pro
-// webhook de WhatsApp) — chamar direto do formulário público falharia
-// com `not_authorized`, e duplicar a lógica de `create_conversation`
-// aqui seria exatamente o "sistema paralelo" que não queremos. Por
-// isso o canal de um pedido vem sempre do próprio
-// `opportunities.source` ('Link de booking'), nunca de uma conversa —
-// e a integração completa (pedido do link nascendo com conversa, igual
-// já acontece no WhatsApp) fica registrada como pendência em
-// PROGRESS.md, não implementada nesta correção.
+// pelo link (`source='artist_link'`) em geral NASCEM sem conversation
+// (gap de integração de `submit_orcamento_request`, sendo fechado à
+// parte — ver PROGRESS.md). Por isso o canal de um pedido vem sempre
+// do próprio `opportunities.source` ('Link de booking'), nunca de uma
+// conversa.
+//
+// Correção 15/09/2026, 2ª rodada (achado da fundadora): "precisa de
+// você" de um pedido NUNCA é inferido de `status === 'aberta'` — só do
+// estado operacional real da conversation/decision vinculada
+// (resolveDooplaIntervention, doopla-intervention.ts), a MESMA fonte
+// usada pelo detalhe do pedido, pela Home e pelo badge de Bookings.
+// Sem conversation ainda (o caso comum hoje), o pedido nunca aparece
+// como "precisa de você" — fica em "em andamento" com label "Recebido"
+// (honesto: a Doopla ainda não chegou a um ponto de decisão).
 export type WorkAttention = 'precisa_de_voce' | 'em_andamento' | 'confirmado' | 'concluido' | 'cancelado';
 export type WorkChannel = 'whatsapp' | 'public_link' | 'email' | 'painel' | 'outro';
 
@@ -70,16 +74,6 @@ const ATTENTION_ORDER: Record<WorkAttention, number> = {
   concluido: 3,
   cancelado: 3,
 };
-
-function latestConversationByBooking(facts: ConversationOperationalFacts[]): Map<string, ConversationOperationalFacts> {
-  const byBooking = new Map<string, ConversationOperationalFacts>();
-  for (const fact of facts) {
-    if (!fact.relatedBookingId) continue;
-    const existing = byBooking.get(fact.relatedBookingId);
-    if (!existing || fact.lastActivityAt > existing.lastActivityAt) byBooking.set(fact.relatedBookingId, fact);
-  }
-  return byBooking;
-}
 
 function asWorkChannel(raw: string | undefined): WorkChannel {
   if (raw === 'whatsapp' || raw === 'public_link' || raw === 'email' || raw === 'painel' || raw === 'outro') return raw;
@@ -139,24 +133,37 @@ function bookingWorkItem(
   };
 }
 
-function pedidoWorkItem(o: Opportunity): WorkItem {
-  const pedidoAttention = classifyPedidoAttention(o);
-  const attention: WorkAttention =
-    pedidoAttention === 'precisa_de_voce' ? 'precisa_de_voce' : pedidoAttention === 'em_andamento' ? 'em_andamento' : o.status === 'cancelada' ? 'cancelado' : 'concluido';
+function pedidoWorkItem(o: Opportunity, conversation: ConversationOperationalFacts | null, decision: DecisionItem | null): WorkItem {
+  const clientName = o.client_name || 'Cliente sem nome';
+  const isTerminal = o.status === 'cancelada' || o.status === 'booker_selecionado';
+
+  let attention: WorkAttention;
+  let statusLabel: string;
+  let statusTone: ProPillTone;
+  if (isTerminal) {
+    attention = o.status === 'cancelada' ? 'cancelado' : 'concluido';
+    statusLabel = PEDIDO_STATUS_LABEL[o.status] ?? o.status;
+    statusTone = pedidoStatusTone(o);
+  } else {
+    const intervention = resolveDooplaIntervention(conversation, decision, clientName);
+    attention = intervention.needsYou ? 'precisa_de_voce' : 'em_andamento';
+    statusLabel = intervention.headline;
+    statusTone = intervention.tone;
+  }
 
   return {
     id: o.id,
     kind: 'pedido',
     href: `/dashboard/oportunidades/${o.id}`,
-    clientName: o.client_name || 'Cliente sem nome',
+    clientName,
     summary: o.description,
     eventDate: o.event_date,
     location: o.location,
     valueCents: o.client_offered_cents,
     channel: 'public_link',
     attention,
-    statusLabel: PEDIDO_STATUS_LABEL[o.status] ?? o.status,
-    statusTone: pedidoStatusTone(o),
+    statusLabel,
+    statusTone,
     sortDate: o.created_at,
   };
 }
@@ -166,13 +173,22 @@ export function buildWorkItems(params: {
   pedidos: Opportunity[];
   userId: string;
   conversationFacts: ConversationOperationalFacts[];
+  decisions?: DecisionItem[];
   pendingReviewBookingIds?: string[];
 }): WorkItem[] {
-  const channelByBooking = latestConversationByBooking(params.conversationFacts);
+  const channelByBooking = latestConversationByRelatedId(params.conversationFacts, 'relatedBookingId');
+  const conversationByOpportunity = latestConversationByRelatedId(params.conversationFacts, 'relatedOpportunityId');
+  const decisionByConversationId = new Map(
+    groupDecisionsByConversation(params.decisions ?? []).map((d) => [d.conversationId, d])
+  );
   const pendingReviewSet = new Set(params.pendingReviewBookingIds ?? []);
   const items = [
     ...params.bookings.map((b) => bookingWorkItem(b, params.userId, channelByBooking, pendingReviewSet.has(b.id))),
-    ...params.pedidos.map(pedidoWorkItem),
+    ...params.pedidos.map((o) => {
+      const conversation = conversationByOpportunity.get(o.id) ?? null;
+      const decision = conversation ? (decisionByConversationId.get(conversation.conversationId) ?? null) : null;
+      return pedidoWorkItem(o, conversation, decision);
+    }),
   ];
 
   // Ordenação: urgência primeiro (precisa de você > em andamento >

@@ -111,6 +111,28 @@ export async function listConversationOperationalFacts(supabase: AnySupabaseClie
   return (data as RawOperationalFactsRow[]).map(mapOperationalFactsRow);
 }
 
+// Fatos operacionais da conversa ligada a UM pedido (opportunity)
+// específico — usado pelo detalhe de Pedido e por buildWorkItems
+// (work-items.ts) pra derivar "precisa de você" real, nunca a partir
+// de opportunities.status sozinho (correção 15/09/2026, achado da
+// fundadora). Mais recente quando houver mais de uma; null quando o
+// pedido ainda não tem conversation nenhuma (hoje o caso comum — ver
+// PROGRESS.md, gap de submit_orcamento_request/create_conversation).
+export async function getConversationOperationalFactsForOpportunity(
+  supabase: AnySupabaseClient,
+  opportunityId: string
+): Promise<ConversationOperationalFacts | null> {
+  const { data } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('related_opportunity_id', opportunityId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+  if (!data) return null;
+  return getConversationOperationalFacts(supabase, data.id);
+}
+
 // Resolve qual conversation corresponde ao "Ver conversa" de um
 // booking específico — mais recente quando houver mais de uma (nunca
 // deveria, mas nunca assume unicidade só por convenção).
@@ -124,6 +146,25 @@ export async function getConversationIdForBooking(supabase: AnySupabaseClient, b
     .limit(1)
     .maybeSingle();
   return (data as { id: string } | null)?.id ?? null;
+}
+
+// Mapeia a conversation mais recente por `related_booking_id` OU
+// `related_opportunity_id` — uma passada só, reaproveitada por
+// buildWorkItems (work-items.ts) e pela Home (professional-home-view.tsx)
+// pra nunca duplicar essa lógica de "mais recente por id relacionado"
+// (correção 15/09/2026, unificação de "precisa de você").
+export function latestConversationByRelatedId(
+  facts: ConversationOperationalFacts[],
+  key: 'relatedBookingId' | 'relatedOpportunityId'
+): Map<string, ConversationOperationalFacts> {
+  const byId = new Map<string, ConversationOperationalFacts>();
+  for (const fact of facts) {
+    const relatedId = fact[key];
+    if (!relatedId) continue;
+    const existing = byId.get(relatedId);
+    if (!existing || fact.lastActivityAt > existing.lastActivityAt) byId.set(relatedId, fact);
+  }
+  return byId;
 }
 
 // Bookings (revisão Professional Web Dashboard, 06/09/2026) — "Ver

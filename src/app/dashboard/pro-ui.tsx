@@ -110,7 +110,12 @@ export function ProPageHeader({
           <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">{title}</h1>
           {badge}
         </div>
-        {subtitle && <p className="mt-1.5 max-w-[440px] text-[13.5px] text-[var(--pro-tx-50)]">{subtitle}</p>}
+        {/* Passe de legibilidade (15/09/2026, achado da fundadora em
+            Bookings) — tx-50 -> tx-70: componente compartilhado por
+            toda rota nova (Bookings/Agenda/Minha equipe/...), então o
+            ganho de contraste vale pra todas ao mesmo tempo, nunca uma
+            piora em nenhuma (só sobe contraste, nunca desce). */}
+        {subtitle && <p className="mt-1.5 max-w-[440px] text-[13.5px] text-[var(--pro-tx-70)]">{subtitle}</p>}
       </div>
       {action}
     </div>

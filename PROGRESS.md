@@ -1480,6 +1480,40 @@ mim; QA manual continua sendo conduzido pela fundadora contra
   direto com o cliente). Registrado como gap real, não implementado
   (seria nova lógica de mutação, fora do escopo desta correção de UX).
 
+## Correção de resíduos do detalhe de Pedido + "Precisa de você" unificado — `[DELIVERED — Web]` — 15/09/2026
+
+Achados da fundadora no reteste do detalhe de Pedido/Bookings, corrigidos antes de fechar o bloco:
+
+**Resíduos pontuais do detalhe (`/dashboard/oportunidades/[id]/page.tsx`)**:
+1. "O trabalho" (uppercase via CSS virava "O TRABALHO", lido como "0 TRABALHO" no mono) → texto fonte agora só "Trabalho".
+2. "Categoria" só renderiza quando `opportunity.category` existe de verdade (nunca populada por `submit_orcamento_request` hoje) — grid base virou `Data | Local | Valor sugerido`, Categoria só aparece se houver dado real.
+3. Subtitle "Pedido recebido pelo seu link de booking/orçamento" → "Recebido pelo seu link de booking".
+
+**Correção estrutural — "Precisa de você" nunca mais inferido da origem** (achado maior, expandiu o escopo do reteste): o card "Precisa de você agora?" dizia "Sim — responda [cliente] pra negociar e fechar... você conduz a negociação usando o contato acima" pra TODO pedido `status='aberta'`, e o badge do topo dizia "Aguardando você" pela mesma razão — nos dois casos, inferido de `source === 'public_link'`, nunca de um sinal real. Isso contradiz o modelo atual (a Doopla conduz o booking; só chama o profissional quando precisa de uma decisão real).
+
+Corrigido com uma fonte de verdade nova e única, `resolveDooplaIntervention` (`src/app/dashboard/doopla-intervention.ts`), que deriva "precisa de você" exclusivamente do estado operacional real da conversation (`needs_you`/`waiting_client`/`in_progress`/`closed`, `conversations/state.ts` — o mesmo que já alimenta Home/Decisões) + a decisão concreta pendente (`runtime_pending_replies`/`outbound_intents`/`policy_gate_decisions`, `decisions/data.ts`), nunca do texto genérico "responda o cliente":
+- `needs_you` real → `PRECISA DE VOCÊ` + motivo concreto: cita o rascunho já preparado (`prepared_draft`, dado real e citável) quando existe, ou mapeia a CATEGORIA real do compromisso bloqueado (`ProfessionalDecisionCategory` — enum fechado do Policy Gate, ex. `discount`/`price_or_cache`/`date_change`) pra uma frase curta específica (nunca o valor extraído — `extractedValueForDebug` é explicitamente debug-only no código, não é dado de produto). Sem categoria reconhecível, cai no fallback neutro: "Confirme os detalhes deste booking com sua Doopla para ela continuar." CTA só aparece aqui: **"Falar com minha Doopla no WhatsApp"**, reaproveitando `buildTalkToYourDooplaUrl` (já usado na Home) — nenhum mecanismo paralelo novo.
+- Sem `needs_you` (`waiting_client`/`in_progress`) → **"Sua Doopla está cuidando"** / "A negociação está em andamento. Você não precisa fazer nada agora." (ou "Aguardando cliente" quando a Doopla já respondeu e espera o cliente).
+- Sem conversation nenhuma ainda (o caso comum hoje, pré-integração do Item 1) → **"Recebido"**, honesto: "Ainda não há uma decisão pendente — sua Doopla vai iniciar a condução deste trabalho." Nunca mais "Aguardando você" fabricado.
+- Estados terminais do pedido (`cancelada`/`booker_selecionado`) continuam vindo do próprio `opportunities.status`, sem envolver conversation.
+
+**Mesma fonte de verdade propagada pras 3 outras superfícies que a fundadora apontou**, nenhuma reimplementação divergente:
+- **Lista de Bookings** (`work-items.ts`, `pedidoWorkItem`) — parou de usar `classifyPedidoAttention`/`status==='aberta'` (removido, era a mesma inferência errada); agora chama `resolveDooplaIntervention` por pedido, casando a conversation pelo `related_opportunity_id` mais recente (mesmo `conversationFacts` já buscado pra resolver canal). `buildWorkItems` ganhou um parâmetro `decisions` (via `getCachedActionableDecisions`, já buscado em `trabalhos/page.tsx`).
+- **Badge de Bookings** (`layout.tsx`) — `getPedidosAbertosCount` (contava `status='aberta'` cru) virou `getPedidosNeedingYouCount`, contando só pedidos cuja conversation está em `needs_you` de verdade (via `getCachedConversationOperationalFacts`, novo wrapper `cache()` em `pro-home-cache.ts`). Prop `userId` de `ProfessionalShellGate` removida (ficou sem uso — a contagem nova é RLS-scoped, não precisa mais do id explícito).
+- **Home** (`professional-home-view.tsx`) — `pedidosRecebidosAbertos` parou de filtrar por `status==='aberta'` e passou a filtrar por `intervention.needsYou` real; a linha clicável mostra o motivo/pill reais (não mais "Pedido novo pelo seu link de booking."/"Aberta" fixos). Como todo pedido `needsYou` agora está, por construção, dentro de `conversationSummary.needsYouConversationIds`, `attentionCount` parou de somar `pedidosRecebidosAbertos.length` separadamente (evita contar a mesma pendência duas vezes) e `needsYouDecisions` (cards genéricos de Decisões) passou a excluir decisões já ligadas a um pedido (`relatedOpportunityId`), pra nunca duplicar o mesmo item com um label pior ("Conversa em andamento" genérico vs. o nome real do cliente).
+
+**Efeito colateral esperado, correto**: como nenhum pedido do link tem conversation ainda hoje (Item 1 do gap de `create_conversation` segue não implementado, por decisão explícita — ver seção acima), `pedidosRecebidosAbertos`/o badge de pedidos ficam em 0 até essa integração existir. Isso é a correção funcionando como pedido, não uma regressão: parou de fabricar "precisa de você"/"Aguardando você" sem lastro. Quando o Item 1 for implementado, os mesmos pedidos passam a aparecer automaticamente, com motivo real, sem precisar mexer em nenhuma dessas 4 telas de novo.
+
+**Passe de legibilidade/contraste na lista de Bookings** (`pro-work-list-view.tsx`), sem redesenho — achado real de token mal aplicado: `--pro-tx-30` é documentado no próprio `globals.css` (comentário de 04/09/2026) como ficando perto de **2:1 de contraste** sobre o fundo quase preto do shell, reservado a estado desabilitado/"em breve" — eu tinha usado esse mesmo token pra data/local/valor e origem, que não são conteúdo desabilitado. Corrigido:
+- Nome do cliente: `--pro-tx-50` → `--pro-off` (mesmo branco do conteúdo principal, peso normal preserva a hierarquia via peso, não cor).
+- Data/local/valor: `--pro-tx-30` → `--pro-tx-70`.
+- Origem (WhatsApp/Link de booking): `--pro-tx-30` → `--pro-tx-50` (discreta, nunca apagada).
+- Placeholder da busca: `--pro-tx-30` → `--pro-tx-50`.
+- Subtitle de `ProPageHeader` (componente compartilhado por toda rota nova): `--pro-tx-50` → `--pro-tx-70` — correção no nível do design system, nunca uma piora em nenhuma outra tela que o usa (só aumenta contraste, em toda parte).
+- Aproveitado pra normalizar só a apresentação (nunca o valor armazenado): resumo do trabalho com `capitalizeFirstLetter` (nova, `pro-format.ts` — maiúscula só a primeira letra, pra frase livre) e nome do cliente/local com `capitalizeName` (já existente, reaproveitada).
+
+`npx tsc --noEmit`: limpo (só os 3 erros pré-existentes de `PageProps`/`LayoutProps`). `npx eslint .`: limpo em todos os arquivos tocados.
+
 - ⏳ Decisões / "Precisa de você"
 - ⏳ Aprovação/rejeição com sessão autenticada (onde automatizável)
 - ⏳ Persistência e isolamento cross-tenant

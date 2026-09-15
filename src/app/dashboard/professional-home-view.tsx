@@ -6,12 +6,19 @@ import { siteOrigin } from '@/lib/site-url';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
 import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
+import { latestConversationByRelatedId } from '@/lib/conversations/data';
 import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
 import { classifyBookingAttention } from './booking-attention';
 import { conversationHref } from './decisoes/format-cards';
+import { resolveDooplaIntervention } from './doopla-intervention';
 import { getActivePaymentDetails, getArtistMatchingCompletion, getMyOpportunities, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
-import { getCachedActionableDecisions, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
+import {
+  getCachedActionableDecisions,
+  getCachedConversationOperationalFacts,
+  getCachedConversationStateSummary,
+  getCachedProfessionalHomeFacts,
+} from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
 import { bookingStatusTone, capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass } from './pro-format';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
@@ -30,10 +37,11 @@ export async function ProfessionalHomeView({
   profile: Profile;
   supabase: AnySupabaseClient;
 }) {
-  const [homeFacts, decisions, conversationSummary, bookings, opportunities] = await Promise.all([
+  const [homeFacts, decisions, conversationSummary, conversationFacts, bookings, opportunities] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
     getCachedActionableDecisions(supabase),
     getCachedConversationStateSummary(supabase),
+    getCachedConversationOperationalFacts(supabase),
     getUserBookings(userId, profile.role, supabase),
     getMyOpportunities(userId, supabase),
   ]);
@@ -44,7 +52,24 @@ export async function ProfessionalHomeView({
   // soubesse a URL de `/dashboard/oportunidades` de cabeça. Nunca inclui
   // `source !== 'artist_link'` (mural/"Publicar um trabalho" — legado
   // de marketplace, não ganha visibilidade nova).
-  const pedidosRecebidosAbertos = opportunities.filter((o) => o.source === 'artist_link' && o.status === 'aberta');
+  //
+  // Correção 15/09/2026, 2ª rodada (achado da fundadora): "precisa de
+  // você" nunca pode vir de `status === 'aberta'` sozinho — só do
+  // estado operacional real da conversation/decision vinculada
+  // (resolveDooplaIntervention, doopla-intervention.ts — mesma fonte do
+  // badge de Bookings, da lista de Bookings e do detalhe do pedido).
+  // Sem conversation ainda (o caso comum hoje), o pedido nunca aparece
+  // aqui.
+  const conversationByOpportunity = latestConversationByRelatedId(conversationFacts, 'relatedOpportunityId');
+  const decisionByConversationId = new Map(groupDecisionsByConversation(decisions).map((d) => [d.conversationId, d]));
+  const pedidosRecebidosAbertos = opportunities
+    .filter((o) => o.source === 'artist_link' && o.status !== 'cancelada' && o.status !== 'booker_selecionado')
+    .map((o) => {
+      const conversation = conversationByOpportunity.get(o.id) ?? null;
+      const decision = conversation ? (decisionByConversationId.get(conversation.conversationId) ?? null) : null;
+      return { opportunity: o, intervention: resolveDooplaIntervention(conversation, decision, o.client_name || 'o cliente') };
+    })
+    .filter((item) => item.intervention.needsYou);
 
   // Item 3/15 da revisão Professional Web Dashboard (06/09/2026): a
   // contagem exibida (card, accordion, badge do sidebar) é SEMPRE
@@ -52,9 +77,14 @@ export async function ProfessionalHomeView({
   // — fonte única). A lista abaixo é filtrada a um subconjunto
   // GARANTIDO desse mesmo conjunto (needsYouConversationIds), agrupada
   // por conversa (nunca 2 cards pra 1 conversa) — nunca mais diverge do
-  // número mostrado.
+  // número mostrado. Exclui decisões já ligadas a um pedido
+  // (relatedOpportunityId) — essas são mostradas em pedidosRecebidosAbertos
+  // acima, com nome do cliente real, nunca duplicadas aqui como
+  // "Conversa em andamento" genérico.
   const needsYouDecisions = sortDecisionsByPriority(
-    groupDecisionsByConversation(decisions).filter((d) => conversationSummary.needsYouConversationIds.includes(d.conversationId))
+    groupDecisionsByConversation(decisions).filter(
+      (d) => conversationSummary.needsYouConversationIds.includes(d.conversationId) && d.relatedOpportunityId == null
+    )
   ).slice(0, 5);
 
   // "Precisa de você" unificado (D3/D5, auditoria de divergência
@@ -74,7 +104,11 @@ export async function ProfessionalHomeView({
   // a ser escrito ligando uma conversa à proposta que ela mesma gerou,
   // esta soma precisa ser revisada antes de continuar ingênua.
   const bookingsNeedingResponse = bookings.filter((b) => classifyBookingAttention(b, userId) === 'precisa_de_voce');
-  const attentionCount = bookingsNeedingResponse.length + conversationSummary.needsYouCount + pedidosRecebidosAbertos.length;
+  // pedidosRecebidosAbertos NÃO entra nesta soma: por construção, todo
+  // item ali já tem uma conversation em estado needs_you, então já está
+  // contado dentro de conversationSummary.needsYouCount — somar de novo
+  // duplicaria a mesma pendência (correção 15/09/2026, 2ª rodada).
+  const attentionCount = bookingsNeedingResponse.length + conversationSummary.needsYouCount;
 
   const [recentActivity, orcamentoInfo, referralSummary, activePaymentDetails, matchingCompletion] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
@@ -179,19 +213,16 @@ export async function ProfessionalHomeView({
                   // grid de caixas. Mesma contagem/estado/lógica de
                   // antes, só a apresentação mudou.
                   <div className="mb-3 divide-y divide-[var(--pro-line)] border-b border-[var(--pro-line)]">
-                    {pedidosRecebidosAbertos.map((o) => (
+                    {pedidosRecebidosAbertos.map(({ opportunity: o, intervention }) => (
                       <Link
                         key={o.id}
                         href={`/dashboard/oportunidades/${o.id}`}
                         className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
                       >
                         <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
-                          <span className="font-pro-sub font-bold">{o.client_name || 'Novo pedido'}</span> — Pedido novo
-                          pelo seu link de booking.
+                          <span className="font-pro-sub font-bold">{o.client_name || 'Novo pedido'}</span> — {intervention.detail}
                         </p>
-                        <span className="flex-none rounded-full border border-[var(--pro-line)] px-2.5 py-1 text-[11px] font-semibold text-[var(--pro-off)]">
-                          Aberta
-                        </span>
+                        <span className={`flex-none ${proStatusPillClass(intervention.tone)}`}>{intervention.headline}</span>
                       </Link>
                     ))}
                     {bookingsNeedingResponse.map((b) => (
@@ -262,7 +293,7 @@ export async function ProfessionalHomeView({
                   )}
                   {pedidosRecebidosAbertos.length > 0 && (
                     <Link
-                      href="/dashboard/oportunidades"
+                      href="/dashboard/trabalhos"
                       className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
                     >
                       Ver pedidos recebidos →

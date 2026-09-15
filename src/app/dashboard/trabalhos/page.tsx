@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { listConversationOperationalFacts } from '@/lib/conversations/data';
-
 import { getMyOpportunities, getPendingReviewsToWrite, getUserBookings } from '../data';
 import { JobPicker } from '../job-picker';
+import { getCachedActionableDecisions, getCachedConversationOperationalFacts } from '../pro-home-cache';
 import { ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
 import { eyebrowClass } from '../ui';
@@ -62,10 +61,11 @@ export default async function TrabalhosPage() {
   // "Pedidos" saiu do shell (ver pro-shell.tsx) — o pedido individual
   // continua existindo como registro e como destino de detalhe
   // (/dashboard/oportunidades/[id]), só não é mais uma área separada.
-  const [bookings, pedidos, conversationFacts, pendingReviews] = await Promise.all([
+  const [bookings, pedidos, conversationFacts, decisions, pendingReviews] = await Promise.all([
     getUserBookings(user.id, profile.role, supabase),
     getMyOpportunities(user.id, supabase),
-    listConversationOperationalFacts(supabase),
+    getCachedConversationOperationalFacts(supabase),
+    getCachedActionableDecisions(supabase),
     getPendingReviewsToWrite(user.id, supabase),
   ]);
   const pedidosRecebidos = pedidos.filter((o) => o.source === 'artist_link');
@@ -74,6 +74,7 @@ export default async function TrabalhosPage() {
     pedidos: pedidosRecebidos,
     userId: user.id,
     conversationFacts,
+    decisions,
     pendingReviewBookingIds: pendingReviews.map((r) => r.booking_id),
   });
 

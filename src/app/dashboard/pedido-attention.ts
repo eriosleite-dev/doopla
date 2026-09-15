@@ -4,37 +4,24 @@ import type { ProPillTone } from './pro-format';
 
 // Pedidos = solicitações recebidas pelo link de booking/orçamento,
 // ainda em negociação — distinto de Bookings, que já avançaram pra um
-// trabalho fechado (correção 15/09/2026, achado da fundadora). Mesma
-// ideia de booking-attention.ts: nunca esconder urgência atrás de
-// ordem cronológica.
+// trabalho fechado (correção 15/09/2026, achado da fundadora).
 //
-// `em_distribuicao`/`interesse_recebido` são estados do modelo antigo
-// de distribuição pra booker (mural) — um pedido recebido via
-// artist_link nunca deveria nascer nesses estados (distribution_mode
-// sempre 'meus_bookers' nesse fluxo), mas cobrimos defensivamente caso
-// exista dado histórico, sem tratá-los como "precisa de você" nem
-// como encerrados.
-export type PedidoAttentionGroup = 'precisa_de_voce' | 'em_andamento' | 'encerrado';
-
-export function classifyPedidoAttention(o: Pick<Opportunity, 'status'>): PedidoAttentionGroup {
-  if (o.status === 'aberta') return 'precisa_de_voce';
-  if (o.status === 'cancelada' || o.status === 'booker_selecionado') return 'encerrado';
-  return 'em_andamento';
-}
-
-export const PEDIDO_STATUS_LABEL: Record<Opportunity['status'], string> = {
-  rascunho: 'Em andamento',
-  aberta: 'Aguardando você',
-  em_distribuicao: 'Em andamento',
-  interesse_recebido: 'Em andamento',
+// Labels/tons só pros estados TERMINAIS do próprio opportunity
+// (cancelada/booker_selecionado) — enquanto o pedido está aberto
+// ("aberta" e os estados legados de distribuição), "precisa de você"
+// nunca vem daqui: vem do estado operacional real da conversation/
+// decision vinculada (resolveDooplaIntervention, doopla-intervention.ts).
+// Um `PEDIDO_STATUS_LABEL.aberta` chegou a existir aqui e dizia
+// "Aguardando você" incondicionalmente — removido de propósito
+// (achado da fundadora, 15/09/2026): nunca inferir "precisa de você" só
+// de o pedido ter chegado pelo link.
+export const PEDIDO_STATUS_LABEL: Partial<Record<Opportunity['status'], string>> = {
   booker_selecionado: 'Encerrado',
   cancelada: 'Cancelado',
 };
 
 export function pedidoStatusTone(o: Pick<Opportunity, 'status'>): ProPillTone {
-  if (o.status === 'aberta') return 'red';
   if (o.status === 'booker_selecionado') return 'green';
   if (o.status === 'cancelada') return 'neutral';
   return 'amber';
 }
-

@@ -24,6 +24,16 @@ export const getCachedActionableDecisions = cache(async (supabase: AnySupabaseCl
   listActionableDecisions(supabase)
 );
 
+// Fatos operacionais crus de TODAS as conversas do profissional —
+// extraído como wrapper cache() próprio (15/09/2026, correção de
+// "precisa de você" pra Pedidos) porque agora tem 3 chamadores no
+// mesmo request (layout.tsx pro badge de Bookings, Home, e
+// getCachedConversationStateSummary abaixo) — sem isso cada um bateria
+// a RPC de novo.
+export const getCachedConversationOperationalFacts = cache(
+  async (supabase: AnySupabaseClient) => listConversationOperationalFacts(supabase)
+);
+
 // Fonte única de contagem por estado de conversa (item 1 da revisão
 // Professional Web Dashboard, 06/09/2026) — sidebar (badge de
 // Decisões), Home (cards + accordion "Precisa de você") e
@@ -34,7 +44,7 @@ export const getCachedActionableDecisions = cache(async (supabase: AnySupabaseCl
 // diferentes dentro do mesmo carregamento de página.
 export const getCachedConversationStateSummary = cache(
   async (supabase: AnySupabaseClient): Promise<ConversationStateSummary> => {
-    const facts = await listConversationOperationalFacts(supabase);
+    const facts = await getCachedConversationOperationalFacts(supabase);
     return summarizeConversationStates(facts);
   }
 );
