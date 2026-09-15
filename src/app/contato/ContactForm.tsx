@@ -1,27 +1,43 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useActionState, useEffect, useRef } from 'react';
 
-const CONTACT_EMAIL = 'contato@doopla.pro';
+import { sendContactMessageAction, type ContactFormState } from './actions';
+
+const initialState: ContactFormState = {};
 
 export function ContactForm() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
+  const [state, formAction, pending] = useActionState(sendContactMessageAction, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const body = `${message}\n\n---\nNome: ${name}\nE-mail: ${email}`;
-    const mailto = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject || 'Contato pelo site')}&body=${encodeURIComponent(body)}`;
-    window.location.href = mailto;
-  }
+  // Só limpa o formulário quando o envio deu certo — em erro, os campos
+  // continuam preenchidos do jeito que a pessoa deixou (inputs não
+  // controlados: o React não reseta o DOM sozinho num re-render).
+  useEffect(() => {
+    if (state.status === 'success') {
+      formRef.current?.reset();
+    }
+  }, [state.status]);
 
   return (
-    <form className="contact-form" onSubmit={handleSubmit}>
+    <form ref={formRef} className="contact-form" action={formAction}>
+      {/* Honeypot: invisível pra pessoas (CSS + fora da ordem de tab),
+          mas bots de preenchimento automático tendem a preenchê-lo. */}
+      <div className="hp-field" aria-hidden="true">
+        <label htmlFor="company">Empresa</label>
+        <input id="company" name="company" type="text" tabIndex={-1} autoComplete="off" />
+      </div>
+
       <div>
         <label htmlFor="name">Nome</label>
-        <input id="name" name="name" required value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          id="name"
+          name="name"
+          required
+          defaultValue={state.values?.name}
+          disabled={pending}
+          autoComplete="name"
+        />
       </div>
       <div>
         <label htmlFor="email">E-mail</label>
@@ -30,19 +46,48 @@ export function ContactForm() {
           name="email"
           type="email"
           required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          defaultValue={state.values?.email}
+          disabled={pending}
+          autoComplete="email"
         />
       </div>
       <div>
         <label htmlFor="subject">Assunto</label>
-        <input id="subject" name="subject" required value={subject} onChange={(e) => setSubject(e.target.value)} />
+        <input
+          id="subject"
+          name="subject"
+          required
+          defaultValue={state.values?.subject}
+          disabled={pending}
+        />
       </div>
       <div>
         <label htmlFor="message">Mensagem</label>
-        <textarea id="message" name="message" required value={message} onChange={(e) => setMessage(e.target.value)} />
+        <textarea
+          id="message"
+          name="message"
+          required
+          defaultValue={state.values?.message}
+          disabled={pending}
+        />
       </div>
-      <button type="submit">Enviar mensagem</button>
+
+      <div aria-live="polite">
+        {state.status === 'error' && (
+          <p role="alert" className="form-message form-message-error">
+            {state.message}
+          </p>
+        )}
+        {state.status === 'success' && (
+          <p role="status" className="form-message form-message-success">
+            Mensagem enviada. A Doopla vai te responder em breve.
+          </p>
+        )}
+      </div>
+
+      <button type="submit" disabled={pending}>
+        {pending ? 'Enviando…' : 'Enviar mensagem'}
+      </button>
     </form>
   );
 }

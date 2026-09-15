@@ -120,11 +120,19 @@
 }
 #site-chrome form.contact-form input:focus, #site-chrome form.contact-form textarea:focus{ outline:2px solid var(--red); outline-offset:1px; border-color:var(--red); }
 #site-chrome form.contact-form textarea{ min-height:120px; resize:vertical; }
+#site-chrome form.contact-form input:disabled, #site-chrome form.contact-form textarea:disabled{ opacity:.6; cursor:not-allowed; }
 #site-chrome form.contact-form button{
   align-self:flex-start; background:var(--black); color:var(--off); border:none; padding:13px 28px; border-radius:2px;
   font-weight:700; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; font-family:inherit;
 }
 #site-chrome form.contact-form button:hover{ background:var(--red); }
+#site-chrome form.contact-form button:disabled{ opacity:.6; cursor:not-allowed; background:var(--black); }
+/* Honeypot: some visualmente e sai da leitura de tela/tab, sem
+   display:none (que alguns bots já sabem ignorar). */
+#site-chrome .hp-field{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+#site-chrome .form-message{ font-size:.86rem; margin:0; }
+#site-chrome .form-message-error{ color:var(--red); font-weight:600; }
+#site-chrome .form-message-success{ color:var(--black); font-weight:600; }
 
 /* ===== páginas editoriais (Termos, Privacidade) ===== */
 #site-chrome .legal-content{ background:var(--off); padding:64px 24px 100px; }
