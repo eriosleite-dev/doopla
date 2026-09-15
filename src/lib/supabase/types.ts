@@ -1094,6 +1094,23 @@ export type CommunityTopicRead = {
   updated_at: string;
 };
 
+// Formulário /contato (migration 0085, sessão institucional
+// claude/busy-wright-5z9kr8) — envio real (persistência Supabase +
+// notificação Resend best-effort).
+export type ContactMessageNotificationStatus = 'pending' | 'sent' | 'failed';
+
+export type ContactMessage = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  notification_status: ContactMessageNotificationStatus;
+  notification_error: string | null;
+  notified_at: string | null;
+  created_at: string;
+};
+
 // A lib do Supabase exige `Relationships` em cada tabela (usado só pra
 // joins embutidos via .select('foo(*)')). Não usamos essa sintaxe — as
 // junções são feitas com queries separadas — então fica sempre [].
@@ -1469,6 +1486,16 @@ export type Database = {
         Update: Partial<Pick<CommunityTopicRead, 'last_read_post_id' | 'updated_at'>>;
         Relationships: [];
       };
+      // Formulário /contato (migration 0085). Mesmo padrão de
+      // conversations/orchestrator_runs: só escrita via
+      // submit_contact_message/mark_contact_message_notification —
+      // Insert/Update direto nunca é concedido pra anon/authenticated.
+      contact_messages: {
+        Row: ContactMessage;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     Views: {
       community_profiles_public: {
@@ -1778,6 +1805,20 @@ export type Database = {
       get_community_for_you_topics: {
         Args: { p_limit?: number };
         Returns: CommunityForYouTopic[];
+      };
+      // Formulário /contato (migration 0085) — único caminho de INSERT
+      // em contact_messages. Validação de formato de e-mail acontece
+      // antes, no Server Action (zod); a function só garante campos não
+      // vazios e o limite básico de frequência por e-mail.
+      submit_contact_message: {
+        Args: { p_name: string; p_email: string; p_subject: string; p_message: string };
+        Returns: string;
+      };
+      // Bookkeeping pós-tentativa de notificação (Resend) — nunca toca
+      // no conteúdo da mensagem, só os 3 campos de status.
+      mark_contact_message_notification: {
+        Args: { p_id: string; p_status: 'sent' | 'failed'; p_error?: string | null };
+        Returns: undefined;
       };
     };
   };

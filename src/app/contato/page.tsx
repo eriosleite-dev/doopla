@@ -19,14 +19,12 @@ export default function ContatoPage() {
       </section>
 
       <section className="page-content">
-        <div className="inner contact-grid">
-          <div className="contact-info">
-            <h2 style={{ textAlign: 'left', margin: '0 0 10px' }}>E-mail</h2>
-            <a className="email" href={`mailto:${SUPPORT_EMAIL}`}>
-              {SUPPORT_EMAIL}
-            </a>
-          </div>
+        <div className="inner contact-layout">
           <ContactForm />
+          <p className="email-alt">
+            Prefere falar por e-mail?{' '}
+            <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+          </p>
         </div>
       </section>
     </PageShell>

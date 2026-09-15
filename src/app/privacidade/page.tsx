@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: 'Como a Doopla coleta, utiliza e protege informações pessoais.',
 };
 
-const UPDATED = '20 de agosto de 2026';
+const UPDATED = '15 de setembro de 2026';
 
 export default function PrivacidadePage() {
   return (
@@ -30,7 +30,14 @@ export default function PrivacidadePage() {
             cadastro e uso da plataforma, informações profissionais
             necessárias para a prestação do serviço, preferências
             configuradas pelo usuário e dados relacionados às interações
-            realizadas por meio da Doopla.
+            realizadas por meio da Doopla, incluindo conversas e mensagens
+            trocadas com clientes e contratantes.
+          </p>
+          <p>
+            Também podemos tratar informações de clientes e contratantes com
+            quem o usuário interage por meio da Doopla, como nome e dados de
+            contato, na medida do necessário para conduzir atendimentos,
+            negociações e a organização dos trabalhos do usuário.
           </p>
 
           <h2>2. Como utilizamos essas informações</h2>
@@ -39,7 +46,10 @@ export default function PrivacidadePage() {
             <li>criar e manter sua conta;</li>
             <li>prestar os serviços contratados;</li>
             <li>personalizar o funcionamento da sua Doopla;</li>
-            <li>conduzir e organizar interações relacionadas a bookings;</li>
+            <li>
+              conduzir e organizar atendimentos, negociações e demais
+              interações relacionadas a oportunidades e trabalhos do usuário;
+            </li>
             <li>gerar documentos e comunicações solicitadas;</li>
             <li>prestar suporte;</li>
             <li>melhorar segurança e funcionamento da plataforma;</li>
@@ -48,10 +58,12 @@ export default function PrivacidadePage() {
 
           <h2>3. Inteligência artificial</h2>
           <p>
-            Determinadas informações podem ser processadas por sistemas de
-            inteligência artificial para permitir funcionalidades da Doopla,
-            como interpretação de solicitações, assistência em negociações,
-            organização de informações e geração de comunicações.
+            Determinadas informações — incluindo o conteúdo de conversas e
+            interações com clientes e contratantes — podem ser processadas
+            por sistemas de inteligência artificial para permitir
+            funcionalidades da Doopla, como interpretação de solicitações,
+            condução de atendimentos e negociações, organização de trabalhos
+            e geração de documentos e comunicações.
           </p>
 
           <h2>4. Serviços de terceiros</h2>

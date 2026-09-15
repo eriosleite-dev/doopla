@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'Regras para utilização da plataforma Doopla.',
 };
 
-const UPDATED = '20 de agosto de 2026';
+const UPDATED = '15 de setembro de 2026';
 
 export default function TermosPage() {
   return (
@@ -31,11 +31,12 @@ export default function TermosPage() {
 
           <h2>1. O que é a Doopla</h2>
           <p>
-            A Doopla é uma plataforma digital que utiliza tecnologia e
-            inteligência artificial para auxiliar artistas independentes na
-            gestão e condução de atividades relacionadas a bookings,
-            incluindo comunicação com clientes, negociação, follow-up,
-            organização de informações e geração de documentos.
+            A Doopla é uma plataforma digital de agenciamento para
+            profissionais independentes que utiliza tecnologia e
+            inteligência artificial para encontrar oportunidades de trabalho
+            e conduzir atividades comerciais e operacionais, incluindo
+            atendimento a clientes, negociação, acompanhamento de conversas,
+            organização de trabalhos e geração de documentos.
           </p>
 
           <h2>2. Conta do usuário</h2>
@@ -47,39 +48,41 @@ export default function TermosPage() {
           <h2>3. Uso da inteligência artificial</h2>
           <p>
             A Doopla utiliza sistemas de inteligência artificial para
-            executar determinadas atividades em nome do usuário e de acordo
-            com as informações, preferências e autorizações fornecidas por
-            ele.
+            executar determinadas atividades em nome do usuário, de acordo
+            com as informações, preferências, condições e autorizações
+            fornecidas por ele.
           </p>
           <p>
-            A tecnologia pode auxiliar na comunicação e organização das
-            negociações, mas determinadas decisões comerciais podem depender
-            da aprovação do usuário.
+            A Doopla pode conduzir atendimentos, negociações e outras etapas
+            relacionadas aos trabalhos do usuário dentro dos limites
+            aplicáveis. Decisões que exijam autorização do usuário devem ser
+            submetidas à sua aprovação antes de serem confirmadas.
           </p>
 
           <h2>4. Informações fornecidas pelo usuário</h2>
           <p>
             O usuário é responsável pela veracidade das informações
             fornecidas à plataforma, incluindo valores, disponibilidade,
-            dados profissionais, riders, condições comerciais e demais
-            orientações utilizadas na condução dos bookings.
+            dados profissionais, condições comerciais, preferências e demais
+            orientações utilizadas pela Doopla na condução dos trabalhos.
           </p>
 
-          <h2>5. Negociações e bookings</h2>
+          <h2>5. Negociações e trabalhos</h2>
           <p>
-            A Doopla fornece tecnologia para auxiliar na condução e
-            organização de bookings.
+            A Doopla utiliza tecnologia e inteligência artificial para
+            conduzir e organizar etapas relacionadas a oportunidades,
+            negociações e trabalhos do usuário.
           </p>
           <p>
-            As condições finais acordadas entre artista e contratante devem
-            ser verificadas e aprovadas conforme o fluxo aplicável antes da
-            conclusão do booking.
+            As condições finais que dependam de autorização do profissional
+            devem ser aprovadas conforme o fluxo aplicável antes de serem
+            confirmadas.
           </p>
 
           <h2>6. Pagamentos</h2>
           <p>
-            Quando o pagamento do booking ocorrer diretamente entre
-            contratante e artista, a Doopla não atua como instituição
+            Quando o pagamento de um trabalho ocorrer diretamente entre
+            contratante e profissional, a Doopla não atua como instituição
             financeira nem recebe, mantém ou transfere esses valores.
           </p>
 
