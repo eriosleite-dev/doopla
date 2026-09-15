@@ -13689,8 +13689,8 @@ explicitamente proibido de fazer.
 |---|---|---|---|---|---|---|---|
 | 1 | Remover Decisões como área/navegação independente | Nav + Home + Bookings + detalhe do booking | **Sim** (obrigatório, reportar antes de remover) | Sim | A confirmar | Depende de #2 (CTA no detalhe do booking) e #7 (regra "Painel sempre reflete") pra ser seguro | PENDING |
 | 2 | Ajustes no detalhe do booking (voltar, badge, estado inicial, regra global sem travessão) | Detalhe do booking (`ProBookingDetailView` ou equivalente) | Parcial (audit de ocorrências de travessão) | Sim | A confirmar (mesma tela?) | Reusa `buildTalkToYourDooplaUrl` | PENDING |
-| 3 | Bug: "Contexto profissional · 1/4" não desaparece da Home após completar | Home ("Deixe sua Doopla pronta") + Perfil/Configurações | **Sim** (reportar fonte de verdade do 1/4 antes de corrigir) | Sim | Sim (fonte compartilhada) | Toca Home — ver conflito §Home abaixo. Acoplado a #4 e #6 | AUDIT |
-| 4 | Alinhar os 4 critérios de completude aos campos canônicos atuais (remover legado: what_you_do/where_you_serve antigos etc.) | Mesma superfície de #3 + lógica compartilhada Web/App | **Sim** (reportar os 4 critérios atuais e qual está travando) | Sim | Sim | Mesmo de #3; pré-requisito de #6 (novo modelo de campos) | AUDIT |
+| 3 | Bug: "Contexto profissional · 1/4" não desaparece da Home após completar | Home ("Deixe sua Doopla pronta") + Perfil/Configurações | Feito (ver nota) | Sim | Sim (fonte compartilhada) | Acoplado a #6 (pode exigir ajuste quando o cachê ganhar a regra "OR informações extras") | **DELIVERED — já estava na base, fora desta sessão** |
+| 4 | Alinhar os 4 critérios de completude aos campos canônicos atuais (remover legado: what_you_do/where_you_serve antigos etc.) | Mesma superfície de #3 + lógica compartilhada Web/App | Feito (ver nota) | Sim | Sim | Mesmo de #3; pré-requisito de #6 (novo modelo de campos) | **DELIVERED — já estava na base, fora desta sessão** |
 | 5 | Remover bloco "Recebimentos" (resíduo de modelo legado de pagamento) + revisar 3 indicadores + manter "Dados de recebimento" + auditar estado canônico de pagamento | Financeiro | **Sim** (auditar lógica antiga de payout/repasse antes de remover; reportar se existe fonte canônica de "pago" antes de criar UI) | Sim | A confirmar | Nenhuma forte; não mexer em Booker | PENDING |
 | 6 | Redesign completo de "Perfil e trabalho" (unificar Dados profissionais + Como você trabalha; 3 grupos: Informações profissionais / Seu trabalho / Valores e condições; cachê de referência + info extra; nota fiscal) | Configurações | **Sim** (auditoria completa obrigatória antes de qualquer implementação; parar se exigir schema novo) | Sim | Sim (mesmo modelo, mesma fonte de verdade) | Fundacional para #3/#4 (completude) e #9 (toggles de especialidades/tipos de trabalho) | AUDIT |
 | 7 | Auditar/possivelmente remover a preferência "WhatsApp / Painel / WhatsApp+Painel" em Configurações > Sua Doopla | Configurações | **Sim** (reportar onde é armazenada, quem consome, se altera envio de fato, antes de mudar) | Sim | A confirmar | Fundacional para #1 (Painel sempre reflete) e #8 (semântica de canal WhatsApp) | AUDIT |
@@ -13701,6 +13701,65 @@ explicitamente proibido de fazer.
 Se a contagem divergir de 10 numa auditoria futura (por exemplo um dos
 itens se desdobrar em dois durante a implementação), reportar antes de
 ajustar — não renumerar silenciosamente esta tabela.
+
+### Achado crítico ao investigar a base (`ff77afc`) — sobreposição com a Sessão Principal
+
+Antes de reportar este roadmap como "10 itens pendentes", uma checagem
+no histórico e nos arquivos atuais da própria base (`ff77afc` e os
+commits imediatamente anteriores, todos fora desta sessão) mudou o
+quadro:
+
+- **#3 e #4 já estão implementados e documentados** — commit
+  `fce024e` ("fix: 'Contexto profissional' na Home usava colunas
+  removidas da UI", 15/09/2026, sessão `session_01KHtuHrxZbaa8R2HZYATTys`,
+  um commit antes de `ff77afc`). `getArtistMatchingCompletion`
+  (`src/app/dashboard/data.ts`) agora checa exatamente
+  `what_you_do`/`where_you_serve`/`fee_range`/`issues_invoice` (os 4
+  campos que `updateArtistWorkContextAction` realmente escreve hoje),
+  removeu `regions`/`career_stage`/`help_areas` do cálculo (legado,
+  mantido só como dado histórico no banco), `issues_invoice=false`
+  conta como preenchido, `revalidatePath('/dashboard')` já garante
+  atualização automática da Home. App auditado: não mostra esse card
+  de propósito (sem tela de edição ainda), comentário só desatualizado
+  e já corrigido. `tsc`/`eslint` limpos nos 2 arquivos. **Marcado
+  `DELIVERED` na tabela acima — não será reimplementado por esta
+  sessão.** Único ponto em aberto: quando #6 (redesign de "Perfil e
+  trabalho") mudar a regra do cachê pra "cachê de referência OU
+  informações extras", este cálculo de completude provavelmente
+  precisa de um ajuste pontual — não tratar como reabertura do bug,
+  é uma consequência esperada de #6.
+- **Infraestrutura adjacente já existe para vários outros itens**,
+  construída na mesma linha antes desta sessão começar (ver commits
+  `6822627`, `0c6738d`, `47df645`, `7396c23`, `9922677` e os PASS de
+  "Categoria B" registrados no próprio `PROGRESS.md` pra Configurações/
+  Sua Doopla/Canais da sua Doopla/Privacidade/Ajuda e suporte). Confirmado
+  nos arquivos atuais do worktree:
+  - `contato@doopla.pro` já centralizado em `src/lib/support.ts`.
+  - `Você emite nota fiscal?` já implementado (`pro-work-context-form.tsx`).
+  - `WhatsApp da Doopla`, `Falar com minha Doopla` já implementados em
+    `professional-home-view.tsx`, `pro-configuracoes-view.tsx`,
+    `src/lib/professional-doopla-cta.ts` (+ espelho em `mobile/`).
+  - Uma página de suporte já existe em `dashboard/perfil/suporte`.
+  - **Porém `/dashboard/decisoes` continua sendo rota e item de nav
+    ativo** (`pro-shell.tsx` linha 46-48, importado por
+    `professional-home-view.tsx`, existe também em `mobile/app/(tabs)/
+    mais/decisoes.tsx`) — #1 não foi feito.
+  - **Nenhuma das copies específicas aprovadas nos prompts #2/#5/#6/#9
+    foi encontrada** (`SUA DOOPLA ESTÁ CUIDANDO`, `VOLTAR PARA
+    BOOKINGS`, `Valor em bookings confirmados`, `Cachê de referência`,
+    `Informações extras sobre seu cachê`, `O que você mostra na
+    Comunidade`, `Escolha quais informações outros profissionais...`)
+    — só grep literal, não prova ausência de equivalente com outra
+    redação, mas indica que a redação exata pedida ainda não existe.
+
+**Conclusão**: isto não é greenfield. A Sessão Principal já entregou
+boa parte do trabalho de simplificação de beta que estes 10 itens
+também descrevem (provavelmente por instrução direta a ela, em
+paralelo a esta sessão). Tratar cada AUDIT abaixo como "o que já existe
+vs. o que ainda falta bater com a especificação exata", nunca como
+implementação do zero — e reportar à fundadora sempre que um item
+parecer já resolvido na essência, mesmo que a copy literal ainda não
+bata 100% com o prompt original.
 
 ### Regra transversal (não é item numerado, vale para todos os 10)
 
