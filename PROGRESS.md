@@ -13808,6 +13808,85 @@ reconciliar com o HEAD canônico mais atual (não necessariamente
 `ecb713d` — vai depender do que a linha Professional tiver avançado
 até lá).
 
+## 109. Novo pacote Home — reposicionamento de comunicação "Doopla 2.5" — `[AGUARDANDO QA VISUAL]` — 15/09/2026
+
+Pacote **separado** do pacote visual (§106-108, 7/7 aprovado e
+encerrado — preservado integralmente, nada dele foi revisitado aqui).
+Este é só comunicação/copy: a Doopla deixa de ser vendida como "IA de
+representação" e passa a ser "uma nova forma de agenciamento" —
+democratiza agenciamento pra profissionais independentes. Mesmo
+branch, mesmo commit-base (`c2fcda2`), continua isolado.
+
+Fetch de concorrência refeito antes de começar: Professional avançou
+de `ecb713d` até `c40c445` (runtime/RLS, nada em `_home/`). Zero
+overlap.
+
+**COPY ALTERADA** (arquivo `home.html`, nenhuma mudança de arquitetura):
+hero (eyebrow/headline/lead/badge), conversa do iPhone do hero (era
+cliente↔doopla negociando, virou 7 balões da doopla em 1ª pessoa,
+contato do chat renomeado "Sua Doopla"), "Você cuida do seu trabalho"
+(texto + as 4 capacidades no lugar das 4 perguntas antigas), "Para
+profissionais independentes" (nova headline + lista de 7→10 profissões),
+"Como funciona" (headline + os 4 passos), WhatsApp (só o parágrafo),
+Planos (só o título), FAQ (+4 perguntas novas, 1 reescrita pra tirar
+"IA", resto preservado), CTA final (eyebrow/headline/texto).
+
+**SEÇÕES NOVAS** (`home.css` só ganhou classes reaproveitando tokens
+já existentes — cor, radius, fonte — nenhuma estética nova):
+- "Cliente chamou? Manda pra Doopla." — `.centered-copy`, só
+  `.eyebrow`/`h2`/`p.lead`/`.btn` já existentes, zero CSS novo de
+  verdade (a classe só centraliza).
+- "Sua Doopla também encontra trabalho para você." — `.two-col` +
+  `.job-demo` (novo), reaproveitando `.bubble`/`.bubble.in`/
+  `.bubble.out` (já usados no telefone do hero) pra simular a
+  qualificação do pedido, e o padrão visual de `.plan-card`
+  (painel + borda + radius) pro card de oportunidade.
+- "Por que a Doopla existe" (manifesto) — mesma `.centered-copy`,
+  curta, 2 parágrafos + fechamento em negrito.
+
+Ordem de inserção: as 2 primeiras entram entre "você cuida" e
+"WhatsApp"; o manifesto entra entre "Como funciona" e "Planos" — a
+ordem das 8 seções já aprovadas foi preservada 100%, só houve adição,
+nunca reordenação.
+
+**VISUAL PRESERVADO** (confirmado por diff, nenhuma linha tocada):
+mascotes (corpo/olhos/piscada), olhos legados de "Sempre com você"
+(`.legacy-eyes-*`, animação intacta), logo/olhos do header-footer,
+grid/cores/tipografia, `home.js` inteiro (zero mudança — nenhuma nova
+interação/animação precisou de JS).
+
+**PENDÊNCIAS DE PRODUTO** (marcado, não implementado):
+- Planos: Básico x Pro não foram revisados pra visão universal do
+  agenciamento — só o título mudou. Fica pendente decisão separada
+  antes de tocar em benefícios/preço.
+
+**CONFLITOS ENCONTRADOS**:
+- Nenhum conflito de copy com regras/backend existentes.
+- Achado de layout **pré-existente** (não introduzido nesta rodada,
+  confirmado por diff contra o HEAD congelado `b0db655`): no hero
+  mobile (≤760px), `.mascot-hero` fica `position:static` ao lado do
+  `.phone` sem `flex-wrap`, e a ponta do mascote invade visualmente o
+  topo do telefone. Não é efeito das novas mensagens (altura do
+  `.phone` é fixa, não cresce com conteúdo). Fora do escopo "só copy"
+  desta rodada — reportado pra decisão, não corrigido.
+- Decisão de posicionamento tomada sem confirmação explícita: a
+  ordem das 3 seções novas (inseridas, não reordenando as 8
+  existentes) foi minha interpretação mais conservadora do brief —
+  o documento numerava os blocos 1-12 numa sequência que, se seguida
+  ao pé da letra, exigiria reordenar 2 seções já aprovadas
+  (profissões↔"você cuida", WhatsApp movendo pra depois de "como
+  funciona"). Preservei a ordem aprovada e só adicionei — sinalizado
+  pra fundadora confirmar se a ordem ficou como pretendido.
+
+**Arquivos alterados**: `home.css`, `home.html`. `home.js` intocado.
+
+**Validado**: `tsc --noEmit` limpo, lint sem novos erros em `_home/`,
+QA visual desktop 1440px e mobile 390px em todas as seções tocadas
+(screenshots na resposta desta sessão).
+
+**Status**: commitado (`96015d6`), branch isolado, sem push. Aguardando
+QA visual da fundadora antes de fechar.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
