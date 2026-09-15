@@ -1338,7 +1338,7 @@ export async function updateProfileAndWorkContextAction(
   // banco (true/false/null), só a UI que não oferece mais um 3º botão.
   const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
 
-  await supabase
+  const { error } = await supabase
     .from('artist_profiles')
     .update({
       stage_name: stageName || null,
@@ -1351,6 +1351,7 @@ export async function updateProfileAndWorkContextAction(
       issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
     })
     .eq('profile_id', user.id);
+  if (error) return { error: 'Não foi possível salvar agora.' };
 
   revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');

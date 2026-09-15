@@ -294,15 +294,18 @@
   #home-marketing .manifesto p.lead + p.lead{ margin-top:14px; }
   #home-marketing .manifesto-close{ margin:24px 0 0; font-family:'Inter',sans-serif; font-weight:700; font-size:1.1rem; color:var(--off); }
 
-  /* Demonstração "Novos trabalhos" — v2 (16/09/2026, ref. de arte da
+  /* Demonstração "Novos trabalhos" — v3 (16/09/2026, ajuste pontual da
      fundadora). Cada troca (cliente↔Doopla, Doopla↔profissional) é UMA
      superfície de conversa só (.job-demo-panel), nunca caixa dentro de
-     caixa. As duas ficam unidas por uma linha vertical (.job-demo-thread)
-     que atravessa a transição — nunca dois blocos soltos empilhados. O
-     selo do WhatsApp pertence só à TRANSIÇÃO entre as conversas, nunca
-     ao topo do primeiro painel (achado da fundadora: fazia parecer que
-     o primeiro bloco "era" o WhatsApp). */
-  #home-marketing .job-demo{ position:relative; display:flex; flex-direction:column; gap:0; }
+     caixa. Os dois painéis ficam soltos e independentes — sem linha,
+     seta, tracejado ou qualquer connector entre eles; a ordem vertical
+     e a pequena transição do WhatsApp já bastam para explicar o fluxo
+     (achado da fundadora: a linha vertical deixava a composição com
+     cara de timeline/processo técnico). O selo do WhatsApp pertence só
+     à TRANSIÇÃO entre as conversas, nunca ao topo do primeiro painel
+     (achado anterior: fazia parecer que o primeiro bloco "era" o
+     WhatsApp). */
+  #home-marketing .job-demo{ position:relative; display:flex; flex-direction:column; gap:6px; }
   /* Mesmo glow do hero (.hero-glow), mais discreto — só pra dar
      profundidade e equilibrar o peso visual com a coluna esquerda,
      igual à ref. de arte (16/09/2026). */
@@ -326,8 +329,7 @@
      no mobile. */
   #home-marketing .job-demo-panel .job-card-cta{ margin-left:36px; align-self:flex-start; padding:9px 18px; font-size:.76rem; background:transparent; color:var(--off); border:1px solid var(--line-strong); }
 
-  #home-marketing .job-demo-thread{ position:absolute; left:31px; top:0; bottom:0; width:2px; background:linear-gradient(180deg, rgba(226,41,28,0) 0%, rgba(226,41,28,.35) 20%, rgba(226,41,28,.35) 80%, rgba(226,41,28,0) 100%); z-index:0; }
-  #home-marketing .job-demo-transition{ display:flex; align-items:center; gap:10px; padding:14px 0 14px 18px; position:relative; z-index:1; }
+  #home-marketing .job-demo-transition{ display:flex; align-items:center; gap:10px; padding:10px 0 10px 18px; position:relative; z-index:1; }
   #home-marketing .job-demo-whatsapp-badge{ flex:none; width:28px; height:28px; border-radius:50%; background:var(--red); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 4px var(--bg); }
   #home-marketing .job-demo-whatsapp-badge svg{ width:14px; height:14px; color:#fff; }
   #home-marketing .job-demo-transition span{ font-size:.8rem; color:var(--tx-70); }
