@@ -13887,6 +13887,65 @@ QA visual desktop 1440px e mobile 390px em todas as seções tocadas
 **Status**: commitado (`96015d6`), branch isolado, sem push. Aguardando
 QA visual da fundadora antes de fechar.
 
+## 110. QA do pacote de reposicionamento — ajustes pedidos, ainda não fechado — `[AGUARDANDO NOVO QA VISUAL]` — 15/09/2026
+
+Direção geral do §109 **aprovada**, mas fundadora pediu 4 ajustes antes
+do fechamento (item 5 "não reordenar" e item 6 "manter seções novas"
+já estavam corretos, sem ação). Fetch de concorrência refeito antes de
+começar: Professional avançou de `c40c445` até `b426503` (docs), zero
+overlap com `_home/`.
+
+1. **Balões do iPhone** — copy final: "Negocio valores e condições."
+   (era "Negocio."), "Acompanho cada trabalho do início ao fim." (era
+   "Faço os follow-ups.") — linguagem menos jargão de booking.
+2. **Hierarquia de cor** — só o 1º e o 7º balão continuam vermelhos
+   (`.bubble.out`); os 5 do meio ganharam `.bubble.neutral` (nova
+   classe, mesma cor escura de `.bubble.in`, alinhada à direita como
+   `.out`) — tira o peso de tudo vermelho, cria o ritmo
+   vermelho→escuro→vermelho pedido, sem virar card de feature.
+3. **Texto lateral** — "Booking de um jeito novo." → "Sua Doopla
+   trabalhando por você.", mesma composição (quadradinho + mono).
+4. **Bug mobile do mascote, corrigido** — durante a correção descobri
+   que eram **2 problemas**, não 1:
+   - `.hero-visual` continuava `display:flex` em ROW no mobile (só
+     `justify-content` mudava antes) — sem `flex-wrap`, telefone +
+     mascote + legenda tentavam caber lado a lado e colidiam. Fix:
+     `flex-direction:column` só no media query mobile.
+   - Achado novo, mais sério: `.mascot-hero` virava
+     `position:static` no mobile pra empilhar, mas isso quebrava a
+     referência de posicionamento dos próprios filhos (`.eyes-row`/
+     `.mascot-smile`/patas são `position:absolute` esperando o
+     mascote como bloco de referência, como no desktop). Com
+     `static`, os olhos "escapavam" pro único ancestral com
+     `position:relative` (`.hero-visual`), renderizando longe do
+     corpo — por isso a bolinha aparecia sem olhos em alguns crops do
+     QA anterior. Fix: `position:relative` no lugar de `static` —
+     mesmo lugar no fluxo (sem `top`/`left` setados), referência de
+     posicionamento devolvida.
+   Verificado nos 4 breakpoints pedidos (320/375/390/430px):
+   `overlapY:0` em todos entre `.mascot-hero` e `.phone`. Desktop
+   intocado (`.mascot-hero` nunca deixou de ser `position:absolute`
+   lá).
+
+**Confirmações pedidas**:
+- `home.js`: zero diff desde o HEAD congelado do pacote visual
+  (`b0db655`) — nunca tocado, nas duas rodadas.
+- Planos: zero diff nesta rodada (só o título mudou no §109, mantido).
+- Working tree: limpo, HEAD `37f9bc8`.
+
+**Arquivos alterados**: `home.css`, `home.html`.
+
+**Validado**: `tsc --noEmit` limpo, lint sem novos erros em `_home/`.
+Screenshots enviados: hero desktop, close-up do iPhone (hierarquia de
+cor + 7 balões + texto lateral visíveis), hero mobile nos 4
+breakpoints, mascote+telefone sem colisão, "Sua Doopla também
+encontra trabalho para você." (preservada, não redesenhada), Home
+desktop completa (8 capturas) e Home mobile completa (12 capturas).
+
+**Status**: commitado (`37f9bc8`), branch isolado, sem push, sem
+integração. **Pacote ainda não fechado** — aguardando novo QA visual
+da fundadora.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
