@@ -5,7 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 
 import { colors, fonts, radii } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
-import { apiBaseUrl } from '@/lib/env';
+import { apiBaseUrl, dooplaWhatsappNumber } from '@/lib/env';
 import { LoadingState, ErrorState } from '@/components/shared/ScreenState';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { ChevronRightIcon } from '@/components/icons/Icons';
@@ -16,13 +16,6 @@ import {
   updateCommunityProfile,
   type CommunityProfileSnapshot,
 } from '@/lib/data/community';
-import {
-  fetchArtistBookers,
-  fetchArtistLinkRouting,
-  updateArtistLinkRouting,
-  type BookerOption,
-  type LinkRoutingMode,
-} from '@/lib/data/link-routing';
 import { closeAccount, updateArtistProfileFields, updateProfileFields } from '@/lib/data/settings';
 import {
   confirmWhatsappVerification,
@@ -50,7 +43,21 @@ type Phase = 'loading' | 'ready' | 'error';
 // da Comunidade renderiza city/avatarUrl). CommunityPrivacySheet
 // (abaixo) preservada — arquivo intocado, só sem SheetKey/row que a
 // abra mais. Mesma decisão do painel Web, ver pro-configuracoes-view.tsx.
-type SheetKey = 'perfil' | 'plano' | 'whatsapp' | 'link' | 'ajuda' | 'excluir' | null;
+//
+// "Canais da sua Doopla" redesenhada (auditoria de legado, 15/09/2026,
+// mesma decisão do Web) — princípio da fundadora: só "como um cliente
+// chega até a Doopla desse profissional", nunca tela de Booker. O
+// bloco "Quem recebe seus pedidos de orçamento" (roteamento pro
+// booker, dentro do sheet 'link') saiu daqui; fetchArtistBookers/
+// fetchArtistLinkRouting/updateArtistLinkRouting (lib/data/link-routing.ts)
+// continuam intactos, só perderam este caller. Novo sheet
+// 'doopla-whatsapp' (WhatsApp da Doopla + "Seu código") — número via
+// dooplaWhatsappNumber() (mesma fonte de (tabs)/index.tsx, nunca
+// hardcoded), código = profiles.slug, o MESMO identificador já usado
+// em /orcamento/[slug]; nenhum identificador novo criado. Row antiga
+// "WhatsApp" (identidade do profissional) renomeada pra "Seu WhatsApp"
+// só pra deixar claro que não é o número oficial da Doopla.
+type SheetKey = 'perfil' | 'plano' | 'doopla-whatsapp' | 'whatsapp' | 'link' | 'ajuda' | 'excluir' | null;
 
 const PLAN_LABELS: Record<string, string> = { doopla: 'Doopla', pro: 'Doopla Pro' };
 
@@ -122,8 +129,9 @@ export default function ConfiguracoesScreen() {
           <View style={styles.list}>
             <SettingsRow label="Conta e perfil" sub={profile?.full_name ?? undefined} onPress={() => setOpenSheet('perfil')} />
             <SettingsRow label="Plano" sub={subscription?.artist_plan ? PLAN_LABELS[subscription.artist_plan] : undefined} onPress={() => setOpenSheet('plano')} />
+            <SettingsRow label="WhatsApp da Doopla" onPress={() => setOpenSheet('doopla-whatsapp')} />
             <SettingsRow
-              label="WhatsApp"
+              label="Seu WhatsApp"
               sub={whatsappSnapshot ? WHATSAPP_STATUS_LABELS[whatsappSnapshot.status] : 'Não verificado'}
               onPress={() => setOpenSheet('whatsapp')}
             />
@@ -166,6 +174,10 @@ export default function ConfiguracoesScreen() {
         </View>
       </BottomSheet>
 
+      <BottomSheet visible={openSheet === 'doopla-whatsapp'} onClose={() => setOpenSheet(null)}>
+        {profile?.slug && <DooplaWhatsappAndCodeSheet professionalSlug={profile.slug} />}
+      </BottomSheet>
+
       <BottomSheet visible={openSheet === 'whatsapp'} onClose={() => setOpenSheet(null)}>
         {user && session && (
           <WhatsappVerificationSheet
@@ -178,7 +190,7 @@ export default function ConfiguracoesScreen() {
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'link'} onClose={() => setOpenSheet(null)}>
-        {user && profile?.slug && <BookingLinkSheet artistId={user.id} slug={profile.slug} visible={openSheet === 'link'} />}
+        {profile?.slug && <BookingLinkSheet slug={profile.slug} />}
       </BottomSheet>
 
       <BottomSheet visible={openSheet === 'ajuda'} onClose={() => setOpenSheet(null)}>
@@ -253,6 +265,67 @@ function ProfileForm({
       <Pressable style={[styles.submit, submitting && styles.submitDisabled]} disabled={submitting} onPress={submit}>
         <Text style={styles.submitText}>{submitting ? 'Salvando…' : 'Salvar'}</Text>
       </Pressable>
+    </View>
+  );
+}
+
+// "WhatsApp da Doopla" (número oficial, dooplaWhatsappNumber() — mesma
+// fonte já usada na Home, EXPO_PUBLIC_WHATSAPP_NUMBER, nunca
+// hardcoded) + "Seu código" (profiles.slug, MESMO identificador já
+// usado em /orcamento/[slug] e no token do WhatsApp inbound web —
+// nenhum identificador novo). Mesmo padrão try/catch de
+// (tabs)/index.tsx pra lidar com a env ausente sem quebrar a tela.
+function DooplaWhatsappAndCodeSheet({ professionalSlug }: { professionalSlug: string }) {
+  const [copiedNumber, setCopiedNumber] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const whatsappNumber = (() => {
+    try {
+      return dooplaWhatsappNumber();
+    } catch {
+      return null;
+    }
+  })();
+
+  async function copyNumber() {
+    if (!whatsappNumber) return;
+    await Clipboard.setStringAsync(whatsappNumber);
+    setCopiedNumber(true);
+    setTimeout(() => setCopiedNumber(false), 2200);
+  }
+
+  async function copyCode() {
+    await Clipboard.setStringAsync(professionalSlug);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2200);
+  }
+
+  return (
+    <View>
+      <Text style={styles.sheetTitle}>WhatsApp da Doopla</Text>
+
+      <View style={styles.linkBox}>
+        <Text style={styles.linkText}>{whatsappNumber ?? 'Em configuração'}</Text>
+      </View>
+      {whatsappNumber && (
+        <View style={styles.rowActions}>
+          <Pressable style={styles.ghostBtn} onPress={copyNumber}>
+            <Text style={styles.ghostBtnText}>{copiedNumber ? 'Copiado!' : 'Copiar número'}</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <Text style={[styles.sheetSubtext, { marginTop: 20 }]}>Vai passar este número para um cliente?</Text>
+      <Text style={styles.label}>Envie também seu código:</Text>
+      <View style={styles.linkBox}>
+        <Text style={styles.linkText}>{professionalSlug}</Text>
+      </View>
+      <View style={styles.rowActions}>
+        <Pressable style={styles.ghostBtn} onPress={copyCode}>
+          <Text style={styles.ghostBtnText}>{copiedCode ? 'Copiado!' : 'Copiar código'}</Text>
+        </Pressable>
+      </View>
+      <Text style={styles.sheetSubtext}>Assim sua Doopla sabe que o cliente veio falar com você.</Text>
     </View>
   );
 }
@@ -429,132 +502,45 @@ function WhatsappVerificationSheet({
 // Gap bloqueante do beta (14/09/2026) — o link individual de
 // booking/orçamento (canal de entrada de cliente sem login, preservado
 // como produto atual — não é Perfil Público/vitrine) não tinha NENHUMA
-// tela no App: nem pra ver/copiar o link, nem pra escolher quem recebe
-// os pedidos. Mesma tabela/regra do Web (artist_link_routing).
-function BookingLinkSheet({ artistId, slug, visible }: { artistId: string; slug: string; visible: boolean }) {
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [mode, setMode] = useState<LinkRoutingMode>('eu');
-  const [bookerId, setBookerId] = useState<string | null>(null);
-  const [bookers, setBookers] = useState<BookerOption[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [infoCopied, setInfoCopied] = useState(false);
+// tela no App pra ver/copiar o link.
+//
+// "Quem recebe seus pedidos de orçamento" saiu deste sheet (auditoria
+// de legado, 15/09/2026, mesma decisão do Web) — Booker é produto/role
+// separado, não configuração do Professional. artist_link_routing /
+// fetchArtistLinkRouting / fetchArtistBookers / updateArtistLinkRouting
+// (lib/data/link-routing.ts) continuam intactos, só perderam este
+// caller — RoutingOption (abaixo) preservada, sem caller nesta tela.
+function BookingLinkSheet({ slug }: { slug: string }) {
+  const [copied, setCopied] = useState(false);
 
   const orcamentoUrl = `${apiBaseUrl()}/orcamento/${slug}`;
 
-  const load = useCallback(() => {
-    setPhase('loading');
-    setError(null);
-    setSaved(false);
-    Promise.all([fetchArtistLinkRouting(artistId), fetchArtistBookers(artistId)])
-      .then(([routing, bookerOptions]) => {
-        setMode(routing?.mode ?? 'eu');
-        setBookerId(routing?.bookerId ?? null);
-        setBookers(bookerOptions);
-        setPhase('ready');
-      })
-      .catch(() => setPhase('error'));
-  }, [artistId]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const timer = setTimeout(load, 0);
-    return () => clearTimeout(timer);
-  }, [visible, load]);
-
   async function copyLink() {
     await Clipboard.setStringAsync(orcamentoUrl);
-    setSaved(false);
-    setInfoCopied(true);
-    setTimeout(() => setInfoCopied(false), 2200);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2200);
   }
 
   function shareLink() {
     Share.share({ message: orcamentoUrl }).catch(() => {});
   }
 
-  function submitRouting(nextMode: LinkRoutingMode, nextBookerId: string | null) {
-    setSubmitting(true);
-    setError(null);
-    setSaved(false);
-    updateArtistLinkRouting(artistId, nextMode, nextBookerId).then((result) => {
-      setSubmitting(false);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setMode(nextMode);
-      setBookerId(nextBookerId);
-      setSaved(true);
-    });
-  }
-
-  if (phase === 'loading') return <LoadingState label="Carregando…" />;
-  if (phase === 'error') return <ErrorState message="Não conseguimos carregar seu link agora." onRetry={load} />;
-
   return (
     <View>
       <Text style={styles.sheetTitle}>Seu link de booking</Text>
-      <Text style={styles.sheetSubtext}>
-        A porta de entrada pro cliente iniciar um booking com você — não é um perfil público.
-      </Text>
+      <Text style={styles.sheetSubtext}>Compartilhe este link e o cliente já começa o pedido conectado a você.</Text>
 
       <View style={styles.linkBox}>
         <Text style={styles.linkText}>{orcamentoUrl}</Text>
       </View>
       <View style={styles.rowActions}>
         <Pressable style={styles.ghostBtn} onPress={copyLink}>
-          <Text style={styles.ghostBtnText}>{infoCopied ? 'Copiado!' : 'Copiar link'}</Text>
+          <Text style={styles.ghostBtnText}>{copied ? 'Copiado!' : 'Copiar link'}</Text>
         </Pressable>
         <Pressable style={styles.ghostBtn} onPress={shareLink}>
           <Text style={styles.ghostBtnText}>Compartilhar</Text>
         </Pressable>
       </View>
-
-      <Text style={[styles.label, { marginTop: 20 }]}>Quem recebe seus pedidos de orçamento</Text>
-      <RoutingOption
-        label="Decidir caso a caso"
-        hint="As solicitações chegam pra você primeiro."
-        active={mode === 'eu'}
-        onPress={() => submitRouting('eu', null)}
-      />
-      {bookers.length > 0 && (
-        <>
-          <RoutingOption
-            label="Enviar automático pro meu booker"
-            hint="As solicitações vão direto pro booker escolhido."
-            active={mode === 'meu_booker'}
-            onPress={() => submitRouting('meu_booker', bookerId ?? bookers[0].profileId)}
-          />
-          <RoutingOption
-            label="Eu e meu booker acompanhamos juntos"
-            hint="As solicitações aparecem pros dois."
-            active={mode === 'eu_e_meu_booker'}
-            onPress={() => submitRouting('eu_e_meu_booker', bookerId ?? bookers[0].profileId)}
-          />
-          {mode !== 'eu' && (
-            <View style={styles.chips}>
-              {bookers.map((b) => (
-                <Pressable
-                  key={b.profileId}
-                  onPress={() => submitRouting(mode, b.profileId)}
-                  style={[styles.chip, bookerId === b.profileId && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, bookerId === b.profileId && styles.chipTextActive]}>{b.fullName}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </>
-      )}
-      {bookers.length === 0 && (
-        <Text style={styles.gapNote}>Nenhum booker te representa ainda — assim que tiver um, aparece aqui como opção.</Text>
-      )}
-
-      {submitting && <Text style={styles.sheetSubtext}>Salvando…</Text>}
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      {saved && !error && !submitting && <Text style={styles.savedText}>Salvo.</Text>}
     </View>
   );
 }

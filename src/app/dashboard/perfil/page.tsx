@@ -3,9 +3,9 @@ import Link from 'next/link';
 
 import { siteOrigin } from '@/lib/site-url';
 import { hasDooplaPro } from '@/lib/subscription';
-import type { LinkRoutingMode } from '@/lib/supabase/types';
+import { whatsappPublicNumber } from '@/lib/supabase/env';
 import { PlanCard } from '../booker-pro/plan-card';
-import { getActivePaymentDetails, getArtistBookers, getArtistLinkRouting, getSubscription } from '../data';
+import { getActivePaymentDetails, getSubscription } from '../data';
 import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
@@ -41,15 +41,12 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, bookers, routing, origin] =
-      await Promise.all([
-        getSubscription(user.id, supabase),
-        getCachedProfessionalHomeFacts(supabase),
-        getActivePaymentDetails(user.id, supabase),
-        getArtistBookers(user.id, supabase),
-        getArtistLinkRouting(user.id, supabase),
-        siteOrigin(),
-      ]);
+    const [subscription, homeFacts, paymentDetails, origin] = await Promise.all([
+      getSubscription(user.id, supabase),
+      getCachedProfessionalHomeFacts(supabase),
+      getActivePaymentDetails(user.id, supabase),
+      siteOrigin(),
+    ]);
     return (
       <ProConfiguracoesView
         hasPro={hasDooplaPro(subscription)}
@@ -57,10 +54,9 @@ export default async function PerfilPage() {
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         whatsappVerifiedNumber={homeFacts?.whatsappVerifiedNumber ?? null}
         paymentConfigured={paymentDetails !== null}
-        bookers={bookers.map((b) => ({ profileId: b.profileId, fullName: b.fullName }))}
-        linkRoutingMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
-        linkRoutingBookerId={routing?.booker_id ?? null}
         orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
+        professionalSlug={profile.slug}
+        whatsappNumber={whatsappPublicNumber()}
       />
     );
   }

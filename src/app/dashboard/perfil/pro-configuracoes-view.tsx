@@ -3,11 +3,9 @@ import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
 import { SUPPORT_EMAIL } from '@/lib/support';
-import type { LinkRoutingMode, Subscription } from '@/lib/supabase/types';
+import type { Subscription } from '@/lib/supabase/types';
 
-import type { BookerOption } from '../link-routing-form';
 import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
-import { ProLinkRoutingForm } from '../pro-link-routing-form';
 import { DeleteAccountModal } from './delete-account-modal';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 import { ProSettingsRow } from './settings-ui';
@@ -64,26 +62,42 @@ import { ProSettingsRow } from './settings-ui';
 // preservados, só a superfície de Configurações desconectada. Quando a
 // Comunidade passar a exibir esses campos de verdade, revisar quais
 // controles voltam.
+//
+// "Canais da sua Doopla" redesenhada (auditoria de legado, 15/09/2026):
+// princípio da fundadora — não é tela de integrações, não é tela de
+// Booker, não é tela técnica: só "como um cliente chega até a Doopla
+// desse profissional". "Quem recebe seus pedidos de orçamento"
+// (ProLinkRoutingForm, roteamento pro Booker) saiu daqui — Booker é
+// produto/role separado, tratado em outro bloco, não uma configuração
+// dentro do Professional. `artist_link_routing`, `updateLinkRoutingAction`
+// e `ProLinkRoutingForm` continuam intactos (só perderam este caller;
+// `getArtistBookers`/`getArtistLinkRouting` só deixaram de ser
+// chamados por `page.tsx` aqui — seguem existindo em `../data.ts`).
+// No lugar, "WhatsApp da Doopla" (número oficial, `whatsappPublicNumber()`,
+// nunca hardcoded) ganhou um segundo elemento: "Seu código"
+// (`profiles.slug` — o MESMO identificador já usado no link de booking
+// e no token do WhatsApp inbound, `extractDooplaSlugToken`; nenhuma
+// coluna/RPC/identificador novo foi criado). "Seu link de orçamento"
+// virou "Seu link de booking" (só copy — mesma URL `/orcamento/[slug]`,
+// mesma action, mesmo tracking de origem, intocados).
 export function ProConfiguracoesView({
   hasPro,
   subscription,
   whatsappStatus,
   whatsappVerifiedNumber,
   paymentConfigured,
-  bookers,
-  linkRoutingMode,
-  linkRoutingBookerId,
   orcamentoUrl,
+  professionalSlug,
+  whatsappNumber,
 }: {
   hasPro: boolean;
   subscription: Subscription | null;
   whatsappStatus: string | null;
   whatsappVerifiedNumber: string | null;
   paymentConfigured: boolean;
-  bookers: BookerOption[];
-  linkRoutingMode: LinkRoutingMode;
-  linkRoutingBookerId: string | null;
   orcamentoUrl: string | null;
+  professionalSlug: string | null;
+  whatsappNumber: string | null;
 }) {
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
@@ -148,16 +162,11 @@ export function ProConfiguracoesView({
         <ProAccordion title="Canais da sua Doopla" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{whatsappSummary}</span>}>
           <div className="flex flex-col gap-3.5">
             <p className="text-[12.5px] text-[var(--pro-tx-50)]">
-              A porta de entrada pro cliente iniciar um booking com você — não é um perfil público.
+              Escolha como colocar sua Doopla em contato com um cliente.
             </p>
+            <DooplaWhatsappAndCodeCard whatsappNumber={whatsappNumber} professionalSlug={professionalSlug} />
+            <BookingLinkCard orcamentoUrl={orcamentoUrl} />
             <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappVerifiedNumber} />
-            <OrcamentoLinkCard orcamentoUrl={orcamentoUrl} />
-            <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Quem recebe seus pedidos de orçamento</p>
-              <div className="mt-3">
-                <ProLinkRoutingForm bookers={bookers} currentMode={linkRoutingMode} currentBookerId={linkRoutingBookerId} />
-              </div>
-            </div>
           </div>
         </ProAccordion>
 
@@ -210,11 +219,59 @@ function RowList({ children }: { children: ReactNode }) {
   );
 }
 
-function OrcamentoLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
+// "WhatsApp da Doopla" (número oficial, whatsappPublicNumber() —
+// nunca hardcoded, estado honesto "Em configuração" quando a env não
+// está setada) + "Seu código" (profiles.slug, o MESMO identificador
+// já usado em /orcamento/[slug] e no token do WhatsApp inbound —
+// nenhum identificador novo). O código não depende do número estar
+// configurado: é um dado próprio e estável do profissional, sempre
+// disponível assim que existe (ensurePublicId garante isso desde a
+// primeira visita ao painel).
+function DooplaWhatsappAndCodeCard({
+  whatsappNumber,
+  professionalSlug,
+}: {
+  whatsappNumber: string | null;
+  professionalSlug: string | null;
+}) {
+  return (
+    <div>
+      <p className="font-pro-sub text-[13.5px] font-bold">WhatsApp da Doopla</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+        {whatsappNumber ? (
+          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{whatsappNumber}</span>
+        ) : (
+          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
+        )}
+        {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Copiar número" />}
+      </div>
+
+      {professionalSlug && (
+        <div className="mt-3">
+          <p className="text-[12.5px] text-[var(--pro-tx-50)]">Vai passar este número para um cliente?</p>
+          <p className="mt-1 text-[12.5px] font-semibold text-[var(--pro-off)]">Envie também seu código:</p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{professionalSlug}</span>
+            <ProCopyButton value={professionalSlug} label="Copiar código" />
+          </div>
+          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Assim sua Doopla sabe que o cliente veio falar com você.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Renomeado de "Seu link de orçamento" (copy, 15/09/2026) — mesma URL
+// /orcamento/[slug], mesma action/RPC/tracking de origin/channel,
+// intocados.
+function BookingLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
   if (!orcamentoUrl) return null;
   return (
     <div>
-      <p className="font-pro-sub text-[13.5px] font-bold">Seu link de orçamento</p>
+      <p className="font-pro-sub text-[13.5px] font-bold">Seu link de booking</p>
+      <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
+        Compartilhe este link e o cliente já começa o pedido conectado a você.
+      </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
         <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{orcamentoUrl}</span>
         <ProCopyButton value={orcamentoUrl} label="Copiar link" />

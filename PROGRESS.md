@@ -14852,6 +14852,162 @@ Decisões, Home, Booker, arquitetura da Comunidade (`comunidade/**`,
 fóruns do App, migrations, RPCs), matching, Perfil público legado.
 
 
+### "Canais da sua Doopla" — WhatsApp da Doopla + código, link de booking, Seu WhatsApp; Booker desacoplado da superfície Professional — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 3× (antes da auditoria, antes de
+implementar, antes do commit): mesmo tip conhecido (`b426503`), zero
+diff nos arquivos tocados desde `ff77afc`. Sem conflito.
+
+#### Auditoria prévia — identidade canônica (item central da rodada)
+
+Confirmado **antes** de tocar em qualquer código: `extractDooplaSlugToken`
+(`src/lib/channels/whatsapp/intake-routing.ts:124-129`) só casa
+`doopla.com/<slug>` — não existe "código escondido" separado no
+routing. `public_id` da view `community_profiles_public` (migration
+0076) é literalmente `p.slug as public_id` — mesma coluna. `referral_code`
+(migration 0020) é um identificador real, mas de um programa
+totalmente diferente (indicação/R$5), nunca usado pra identidade. Zero
+outro identificador (`professional_code`/`short_code`/etc. não
+existem). **Conclusão**: um único identificador real —
+`profiles.slug` — já usado no link de booking (`/orcamento/[slug]`) e
+no token do WhatsApp inbound. "Seu código" na UI é esse mesmo valor,
+sem nenhuma coluna/RPC/identificador novo.
+
+#### 1. WhatsApp da Doopla + Seu código (novo, Web + App)
+
+Web: novo bloco `DooplaWhatsappAndCodeCard` dentro do accordion
+"Canais da sua Doopla" (`pro-configuracoes-view.tsx`) — número oficial
+via `whatsappPublicNumber()` (nunca hardcoded; estado honesto "Em
+configuração" quando a env não está setada, nunca esconde o bloco) +
+"Seu código" (`profiles.slug`, sempre visível quando existe, independente
+do número estar configurado). App: sheet novo `DooplaWhatsappAndCodeSheet`
+(`configuracoes.tsx`), nova row "WhatsApp da Doopla", número via
+`dooplaWhatsappNumber()` (mesma fonte já usada em `(tabs)/index.tsx`,
+try/catch pro mesmo padrão de fallback honesto — `requireEnv` lançaria
+sem isso). Nenhuma coluna/RPC/identificador novo criado; `referral_code`
+não tocado/usado.
+
+#### 2. Seu link de booking (renomeado, Web + App)
+
+"Seu link de orçamento" → "Seu link de booking" + helper "Compartilhe
+este link e o cliente já começa o pedido conectado a você." — só copy.
+Rota `/orcamento/[slug]`, `submitOrcamentoRequestAction`/RPC
+`submit_orcamento_request`, tracking `origin/channel='public_link'`:
+nenhum desses tocado (confirmado lendo a versão canônica atual do
+redesign de 15/09 da Sessão Principal, `git show
+origin/claude/categoria-b-supabase-env-qsbdq9:src/app/orcamento/[slug]/page.tsx`,
+já que meu worktree estava desatualizado nesse arquivo específico —
+nenhuma mudança feita nele nesta rodada, só lido pra auditoria). App já
+tinha a row "Seu link de booking" com esse nome — só o sheet perdeu o
+bloco de roteamento (item 4) e a copy de abertura (travessão + "perfil
+público") virou a mesma frase do Web.
+
+#### 3. Seu WhatsApp (identidade do profissional) — intocado
+
+`ProWhatsappIdentityCard` (Web) e `WhatsappVerificationSheet` (App) já
+mostravam título "Seu WhatsApp" claramente — nenhuma mudança de fluxo,
+copy ou backend. Row do App renomeada de "WhatsApp" pra "Seu WhatsApp"
+(só pra reforçar que não é o número oficial, já que agora existe uma
+row separada "WhatsApp da Doopla" ao lado). RPCs (migration 0064),
+OTP, expiração, tentativas, unicidade, boundary compartilhado
+Web/App (`whatsapp-identity-actions.ts` → `request-verification.ts`):
+nenhum touched.
+
+#### 4. Booker — desconectado da superfície Professional (Web + App)
+
+"Quem recebe seus pedidos de orçamento" (`ProLinkRoutingForm`, Web) e o
+mesmo bloco dentro do sheet de link (App) removidos do accordion/tela
+Professional. **Preservados intactos, sem nenhuma linha apagada**:
+`artist_link_routing` (tabela), `updateLinkRoutingAction`,
+`ProLinkRoutingForm`, `LinkRoutingCard`, `getArtistBookers`/
+`getArtistLinkRouting` (`../data.ts`), e no App
+`fetchArtistBookers`/`fetchArtistLinkRouting`/`updateArtistLinkRouting`
+(`lib/data/link-routing.ts`) + `RoutingOption` (JSX helper, preservado
+com zero caller, mesmo padrão já usado em `CommunityPrivacySheet`/
+`AttentionChannelForm`). `page.tsx` (Web) parou de buscar
+bookers/routing só pra essa tela (Promise.all reduzido) — a única
+mudança é a wiring, não a infraestrutura.
+
+#### 5. CTA "Falar com minha Doopla" — intocado
+
+Não movido nem duplicado pra Configurações nesta rodada, conforme
+instrução. `TalkToDooplaCard` na Home Web permanece exatamente como
+está (`professional-home-view.tsx`, arquivo não tocado). Gap de App
+(sem equivalente) permanece registrado, não implementado.
+
+#### 6. Envio de contato do cliente — não implementado
+
+Confirmado de novo (grep em todo `src/`) que não existe nenhuma UI
+"quer que sua Doopla fale com o cliente" hoje. `outbound_intents`
+(migration 0051/0058/0083, `runtime/outbound.ts`, worker cron real
+`send-outbound-intents/route.ts`) é infraestrutura genuína, mas serve
+o envio autônomo do Intelligence Core numa conversa já existente, não
+um botão do profissional pra iniciar contato outbound novo. Registrado
+como capacidade futura, nenhuma UI/outbound novo construído.
+
+#### 7. E-mail — nenhuma alteração
+
+Confirmado: zero menção de e-mail em `pro-configuracoes-view.tsx` ou
+no equivalente App antes e depois desta rodada.
+
+#### 8. Rota órfã
+
+`/dashboard/perfil/canais/page.tsx` → `redirect('/dashboard/perfil')`.
+Mesmo padrão das rodadas anteriores — `ProWhatsappIdentityCard`,
+`LinkRoutingCard`, `ProLinkRoutingForm` continuam intactos, só a
+navegação até essa página específica foi removida (nada mais linkava
+até ela, confirmado na auditoria).
+
+#### 9. Home — intocada
+
+`src/app/_home/**` e `professional-home-view.tsx` (`BookingChannelsCard`/
+`TalkToDooplaCard`) não tiveram nenhuma linha tocada nesta rodada —
+fora do escopo da Sessão Painel, propriedade da Sessão Home.
+
+#### Testes/validação
+
+- `tsc --noEmit`: limpo (0 erros nos arquivos tocados; confirmado 2×,
+  antes e depois de remover as rotas de preview temporárias).
+- `eslint` nos 3 arquivos Web alterados: limpo (exit 0).
+- `npm run build`: completo, sem erros, 61 rotas geradas — confirmado
+  que `/dashboard/perfil/canais` aparece como rota dinâmica (redirect)
+  e nenhuma rota `/dev/preview-*` sobrevive no build final.
+- QA visual real via `/dev/preview-canais` e `/dev/preview-canais-sem-numero`
+  (Playwright, screenshots em 2 estados — número configurado e "Em
+  configuração"), confirmando: sem travessão, sem "perfil público",
+  ordem WhatsApp da Doopla+código → Seu link de booking → Seu WhatsApp,
+  Booker ausente, estado honesto quando a env não existe. Rotas de
+  preview e `.next` removidos antes do commit (confirmado via `git
+  status`, só os 4 arquivos de produto aparecem no diff).
+- App: sem toolchain de typecheck/lint configurado neste ambiente
+  (mesma limitação já documentada em rodadas anteriores) — validado por
+  leitura completa e cuidadosa do arquivo inteiro após as edições: JSX
+  balanceado, imports consistentes (nenhum import morto de
+  `link-routing.ts` sobrevive fora dos comentários), `RoutingOption`/
+  `CommunityPrivacySheet` preservados com todos os imports que usam
+  internamente ainda presentes.
+- Checklist da fundadora (12 itens): (1) número nunca hardcoded —
+  confirmado (`whatsappPublicNumber()`/`dooplaWhatsappNumber()`); (2)
+  código = `profiles.slug` — confirmado; (3) `referral_code` não usado —
+  confirmado; (4) link = `/orcamento/[slug]` — confirmado, rota não
+  renomeada; (5) copiar código funciona (Web `ProCopyButton`, App
+  `Clipboard.setStringAsync`) — confirmado por leitura; (6) copiar/
+  compartilhar link continua — confirmado, mesma função preservada;
+  (7) WhatsApp Identity intacto — confirmado, zero linha de
+  `whatsapp-identity-actions.ts`/RPCs tocada; (8) Booker não aparece
+  mais no Professional — confirmado; (9) infra Booker permanece —
+  confirmado; (10) rota órfã redireciona — confirmado; (11) Home
+  intocada — confirmado (`git diff --stat` não lista nenhum arquivo
+  em `_home/**`); (12) backend/intake/origin/channel intocados —
+  confirmado (nenhum arquivo de `actions.ts`/RPC/migration tocado).
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Onboarding,
+Financeiro, Ajuda e suporte, Ajustes no detalhe do booking, Decisões,
+Home (`_home/**`, `professional-home-view.tsx`), Booker (infraestrutura),
+arquitetura da Comunidade, matching, Perfil público legado.
+
 
 ## Como usar isso
 
