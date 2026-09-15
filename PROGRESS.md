@@ -16446,6 +16446,26 @@ Build limpo, typecheck 0 erros, lint idêntico ao baseline (44 erros/6 warnings 
 
 **Direct Booking continua não implementado** — este bloco só fecha a lacuna semântica que o bloqueava.
 
+## 117. Bug fix — "Deixe sua Doopla pronta" não atualizava após completar Contexto profissional — `[DELIVERED + VALIDATED EM QA REAL]` — 16/09/2026
+
+**Sintoma reportado pela fundadora**: card da Home do Professional Web mostrava "Contexto profissional · 3/4" com CTA "Completar →" para `/dashboard/perfil/dados`. Depois de preencher os dados pendentes e salvar, ao voltar pra Home o card continuava em 3/4, como se nada tivesse sido salvo.
+
+**Causa raiz**: `updateProfileAndWorkContextAction` (`src/app/dashboard/actions.ts`), a Server Action que salva `/dashboard/perfil/dados`, nunca checava o `error` retornado pelo `.update()` do Supabase — sempre respondia `{ success: true }`, então a UI mostrava "Salvo ✓" mesmo quando a escrita falhasse silenciosamente. O checklist da Home (`getArtistMatchingCompletion`, `src/app/dashboard/data.ts`) já lia as mesmas 5 colunas de `artist_profiles` com a mesma semântica de "preenchido" usada no formulário — nenhum mismatch de campo/tabela/condição (essa classe de bug já tinha sido corrigida antes, commit `fce024e`). O checklist só refletia, corretamente, uma escrita que nunca havia se confirmado no banco.
+
+**Os 4 requisitos de "Contexto profissional · X/4"** (`artist_profiles`): `what_you_do` preenchido; `where_you_serve` preenchido; `base_fee_cents` OU `pricing_notes` preenchido; `issues_invoice` respondido (`true`/`false`, só `null` fica pendente).
+
+**Fonte única de verdade**: já existia e não foi duplicada — `getArtistMatchingCompletion` é a única implementação desse cálculo no Web; o App ainda não tem superfície de edição de Contexto profissional.
+
+**Cache/revalidação**: descartado como causa — sem `unstable_cache`/`export const revalidate` em nenhuma rota do dashboard, e `revalidatePath('/dashboard/perfil/dados')` + `revalidatePath('/dashboard')` já estavam corretos.
+
+**Correção**: `updateProfileAndWorkContextAction` agora desestrutura `{ error }` do `.update()` e retorna erro visível ao usuário em vez de reportar sucesso falso, alinhada ao padrão já usado pelas actions irmãs no mesmo arquivo (`updateAttentionChannelAction`, `updateAccountInfoAction`).
+
+**Validação**: `tsc --noEmit` limpo, ESLint idêntico ao baseline (44 erros/6 warnings), `npm run build` sem erros. QA real confirmada pela fundadora: completou o Contexto profissional, salvou, voltou pra Home, estado atualizou corretamente (3/4 → 4/4, card refletindo o estado real).
+
+**Impacto**: só Web (`/dashboard/perfil/dados` + Home do Professional Web). App não tem esse formulário, não é afetado.
+
+**Arquivo alterado**: `src/app/dashboard/actions.ts`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
