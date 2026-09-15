@@ -21,7 +21,14 @@ const PIX_KEY_TYPES: { key: PixKeyType; label: string }[] = [
   { key: 'aleatoria', label: 'Aleatória' },
 ];
 
-export default function DinheiroScreen() {
+// Auditoria de Financeiro (15/09/2026) — nomenclatura unificada pra
+// "Financeiro" (menu, Stack.Screen e título da própria tela; "Dinheiro"
+// eliminado dos 3, mesma direção do Web). Labels de valor reescritos
+// pra nunca implicar "Recebido"/"Pago" quando o dado deriva só de
+// status 'concluida' (auto-reportado — ver comentário em
+// computeArtistStats, mobile/src/lib/data/bookings.ts, e o equivalente
+// Web em ../../../src/app/dashboard/data.ts). Cálculos intocados.
+export default function FinanceiroScreen() {
   const { professionalId } = useAuth();
   const [phase, setPhase] = useState<Phase>('loading');
   const [paymentDetails, setPaymentDetailsState] = useState<PaymentDetails | null>(null);
@@ -47,7 +54,7 @@ export default function DinheiroScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Dinheiro</Text>
+        <Text style={styles.title}>Financeiro</Text>
       </View>
 
       {phase === 'loading' && <LoadingState label="Carregando…" />}
@@ -71,22 +78,25 @@ export default function DinheiroScreen() {
               <Text style={styles.editBtnText}>Editar dados de recebimento</Text>
             </Pressable>
             <Text style={styles.protectionCopy}>
-              Seus dados de recebimento ficam protegidos na sua conta Doopla. Qualquer dúvida, é só me perguntar.
+              A Doopla usa estes dados quando precisa orientar o cliente sobre o pagamento. O pagamento é feito
+              diretamente para você.
             </Text>
           </View>
 
           {!paymentDetails && (
             <View style={styles.warningCard}>
-              <Text style={styles.warningText}>Configure seus dados de recebimento pra Doopla conseguir operar por você.</Text>
+              <Text style={styles.warningText}>
+                Configure seus dados de recebimento pra Doopla conseguir orientar seus clientes sobre o pagamento.
+              </Text>
             </View>
           )}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Valores</Text>
             <View style={styles.statsGrid}>
-              <Stat label="Recebido no mês" value={formatCentsAsBRL(stats.monthNetReceivedCents)} />
-              <Stat label="Total recebido" value={formatCentsAsBRL(stats.netReceivedCents)} />
-              <Stat label="Bookings pagos" value={String(stats.closedCount)} />
+              <Stat label="Valor concluído este mês" value={formatCentsAsBRL(stats.monthNetReceivedCents)} />
+              <Stat label="Valor em bookings concluídos" value={formatCentsAsBRL(stats.netReceivedCents)} />
+              <Stat label="Bookings concluídos" value={String(stats.closedCount)} />
             </View>
           </View>
         </ScrollView>

@@ -378,7 +378,7 @@ export type MatchingCompletion = { filled: number; total: number };
 // Correção 15/09/2026 (achado da fundadora) — este cálculo checava
 // `regions`/`career_stage`/`help_areas`, colunas do modelo antigo de
 // matching que a Simplificação de beta de 14/09/2026 (ver comentário
-// em `pro-work-context-form.tsx`) já tinha removido da UI de "Como
+// em `pro-profile-work-form.tsx`) já tinha removido da UI de "Como
 // você trabalha". Resultado: o card "Contexto profissional" nunca
 // chegava a N/N — 3 dos 4 critérios dependiam de colunas que o
 // profissional não tem mais como preencher, então a pendência nunca
@@ -390,25 +390,40 @@ export type MatchingCompletion = { filled: number; total: number };
 // por compatibilidade de dado histórico). `issues_invoice` conta como
 // preenchido em `false` também — é uma resposta válida, só `null`
 // (nunca respondido) é que falta.
+//
+// Ajuste 15/09/2026 (redesign "Perfil e trabalho") — `fee_range` saiu
+// da UI (vira legado, ver updateArtistWorkContextAction) e o critério
+// de cachê passa a ser `base_fee_cents` preenchido OU `pricing_notes`
+// com conteúdo: um profissional pode não ter um cachê-base único, mas
+// explicar a lógica em "Informações extras sobre seu cachê" — nenhum
+// dos dois pode virar obrigatório sozinho, exigir os dois travaria
+// quem só usa um.
+//
+// Nome da função: ainda `getArtistMatchingCompletion`, embora
+// "matching" não seja mais conceito do produto — não renomeado nesta
+// rodada (2 consumidores reais, `professional-home-view.tsx` e
+// `booker-home-view.tsx`, risco baixo mas fora do escopo mínimo deste
+// item). Registrado como dívida técnica no PROGRESS.md.
 export async function getArtistMatchingCompletion(
   artistId: string,
   supabase: SupabaseServerClient
 ): Promise<MatchingCompletion> {
   const { data } = await supabase
     .from('artist_profiles')
-    .select('what_you_do, where_you_serve, fee_range, issues_invoice')
+    .select('what_you_do, where_you_serve, base_fee_cents, pricing_notes, issues_invoice')
     .eq('profile_id', artistId)
     .maybeSingle<{
       what_you_do: string | null;
       where_you_serve: string | null;
-      fee_range: string | null;
+      base_fee_cents: number | null;
+      pricing_notes: string | null;
       issues_invoice: boolean | null;
     }>();
 
   const fields = [
     Boolean(data?.what_you_do?.trim()),
     Boolean(data?.where_you_serve?.trim()),
-    Boolean(data?.fee_range),
+    data?.base_fee_cents != null || Boolean(data?.pricing_notes?.trim()),
     data?.issues_invoice != null,
   ];
   return { filled: fields.filter(Boolean).length, total: fields.length };

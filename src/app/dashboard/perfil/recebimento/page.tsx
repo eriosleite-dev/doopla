@@ -1,34 +1,12 @@
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import { getActivePaymentDetails } from '../../data';
-import { PaymentDetailsFields } from '../../dinheiro/pro-payment-details-card';
-import { ProCard } from '../../pro-ui';
-import { getSessionProfile } from '../../session';
-import { ProSettingsDetailHeader } from '../settings-ui';
-
-export const metadata: Metadata = {
-  title: 'Dados de recebimento | Doopla',
-};
-
-// Settings V2 (08/09/2026) — item já entregue (§73/§78), só reposicionado
-// dentro da nova arquitetura de detalhe. Mesmo formulário/Server Action/
-// RPC de sempre (PaymentDetailsFields → setPaymentDetailsAction →
-// set_payment_details, migration 0046) — nunca uma segunda
-// implementação. is_operationally_ready() continua lendo esta mesma
-// tabela, sem nenhuma mudança de contrato.
-export default async function RecebimentoPage() {
-  const { supabase, user } = await getSessionProfile();
-  const paymentDetails = await getActivePaymentDetails(user.id, supabase);
-
-  return (
-    <main>
-      <ProSettingsDetailHeader
-        title="Dados de recebimento"
-        subtitle="A Doopla usa isso pra orientar o cliente sobre o pagamento — que é feito direto pra você."
-      />
-      <ProCard>
-        <PaymentDetailsFields key={paymentDetails?.pixKey ?? 'unset'} active={paymentDetails} />
-      </ProCard>
-    </main>
-  );
+// Rota legada (15/09/2026) — "Dados de recebimento" saiu de
+// Configurações (auditoria de Financeiro): Financeiro
+// (/dashboard/dinheiro) passou a ser a ÚNICA superfície canônica pra
+// esse formulário, que já vivia lá também (mesmo PaymentDetailsFields/
+// setPaymentDetailsAction/RPC set_payment_details, migration 0046 —
+// nenhum deles tocado). Sem conteúdo próprio que ainda faça sentido,
+// essa rota vira redirect.
+export default function RecebimentoRedirectPage() {
+  redirect('/dashboard/dinheiro');
 }

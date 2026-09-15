@@ -30,6 +30,22 @@ export const metadata: Metadata = {
 // Booker (branch abaixo) mantém a MESMA tela/lógica de sempre, só sem a
 // seção de saque (que já era 100% não-funcional pra ele também: o botão
 // era disabled, sem formAction — nunca existiu saque real).
+//
+// Auditoria de Financeiro (15/09/2026) — labels do lado artista
+// reescritos pra nunca implicar que a Doopla processou/confirmou um
+// pagamento: os únicos 2 caminhos que levam bookings a 'concluida'
+// (markPaidAction, booker; advanceInvoiceStage, artista via NF) são
+// auto-reportados, nunca uma confirmação de terceiro/gateway — ver
+// comentário em computeArtistStats (../data.ts). "Recebido
+// líquido"/"Recebido este mês"/"Recebimentos" viraram "Valor em
+// bookings concluídos"/"Valor concluído este mês"/"Bookings
+// concluídos" — mesmos cálculos, só copy semanticamente fiel ao que o
+// dado representa (valor de bookings, não pagamento verificado). Esta
+// página também passou a ser a ÚNICA superfície canônica de "Dados de
+// recebimento" (a linha equivalente em Configurações → Assinatura e
+// cobrança foi removida, ver pro-configuracoes-view.tsx — mesmo
+// PaymentDetailsFields/RPC, nenhuma duplicação de lógica, só de
+// navegação).
 export default async function DinheiroPage() {
   const { supabase, user, profile } = await getSessionProfile();
   const bookings = await getUserBookings(user.id, profile.role, supabase);
@@ -75,15 +91,15 @@ export default async function DinheiroPage() {
       <div className="mb-4 grid grid-cols-2 gap-3.5 sm:grid-cols-3">
         <ProCard>
           <p className="font-pro-display text-[22px] leading-none">{formatCentsAsBRL(artistStats.totalGrossCents)}</p>
-          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Valor negociado (bookings confirmados)</p>
+          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Valor em bookings confirmados</p>
         </ProCard>
         <ProCard>
           <p className="font-pro-display text-[22px] leading-none text-[var(--pro-green)]">{formatCentsAsBRL(artistStats.netReceivedCents)}</p>
-          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Recebido líquido (bookings concluídos)</p>
+          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Valor em bookings concluídos</p>
         </ProCard>
         <ProCard>
           <p className="font-pro-display text-[22px] leading-none">{formatCentsAsBRL(artistStats.monthNetReceivedCents)}</p>
-          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Recebido este mês</p>
+          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Valor concluído este mês</p>
         </ProCard>
       </div>
 
@@ -91,9 +107,9 @@ export default async function DinheiroPage() {
 
       <div className="mt-4">
         <ProCard>
-          <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Recebimentos</p>
+          <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Bookings concluídos</p>
           {receivedBookings.length === 0 ? (
-            <ProEmptyState message="Nenhum recebimento ainda." />
+            <ProEmptyState message="Nenhum booking concluído ainda." />
           ) : (
             <ul className="flex flex-col gap-2">
               {receivedBookings.map((b) => (

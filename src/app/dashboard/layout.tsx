@@ -13,7 +13,7 @@ import { ProModalProvider } from './booker-pro/pro-modal-context';
 import { getAttentionItems, getReferralSummary, getSubscription, getUserBookings } from './data';
 import { LegacyDashboardShell } from './legacy-shell';
 import { NotificationsProvider } from './notifications-context';
-import { getCachedConversationOperationalFacts, getCachedConversationStateSummary, getCachedProfessionalHomeFacts } from './pro-home-cache';
+import { getCachedConversationOperationalFacts, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProfessionalShell } from './pro-shell';
 import { ReferralModal } from './referral-modal';
 import { ReferralModalProvider } from './referral-modal-context';
@@ -159,9 +159,8 @@ async function ProfessionalShellGate({
   referralEligible: boolean;
   children: React.ReactNode;
 }) {
-  const [homeFacts, conversationSummary, pedidosNeedingYouCount] = await Promise.all([
+  const [homeFacts, pedidosNeedingYouCount] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
-    getCachedConversationStateSummary(supabase),
     getPedidosNeedingYouCount(supabase),
   ]);
   return (
@@ -179,7 +178,6 @@ async function ProfessionalShellGate({
         avatarUrl={avatarUrl}
         hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
         bookingsAwaitingCount={(homeFacts?.bookingsAwaitingResponseCount ?? 0) + pedidosNeedingYouCount}
-        decisionsCount={conversationSummary.needsYouCount}
         referralEligible={referralEligible}
       >
         {children}

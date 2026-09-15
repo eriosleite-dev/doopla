@@ -13889,6 +13889,1980 @@ já registrada em todos os blocos anteriores) — nunca contra
 2. **`needs_you` (`state.ts`/`doopla-intervention.ts`) não distingue ainda `requires_professional_review`** — hoje continua dependendo só de `lastOutboundIntentDeliveryState === 'policy_allowed'` (comentário corrigido, lógica não). Uma mensagem retida por revisão E uma mensagem que vai sair sozinha em segundos disparam o mesmo `needs_you`, sem diferenciação.
 3. Ambos os pontos acima dependem de reconciliação com a auditoria da Sessão Painel sobre "Decisões/Precisa de você" — explicitamente combinado que viria depois, não decidido unilateralmente aqui.
 
+## 106. Pacote "10 melhorias Professional UX" — sessão isolada `claude/professional-ux-improvements` — roadmap consolidado — `[REGISTRADO / NÃO IMPLEMENTADO]` — 15/09/2026
+
+### Contexto — 3 sessões em paralelo
+
+Nesta etapa existem 3 sessões Claude Code trabalhando ao mesmo tempo na
+mesma árvore de origem (`categoria-b-supabase-env-qsbdq9`):
+
+- **Sessão Principal**: Professional / QA / E2E / backend, trabalhando
+  diretamente em `categoria-b-supabase-env-qsbdq9` (a mesma linha dos
+  blocos 101-105 acima).
+- **Sessão Home**: focada especificamente na Home. Não deve ser
+  interferida por esta sessão.
+- **Esta sessão**: isolada num worktree e branch próprios, responsável
+  exclusivamente pelo pacote das 10 melhorias abaixo.
+
+### Ambiente isolado desta sessão
+
+- Worktree: `/home/user/doopla-professional-ux` (separado do worktree
+  principal em `/home/user/doopla`).
+- Branch: `claude/professional-ux-improvements` (novo, local, ainda sem
+  push).
+- Base: `ff77afc` ("feat: Item 1 aprovado — pedido do link cria
+  conversation vinculada"), HEAD de `origin/claude/categoria-b-supabase-env-qsbdq9`
+  no momento em que este pacote foi iniciado.
+- Confirmado presente no worktree: `src/app/dashboard/decisoes/`,
+  `src/app/dashboard/conversas/`, `src/app/dashboard/comunidade/`,
+  `src/app/dashboard/perfil/notificacoes/`,
+  `src/app/dashboard/perfil/privacidade/comunidade/`,
+  `src/app/dashboard/work-items.ts`, `src/app/dashboard/doopla-intervention.ts`,
+  `src/lib/professional-doopla-cta.ts` + `mobile/src/lib/professional-doopla-cta.ts`,
+  árvore `mobile/` completa, migrations até `0082_public_link_conversation.sql`.
+- Isolamento: nenhum reset/merge/rebase/cherry-pick/checkout destrutivo
+  foi feito em `claude/nice-wright-g6ryer` (worktree principal desta
+  sessão antes da troca) nem em `categoria-b-supabase-env-qsbdq9`. Todo
+  commit deste pacote vai exclusivamente para
+  `claude/professional-ux-improvements`, sem push para as outras duas
+  linhas.
+
+### Fonte de verdade
+
+Os 10 itens abaixo vêm literalmente dos prompts reais enviados nesta
+sessão (não reconstruídos de memória, não resumidos a ponto de perder
+regra/copy/checkpoint). Cada um preserva: objetivo, superfície, regras
+de auditoria obrigatória, copies já aprovadas, e o que foi
+explicitamente proibido de fazer.
+
+### Tabela consolidada
+
+| # | Item | Superfície | Audit? | Web | App | Dependências | Status |
+|---|---|---|---|---|---|---|---|
+| 1 | Remover Decisões como área/navegação independente | Nav + Home + Bookings + detalhe do booking | **Sim** (obrigatório, reportar antes de remover) | Sim | A confirmar | Depende de #2 (CTA no detalhe do booking) e #7 (regra "Painel sempre reflete") pra ser seguro | PENDING |
+| 2 | Ajustes no detalhe do booking (voltar, badge, estado inicial, regra global sem travessão) | Detalhe do booking (`ProBookingDetailView` ou equivalente) | Parcial (audit de ocorrências de travessão) | Sim | A confirmar (mesma tela?) | Reusa `buildTalkToYourDooplaUrl` | PENDING |
+| 3 | Bug: "Contexto profissional · 1/4" não desaparece da Home após completar | Home ("Deixe sua Doopla pronta") + Perfil/Configurações | Feito (ver nota) | Sim | Sim (fonte compartilhada) | Acoplado a #6 (pode exigir ajuste quando o cachê ganhar a regra "OR informações extras") | **DELIVERED — já estava na base, fora desta sessão** |
+| 4 | Alinhar os 4 critérios de completude aos campos canônicos atuais (remover legado: what_you_do/where_you_serve antigos etc.) | Mesma superfície de #3 + lógica compartilhada Web/App | Feito (ver nota) | Sim | Sim | Mesmo de #3; pré-requisito de #6 (novo modelo de campos) | **DELIVERED — já estava na base, fora desta sessão** |
+| 5 | Remover bloco "Recebimentos" (resíduo de modelo legado de pagamento) + revisar 3 indicadores + manter "Dados de recebimento" + auditar estado canônico de pagamento | Financeiro | **Sim** (auditar lógica antiga de payout/repasse antes de remover; reportar se existe fonte canônica de "pago" antes de criar UI) | Sim | A confirmar | Nenhuma forte; não mexer em Booker | PENDING |
+| 6 | Redesign completo de "Perfil e trabalho" (unificar Dados profissionais + Como você trabalha; 3 grupos: Informações profissionais / Seu trabalho / Valores e condições; cachê de referência + info extra; nota fiscal) | Configurações | **Sim** (auditoria completa obrigatória antes de qualquer implementação; parar se exigir schema novo) | Sim | Sim (mesmo modelo, mesma fonte de verdade) | Fundacional para #3/#4 (completude) e #9 (toggles de especialidades/tipos de trabalho) | AUDIT |
+| 7 | Auditar/possivelmente remover a preferência "WhatsApp / Painel / WhatsApp+Painel" em Configurações > Sua Doopla | Configurações | **Sim** (reportar onde é armazenada, quem consome, se altera envio de fato, antes de mudar) | Sim | A confirmar | Fundacional para #1 (Painel sempre reflete) e #8 (semântica de canal WhatsApp) | AUDIT |
+| 8 | Redesign de "Canais da sua Doopla" (WhatsApp da Doopla, código individual, "Doopla chama o cliente", link de booking, Seu WhatsApp; remover lógica antiga de booker só da superfície Professional) | Configurações | **Sim** (auditoria extensa; NÃO simular fluxo outbound se não estiver operacional ponta a ponta) | Sim | Sim (mesma fonte: número oficial, código, slug, WhatsApp Identity, deep link) | Depende de #7 (semântica WhatsApp) e reusa padrão de #2 (`buildTalkToYourDooplaUrl`) | PENDING |
+| 9 | Ajustes de UX em "Privacidade e dados" (remover "Seus dados" vazio, renomear seção Comunidade + copy, renomear botão Salvar, auditar 2 toggles ligados a campos legados) | Configurações | Parcial (só os 2 toggles: "Mostrar minhas especialidades" / "Mostrar tipos de trabalho") | Sim | Sim (mesma regra/nomenclatura) | Toggles dependem da conclusão de #6 (campos legados de matching) | PENDING |
+| 10 | Simplificar "Ajuda e suporte" (remover copy explicativa, reusar FAQ canônico, "Falar com o suporte" via contato@doopla.pro) | Configurações | Leve (confirmar rota do FAQ e e-mail canônico) | Sim | Sim (mesma fonte) | Nenhuma | PENDING |
+
+Se a contagem divergir de 10 numa auditoria futura (por exemplo um dos
+itens se desdobrar em dois durante a implementação), reportar antes de
+ajustar — não renumerar silenciosamente esta tabela.
+
+### Achado crítico ao investigar a base (`ff77afc`) — sobreposição com a Sessão Principal
+
+Antes de reportar este roadmap como "10 itens pendentes", uma checagem
+no histórico e nos arquivos atuais da própria base (`ff77afc` e os
+commits imediatamente anteriores, todos fora desta sessão) mudou o
+quadro:
+
+- **#3 e #4 já estão implementados e documentados** — commit
+  `fce024e` ("fix: 'Contexto profissional' na Home usava colunas
+  removidas da UI", 15/09/2026, sessão `session_01KHtuHrxZbaa8R2HZYATTys`,
+  um commit antes de `ff77afc`). `getArtistMatchingCompletion`
+  (`src/app/dashboard/data.ts`) agora checa exatamente
+  `what_you_do`/`where_you_serve`/`fee_range`/`issues_invoice` (os 4
+  campos que `updateArtistWorkContextAction` realmente escreve hoje),
+  removeu `regions`/`career_stage`/`help_areas` do cálculo (legado,
+  mantido só como dado histórico no banco), `issues_invoice=false`
+  conta como preenchido, `revalidatePath('/dashboard')` já garante
+  atualização automática da Home. App auditado: não mostra esse card
+  de propósito (sem tela de edição ainda), comentário só desatualizado
+  e já corrigido. `tsc`/`eslint` limpos nos 2 arquivos. **Marcado
+  `DELIVERED` na tabela acima — não será reimplementado por esta
+  sessão.** Único ponto em aberto: quando #6 (redesign de "Perfil e
+  trabalho") mudar a regra do cachê pra "cachê de referência OU
+  informações extras", este cálculo de completude provavelmente
+  precisa de um ajuste pontual — não tratar como reabertura do bug,
+  é uma consequência esperada de #6.
+- **Infraestrutura adjacente já existe para vários outros itens**,
+  construída na mesma linha antes desta sessão começar (ver commits
+  `6822627`, `0c6738d`, `47df645`, `7396c23`, `9922677` e os PASS de
+  "Categoria B" registrados no próprio `PROGRESS.md` pra Configurações/
+  Sua Doopla/Canais da sua Doopla/Privacidade/Ajuda e suporte). Confirmado
+  nos arquivos atuais do worktree:
+  - `contato@doopla.pro` já centralizado em `src/lib/support.ts`.
+  - `Você emite nota fiscal?` já implementado (`pro-work-context-form.tsx`).
+  - `WhatsApp da Doopla`, `Falar com minha Doopla` já implementados em
+    `professional-home-view.tsx`, `pro-configuracoes-view.tsx`,
+    `src/lib/professional-doopla-cta.ts` (+ espelho em `mobile/`).
+  - Uma página de suporte já existe em `dashboard/perfil/suporte`.
+  - **Porém `/dashboard/decisoes` continua sendo rota e item de nav
+    ativo** (`pro-shell.tsx` linha 46-48, importado por
+    `professional-home-view.tsx`, existe também em `mobile/app/(tabs)/
+    mais/decisoes.tsx`) — #1 não foi feito.
+  - **Nenhuma das copies específicas aprovadas nos prompts #2/#5/#6/#9
+    foi encontrada** (`SUA DOOPLA ESTÁ CUIDANDO`, `VOLTAR PARA
+    BOOKINGS`, `Valor em bookings confirmados`, `Cachê de referência`,
+    `Informações extras sobre seu cachê`, `O que você mostra na
+    Comunidade`, `Escolha quais informações outros profissionais...`)
+    — só grep literal, não prova ausência de equivalente com outra
+    redação, mas indica que a redação exata pedida ainda não existe.
+
+**Conclusão**: isto não é greenfield. A Sessão Principal já entregou
+boa parte do trabalho de simplificação de beta que estes 10 itens
+também descrevem (provavelmente por instrução direta a ela, em
+paralelo a esta sessão). Tratar cada AUDIT abaixo como "o que já existe
+vs. o que ainda falta bater com a especificação exata", nunca como
+implementação do zero — e reportar à fundadora sempre que um item
+parecer já resolvido na essência, mesmo que a copy literal ainda não
+bata 100% com o prompt original.
+
+### Regra transversal (não é item numerado, vale para todos os 10)
+
+**Nunca usar travessão (`—`) em nenhum texto de interface/mensagem de
+produto da Doopla.** Regra registrada pelo item #2, mas se aplica a
+toda copy nova criada em qualquer um dos 10 itens. Não fazer
+substituição mecânica que deixe frase ruim — reescrever naturalmente
+com ponto, vírgula ou outra construção. No fechamento do pacote (ver
+"Ordem de execução", passo final), rodar uma varredura de travessão em
+todas as superfícies tocadas pelos 10 itens.
+
+### Ordem de execução recomendada (por dependência, não por ordem de envio)
+
+1. **#6 — Perfil e trabalho** (AUDIT primeiro). Fundacional: define o
+   modelo canônico de campos que #3/#4 e #9 dependem. Parar e reportar
+   se exigir schema novo antes de implementar.
+2. **#7 — Sua Doopla / preferência de canal** (AUDIT primeiro).
+   Fundacional: define a semântica "Painel sempre reflete + WhatsApp
+   avisa" que #1 e #8 dependem.
+3. **#3 + #4 — Bug de completude na Home** (AUDIT: reportar os 4
+   critérios atuais e qual trava o card, usando a conclusão de #6).
+   **Toca Home — não avançar pra implementação sem alinhar com a
+   Sessão Home antes** (ver conflitos abaixo).
+4. **#9 — Privacidade e dados** (implementar as partes independentes
+   direto; os 2 toggles de especialidades/tipos de trabalho só depois
+   da conclusão de #6).
+5. **#2 — Ajustes no detalhe do booking** (implementação direta +
+   audit de travessão local).
+6. **#1 — Remoção de Decisões** (AUDIT, usando a conclusão de #7 e a
+   presença do CTA de #2 no detalhe do booking).
+7. **#8 — Canais da sua Doopla** (AUDIT extensa, usando a conclusão de
+   #7; não prometer outbound se não estiver operacional).
+8. **#5 — Financeiro** (AUDIT independente; pode rodar em paralelo a
+   qualquer momento acima se não houver conflito de arquivo).
+9. **#10 — Ajuda e suporte** (baixo risco, pode ser feito a qualquer
+   momento; deixado por último por ser o de menor prioridade real).
+10. **Passo final** — varredura de travessão em todas as superfícies
+    tocadas, validação Web + auditoria técnica App, checkpoint
+    consolidado `10/10` (tabela ITEM | WEB | APP | BACKEND | STATUS |
+    QA MANUAL), atualização final deste registro no `PROGRESS.md`.
+
+### Itens que exigem AUDIT/checkpoint antes de qualquer código
+
+`#1`, `#3`, `#4`, `#5`, `#6`, `#7`, `#8` têm checkpoint explícito de
+"reportar antes de implementar" no prompt original — não pular. `#2`,
+`#9`, `#10` têm apenas auditorias pontuais (travessão; 2 toggles; rota
+de FAQ/e-mail) que não bloqueiam o resto do item.
+
+### Pontos de possível conflito com as outras 2 sessões (registrados, não resolvidos)
+
+- **Home (#3/#4)**: o bug fica dentro da própria Home ("Deixe sua
+  Doopla pronta"). A instrução geral desta sessão é evitar mexer em
+  Home, "salvo se algum item exigir explicitamente uma correção
+  compartilhada indispensável" — este é exatamente esse caso. Antes de
+  editar qualquer arquivo de Home, confirmar com a fundadora que a
+  Sessão Home não está com o mesmo arquivo aberto, para não perder
+  trabalho dela nem duplicar a correção.
+- **Configurações (#6, #7, #8, #9, #10)**: todas vivem em
+  `src/app/dashboard/perfil/**`. Se a Sessão Principal (Professional/
+  QA/E2E/backend) estiver tocando Configurações ao mesmo tempo (não
+  confirmado — ela está na mesma linha `categoria-b-...` de onde este
+  pacote nasceu), pode haver divergência quando esta branch precisar
+  sincronizar com uma base mais nova. Não resolvido agora porque ainda
+  não há trabalho implementado; fica registrado para checar antes do
+  primeiro sync/rebase desta branch contra uma base mais nova.
+- **Navegação (#1)**: remover Decisões do menu mexe num componente de
+  navegação compartilhado. Se a Sessão Home também tocar a sidebar/menu
+  (histórico da linha mostra um bloco anterior "menu com as 6 abas do
+  documento"), há risco de conflito estrutural no mesmo arquivo. Checar
+  antes de implementar #1.
+- **Financeiro (#5)**: a Sessão Principal inclui "backend"; se ela
+  estiver mexendo em lógica de pagamento/payout ao mesmo tempo, a
+  auditoria de #5 (fonte canônica de "pago") pode encontrar código em
+  movimento. Reportar se acontecer, não presumir que o achado é
+  definitivo sem checar se está sendo alterado em paralelo.
+
+Nenhum destes pontos bloqueia o início dos AUDITs (que são só leitura).
+Bloqueiam apenas o momento de escrever código nas superfícies citadas
+— nesse momento, checar de novo antes de editar.
+
+### CORREÇÃO 15/09/2026 — reconciliação literal dos pedidos + escopo revisado de #1
+
+A fundadora pediu, antes de aprovar implementação: (1) não forçar a
+contagem em 10 — voltar às mensagens reais desta sessão e reconciliar
+literalmente; (2) corrigir o escopo do item Decisões, que não está
+pré-aprovado pra remoção cega; (3) manter explícito que os 4 campos
+atuais de completude não são regra permanente; (4) protocolo de
+concorrência entre sessões antes de cada item; (5) confirmar que
+Financeiro não pode assumir payout/wallet. A tabela e a numeração
+"10 melhorias" no título desta seção 106 ficam como registro histórico
+de como o pacote foi *nomeado inicialmente* — a contagem e os nomes
+corretos dos itens são os desta correção, não os do topo da seção.
+
+**Reconciliação literal, mensagem por mensagem, sem forçar número**:
+
+Revisando as mensagens reais enviadas nesta sessão em ordem, os blocos
+distintos de pedido são:
+
+1. "Quero revisar a necessidade da página Decisões no Professional..." — 1 pedido.
+2. "Mais alguns ajustes no detalhe: 1/2/3/4 (voltar, badge, estado inicial, regra global sem travessão)" — 1 pedido.
+3. "Encontrei um bug na Home em Deixe sua Doopla pronta..." — bug report inicial.
+4. "Tivemos uma mudança recente no Contexto profissional / 'Como você trabalha'... identifique exatamente quais são hoje os '4' requisitos..." — **mesma investigação/correção do bloco 3**, com o diagnóstico aprofundado (audita a fonte de verdade do mesmo bug, os mesmos "4 critérios", o mesmo card da Home). Não é um pedido novo e independente — é a continuação/detalhamento do pedido do bloco 3, confirmado agora pela fundadora.
+5. "Encontramos outro resíduo do modelo legado em `Financeiro`..." (enviado duas vezes, texto idêntico — duplicata, não conta como 2) — 1 pedido.
+6. "CONFIGURAÇÕES — REDESIGN COMPLETO DE 'PERFIL E TRABALHO'" — 1 pedido.
+7. "Quero revisar `Configurações > Sua Doopla`..." — 1 pedido.
+8. "CONFIGURAÇÕES — REDESIGN DE 'CANAIS DA SUA DOOPLA'" — 1 pedido.
+9. "CONFIGURAÇÕES — AJUSTE DE UX EM 'PRIVACIDADE E DADOS'" — 1 pedido.
+10. "CONFIGURAÇÕES — AJUSTE DE 'AJUDA E SUPORTE'" — 1 pedido.
+
+Os blocos "Mandei 3 coisas nessa sessao..." e "5 mudancas no total
+agora" / "7 mudancas" são comentários de acompanhamento da própria
+fundadora sobre quantos pedidos ela já tinha enviado até aquele ponto
+(contagens corridas, não pedidos novos). O pedido "ROADMAP CONSOLIDADO
+— 10 MELHORIAS ENVIADAS NESTA SESSÃO" é o meta-pedido que deu origem a
+este próprio registro, também não é um dos itens.
+
+**Resultado da reconciliação: 9 pedidos distintos, não 10.** Os
+blocos 3 e 4 (bug + investigação aprofundada da mesma pendência de
+Home) são uma única correção, exatamente como a fundadora suspeitou —
+e essa única correção já está `DELIVERED` (commit `fce024e`, fora
+desta sessão). Nenhum pedido ficou de fora da primeira tabela: a
+diferença de 10 pra 9 é só a fusão de #3+#4 num item só. Renumerando
+em ordem de envio:
+
+| # | Item original | Status | Audit | Superfícies | Dependências |
+|---|---|---|---|---|---|
+| 1 | Auditar `/dashboard/decisoes`: identificar se a superfície tem capacidade exclusiva necessária ao Professional antes de cogitar remoção (ver escopo revisado abaixo) | PENDING | **Sim, obrigatório** | Nav, Home, Bookings, detalhe do booking, Conversas, Agenda | Depende da conclusão de #6 (Sua Doopla — regra "Painel sempre reflete") e de #2 (CTA no detalhe do booking) pra decidir com segurança |
+| 2 | Ajustes no detalhe do booking: botão voltar → "VOLTAR PARA BOOKINGS" + destino correto; badge de status revisado (semântica de status, não só valor); estado inicial "SUA DOOPLA ESTÁ CUIDANDO" com CTA reusando `buildTalkToYourDooplaUrl`, evoluindo pra "PRECISA DE VOCÊ" quando houver intervenção real; regra global "nunca usar travessão em copy de produto", auditar ocorrências | PENDING | Parcial (audit de travessão nas superfícies Professional) | Detalhe do booking | Reusa `buildTalkToYourDooplaUrl`. Não redesenhar a estrutura visual da página (aprovada) |
+| 3 | Bug "Contexto profissional · N/4" não desaparecia da Home após completar + auditoria da fonte de verdade dos 4 critérios (remover campos legados/ocultos do cálculo) | **DELIVERED** (commit `fce024e`, fora desta sessão) | Feito | Home, `src/app/dashboard/data.ts`, App (`mobile/app/(tabs)/index.tsx`) | **Os 4 campos atuais (`what_you_do`/`where_you_serve`/`fee_range`/`issues_invoice`) NÃO são regra permanente** — se #5 (Perfil e trabalho) mudar o modelo canônico de campos (ex.: regra "cachê OU informações extras"), `getArtistMatchingCompletion` precisa ser revalidado e ajustado. Isso não reabre o bug, é consequência esperada de #5 |
+| 4 | Financeiro: remover bloco "Recebimentos" (residual de payout/repasse que não existe mais); revisar rótulos dos 3 indicadores pra linguagem de "valor do trabalho" (nunca "recebido pela Doopla"); manter "Dados de recebimento" com nova copy; auditar se existe fonte canônica confiável de booking pago pelo cliente antes de criar qualquer UI de estado de pagamento | PENDING | **Sim** — auditar lógica antiga de payout/saque antes de remover; reportar se existe fonte canônica de "pago" antes de criar UI | Financeiro | **A Doopla não processa pagamento — cliente paga direto ao profissional. Não criar wallet, saldo, saque ou payout novo sob nenhuma hipótese.** Não mexer em Booker |
+| 5 | Redesign completo de "Perfil e trabalho": unificar Dados profissionais + Como você trabalha num único accordion/página, 3 grupos (Informações profissionais / Seu trabalho / Valores e condições), cachê de referência + informações extras + nota fiscal | AUDIT | **Sim, obrigatório e extenso** — reportar os 13 pontos pedidos antes de qualquer implementação; parar se exigir schema novo | Configurações | Fundacional pra #3 (completude da Home) e pra #7 (toggles de especialidades/tipos de trabalho em Privacidade). Não duplicar responsabilidade com "Sua Doopla" (mandato/autonomia fica lá) |
+| 6 | Auditar/possivelmente remover a preferência "WhatsApp / Painel / WhatsApp+Painel" em Configurações > Sua Doopla; avaliar se a própria seção deve desaparecer da UI beta | AUDIT | **Sim, obrigatório** — reportar onde é armazenada, quem consome, se altera envio de fato, antes de mudar | Configurações | Fundacional pra #1 (regra "Painel sempre reflete a pendência") e pra #7 (semântica do canal WhatsApp) |
+| 7 | Redesign de "Canais da sua Doopla": WhatsApp da Doopla, código individual, "Doopla chama o cliente" (CTA "Falar com minha Doopla"), "Seu link de booking" (mantendo rota `/orcamento/[slug]`), "Seu WhatsApp"; remover lógica antiga de booker ("Quem recebe seus pedidos de orçamento") só da superfície Professional | PENDING (infra parcial já existe na base) | **Sim, extensa** — NÃO simular/prometer o fluxo "Doopla chama o cliente" se não estiver operacional ponta a ponta; reportar o menor bloco de infraestrutura necessário nesse caso, separadamente | Configurações | Depende de #6 (semântica do canal); reusa `buildTalkToYourDooplaUrl` no mesmo padrão de #2 |
+| 8 | Ajustes de UX em "Privacidade e dados": remover "Seus dados" vazio; renomear seção Comunidade + copy; renomear botão "Salvar" → "Salvar preferências"; auditar os 2 toggles "Mostrar minhas especialidades" / "Mostrar tipos de trabalho" quanto a dependência de campos legados de matching | PENDING | Parcial — só os 2 toggles citados | Configurações | Os 2 toggles dependem da conclusão de #5 (quais campos de matching seguem editáveis vs. legados) |
+| 9 | Simplificar "Ajuda e suporte": remover copy explicativa sobre "Falar com minha Doopla"; reusar FAQ institucional canônico; "Falar com o suporte" via `contato@doopla.pro` centralizado | PENDING (infra parcial já existe: e-mail já centralizado em `src/lib/support.ts`, página em `dashboard/perfil/suporte`) | Leve — confirmar rota do FAQ institucional | Configurações | Nenhuma |
+
+### Escopo revisado do item #1 (Decisões) — não é remoção pré-aprovada
+
+Corrigindo a formulação anterior desta seção ("remover Decisões"): o
+mandato real é **auditar**, não remover cegamente. Arquitetura de
+referência dada pela fundadora:
+
+- **Bookings** = universo dos trabalhos.
+- **"Precisa de você"** = condição/prioridade transversal, não uma
+  seção conceitualmente independente.
+- **Home** = resumo/atalho do que precisa da pessoa.
+- **Detalhe do booking** = onde a decisão concreta é entendida/resolvida.
+- **Conversas** = comunicação.
+- **Agenda** = dimensão temporal.
+- **Backend de decisões** = pode continuar existindo como fonte de
+  autorização/histórico, independente do que acontecer na UI.
+
+Passo obrigatório antes de qualquer remoção: confirmar se
+`/dashboard/decisoes` tem alguma capacidade exclusiva necessária ao
+Professional que Home + Bookings + detalhe do booking + Conversas +
+Agenda não cobrem. Só se a resposta for "nenhuma capacidade exclusiva"
+é que a sequência de remoção se aplica: tirar do nav Professional,
+remover a superfície redundante, redirecionar a rota quando apropriado
+— **preservando integralmente** backend, tabelas, RPCs, histórico e
+qualquer integração necessária. Não remover decisões do backend, não
+apagar histórico, não tocar Booker.
+
+### Protocolo de concorrência entre sessões (regra permanente do pacote, não um item)
+
+Antes de começar **cada** item da tabela acima (não só uma vez no
+início do pacote):
+
+1. `git fetch` do Professional canônico (`origin/claude/categoria-b-supabase-env-qsbdq9`).
+2. Verificar se há commits novos desde `ff77afc` (a base desta branch).
+3. Se houver, checar se algum deles toca arquivos que o item em questão
+   vai tocar.
+4. **Não integrar/rebasear automaticamente.** Se houver mudança
+   concorrente relevante nos arquivos do item, parar e reportar antes
+   de sobrescrever ou escolher uma versão — a decisão de como
+   reconciliar é da fundadora, não desta sessão.
+
+**`src/app/_home/` e `src/app/page.tsx` são propriedade da Sessão
+Home.** Esta sessão não edita esses arquivos em nenhum item deste
+pacote, mesmo que um item pareça tocar Home indiretamente (ex.: #3 já
+foi resolvido por fora; se #5 exigir revalidar a completude, o arquivo
+a tocar é `src/app/dashboard/data.ts`/equivalente do card na Home
+*dentro do Professional*, não os arquivos de `_home/`).
+
+
+### Item da ordem revisada #1 — "Perfil e trabalho": AUDITORIA — `[AUDIT DELIVERED / NENHUMA IMPLEMENTAÇÃO]` — 15/09/2026
+
+Protocolo de concorrência seguido antes de iniciar: `git fetch
+origin/claude/categoria-b-supabase-env-qsbdq9` — 2 commits novos desde
+`ff77afc` (`baa50b9`, `c2fcda2`), ambos só em `/orcamento/[slug]`
+(`docs` + redesign do formulário público). Nenhum arquivo de
+`perfil/dados`, `perfil/trabalho`, `pro-artist-identity-form.tsx`,
+`pro-work-context-form.tsx`, `actions.ts` (as duas actions relevantes)
+ou `data.ts` foi tocado — sem conflito, auditoria seguiu.
+
+#### Estrutura atual
+
+`Perfil e trabalho` já existe como **título de accordion** em
+`pro-configuracoes-view.tsx:104`, mas ainda com 2 sub-rotas
+independentes dentro dele (não consolidadas):
+- `/dashboard/perfil/dados` → "Dados profissionais" (`dados/page.tsx` + `pro-artist-identity-form.tsx`)
+- `/dashboard/perfil/trabalho` → "Como você trabalha" (`trabalho/page.tsx` + `pro-work-context-form.tsx`)
+
+Não há duplicidade conceitual grave entre as duas hoje (já foi
+separado numa rodada anterior: "identidade/apresentação" vs. "contexto
+de trabalho"), mas continuam sendo 2 páginas com navegação própria —
+exatamente o que o pedido quer eliminar (uma experiência só, 3 grupos,
+sem camada de navegação extra).
+
+Há também uma 3ª página relacionada mas com escopo diferente:
+`/dashboard/perfil/preferencias` ("Preferências da Doopla" — hoje
+mostra a preferência WhatsApp/Painel + um card-link pra "Como você
+trabalha"). Essa é a página-alvo do próximo item da ordem ("Sua
+Doopla"), não deste.
+
+#### Campos atuais e onde são armazenados (tabela `artist_profiles`)
+
+**Dados profissionais** (`pro-artist-identity-form.tsx` → `updateArtistProfileAction`):
+| Campo UI | Coluna | Consumidor real (Intelligence Context) |
+|---|---|---|
+| Nome artístico | `stage_name` | **Sim** — `get_professional_profile` (`sections.ts:66`), fact `professional_profile.stageName` |
+| Categoria | `category` | **Sim** — mesmo tool, fact `.category` |
+| Bio | `bio` | **Sim** — mesmo tool, fact `.bio` (truncado) |
+| Gêneros/estilos | `genres` | **Não** — não selecionado em nenhuma tool nem em `sections.ts` |
+| Site | `website_url` | **Não** — confirmado no comentário de `dados/page.tsx`: nem a página pública (`/[slug]`) exibe |
+| Outros links | `other_links` | **Não** — mesmo caso de `website_url` |
+
+**Como você trabalha** (`pro-work-context-form.tsx` → `updateArtistWorkContextAction`):
+| Campo UI | Coluna | Consumidor real |
+|---|---|---|
+| "O que você faz e para quem?" | `what_you_do` | **Sim** — `get_professional_business_context` |
+| "Onde você atende?" | `where_you_serve` | **Sim** — mesma tool |
+| Faixa de cachê (dropdown, "Prefiro não dizer") | `fee_range` | **Sim** — mesma tool, mas ver achado abaixo (fork de modelo) |
+| "Você emite nota fiscal?" (dropdown, "Prefiro não dizer"/Sim/Não) | `issues_invoice` | **Sim** — mesma tool + já é um dos 4 critérios de completude |
+| "Outras preferências" | `other_preferences` | **Não confirmado** — não aparece em `get-professional-business-context.ts` nem em `sections.ts` (grep sem resultado); tratar como sem consumidor de IA hoje até prova em contrário |
+
+Campos que **não têm nenhuma superfície de edição hoje** (Web nem App)
+mas continuam sendo lidos pela Intelligence Context, escritos só no
+onboarding (`cadastro/actions.ts` / `PrepareForm.tsx`):
+- `negotiation_notes` — "algo que sua Doopla sempre deve saber antes de
+  negociar por você". **Achado de arquitetura**: pela própria regra
+  deste pedido ("mandato/autonomia pertence a 'Sua Doopla', nunca a
+  'Perfil e trabalho'"), este campo é conceitualmente uma regra de
+  negociação, não um dado de identidade/trabalho — mais perto de "Sua
+  Doopla" do que de "Perfil e trabalho". Não decidido aqui; fica
+  registrado pra quando o próximo item da ordem (Sua Doopla) for
+  auditado.
+- `attention_channel` — WhatsApp/Painel/Ambos. É exatamente o campo do
+  próximo item da ordem. Só citado aqui porque também é escrito pelo
+  mesmo formulário de onboarding.
+
+#### Achado principal: fork de modelo de cachê (resolve a pergunta sobre "Informações extras sobre seu cachê")
+
+Existem **3 representações diferentes de cachê** na base, de 2 épocas
+diferentes:
+
+1. `base_fee_cents` (integer, migration `0001`, a mais antiga) — valor
+   fixo em centavos.
+2. `pricing_notes` (text, migration `0038`, 08/09/2026) — "como você
+   costuma definir seus valores", preenchido especificamente quando o
+   profissional escolhe "depende do trabalho" em vez de um valor fixo.
+   Comentário da própria migration já diz explicitamente: "diferente
+   de bio e de negotiation_notes — nunca concatenar".
+3. `fee_range` (text, migration `0026`, mais antiga ainda) — dropdown
+   de faixas fixas (`FEE_RANGE_OPTIONS`, `src/lib/matching-options.ts`,
+   comentário explícito: "isso é o que alimenta o matching"). É o
+   **único dos 3 que a UI atual de Settings V2 edita** hoje
+   (`pro-work-context-form.tsx`), com "Prefiro não dizer" como opção.
+
+`base_fee_cents`/`pricing_notes` pararam de ser coletados no onboarding
+em 07/09/2026 ("removida a pedido do produto", comentário em
+`cadastro/actions.ts:40-47`) e **nunca foram trazidos pra Settings V2**
+— ficaram órfãos, sem nenhuma superfície de edição ativa hoje, mas
+sem terem sido apagados (dado de quem preencheu antes do corte
+continua no banco). `fee_range` foi o substituto que a Settings V2
+inventou (09/09/2026) sem reaproveitar as colunas que já existiam —
+duplicando o conceito em vez de reabrir o par correto.
+
+**Resposta direta à pergunta da fundadora**: sim, já existe campo
+canônico adequado pra "Informações extras sobre seu cachê" —
+**`pricing_notes`** (mesmo texto livre, mesma semântica, mesmo
+comentário de schema já escrito pra isso). E já existe campo adequado
+pra "Cachê de referência" como valor monetário — **`base_fee_cents`**
+(inteiro em centavos, exatamente o formato de um input `R$ ____`).
+**Nenhuma migration é necessária** pra este redesign. O trabalho de
+implementação é:
+- trocar o dropdown de `fee_range` por um input monetário ligado a
+  `base_fee_cents` + o textarea "Informações extras" ligado a
+  `pricing_notes`;
+- **`fee_range` fica órfão** (mesmo tratamento já padrão neste
+  código: coluna preservada, só para de ser editada/lida como
+  principal);
+- **`get-professional-business-context.ts` precisa ser atualizado**
+  pra parar de expor `feeRange`/retornar `baseFeeCents`/`pricingNotes`
+  em cents formatados — hoje a tool NEM SEQUER lê `base_fee_cents`
+  (confirmado por grep no arquivo), só `fee_range`/`pricing_notes`. Ou
+  seja, mesmo antes desta migração de UI, o valor de referência fixo
+  já não chega à IA hoje — é um gap pré-existente, não algo que esta
+  mudança cria.
+
+#### Situação campo a campo pedida
+
+- **`what_you_do`**: canônico, ativo, consumido, sem problema. Mantido como está (copy só muda de rótulo/helper na UI, pedido item 2 da spec original).
+- **`where_you_serve`**: idem.
+- **`fee_range`**: ATIVO hoje mas **candidato a ficar órfão** no redesign — substituído por `base_fee_cents` como valor estruturado. Ver achado acima.
+- **`issues_invoice`**: canônico, ativo, consumido, já é Sim/Não/Prefiro-não-dizer — só precisa perder a 3ª opção na UI (regra do pedido: sem dropdown, sem "prefiro não informar").
+
+#### Legado de matching/perfil público confirmado nesta auditoria
+
+Colunas com **zero consumidor de IA e zero superfície de edição
+alcançável** hoje (perfil público desativado do nav, comentário
+explícito em `pro-configuracoes-view.tsx:34-37`: rota não apagada, só
+inalcançável): `instagram_url`, `portfolio_url`, `public_enabled`.
+`website_url`/`other_links` também sem consumidor, mas continuam
+editáveis em "Dados profissionais" hoje — candidatos a sair da nova UI
+por falta de função real (a fundadora pediu auditoria específica
+desses 2, não autorização automática pra remover). `genres` no mesmo
+caso.
+
+Colunas de matching puro, já fora de qualquer superfície de edição
+(confirmado, nenhuma delas aparece em `pro-artist-identity-form.tsx`
+nem `pro-work-context-form.tsx`): `subcategory`, `mercados`,
+`work_types`, `client_types`, `regions`, `languages`, `career_stage`,
+`help_areas`, `travels`, `serves_other_locations`,
+`accepts_out_of_city_work`. Todas preservadas no banco, nenhuma tocada
+por esta auditoria.
+
+#### Impacto em `getArtistMatchingCompletion` (Home)
+
+Confirma a regra já registrada: os 4 critérios atuais
+(`what_you_do`/`where_you_serve`/`fee_range`/`issues_invoice`, commit
+`fce024e`) **mudam** se este redesign trocar `fee_range` por
+`base_fee_cents`. Ajuste necessário quando a implementação acontecer:
+substituir o critério `fee_range` por "`base_fee_cents` preenchido OU
+`pricing_notes` com conteúdo" — exatamente a regra que a fundadora já
+tinha adiantado no pedido original ("não transformar Cachê de
+referência em requisito obrigatório se o profissional explicou em
+Informações extras"). Não é reabertura do bug, é consequência direta
+e esperada.
+
+#### Impacto nos toggles de Comunidade/Privacidade
+
+`community-privacy-form.tsx` tem toggles `showSpecialties` ("Mostrar
+minhas especialidades") e `showWorkTypes` ("Mostrar tipos de
+trabalho") — são flags booleanas próprias (não os dados em si).
+Auditoria de qual dado cada toggle efetivamente exibe na Comunidade
+fica pro item "Privacidade e dados" desta ordem (não investigado em
+profundidade aqui pra não sair do escopo) — só fica registrado que
+`work_types` já está fora de qualquer superfície de edição hoje, então
+o toggle "Mostrar tipos de trabalho" já pode estar apontando pra um
+dado congelado, independente do que este redesign fizer.
+
+#### Diferença Web/App
+
+**App não tem nenhuma superfície de edição de Perfil e trabalho hoje**
+— confirmado em `mobile/src/types/artistProfile.ts`: o tipo só tem
+`stage_name`/`category`/`bio`, nenhum campo de `what_you_do`,
+`where_you_serve`, cachê ou nota fiscal. Mesmo gap já documentado pro
+"Contexto profissional" (App exclui esse card de propósito, sem tela
+própria ainda). Este redesign, na prática, é Web-only nesta rodada;
+"Web + App usam mesma fonte de verdade" já está garantido porque o App
+simplesmente não edita nada ainda — não há dois modelos divergentes,
+há um modelo (Web) e uma ausência (App), registrada como pendência
+técnica de paridade visual, não como bug.
+
+#### Precisa de schema/migration?
+
+**Não.** Os 2 campos que o pedido pede ("Cachê de referência" +
+"Informações extras sobre seu cachê") já existem
+(`base_fee_cents`/`pricing_notes`), órfãos desde 07/09/2026, prontos
+pra reaproveitar. Nota fiscal já existe (`issues_invoice`). Nenhuma
+coluna nova, nenhuma migration. O trabalho é: UI (unificar em 3
+grupos, trocar dropdowns por copy/inputs aprovados), 1 action
+ajustada (escrever `base_fee_cents`/`pricing_notes` em vez de
+`fee_range`), 1 tool do Intelligence Core ajustada
+(`get-professional-business-context.ts`, trocar `feeRange` por
+`baseFeeCents`/manter `pricingNotes`), e 1 função de completude ajustada
+(`getArtistMatchingCompletion`).
+
+
+### Item da ordem revisada #1 — "Perfil e trabalho": IMPLEMENTADO — `[DELIVERED — Web / App gap registrado]` — 15/09/2026
+
+Protocolo de concorrência checado de novo antes de escrever código:
+mesmos 2 commits (`baa50b9`, `c2fcda2`) já vistos na auditoria, nenhum
+arquivo novo tocado, nenhum conflito. Não mexido em `src/app/_home/**`
+nem `src/app/page.tsx` (propriedade da Sessão Home) — todos os arquivos
+tocados são do Professional dashboard (`src/app/dashboard/**`) ou do
+Intelligence Core (`src/lib/intelligence/**`).
+
+#### Antes / depois
+
+**Antes**: 2 rotas sob "Perfil e trabalho" (`/dashboard/perfil/dados`
+"Dados profissionais" + `/dashboard/perfil/trabalho` "Como você
+trabalha"), `fee_range` (dropdown, "Prefiro não dizer") como cachê,
+"Você emite nota fiscal?" com 3 opções (dropdown), Gêneros/Site/Outros
+links editáveis sem consumidor confirmado.
+
+**Depois**: 1 página unificada (`/dashboard/perfil/dados`, título
+"Perfil e trabalho"), 3 grupos visuais (Informações profissionais / Seu
+trabalho / Valores e condições), "Cachê de referência" (input R$ ligado
+a `base_fee_cents`) + "Informações extras sobre seu cachê" (`Opcional`,
+ligado a `pricing_notes`) substituindo o dropdown de faixas, "Você
+emite nota fiscal?" como 2 botões Sim/Não (sem 3ª opção). Gêneros/Site/
+Outros links/Outras preferências saíram da UI. `/dashboard/perfil/
+trabalho` agora é um redirect pra `/dashboard/perfil/dados` (nenhum
+link antigo quebra).
+
+#### Campos finais expostos na UI
+
+| Grupo | Campo | Coluna |
+|---|---|---|
+| Informações profissionais | Foto, Nome artístico, Categoria, Bio | `avatar_url`, `stage_name`, `category`, `bio` |
+| Seu trabalho | Conte um pouco sobre seu trabalho / Região que atende | `what_you_do`, `where_you_serve` |
+| Valores e condições | Cachê de referência / Informações extras sobre seu cachê (Opcional) / Você emite nota fiscal? | `base_fee_cents`, `pricing_notes`, `issues_invoice` |
+
+#### Decisão não explicitada literalmente no pedido: `other_preferences` saiu da UI
+
+O pedido não citou `other_preferences` ("Outras preferências") nos 13
+pontos aprovados. A estrutura final aprovada (Seu trabalho: 2 campos;
+Valores e condições: 3 campos) não tem espaço pra um 4º campo livre
+genérico, e a auditoria não confirmou consumidor pra ele no Intelligence
+Context. Tratado com o mesmo cuidado dos outros campos removidos:
+**coluna preservada, action para de escrevê-la** (nunca sobrescrita pra
+null). Registrado aqui pra reversão fácil caso a fundadora discorde.
+
+#### Actions alteradas
+
+- `updateArtistProfileAction` (`actions.ts`): para de escrever
+  `genres`/`website_url`/`other_links` (omitidos do payload, mesmo
+  padrão já usado pra `subcategory`/`mercados`). Continua escrevendo
+  `stage_name`/`category`/`bio`.
+- `updateArtistWorkContextAction` (`actions.ts`): para de escrever
+  `fee_range`/`other_preferences`. Passa a escrever `base_fee_cents`
+  (via `centsFromReais`, mesmo helper já usado em
+  `publishOpportunityAction`) e `pricing_notes`. `issues_invoice`
+  mantido, agora só 2 valores possíveis pela UI (`true`/`false`, string
+  vazia continua possível só se o campo nunca for tocado, o que não
+  acontece mais na prática já que os 2 botões cobrem toda interação).
+  `revalidatePath` trocado de `/dashboard/perfil/trabalho` pra
+  `/dashboard/perfil/dados`.
+
+#### Consumidores alterados (Business Context)
+
+`get-professional-business-context.ts`: adiciona `baseFeeCents`
+(`base_fee_cents`) ao schema/select/output. **`feeRange` NÃO foi
+removido da interface** — compatibilidade primeiro, é dado que ainda
+pode existir de quem preencheu entre 09/09 e 15/09/2026.
+`sections.ts` (único consumidor real do campo, confirmado por grep
+antes de mexer): passa a enviar `baseFeeCents` como fato primário
+quando presente, cai pra `feeRange` só quando `baseFeeCents` é nulo —
+mesmo padrão de precedência já usado no arquivo pra
+`whatYouDo`/`whereYouServe` sobre os arrays antigos. Nenhum profissional
+perde contexto já declarado.
+
+#### Regra final de completude
+
+`getArtistMatchingCompletion` (`data.ts`): critério de cachê agora é
+`base_fee_cents != null OU pricing_notes preenchido` (união, não
+interseção) — exatamente a regra pedida, pra profissional sem
+cachê-base único não ficar bloqueado. Os outros 3 critérios
+(`what_you_do`, `where_you_serve`, `issues_invoice != null`) não
+mudaram.
+
+**Rename da função**: avaliado e **não feito nesta rodada**. 2
+consumidores reais (`professional-home-view.tsx`,
+`booker-home-view.tsx`) — risco baixo, mas fora do escopo mínimo deste
+item. Registrado como dívida técnica: `getArtistMatchingCompletion`
+não é mais um nome semanticamente correto (matching não é conceito do
+produto), mas segue preservado por instrução explícita da fundadora
+até uma rodada dedicada a isso.
+
+#### Situação Web/App
+
+**Web**: entregue, single page, 3 grupos, build/typecheck/lint limpos.
+**App**: confirmado na auditoria que não existe superfície de edição
+hoje (`mobile/src/types/artistProfile.ts` só tem
+stage_name/category/bio) — nenhuma arquitetura paralela criada.
+Modelo/colunas usados (`base_fee_cents`/`pricing_notes`/`what_you_do`/
+`where_you_serve`/`issues_invoice`) são os mesmos que qualquer tela
+futura do App vai precisar ler/escrever — nada Web-only foi inventado.
+Comentário em `mobile/app/(tabs)/index.tsx` atualizado só pra não citar
+`fee_range` como se ainda fosse o campo relevante. **Pendência de
+paridade registrada**: App ainda não tem tela de "Perfil e trabalho" —
+mesmo gap já existente antes desta rodada, não bloqueia a entrega Web.
+
+#### Arquivos alterados (13, nenhum arquivo novo, nenhuma migration)
+
+`src/app/dashboard/perfil/pro-artist-identity-form.tsx`,
+`src/app/dashboard/perfil/pro-work-context-form.tsx`,
+`src/app/dashboard/perfil/dados/page.tsx`,
+`src/app/dashboard/perfil/trabalho/page.tsx` (agora redirect),
+`src/app/dashboard/perfil/pro-configuracoes-view.tsx`,
+`src/app/dashboard/perfil/preferencias/page.tsx` (copy/link + comentário),
+`src/app/dashboard/actions.ts`,
+`src/app/dashboard/data.ts`,
+`src/app/dashboard/professional-home-view.tsx` (link + comentário),
+`src/lib/intelligence/tools/get-professional-business-context.ts`,
+`src/lib/intelligence/context-builder/sections.ts`,
+`src/app/cadastro/actions.ts` (comentário),
+`mobile/app/(tabs)/index.tsx` (comentário).
+
+#### Testes/checks executados
+
+- `npx tsc --noEmit`: limpo nos arquivos tocados (3 erros pré-existentes
+  em `PageProps`/`LayoutProps`, arquivos não tocados por esta rodada,
+  artefato de typegen do Next.js que só se resolve com `next dev`/
+  `next build` — confirmado que já existiam antes desta mudança).
+- `npx eslint` nos 13 arquivos tocados: limpo, exit 0.
+- `npm run build`: build de produção completo sem erros nem warnings,
+  incluindo `/dashboard/perfil/dados` e `/dashboard/perfil/trabalho`
+  (redirect) compilando normalmente.
+- Verificação manual de lógica pura (sem DB disponível neste ambiente,
+  mesma limitação já documentada de sessões anteriores — sem
+  `.env.local`/Supabase real neste worktree): `centsFromReais`
+  ("150,50" → 15050; "" → `null`; entrada inválida → `null`, nunca
+  quebra); `getArtistMatchingCompletion` traçado manualmente pros 4
+  cenários pedidos (só `base_fee_cents`; só `pricing_notes`; nenhum dos
+  dois; ambos) — todos batem com a regra aprovada.
+- **Não executado** (sem ambiente disponível nesta sessão):
+  salvar/recarregar contra Supabase real, confirmar
+  Home atualizando de fato sem reload. Fica como validação pendente
+  pra QA da fundadora ou sessão com credenciais reais — mesma
+  transparência já praticada no restante do projeto (nunca fingir
+  validação que não rodou).
+
+#### Pendências
+
+1. QA manual com dado real (Supabase) — salvar/recarregar/Home,
+   listado acima como não executável neste ambiente.
+2. Paridade visual do App — tela de "Perfil e trabalho" ainda não
+   existe no App (gap pré-existente, não criado por esta rodada).
+3. Dívida técnica registrada: nome de `getArtistMatchingCompletion`
+   semanticamente desatualizado, preservado por decisão explícita.
+4. `negotiation_notes` fica pendente de decisão na auditoria do próximo
+   item ("Sua Doopla") — não tocado aqui, conforme instruído.
+
+
+### "Perfil e trabalho" — polimento visual (2ª rodada) — `[DELIVERED / aguardando QA visual]` — 15/09/2026
+
+Estrutura e campos já aprovados na rodada anterior não mudaram. Pedido
+explícito da fundadora: só polimento visual, sem mexer em modelo de
+dados/completude/Business Context. Protocolo de concorrência checado de
+novo (`git fetch`, 2 commits novos desde a última checagem — `41cae54`,
+`ecb713d` — ambos só `docs:` em `PROGRESS.md`, sem conflito).
+
+**O que mudou:**
+
+- 3 `ProCard` separados (1 por grupo) viraram **1 `ProCard` só**, com
+  divisórias leves (`border-t` + espaçamento) entre "Informações
+  profissionais" / "Seu trabalho" / "Valores e condições" — reduz a
+  sensação de "cards dentro de cards".
+- Títulos de grupo trocaram do estilo de label técnico de navegação
+  (uppercase, tracking largo, cinza pequeno — o mesmo de
+  `ProSettingsGroup`, feito pra linhas de menu) pro estilo de subtítulo
+  já usado em "Foto"/"Preferências comerciais" (`font-pro-sub`, bold,
+  14px, off-white) — mais legível, continua claramente menor que o
+  título da página.
+- Nome artístico, Categoria e Cachê de referência ganharam
+  `sm:max-w-[...]` (240px/240px/220px) — não esticam mais a largura
+  toda em desktop. Bio, "Conte um pouco sobre o seu trabalho", "Região
+  que atende" e "Informações extras" continuam largura total (são
+  textareas, fazem sentido largos). Regra só entra em telas `sm:` pra
+  cima — mobile continua full-width.
+- Cachê de referência: "R$" deixou de ser um `<span>` solto ao lado de
+  um input com a própria borda (2 caixas visuais) e virou 1 wrapper
+  bordado só (`proInputClass` no wrapper, input interno sem borda/bg
+  próprios) — lê como 1 campo monetário único. Nenhum componente novo.
+- Nota fiscal: Sim/Não sem mudança de comportamento, só herdou mais
+  espaço/respiro dentro do grupo (não fica mais "perdido" no fim do
+  formulário antigo).
+- **3 botões "Salvar" viraram 1 "Salvar alterações"**, no fim do
+  card. Auditoria confirmada: a separação em 2 actions
+  (`updateArtistProfileAction`/`updateArtistWorkContextAction`) só
+  existia porque eram 2 `<form>`/FormData diferentes — um UPDATE
+  disparado por um form só com os campos de identidade zeraria o
+  contexto de trabalho, e vice-versa. Com 1 form/1 FormData contendo
+  TODOS os campos, isso deixa de ser um risco: 1 UPDATE só, todos os
+  campos sempre presentes juntos. **Consolidadas numa action só**,
+  `updateProfileAndWorkContextAction` — não foi "alterar
+  actions/backend sem necessidade", foi exatamente a necessidade que a
+  fundadora descreveu (ela mesma autorizou consolidar se não houvesse
+  necessidade técnica de manter separado, e confirmei que não há).
+  Zero mudança de coluna, zero mudança de regra de completude/Business
+  Context.
+- Foto: mantida, sem mudança de comportamento (mesmo `ProAvatarUploader`
+  de sempre, só sem a caixa/borda própria ao redor — vive dentro do
+  card único agora).
+
+**Arquivos:**
+
+- Novo: `src/app/dashboard/perfil/pro-profile-work-form.tsx` (substitui
+  os 2 componentes antigos).
+- Removidos: `pro-artist-identity-form.tsx`, `pro-work-context-form.tsx`
+  (zero outro consumidor, confirmado por grep antes de apagar).
+- Alterados: `dados/page.tsx` (usa o componente novo), `actions.ts`
+  (action consolidada), `data.ts`/`trabalho/page.tsx` (só comentário,
+  referência ao arquivo renomeado).
+- **Nada tocado** em Home, `src/app/_home/**`, backend de decisões,
+  Sua Doopla, Canais, Privacidade, Financeiro — conforme o escopo
+  pedido.
+
+**Validação:** `tsc --noEmit` limpo, `eslint` limpo (exit 0), `npm run
+build` completo sem erros. QA visual: 2 rotas de preview temporárias
+recriadas (mesmo padrão da rodada anterior, sem auth/DB, componente
+real com dado mockado), screenshots tirados (desktop completo com
+cenário preenchido + cenário vazio, close-up de "Valores e condições",
+mobile), rotas de preview removidas de novo depois — nunca commitadas.
+
+**Pendente:** QA visual da fundadora antes de fechar o item.
+
+
+### "Perfil e trabalho" — último polimento visual/copy (3ª rodada) — `[DELIVERED + VISUAL QA APPROVED]` — 15/09/2026
+
+Estrutura/campos aprovados nas rodadas anteriores não mudaram. Protocolo
+de concorrência checado de novo antes de editar (`git fetch`): 1 commit
+novo na linha canônica desde a última checagem (`c40c445`, backend de
+`outbound_intents`/runtime, fora do escopo desta página). **Achado
+intermediário que virou falso alarme**: o diff bruto entre esta branch
+e a canônica mostrava `pro-work-context-form.tsx` "mudando" do lado
+canônico — investigado antes de tocar em qualquer arquivo, e
+confirmado (`git diff ff77afc origin/... -- <arquivos>`, saída vazia)
+que a linha canônica nunca tocou nenhum arquivo de "Perfil e trabalho"
+desde `ff77afc`; o diff era só o acúmulo dos meus 2 commits anteriores
+contra o estado original deles, não uma edição concorrente real. Sem
+conflito, seguiu.
+
+**Ajustes desta rodada** (só apresentação, nenhum campo/estrutura
+reaberto):
+
+- Densidade de texto em "Seu trabalho"/"Valores e condições": helper
+  reduzido de 12px pra 11.5px com `leading-snug`, gap entre campos
+  reduzido de `gap-5` pra `gap-4` nesses 2 grupos. Nenhuma palavra de
+  label/helper/placeholder foi cortada — nenhum par claramente
+  redundante foi encontrado que pudesse ser removido sem perder
+  explicação real (ex.: o helper de "Cachê de referência" explica o
+  "porquê" pro profissional, não é só repetição do label). Registrado
+  aqui pra decisão consciente: se a fundadora ainda achar denso depois
+  deste ajuste, o próximo passo seria cortar copy de verdade, não só
+  espaçamento.
+- Cachê de referência: largura em desktop de `sm:max-w-[220px]` pra
+  `sm:max-w-[300px]` — mais confortável pro tipo de dado. Mobile
+  continua full-width (a regra só entra em `sm:` pra cima).
+- "Região que atende": copy mantida exatamente ("Região que atende" +
+  "Onde você costuma aceitar trabalhos?"), nenhuma mudança. Confirmado
+  visualmente que o placeholder ("Ex.: São Paulo e região...") usa
+  `placeholder:text-[var(--pro-tx-30)]` (cinza fraco) contra
+  `text-[var(--pro-off)]` (branco cheio) do texto real digitado — já
+  diferenciado o bastante, nenhuma mudança de código necessária aqui.
+- Nota fiscal: lógica intocada, só herdou o `gap-4` do grupo.
+
+**Verificação de segurança do CTA único** (item pedido: "mantenha
+somente se os testes confirmarem que salvar parcialmente não apaga
+campos de outros grupos"). Sem Supabase real neste ambiente pra rodar
+um teste de ponta a ponta, a verificação possível foi estrutural/
+estática, e é conclusiva: confirmado por grep que existe exatamente 1
+`<form>` no componente, os 8 campos (`stageName`, `category`, `bio`,
+`whatYouDo`, `whereYouServe`, `baseFee`, `pricingNotes`,
+`issuesInvoice` como hidden input) são inputs nomeados incondicionais
+dentro dele (nenhuma renderização condicional exclui algum), e a action
+(`updateProfileAndWorkContextAction`) faz exatamente 1 `.update()` só,
+escrevendo as 8 colunas juntas sempre. Como só existe 1 form, TODO
+submit sempre carrega o estado atual dos 8 campos, editados ou não —
+estruturalmente impossível um "salvar parcial" zerar outro grupo,
+porque não existe mais "outro grupo" no momento do envio. `base_fee_cents`,
+`pricing_notes`, Business Context e a regra de completude não foram
+tocados nesta rodada. Nenhuma migration/schema alterado.
+
+**Escopo confirmado intocado**: Home, `src/app/_home/**`, backend de
+decisões, Sua Doopla, Canais da sua Doopla, Privacidade e dados,
+Financeiro.
+
+**Validação**: `tsc --noEmit` limpo, `eslint` limpo (exit 0), `npm run
+build` completo sem erros/warnings. QA visual: rota de preview
+temporária recriada de novo (mesmo padrão, sem auth/DB), screenshots
+finais (desktop com cenário preenchido + vazio, mobile) tirados e
+aprovados pela fundadora, rota removida de novo depois — nunca
+commitada.
+
+**Status final: `DELIVERED + VISUAL QA APPROVED`.** Item "Perfil e
+trabalho" fechado. Próximo item da ordem revisada: "Sua Doopla" —
+aguardando autorização explícita pra começar.
+
+
+### "Sua Doopla" — remoção de Configurações + achados registrados — `[PARCIAL: item 1 DELIVERED / item 2 BLOCKED, aguardando decisão / itens 3-4 registrados]` — 15/09/2026
+
+Decisão canônica da fundadora (aprovando a auditoria anterior, com 1
+ajuste): "Sua Doopla" não é uma seção de Configurações no beta atual —
+"Precisa de você" é comportamento canônico do produto, nunca
+preferência configurável. Protocolo de concorrência checado antes de
+editar (`git fetch`): 1 commit novo (`b426503`, só `docs:`), zero diff
+nos arquivos tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Remoção de "Sua Doopla" das Configurações — `DELIVERED`
+
+- `pro-configuracoes-view.tsx`: removido o `<ProAccordion title="Sua
+  Doopla">` (copy + `AttentionChannelForm`), removido o prop
+  `attentionChannel` da assinatura do componente, removido o import de
+  `AttentionChannelForm`. Comentário do topo do arquivo atualizado (de
+  "5 seções inline" pra "4 seções inline") e uma nota nova explicando a
+  decisão e o que foi preservado.
+- `dashboard/perfil/page.tsx`: removida a query
+  `.select('attention_channel')` (só existia pra alimentar o prop que
+  acabou de sumir) e o prop `attentionChannel={...}` na chamada de
+  `ProConfiguracoesView`.
+- `/dashboard/perfil/preferencias/page.tsx`: virou **redirect puro**
+  pra `/dashboard/perfil` (pedido explícito da fundadora — não deixar
+  página órfã acessível). O conteúdo antigo (card de WhatsApp/Painel/
+  Ambos + card-preview de "Perfil e trabalho", este último já
+  redundante desde o redesign anterior) foi substituído.
+
+**Preservado, nada apagado**: coluna `artist_profiles.attention_channel`
+(schema/dados intactos), action `updateAttentionChannelAction`
+(`actions.ts:2101-2112`, sem chamador na UI agora, mas presente e
+funcional), componente `AttentionChannelForm`
+(`preferencias/attention-channel-form.tsx`, arquivo intocado, só
+desimportado). Nenhuma migration criada ou alterada.
+
+**Achado incidental, não corrigido (fora de escopo)**: um comentário em
+`src/app/dashboard/perfil/privacidade/page.tsx:27` ainda cita
+`perfil/preferencias/page.tsx` como precedente de um padrão de
+role-gating que não existe mais lá (a rota virou redirect puro). É só
+comentário, sem efeito funcional — não corrigido porque teria exigido
+editar um arquivo de "Privacidade", explicitamente fora do escopo desta
+rodada. Registrado aqui pra não se perder.
+
+#### 2. `attention_channel` no onboarding — `BLOCKED, aguardando decisão da fundadora`
+
+Auditado antes de tocar em qualquer coisa, conforme instruído. Achado:
+**existe sim uma dependência inesperada além da gravação da coluna.**
+
+`src/app/cadastro/preparar/page.tsx:41`:
+```
+if (artistProfile.stage_name && artistProfile.category && artistProfile.bio && artistProfile.attention_channel) {
+  redirect('/cadastro/plano');
+}
+```
+Comentário do próprio código (linha 39-40): *"attention_channel só
+existe depois do submit final do carrossel (etapa Conclusão), então é
+o sinal mais confiável de 'já terminou'."* — **`attention_channel` é
+usado hoje como o sinal de "onboarding já concluído"**, pra decidir se
+quem volta à página `/cadastro/preparar` é mandado direto pra
+`/cadastro/plano` (retomada) ou vê o formulário de novo.
+
+Se eu removesse a pergunta E a escrita de `attention_channel` em
+`savePrepareAction` sem tratar isso, todo profissional NOVO nunca mais
+teria essa coluna preenchida — a condição de retomada ficaria
+permanentemente falsa, e quem já tivesse terminado o cadastro (nome +
+categoria + bio preenchidos) voltaria a ver o formulário do zero toda
+vez que reabrisse `/cadastro/preparar`, em vez de seguir pra
+`/cadastro/plano`. Efeito colateral real, silencioso, e só apareceria
+depois — exatamente o tipo de coisa que a fundadora pediu pra eu parar
+e reportar antes de mexer.
+
+**Não implementado.** Nenhum arquivo de onboarding foi tocado. Preciso
+de uma decisão antes de prosseguir — por exemplo (não decidido, só
+opções pra ilustrar o tipo de escolha):
+- trocar o sinal de "onboarding concluído" pra outro campo que já é
+  obrigatório de qualquer forma (`stage_name`/`category`/`bio` sozinhos
+  já cobrem 3 dos 4 requisitos atuais);
+- manter a etapa/pergunta apenas como gravação silenciosa de um valor
+  padrão (sem perguntar visualmente), só pra preservar o sinal de
+  conclusão, até a lógica de retomada ser reescrita.
+
+Aguardando orientação da fundadora sobre qual caminho seguir.
+
+#### 3. `negotiation_notes` — registro formal de dívida
+
+**Status: `ACTIVE CONTEXT / PRODUCT COPY DEBT`.**
+
+- Coluna: `artist_profiles.negotiation_notes` (migration 0037). Dado
+  existente preservado, nada alterado.
+- Consumo atual: `get-professional-business-context.ts` →
+  `context-builder/sections.ts`, sempre exposto ao Intelligence Context
+  como fato declarado `negotiationNotes` — **intocado, chegando ao
+  Business Context exatamente como antes**.
+- Não conectado (e continua não devendo ser conectado sem decisão
+  própria) a Approval Engine, Policy Gate ou qualquer mecanismo de
+  autorização. Confirmado por grep antes desta rodada: zero referência
+  fora do Intelligence Context.
+- Não movido pra "Perfil e trabalho". Não criada nenhuma superfície em
+  "Sua Doopla" (que nem existe mais) só pra editar este campo.
+- **Problema conceitual registrado, não resolvido**: a pergunta do
+  onboarding (*"Tem algo que sua Doopla sempre deve saber antes de
+  negociar por você?"*, hint *"...algo que você sempre faz questão de
+  aprovar"*) usa linguagem de regra/mandato, mas o campo é tratado
+  tecnicamente como contexto declarado, nunca autorização. Decisões
+  pendentes, em aberto pra uma rodada futura dedicada:
+  1. se `negotiation_notes` permanece perguntado no onboarding;
+  2. qual deveria ser a copy correta (pra não prometer um mandato que
+     o sistema não aplica);
+  3. como o profissional corrige/atualiza essa informação depois (hoje
+     não tem superfície de edição nenhuma, write-once no onboarding,
+     mesmo problema estrutural do antigo `attention_channel` antes do
+     Settings V2);
+  4. como distinguir, de forma geral no produto, contexto comercial
+     declarado de autorização real — pergunta maior que este campo
+     sozinho.
+- **Regra até a decisão**: nunca tratar `negotiation_notes` como
+  autorização em nenhum código futuro sem essa decisão explícita
+  primeiro.
+
+#### 4. WhatsApp proativo pro profissional — gap registrado, não resolvido
+
+Confirmado na auditoria anterior e reconfirmado aqui: quando a Doopla
+precisa consultar o profissional (`responsePlan='consult_professional'`),
+`resolveOutboundAction` (`src/lib/runtime/recipient.ts`) sempre resolve
+`persist_ai_message` — mensagem só em app, nunca envio real de
+WhatsApp pro profissional. **Não existe hoje a perna operacional pra
+"Doopla avisa pelo WhatsApp" chegar ao próprio profissional** (o canal
+de outbound real, `send-outbound-intents`, é exclusivo de
+`external_participant`/cliente).
+
+**Não resolvido nesta rodada, por instrução explícita.** Nenhum
+provider/fluxo novo criado. Fica registrado como reconciliação futura,
+junto com: "Precisa de você" (`doopla-intervention.ts`, já
+channel-independente e correto), Decisões, `intervention`,
+`requires_professional_review` (Policy Gate) e o mecanismo de liberação
+de mensagem retida (Approval Engine). Nenhum desses componentes foi
+tocado nesta rodada.
+
+#### Validação
+
+- `tsc --noEmit`: limpo.
+- `eslint` nos 3 arquivos alterados: limpo (exit 0).
+- `npm run build`: completo, sem erros/warnings.
+- Confirmado manualmente (leitura de código, sem Supabase real neste
+  ambiente): nenhuma referência a `AttentionChannelForm` sobrevive fora
+  do próprio arquivo do componente — desconectado da UI, mas presente
+  no repo. `updateAttentionChannelAction` inalterada. Coluna
+  `attention_channel` não tocada em nenhum UPDATE/migration.
+- Onboarding: **não alterado**, então não há risco de etapa quebrada
+  nesta entrega (o risco identificado é hipotético, sobre uma mudança
+  que não foi feita).
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Canais da sua Doopla, Privacidade, Financeiro,
+Ajuda, Decisões, Home, Booker, Approval Engine,
+`requires_professional_review`, `intervention`.
+
+
+### "Sua Doopla" — desacoplamento completo de `attention_channel` (Configurações + onboarding) — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado antes de editar (`git fetch`): mesmo
+tip já conhecido (`b426503`, só `docs:`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### Resume check (`/cadastro/preparar/page.tsx`)
+
+Condição trocada exatamente conforme aprovado:
+```
+// de: stage_name && category && bio && attention_channel
+// para: stage_name && category && local && bio
+```
+Comentário reescrito explicando a condição real atual (os 4 campos que
+`savePrepareAction` sempre grava juntos, no mesmo UPDATE atômico —
+`local` é o mais robusto dos 4, nenhuma outra tela do sistema escreve
+nele). Nenhum campo novo, nenhuma migration.
+
+#### Remoção da etapa de canal do onboarding
+
+`PrepareForm.tsx`: removida a Etapa 4 inteira (WhatsApp/Painel/Ambos —
+UI, estado `channel`, hidden input, gate de `canAdvance`).
+`SUBSTEPS` 4→3. Renumeração em cascata pra não deixar etapa vazia/
+salto: "Etapa 2 de 6"/"Etapa 3 de 6" → "de 5" (mesmo conteúdo,
+inalterado); Conclusão vira "Etapa 4 de 5" (era "Etapa 5 de 6").
+`OnboardingShell.tsx`: `totalSteps` default 6→5 (único lugar que
+precisava mudar — os 3 callers usam o default, nenhum passa
+explícito). `CreateAccountForm.tsx`: "Etapa 1 de 6"→"de 5".
+`plano/PlanForm.tsx`: `step={6}`→`step={5}`, "Etapa 6 de 6"→"Etapa 5
+de 5". `plano/page.tsx`: comentário desatualizado ("Etapa 7, última do
+funil", já inconsistente com o "de 6" renderizado antes desta rodada)
+corrigido pra "Etapa 5".
+
+`cadastro/actions.ts` (`savePrepareAction`): para de ler/validar/
+escrever `channel`/`attention_channel`. Omitido do payload do UPDATE
+— mesmo padrão de sempre pra campo retirado, nunca sobrescreve dado
+histórico pra null.
+
+#### Achado durante a implementação — dependência em `src/app/_home/**`
+
+`CreateAccountModal.tsx` (Home pública, funil no modal) reaproveita o
+MESMO `PrepareForm` e passava `initialChannel={null}`. Removendo essa
+prop da assinatura do componente, esse arquivo pararia de compilar —
+mas `src/app/_home/**` é propriedade da Sessão Home, fora de escopo
+pra eu editar. Resolvido sem tocar no arquivo: `initialChannel` continua
+aceito no tipo de `PrepareForm`, como prop **opcional e sem uso**
+(documentado no código, com nota pra remover quando o call site do
+modal for atualizado por quem é dono dele). Nenhuma funcionalidade
+perdida — o modal da Home continua funcionando exatamente igual, só
+não lê mais essa prop internamente. Registrado aqui em vez de resolvido
+silenciosamente, conforme o protocolo combinado.
+
+#### Infra preservada, nada apagado
+
+Coluna `artist_profiles.attention_channel` (schema/dados intactos),
+`updateAttentionChannelAction`, `AttentionChannelForm` — já
+desconectados de Configurações na rodada anterior, continuam assim.
+Nenhuma migration criada ou alterada nesta rodada.
+
+#### `negotiation_notes`
+
+Intocado. Continua `ACTIVE CONTEXT / PRODUCT COPY DEBT` (registrado na
+rodada anterior). Onboarding, armazenamento, Business Context e
+consumo pelo LLM inalterados.
+
+#### Testes/validação
+
+- `tsc --noEmit`, `eslint` (7 arquivos alterados), `npm run build`:
+  todos limpos.
+- **Sem Supabase real neste ambiente** (mesma limitação já documentada
+  em rodadas anteriores) — validação dos 5 cenários pedidos feita por
+  combinação de leitura de código + render visual real do carrossel
+  (rota de preview temporária, `/dev/preview-onboarding`, sem auth/DB,
+  removida depois, nunca commitada):
+  - **A (novo usuário)**: renderizado e navegado de ponta a ponta —
+    nenhuma etapa de canal aparece; "Etapa 2 de 5" → preenchendo os
+    campos obrigatórios → "Continuar" habilita → "Etapa 3 de 5" (Como
+    você trabalha) → "Etapa 4 de 5" (Conclusão, botão "Continuar para
+    os planos"). Barra de progresso com 5 segmentos, preenchendo
+    corretamente a cada etapa. Screenshots confirmam visualmente.
+  - **B (retomada)**: por leitura de código — `savePrepareAction`
+    grava `stage_name`/`category`/`local`/`bio` sempre juntos, num
+    UPDATE atômico só; a nova condição de resume-check usa exatamente
+    esses 4, então qualquer usuário que já completou o carrossel tem
+    a condição `true` independente de `attention_channel` (que nem é
+    mais escrito). Não executável contra Postgres real neste ambiente.
+  - **C (onboarding não concluído)**: por leitura de código — sem os 4
+    campos preenchidos juntos, a condição continua `false`, comportamento
+    idêntico ao de antes.
+  - **D (usuário existente)**: nenhum UPDATE/migration toca
+    `attention_channel` nesta entrega — dado histórico inalterado por
+    construção (nenhuma linha de código grava nele mais).
+  - **E (plano)**: `savePlanAction`/`select_artist_plan` inalterados,
+    zero linha tocada.
+
+#### Dívida pré-existente registrada, não resolvida (por instrução)
+
+O resume-check de `/cadastro/preparar` continua derivado de campos de
+perfil (`stage_name`/`category`/`local`/`bio`), não de um estado
+explícito de onboarding. Como `stage_name`/`category`/`bio` podem ser
+limpos depois em "Perfil e trabalho" (Settings V2), existe um edge
+case de baixa probabilidade em que um usuário já onboardado, voltando
+manualmente a `/cadastro/preparar` depois de ter limpado esses campos,
+veria o formulário de novo em vez de pular pro plano. Risco já existia
+antes desta rodada com 3 dos 4 campos anteriores — não criado agora,
+não piorado, não resolvido. Não criar `onboarding_completed` só por
+causa disso, por instrução explícita.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Configurações (além da remoção já aprovada de "Sua
+Doopla"), `negotiation_notes`, Canais, Privacidade, Financeiro, Ajuda,
+Decisões, Home (`src/app/_home/**` e `src/app/page.tsx` não editados —
+dependência resolvida sem tocar neles, ver seção acima), Booker,
+Approval Engine, `intervention`, `requires_professional_review`.
+
+**Status final: "Sua Doopla" = `DELIVERED`. Remoção de
+`attention_channel` da experiência (Configurações + onboarding) =
+`DELIVERED`.**
+
+
+### "Privacidade e dados" — simplificação para o que é real no beta — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado antes de editar (`git fetch`): mesmo
+tip conhecido (`b426503`), zero diff nos arquivos tocados desde
+`ff77afc`. Sem conflito.
+
+#### Auditoria crítica prévia (item 2 do pedido) — ativação da Comunidade não depende do formulário removido
+
+Confirmado **antes** de tocar em qualquer código: `ensureCommunityProfileActivated`
+(`src/lib/community/data.ts`) é chamada em 4 lugares — `comunidade/actions.ts`,
+`comunidade/page.tsx`, `comunidade/[topicId]/page.tsx` (Web) e nos
+equivalentes de fórum do App (`mobile/app/forum/index.tsx`,
+`mobile/app/forum/[topicId].tsx`) — **automaticamente, ao simplesmente
+visitar qualquer página real da Comunidade**, comentário no próprio
+código confirma ("Fase 1... pra 'entrar na comunidade' ser invisível
+pro profissional: nenhum passo explícito"). O formulário de privacidade
+(`updateCommunityPrivacyAction`) também chamava essa mesma função, mas
+de forma redundante/defensiva (idempotente) — nunca foi o caminho
+canônico de ativação. **Removê-lo do Settings não quebra participação
+na Comunidade** — nenhum arquivo de `comunidade/**` ou dos fóruns do
+App foi tocado nesta rodada. Sem bloqueio — seguiu pra implementação
+conforme autorizado.
+
+#### 1. Comunidade — toggles removidos (Web + App)
+
+`pro-configuracoes-view.tsx`: removido o bloco inteiro "Privacidade na
+Comunidade" (título, descrição com "perfil público" + travessão, e o
+`CommunityPrivacyForm` com os 7 toggles) de dentro do accordion
+"Privacidade e dados". Prop `communityProfile` removida da assinatura
+do componente (só existia pra alimentar esse bloco).
+`dashboard/perfil/page.tsx`: removida a query `getMyCommunityProfile`
+(só existia pra essa prop) e o import correspondente.
+
+`mobile/.../configuracoes.tsx`: removida a linha "Privacidade na
+Comunidade" e o `BottomSheet`/`SheetKey='comunidade'` que a abria.
+**`CommunityPrivacySheet` preservada intacta** (função ainda definida
+no arquivo, imports que ela usa internamente intocados) — só sem
+nenhum caller na UI agora, mesmo padrão já usado pra `AttentionChannelForm`
+no Web.
+
+#### 2. "Seus dados" — removido (Web)
+
+Bloco "Seus dados" / "Exportação de dados ainda não está disponível —
+em breve." removido do accordion. Confirmado antes: zero backend de
+exportação (nenhum RPC/action em todo `src`/`supabase`). App já não
+tinha esse bloco — nenhuma alteração necessária lá.
+
+#### 3. Legal — mantido (Web), gap registrado (App)
+
+Web: links "Política de privacidade"/"Termos de uso" preservados
+exatamente como estavam, apontando pra `/privacidade`/`/termos`
+(conteúdo institucional real, confirmado na auditoria).
+App: **não adicionado** — auditei se existia um padrão reusável de
+navegação externa (`Linking.openURL`, usado em `bookings/[id].tsx` e
+`FalarComDooplaCard.tsx`) mas não existe hoje nenhuma constante
+centralizada de URL do site no App (equivalente a `site-url.ts` do
+Web) pra apontar pra `/privacidade`/`/termos` sem hardcode solto.
+Registrado como gap de paridade, não implementado, conforme
+autorizado explicitamente ("se exigir arquitetura nova, só registrar").
+
+#### 4. Excluir conta — intocado
+
+`DeleteAccountModal`/`DeleteAccountForm` (Web) e o fluxo nativo do App
+— nenhuma linha alterada. Confirmado que `DeleteAccountModal` importa
+`DeleteAccountForm` direto do arquivo do componente, nunca da rota —
+por isso a rota `/privacidade/excluir` pôde virar redirect sem
+quebrar nada.
+
+#### 5. Rotas órfãs — viraram redirect
+
+`/dashboard/perfil/privacidade`, `/dashboard/perfil/privacidade/comunidade`
+e `/dashboard/perfil/privacidade/excluir` — nenhuma tinha conteúdo
+próprio que não estivesse duplicado em outro lugar já ativo (a página
+`/excluir` tinha uma cópia ligeiramente desatualizada do mesmo texto
+que `DeleteAccountModal` já mostra por completo). Todas as 3 viraram
+`redirect('/dashboard/perfil')`. Componentes que elas importavam
+(`CommunityPrivacyForm`, `DeleteAccountForm`) preservados, arquivos
+intocados, só perderam esses 2 importadores específicos (`DeleteAccountForm`
+continua tendo o `DeleteAccountModal` como importador ativo).
+
+#### Infra preservada, nada apagado
+
+`community_profiles`, `visibility_status`, as 7 colunas `show_*`, a
+view `community_profiles_public`, migrations, RPCs
+(`activate_community_profile`/`update_community_profile`),
+`CommunityPrivacyForm`, `CommunityPrivacySheet`,
+`ensureCommunityProfileActivated`/`updateCommunityProfile`/
+`getMyCommunityProfile` (camada de dados) — todos intactos. Nenhum
+dado/preferência existente de nenhum profissional foi apagado ou
+sobrescrito (nenhuma escrita acontece nesta rodada, só remoção de UI).
+
+#### Copy
+
+"Perfil público" + travessão removidos junto com o bloco que os usava
+(accordion Web). 2 ocorrências remanescentes de "perfil público" —
+uma no bloco "Canais da sua Doopla" do Web e do App (seção diferente,
+fora de escopo desta rodada) e uma dentro da `CommunityPrivacySheet`
+preservada do App (código morto, não renderizado por ninguém agora,
+intencionalmente não editado por já não estar mais visível a
+nenhum usuário) — nenhuma delas está na superfície "Privacidade e
+dados" que esta rodada tocou.
+
+#### Testes/validação
+
+- `tsc --noEmit`, `eslint` (5 arquivos Web), `npm run build`: limpos.
+- App: sem toolchain de typecheck/lint configurado no projeto
+  (`package.json` só tem scripts do Expo, `node_modules` não
+  instalado neste ambiente) — validado por leitura cuidadosa de
+  código (JSX balanceado nos pontos editados, `SheetKey`/imports
+  consistentes, `CommunityPrivacySheet` com todos os imports que usa
+  internamente ainda presentes). Mesma limitação já documentada em
+  rodadas anteriores para validação técnica do App.
+- Checklist da fundadora: (1) nenhum toggle sem efeito aparece mais —
+  confirmado; (2) nenhum dado apagado — confirmado, nenhuma escrita
+  nesta rodada; (3) infra da Comunidade intacta — confirmado; (4)
+  ativação não quebrada — confirmado antes de implementar (ver acima);
+  (5) "Seus dados" saiu — confirmado; (6) Política/Termos acessíveis —
+  confirmado (Web); (7) exclusão de conta intacta — confirmado; (8)
+  rotas órfãs sem quebrar componentes compartilhados — confirmado
+  (`DeleteAccountForm` continua com o `DeleteAccountModal` como
+  importador); (9) sem "perfil público" na superfície tocada —
+  confirmado; (10) typecheck/lint/build — limpos; (11) concorrência —
+  checada antes de editar.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Onboarding, Canais, Financeiro, Ajuda,
+Decisões, Home, Booker, arquitetura da Comunidade (`comunidade/**`,
+fóruns do App, migrations, RPCs), matching, Perfil público legado.
+
+
+### "Canais da sua Doopla" — WhatsApp da Doopla + código, link de booking, Seu WhatsApp; Booker desacoplado da superfície Professional — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 3× (antes da auditoria, antes de
+implementar, antes do commit): mesmo tip conhecido (`b426503`), zero
+diff nos arquivos tocados desde `ff77afc`. Sem conflito.
+
+#### Auditoria prévia — identidade canônica (item central da rodada)
+
+Confirmado **antes** de tocar em qualquer código: `extractDooplaSlugToken`
+(`src/lib/channels/whatsapp/intake-routing.ts:124-129`) só casa
+`doopla.com/<slug>` — não existe "código escondido" separado no
+routing. `public_id` da view `community_profiles_public` (migration
+0076) é literalmente `p.slug as public_id` — mesma coluna. `referral_code`
+(migration 0020) é um identificador real, mas de um programa
+totalmente diferente (indicação/R$5), nunca usado pra identidade. Zero
+outro identificador (`professional_code`/`short_code`/etc. não
+existem). **Conclusão**: um único identificador real —
+`profiles.slug` — já usado no link de booking (`/orcamento/[slug]`) e
+no token do WhatsApp inbound. "Seu código" na UI é esse mesmo valor,
+sem nenhuma coluna/RPC/identificador novo.
+
+#### 1. WhatsApp da Doopla + Seu código (novo, Web + App)
+
+Web: novo bloco `DooplaWhatsappAndCodeCard` dentro do accordion
+"Canais da sua Doopla" (`pro-configuracoes-view.tsx`) — número oficial
+via `whatsappPublicNumber()` (nunca hardcoded; estado honesto "Em
+configuração" quando a env não está setada, nunca esconde o bloco) +
+"Seu código" (`profiles.slug`, sempre visível quando existe, independente
+do número estar configurado). App: sheet novo `DooplaWhatsappAndCodeSheet`
+(`configuracoes.tsx`), nova row "WhatsApp da Doopla", número via
+`dooplaWhatsappNumber()` (mesma fonte já usada em `(tabs)/index.tsx`,
+try/catch pro mesmo padrão de fallback honesto — `requireEnv` lançaria
+sem isso). Nenhuma coluna/RPC/identificador novo criado; `referral_code`
+não tocado/usado.
+
+#### 2. Seu link de booking (renomeado, Web + App)
+
+"Seu link de orçamento" → "Seu link de booking" + helper "Compartilhe
+este link e o cliente já começa o pedido conectado a você." — só copy.
+Rota `/orcamento/[slug]`, `submitOrcamentoRequestAction`/RPC
+`submit_orcamento_request`, tracking `origin/channel='public_link'`:
+nenhum desses tocado (confirmado lendo a versão canônica atual do
+redesign de 15/09 da Sessão Principal, `git show
+origin/claude/categoria-b-supabase-env-qsbdq9:src/app/orcamento/[slug]/page.tsx`,
+já que meu worktree estava desatualizado nesse arquivo específico —
+nenhuma mudança feita nele nesta rodada, só lido pra auditoria). App já
+tinha a row "Seu link de booking" com esse nome — só o sheet perdeu o
+bloco de roteamento (item 4) e a copy de abertura (travessão + "perfil
+público") virou a mesma frase do Web.
+
+#### 3. Seu WhatsApp (identidade do profissional) — intocado
+
+`ProWhatsappIdentityCard` (Web) e `WhatsappVerificationSheet` (App) já
+mostravam título "Seu WhatsApp" claramente — nenhuma mudança de fluxo,
+copy ou backend. Row do App renomeada de "WhatsApp" pra "Seu WhatsApp"
+(só pra reforçar que não é o número oficial, já que agora existe uma
+row separada "WhatsApp da Doopla" ao lado). RPCs (migration 0064),
+OTP, expiração, tentativas, unicidade, boundary compartilhado
+Web/App (`whatsapp-identity-actions.ts` → `request-verification.ts`):
+nenhum touched.
+
+#### 4. Booker — desconectado da superfície Professional (Web + App)
+
+"Quem recebe seus pedidos de orçamento" (`ProLinkRoutingForm`, Web) e o
+mesmo bloco dentro do sheet de link (App) removidos do accordion/tela
+Professional. **Preservados intactos, sem nenhuma linha apagada**:
+`artist_link_routing` (tabela), `updateLinkRoutingAction`,
+`ProLinkRoutingForm`, `LinkRoutingCard`, `getArtistBookers`/
+`getArtistLinkRouting` (`../data.ts`), e no App
+`fetchArtistBookers`/`fetchArtistLinkRouting`/`updateArtistLinkRouting`
+(`lib/data/link-routing.ts`) + `RoutingOption` (JSX helper, preservado
+com zero caller, mesmo padrão já usado em `CommunityPrivacySheet`/
+`AttentionChannelForm`). `page.tsx` (Web) parou de buscar
+bookers/routing só pra essa tela (Promise.all reduzido) — a única
+mudança é a wiring, não a infraestrutura.
+
+#### 5. CTA "Falar com minha Doopla" — intocado
+
+Não movido nem duplicado pra Configurações nesta rodada, conforme
+instrução. `TalkToDooplaCard` na Home Web permanece exatamente como
+está (`professional-home-view.tsx`, arquivo não tocado). Gap de App
+(sem equivalente) permanece registrado, não implementado.
+
+#### 6. Envio de contato do cliente — não implementado
+
+Confirmado de novo (grep em todo `src/`) que não existe nenhuma UI
+"quer que sua Doopla fale com o cliente" hoje. `outbound_intents`
+(migration 0051/0058/0083, `runtime/outbound.ts`, worker cron real
+`send-outbound-intents/route.ts`) é infraestrutura genuína, mas serve
+o envio autônomo do Intelligence Core numa conversa já existente, não
+um botão do profissional pra iniciar contato outbound novo. Registrado
+como capacidade futura, nenhuma UI/outbound novo construído.
+
+#### 7. E-mail — nenhuma alteração
+
+Confirmado: zero menção de e-mail em `pro-configuracoes-view.tsx` ou
+no equivalente App antes e depois desta rodada.
+
+#### 8. Rota órfã
+
+`/dashboard/perfil/canais/page.tsx` → `redirect('/dashboard/perfil')`.
+Mesmo padrão das rodadas anteriores — `ProWhatsappIdentityCard`,
+`LinkRoutingCard`, `ProLinkRoutingForm` continuam intactos, só a
+navegação até essa página específica foi removida (nada mais linkava
+até ela, confirmado na auditoria).
+
+#### 9. Home — intocada
+
+`src/app/_home/**` e `professional-home-view.tsx` (`BookingChannelsCard`/
+`TalkToDooplaCard`) não tiveram nenhuma linha tocada nesta rodada —
+fora do escopo da Sessão Painel, propriedade da Sessão Home.
+
+#### Testes/validação
+
+- `tsc --noEmit`: limpo (0 erros nos arquivos tocados; confirmado 2×,
+  antes e depois de remover as rotas de preview temporárias).
+- `eslint` nos 3 arquivos Web alterados: limpo (exit 0).
+- `npm run build`: completo, sem erros, 61 rotas geradas — confirmado
+  que `/dashboard/perfil/canais` aparece como rota dinâmica (redirect)
+  e nenhuma rota `/dev/preview-*` sobrevive no build final.
+- QA visual real via `/dev/preview-canais` e `/dev/preview-canais-sem-numero`
+  (Playwright, screenshots em 2 estados — número configurado e "Em
+  configuração"), confirmando: sem travessão, sem "perfil público",
+  ordem WhatsApp da Doopla+código → Seu link de booking → Seu WhatsApp,
+  Booker ausente, estado honesto quando a env não existe. Rotas de
+  preview e `.next` removidos antes do commit (confirmado via `git
+  status`, só os 4 arquivos de produto aparecem no diff).
+- App: sem toolchain de typecheck/lint configurado neste ambiente
+  (mesma limitação já documentada em rodadas anteriores) — validado por
+  leitura completa e cuidadosa do arquivo inteiro após as edições: JSX
+  balanceado, imports consistentes (nenhum import morto de
+  `link-routing.ts` sobrevive fora dos comentários), `RoutingOption`/
+  `CommunityPrivacySheet` preservados com todos os imports que usam
+  internamente ainda presentes.
+- Checklist da fundadora (12 itens): (1) número nunca hardcoded —
+  confirmado (`whatsappPublicNumber()`/`dooplaWhatsappNumber()`); (2)
+  código = `profiles.slug` — confirmado; (3) `referral_code` não usado —
+  confirmado; (4) link = `/orcamento/[slug]` — confirmado, rota não
+  renomeada; (5) copiar código funciona (Web `ProCopyButton`, App
+  `Clipboard.setStringAsync`) — confirmado por leitura; (6) copiar/
+  compartilhar link continua — confirmado, mesma função preservada;
+  (7) WhatsApp Identity intacto — confirmado, zero linha de
+  `whatsapp-identity-actions.ts`/RPCs tocada; (8) Booker não aparece
+  mais no Professional — confirmado; (9) infra Booker permanece —
+  confirmado; (10) rota órfã redireciona — confirmado; (11) Home
+  intocada — confirmado (`git diff --stat` não lista nenhum arquivo
+  em `_home/**`); (12) backend/intake/origin/channel intocados —
+  confirmado (nenhum arquivo de `actions.ts`/RPC/migration tocado).
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Onboarding,
+Financeiro, Ajuda e suporte, Ajustes no detalhe do booking, Decisões,
+Home (`_home/**`, `professional-home-view.tsx`), Booker (infraestrutura),
+arquitetura da Comunidade, matching, Perfil público legado.
+
+
+### 🔴 P0 INTEGRAÇÃO / BETA READINESS — conversa direta não tem caminho pra virar booking (registrado 15/09/2026, achado da auditoria de Financeiro)
+
+**Não resolvido nesta branch — reconciliar com a Sessão Central após integração das branches.**
+
+`/orcamento/[slug]` (cliente direto, sem login) → RPC `submit_orcamento_request`
+(migration 0023) → cria `opportunity` + `conversation` (`origin/channel='public_link'`).
+**Nunca chega a criar uma `booking`.** Rastreei TODOS os pontos de
+`insert` em `bookings` no código inteiro (só 2 existem, os dois em
+`src/app/dashboard/actions.ts`): `proposeBookingAction` (booker propõe
+pro artista que representa) e `selectBookerForOpportunityAction`
+(artista escolhe um booker real pra uma oportunidade do marketplace
+legado). **As duas exigem um Booker real com `representations` ativa.**
+`/dashboard/propor` (única UI que cria bookings do lado "proposta") é
+bloqueada pra quem não é booker (`if (profile.role !== 'booker')
+redirect('/dashboard')`).
+
+Confirmação direta no próprio código (comentário já existente,
+`professional-home-view.tsx:92-104`): *"conversations.related_booking_id
+(FK que ligaria uma conversa à SUA própria proposta) nunca é escrito em
+nenhum caminho de código atual... os dois conjuntos são estruturalmente
+disjuntos."*
+
+**Consequência**: um artista sem Booker que fecha um trabalho de
+verdade via conversa direta (o canal que a própria Doopla promove como
+principal em "Canais da sua Doopla"/Home) não tem hoje nenhum caminho
+de código pra esse trabalho virar uma `booking` — logo **nunca aparece
+no Financeiro**, em nenhuma métrica, permanentemente R$0,00, mesmo
+tendo sido pago de verdade. Isso é uma lacuna estrutural anterior a
+qualquer copy/UI do Financeiro, não algo que esta rodada resolve.
+
+**Explicitamente NÃO feito nesta branch** (instrução direta da
+fundadora): nenhuma booking artificial criada; nenhum Booker fake;
+`bookings.booker_profile_id` intocado; nenhuma migration; nenhuma
+mudança em `conversations`/`/orcamento`/RPC/runtime. Fica só
+registrado aqui pra reconciliação futura com a Sessão Central.
+
+#### Atualização (auditoria de Booking Detail + Contratos, 15/09/2026) — impacto em Contratos e achado novo em `requires_professional_review`
+
+**Impacto em Contratos, confirmado**: `booking_contracts.booking_id` é
+FK obrigatória — contrato depende 100% de existir uma `booking` real.
+Mesma causa-raiz do P0 acima se propaga: um artista sem Booker, mesmo
+fechando um trabalho de verdade via conversa direta, **nunca tem
+acesso à função "Gerar contrato com a doopla"**, porque nunca existe
+uma `booking` pra esse contrato se prender. Além disso, o template
+atual (`contratos/template.ts`) **sempre menciona um Booker como
+intermediário** ("com intermediação de {booker}") e inclui a comissão
+dele — o contrato padrão de hoje foi desenhado assumindo o modelo
+Booker/agência, não o modelo cliente→Doopla→profissional direto.
+
+**Direção futura registrada** (não implementada nesta branch, decisão
+da fundadora): o fluxo que precisa existir é `cliente → Doopla →
+conversation → booking direto → contrato padrão Doopla`, **sem**
+Booker fake, sem intermediação fictícia, sem comissão fictícia. Isso
+depende da resolução do P0 acima (conversation virar booking sem
+Booker) antes de fazer sentido tocar no gerador de contrato.
+
+**Achado novo, mesma família, causa raiz distinta**: rastreei a
+propagação de `decision.requiresProfessionalReviewBeforeSend` (Bloco 4,
+Planner) até `outbound_intents.requires_professional_review` e
+encontrei uma lacuna adicional à já conhecida (fail-closed do worker de
+envio, já corrigido pela Sessão Central). `resolveRuntimeDisposition()`
+(`src/lib/runtime/disposition.ts:11-18`) calcula corretamente
+`'professional_action_required'` vs `'auto_send_eligible'` — mas em
+`src/lib/runtime/pipeline.ts`, `createOutboundIntent()` é chamado nas
+linhas 443-451, **antes** de `disposition` ser calculado (linha 495), e
+o objeto passado não inclui `requiresProfessionalReview` em nenhum
+campo. `disposition` só é usado depois pra gravar auditoria
+(`finishOrchestratorRun`), nunca propagado pro outbound_intent criado.
+**Consequência**: hoje, todo outbound_intent é criado com
+`requires_professional_review = false`, independente do que o Planner
+calculou — a proteção fail-closed do worker de envio não tem, na
+prática, nenhuma linha real pra proteger. Confirmei também que
+`requires_professional_review`/`requiresProfessionalReview` não
+aparece em nenhum arquivo de `decisions/data.ts`, `doopla-intervention.ts`
+ou `work-items.ts` — a camada de Decisões/"Precisa de você" não tem
+hoje nenhuma consciência desse sinal, nem pra usar nem pra ignorar
+errado. **NÃO corrigido nesta branch** (runtime/pipeline fora de
+escopo Professional) — registrado pra reconciliação com a Sessão
+Central junto da arquitetura de Decisões/Precisa de você.
+
+**Busca Global — decisão de roadmap registrada** (não implementada): o
+painel terá futuramente uma busca global (cliente/trabalho/booking/
+data/local/contrato/outros), permitindo por exemplo "contrato Mariana"
+→ achar o Booking → chegar ao contrato. Não é escopo desta rodada nem
+uma busca exclusiva de contratos — é uma capacidade transversal futura.
+
+
+### "Financeiro" — Dados de recebimento como superfície única, métricas semanticamente fiéis, Booker Web/App intocado — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Dados de recebimento — superfície única (Web)
+
+Removida a linha "Dados de recebimento" do accordion "Assinatura e
+cobrança" em `pro-configuracoes-view.tsx` — Financeiro
+(`/dashboard/dinheiro`) passa a ser a ÚNICA superfície canônica.
+`paymentConfigured` removido da assinatura do componente (só existia
+pra essa linha); `page.tsx` parou de buscar `getActivePaymentDetails`
+só pra essa prop (import/`Promise.all` reduzidos). `/dashboard/perfil/recebimento`
+vira `redirect('/dashboard/dinheiro')`. **Preservados intactos**:
+`PaymentDetailsFields`, `setPaymentDetailsAction`, RPC
+`set_payment_details` (migration 0046), `payment_details` (append-only,
+RLS, versionamento) — nenhuma linha de backend tocada. App já não
+tinha essa duplicação (só existia em Financeiro lá) — nenhuma mudança
+necessária nesse ponto.
+
+Copy canônica confirmada/alinhada nos dois lados: *"A Doopla usa estes
+dados quando precisa orientar o cliente sobre o pagamento. O pagamento
+é feito diretamente para você."* — Web já tinha essa frase quase
+literal (`pro-payment-details-card.tsx`, intocado); App (`financeiro.tsx`)
+foi alinhado à mesma frase (antes: "ficam protegidos... é só me
+perguntar", vago demais). **Não afirma** que a Doopla já envia a chave
+Pix automaticamente pro cliente — confirmado na auditoria que
+`is_operationally_ready()` está de fato ligado ao Post-model Policy
+Gate (bloqueia envio de compromisso sem dados configurados), mas o
+*valor* da chave Pix nunca chega ao Business Context/IA (comentário
+explícito na migration 0046, PII nunca exposta a
+`conversation_messages`) — arquitetura de segurança preservada 100%
+intocada, só a copy foi calibrada pra não prometer mais do que existe.
+
+#### 2. Métricas — labels semanticamente fiéis (Web + App)
+
+Nenhum cálculo alterado — só os labels, porque nenhum dos dois
+caminhos que levam `bookings.status` a `'concluida'` (`markPaidAction`,
+booker; `advanceInvoiceStage`, artista via NF) é uma confirmação de
+terceiro/gateway — são auto-reportados, comentário já existente no
+próprio código confirma isso (`data.ts:1402-1416`).
+
+Web (`dinheiro/page.tsx`, branch artista): "Valor negociado (bookings
+confirmados)" → "Valor em bookings confirmados"; "Recebido líquido
+(bookings concluídos)" → "Valor em bookings concluídos"; "Recebido
+este mês" → "Valor concluído este mês"; seção "Recebimentos" → "Bookings
+concluídos"; empty state "Nenhum recebimento ainda." → "Nenhum booking
+concluído ainda.".
+
+App (`financeiro.tsx`): "Recebido no mês" → "Valor concluído este mês";
+"Total recebido" → "Valor em bookings concluídos"; "Bookings pagos" →
+"Bookings concluídos". Título em tela "Dinheiro" → "Financeiro"
+(função renomeada `DinheiroScreen` → `FinanceiroScreen`, zero outro
+caller). Menu "Mais" (`mais/index.tsx`) label "Dinheiro" → "Financeiro".
+`Stack.Screen` (`_layout.tsx`) já dizia "Financeiro" — intocado.
+
+#### 3. Booker — intocado nos dois lados
+
+Branch Booker de `dinheiro/page.tsx` (Web, "Ganhos"/"Comissão
+recebida"/`PaymentDetailsCard` legado) — zero linha tocada. Nenhuma
+tentativa de harmonizar o modelo financeiro Booker com o do Professional,
+conforme instrução.
+
+#### 4. availableToWithdrawCents / referral
+
+Nenhuma refatoração feita — confirmado de novo que segue não
+renderizado em lugar nenhum (Web ou App), registrado como debt de
+nomenclatura interna, sem trabalho técnico criado pra isso. "Créditos
+de indicação" (Web) preservado exatamente como estava — já claramente
+separado visual/conceitualmente de valores de bookings, nenhuma
+alteração no programa de indicação.
+
+#### Testes/validação
+
+- `tsc --noEmit`: os únicos erros vistos (`PageProps`/`LayoutProps`)
+  são artefato conhecido de `.next` removido entre rodadas — `npm run
+  build` (que gera esses tipos do zero) rodou limpo, 0 erros, todas as
+  rotas geradas (incluindo `/dashboard/perfil/recebimento` como rota
+  dinâmica de redirect).
+- `eslint` nos 4 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-financeiro` (Playwright) — screenshot
+  confirma os 3 cards com os novos labels, "Dados de recebimento" com a
+  copy canônica, seção "Bookings concluídos" com os itens. Rota de
+  preview e `.next` removidos antes do commit (confirmado via `git
+  status`, só os 6 arquivos de produto no diff).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa do
+  arquivo após as edições: JSX balanceado, imports consistentes, nomes
+  de estilo (`styles.*`) todos preexistentes e reaproveitados.
+- Checklist da fundadora (13 itens): (1) Dados de recebimento com 1 só
+  superfície — confirmado; (2) rota antiga redireciona — confirmado;
+  (3) `payment_details` intacto — confirmado, zero linha de migration/RPC
+  tocada; (4) Policy Gate intacto — confirmado, `gate.ts`/`tool-gate.ts`/
+  `types.ts` não tocados; (5) nenhuma PII nova chega à IA — confirmado,
+  `get-professional-business-context.ts` continua sem nenhuma menção a
+  payment/pix; (6) nenhuma métrica implica processamento financeiro —
+  confirmado, termos banidos (Recebido/Saldo/A receber/Disponível pra
+  saque) removidos dos labels tocados; (7) cálculos não mudaram —
+  confirmado, `computeArtistStats`/`getArtistReceivedBookings` intactos
+  nos dois lados; (8) App usa "Financeiro" consistentemente — confirmado
+  nos 3 lugares (menu/Stack.Screen/tela); (9) Booker intocado —
+  confirmado; (10) `/orcamento` e `conversations` intocados — confirmado,
+  nenhum arquivo desses tocado; (11) nenhuma migration — confirmado;
+  (12) typecheck/lint/build — limpos; (13) concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Onboarding, Ajuda e suporte, Ajustes no detalhe do booking,
+Decisões, Home (`_home/**`, `professional-home-view.tsx`), Booker
+(financeiro e infraestrutura), arquitetura da Comunidade, matching,
+Perfil público legado, `payment_details`/RPC/RLS/Policy Gate/Business
+Context (arquitetura de segurança 100% preservada).
+
+
+### "Ajuda e suporte" — FAQ + Suporte, escopo mínimo, sem sistema novo — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Web
+
+`pro-configuracoes-view.tsx`: accordion "Ajuda e suporte" reescrito —
+copy de abertura *"Precisa de ajuda com a Doopla? Estamos aqui para
+ajudar."* (travessão da copy antiga removido), bloco "FAQ" (`Link
+href="/#faq"`, label "Ver FAQ") e bloco "Suporte" (e-mail exibido +
+botão "Enviar e-mail para o suporte", `mailto:${SUPPORT_EMAIL}`).
+`SUPPORT_EMAIL` já estava importado (`src/lib/support.ts`) — nenhum
+hardcode novo.
+
+#### 2. FAQ — só consumido, nunca duplicado
+
+`/#faq` aponta pra seção real já existente em `src/app/_home/home.html`
+(5+ perguntas reais sobre como a Doopla opera). **Nenhuma linha de
+`_home/**` tocada** — só linkado como destino, mesma âncora que
+`HomeMenuOverlay.tsx`/`SiteMenuOverlay.tsx` (Home-owned) já usam.
+Nenhuma pergunta/resposta duplicada dentro de Settings.
+
+#### 3. `/ajuda` — intocado, conforme instrução
+
+Rota pública stub (`src/app/ajuda/page.tsx`, `StubPage` de `_home/`)
+não foi tocada, não virou Central de Ajuda nesta rodada — Settings
+aponta direto pro `#faq`, nunca pro stub.
+
+#### 4. App
+
+`mobile/app/(tabs)/mais/configuracoes.tsx`: sheet 'ajuda' (row "Ajuda /
+Sobre a Doopla") ganhou "FAQ" (`Linking.openURL(`${apiBaseUrl()}/#faq`)`
+— reusa a mesma env `EXPO_PUBLIC_API_BASE_URL` já usada pro link de
+booking, nenhuma constante de URL nova) e "Suporte" (`Linking.openURL('mailto:...')`
+via `SUPPORT_EMAIL`). Disclaimer de IA original preservado, agora um
+bloco a mais no sheet, não mais o único conteúdo.
+
+**Fonte canônica do e-mail — decisão documentada**: Web
+(`src/lib/support.ts`) e Mobile são pacotes separados, sem
+workspace/monorepo (`package.json` do Mobile não tem `workspaces`,
+`tsconfig.json` do Mobile resolve `@/*` só dentro de `mobile/src`) —
+nenhum caminho de import limpo entre os dois confirmado antes de
+duplicar. Criado `mobile/src/lib/support.ts` com a mesma constante
+`SUPPORT_EMAIL = 'contato@doopla.pro'`, comentário no arquivo
+registrando explicitamente a duplicação como debt de centralização
+(nunca criar um pacote compartilhado só por causa disso — instrução
+direta da fundadora).
+
+#### 5. Rota órfã
+
+`/dashboard/perfil/suporte` (zero referências em todo `src/`,
+confirmado na auditoria) → `redirect('/dashboard/perfil')`.
+`SUPPORT_EMAIL`/`proPrimaryButtonClass` preservados (arquivo intocado).
+
+#### 6. Booker — intocado
+
+`dashboard-footer.tsx`/`legacy-shell.tsx` (os 2 links pro stub `/ajuda`,
+exclusivos de `role === 'booker'`) não foram tocados — ficam
+registrados como debt separado (já documentado na auditoria), fora de
+escopo Professional.
+
+#### Testes/validação
+
+- `npm run build`: limpo, 0 erros, todas as rotas geradas (incluindo
+  `/dashboard/perfil/suporte` como rota dinâmica de redirect).
+- `eslint` nos 2 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-ajuda` (Playwright) — screenshot
+  confirma a estrutura exata pedida: copy sem travessão, "FAQ"/"Ver
+  FAQ", "Suporte"/e-mail/"Enviar e-mail para o suporte". Rota de
+  preview e `.next` removidos antes do commit (`git status` confirma
+  só os arquivos de produto + `mobile/src/lib/support.ts` novo).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa do
+  arquivo após as edições: imports corretos (`Linking` adicionado ao
+  import de `react-native`, `SUPPORT_EMAIL` do novo arquivo), JSX
+  balanceado, todos os estilos reusados (`sheetTitle`/`sheetSubtext`/
+  `label`/`ghostBtn`/`ghostBtnText`/`sheetText`/`submit`/`submitText`/
+  `aiDisclaimer`) já existiam no `StyleSheet`, nenhum novo.
+- Checklist da fundadora (15 itens): (1) FAQ aponta pro FAQ real —
+  confirmado, `/#faq`/`${apiBaseUrl()}/#faq` apontam pra
+  `_home/home.html#faq`; (2) nenhuma pergunta duplicada — confirmado,
+  zero conteúdo de FAQ copiado pra Settings; (3) suporte usa
+  `contato@doopla.pro` — confirmado nos dois lados; (4) Web usa
+  `SUPPORT_EMAIL` — confirmado, já importado, sem hardcode novo; (5)
+  estratégia do App documentada — confirmado, ver item 4 acima; (6)
+  mailto funciona — confirmado por leitura (`Linking.openURL('mailto:...')`,
+  mesmo padrão já usado em `bookings/[id].tsx`/`FalarComDooplaCard.tsx`);
+  (7) `/perfil/suporte` redireciona — confirmado; (8) `/ajuda` intocado
+  — confirmado, `git diff` não lista esse arquivo; (9) `_home/**`
+  intocado — confirmado, `git diff --stat` não lista nenhum arquivo
+  lá; (10) Booker intocado — confirmado, `dashboard-footer.tsx`/
+  `legacy-shell.tsx` não tocados; (11) nenhum placeholder novo —
+  confirmado; (12) nenhum travessão na copy nova — confirmado; (13)
+  nenhum backend/migration — confirmado; (14) typecheck/lint/build —
+  limpos; (15) concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Financeiro, Onboarding, Ajustes no detalhe do booking,
+Decisões, Home (`_home/**`, incluindo `/ajuda` e o conteúdo do `#faq`),
+Booker (`dashboard-footer.tsx`/`legacy-shell.tsx` e financeiro),
+arquitetura da Comunidade, matching, Perfil público legado.
+
+
+### "Booking Detail" — UI morta de conversa desconectada, filtro de Contrato (Todos/Com/Sem), Contratos confirmado sem sidebar — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Booking Detail — card de conversa morto desconectado (Web + App)
+
+Auditoria anterior confirmou que `conversations.related_booking_id`
+nunca é escrito com um valor real em nenhum caminho de código atual
+(só limpo pra `null`, migration 0051) — o card "Conversa com X" em
+`ProBookingDetailView` (Web) e a seção "Conversa" em
+`bookings/[id].tsx` (App) nunca renderizavam de verdade pra nenhum
+booking. Removidos dos dois lados: JSX, estado local, e a
+busca/chamada (`getConversationIdForBooking`/`getConversationOperationalFacts`
+no Web; `fetchConversationIdForBooking`/`fetchConversationOperationalFacts`
+no App). **Preservados intactos**: as 4 funções em
+`src/lib/conversations/data.ts` (Web) e `@/lib/data/conversations`
+(App) — só perderam este caller, seguem existindo pra reconciliação
+futura. Comportamento do Booker (`legacy-booking-detail-view.tsx`,
+arquivo intocado) **idêntico ao de antes**: `page.tsx` já só disparava
+essa busca pra `role === 'artista'` dono do booking — o Booker sempre
+recebeu `conversationId: null` antes desta mudança, e continua
+recebendo exatamente o mesmo valor agora (só sem a query desperdiçada
+no caminho do artista). Registrado como comentário `PENDING
+INTEGRATION` nos 3 arquivos tocados (Web ×2, App ×1) — nenhuma
+associação booking↔conversation artificial foi criada.
+
+#### 2. "Precisa de você" / "Sua Doopla está cuidando" — NÃO adicionado, por decisão explícita
+
+Confirmado: `resolveDooplaIntervention` (`doopla-intervention.ts`)
+depende de uma `ConversationOperationalFacts` real — e como o item 1
+confirma que Booking Detail nunca tem uma conversation real vinculada,
+qualquer tentativa de mostrar "Precisa de você" ou "Sua Doopla está
+cuidando" aqui seria inventar uma intervenção sem fonte. Não
+implementado, registrado como `PENDING INTEGRATION` (mesmo comentário
+do item 1) — nenhuma lógica de intervenção paralela criada, nenhuma
+conversation fabricada.
+
+#### 3. Contratos — decisão canônica confirmada, nada de código necessário
+
+Confirmado: Contratos já não tinha (e continua sem ter) item próprio
+no sidebar (`pro-shell.tsx`, intocado) — decisão já era essa na
+prática, só formalizada agora. Contrato continua vivendo só dentro do
+Booking Detail (`ProContractSection`/`contract-section.tsx`,
+intocados — geração e anexo de contrato externo preservados
+exatamente como estavam). Direção futura de "Contrato padrão Doopla"
+(geração conduzida pela própria Doopla numa conversa) e "Contrato
+externo" (anexo pelo profissional — preservado; ingestão automática
+via conversa — futura) registradas no bloco P0 acima, não
+implementadas nesta rodada.
+
+#### 4. Filtro de Contrato — Todos / Com contrato / Sem contrato (Web + App)
+
+`WorkItem` (`work-items.ts`) ganhou `hasContract: boolean` — derivado
+só de `bookings.contract_url` (bookingWorkItem: `b.contract_url !=
+null`; pedidoWorkItem: sempre `false`, já que `opportunities` nunca
+tem essa coluna). Nenhuma coluna nova, nenhuma migration, nenhum
+`contract_type` inventado. Web: novo grupo "Contrato" no popover de
+filtro (`pro-work-list-view.tsx`), mesmo padrão visual do "Período"
+(radio Todos/Com contrato/Sem contrato), contabilizado em
+`activeFilterCount`. App: nova segunda linha de chips horizontal em
+`bookings/index.tsx` (`CONTRACT_CHIPS`), combinada ao filtro de status
+já existente na mesma função `filtered`.
+
+**CONTRATOS WEB ↔ APP PARITY = PENDING FUTURE CONTRACT BLOCK** — gap
+já auditado (App só visualiza `contract_url` existente; gerar/anexar
+continua exclusivo do Web) permanece **não resolvido nesta rodada**,
+por instrução explícita — só o filtro ganhou paridade, não a
+capacidade de gerar/anexar.
+
+#### Testes/validação
+
+- `npm run build`: limpo, 0 erros, todas as rotas geradas.
+- `eslint` nos 4 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-bookings-filter` (Playwright) —
+  screenshot confirma o grupo "Contrato" no popover e o filtro "Com
+  contrato" excluindo corretamente o item sem `contract_url`. Rota de
+  preview e `.next` removidos antes do commit (`git status` confirma
+  só os 6 arquivos de produto no diff).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa
+  dos 2 arquivos após as edições: JSX balanceado, estados/imports
+  consistentes (nenhuma referência solta a `conversationId`/
+  `conversationFacts`/`fetchConversationIdForBooking` sobrevive fora
+  do comentário `PENDING INTEGRATION`), estilos novos (`contractChips`/
+  `contractChip`) definidos no `StyleSheet`.
+- Checklist da fundadora (21 itens): (1) Contratos continuam dentro de
+  Booking — confirmado; (2) sidebar sem Contratos — confirmado,
+  `pro-shell.tsx` intocado; (3) Booking Detail Professional continua
+  funcional — confirmado (build limpo, ações/checkpoints/contrato/
+  histórico/avaliação intactos); (4) nenhuma intervenção falsa criada
+  — confirmado; (5) nenhuma conversation falsa associada — confirmado;
+  (6) UI morta de conversa tratada sem apagar infra — confirmado,
+  helpers intactos; (7)-(9) filtros Todos/Com/Sem contrato funcionam —
+  confirmado via QA visual (Web) e leitura (App); (10) Web + App —
+  confirmado, paridade do filtro; (11) `contract_url` como fonte real
+  — confirmado, único campo usado; (12) geração/anexo preservados —
+  confirmado, `pro-contract-section.tsx`/`contract-section.tsx`
+  intocados; (13) nenhum `contract_type` inventado — confirmado; (14)
+  Booker intocado — confirmado, `legacy-booking-detail-view.tsx`/
+  `legacy-shell.tsx`/`dashboard-footer.tsx` não tocados; (15)
+  runtime/pipeline intocados — confirmado, nenhum arquivo de
+  `src/lib/runtime/**` tocado; (16) P0 atualizado — confirmado, seção
+  acima; (17) Busca Global futura registrada — confirmado; (18)
+  Contrato padrão Doopla futuro registrado — confirmado; (19) Contrato
+  externo futuro registrado — confirmado; (20) typecheck/lint/build —
+  limpos; (21) concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Financeiro, Ajuda e suporte, Onboarding, Decisões, Home
+(`_home/**`, `professional-home-view.tsx`), Booker (Booking Detail,
+Contratos, financeiro e infraestrutura, `legacy-shell.tsx`,
+`dashboard-footer.tsx`), arquitetura da Comunidade, matching, Perfil
+público legado, runtime/pipeline/Planner/Policy Gate/Approval
+Engine/`outbound_intents`/`requires_professional_review` (só
+documentados, nenhuma linha tocada).
+
+
+### "Decisões" — SUPERSEDED como área própria; "Precisa de você" e "Condições decididas" preservados como capacidades distribuídas — `[DELIVERED]` — 15/09/2026, último item da Sessão Painel
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### Decisão canônica registrada
+
+**DECISÕES PROFESSIONAL = SUPERSEDED como superfície própria.** A
+auditoria anterior confirmou, lendo o código inteiro da tela, que ela
+nunca teve capacidade própria de resolução — todo CTA ("Revisar e
+enviar"/"Resolver") só navegava pra dentro de uma conversa, onde a
+resolução de fato acontece. A lista de pendentes usa exatamente a
+mesma fonte (`runtime_pending_replies`+`outbound_intents` via
+`deriveConversationState`) que já alimenta, com o mesmo número, Home
+(accordion "Precisa de você"), badge da sidebar e attention de
+Bookings/Pedido Detail — confirmado via `pro-home-cache.ts`, que é
+explícito: essas 3 superfícies + a antiga tela de Decisões "chamam
+SEMPRE esta função, nunca uma reimplementação".
+
+**"PRECISA DE VOCÊ" = MANTIDO como capacidade distribuída e
+contextual.** Nada do sistema real foi tocado: `runtime_pending_replies`,
+`outbound_intents`, `deriveConversationState`
+(`src/lib/conversations/state.ts`), `resolveDooplaIntervention`
+(`doopla-intervention.ts`), `attention` de `WorkItem`
+(`work-items.ts`), `getCachedConversationStateSummary`/
+`getCachedActionableDecisions`/`getCachedConversationOperationalFacts`
+(`pro-home-cache.ts`) — zero linha alterada em qualquer um desses
+arquivos.
+
+**"CONDIÇÕES DECIDIDAS" = MANTIDO** como histórico de condições
+comerciais efetivamente aprovadas (Approval Engine, `approval_records`,
+Bloco 5), vivendo dentro do contexto do Booking (App), nunca dentro de
+uma central chamada Decisões — confirmado que são sistemas
+estruturalmente diferentes (auditoria anterior). Gap de paridade
+Web×App (só o App mostra) **registrado, não resolvido nesta rodada**
+— exigiria o mesmo vínculo booking↔conversation que já está `PENDING
+INTEGRATION`.
+
+**`requires_professional_review` = `PENDING CENTRAL / INTEGRATION`** —
+achado já registrado no P0, reconfirmado nesta rodada sem nenhuma
+correção: `pipeline.ts`, `outbound_intents`, Planner, Policy Gate,
+Approval Engine, runtime — zero arquivo tocado.
+
+**`booking ↔ conversation` = `PENDING INTEGRATION`** — mesmo status já
+registrado na rodada de Booking Detail, reconfirmado: nenhuma relação
+artificial criada nesta rodada também.
+
+#### 1. Sidebar Web
+
+`pro-shell.tsx`: item "Decisões" removido de `primaryLinks`.
+`decisionsCount` (prop que só alimentava esse badge — mesmo valor de
+`conversationSummary.needsYouCount`, já coberto por Home) removido da
+assinatura de `ProfessionalShell`. `layout.tsx`
+(`ProfessionalShellGate`): parou de buscar `getCachedConversationStateSummary`
+só pra esse badge (`professional-home-view.tsx` já chama a mesma
+função `cache()`-ada direto pra Home, então nada deixa de ser
+calculado onde de fato importa — só a busca redundante em toda
+navegação fora da Home que desapareceu). `bookingsAwaitingCount`
+(badge real de "Bookings") **intocado**. `proNavIcons.decisoes`
+(`pro-sidebar-nav.tsx`) preservado, sem caller.
+
+#### 2. Rota `/dashboard/decisoes`
+
+Convertida em `redirect('/dashboard')` — nunca apagada, links antigos
+continuam funcionando. `ProDecisoesView`, `format-cards.ts`,
+`decisoes/actions.ts` preservados intactos, sem chamador — mesmo
+padrão de rota órfã já usado em todas as rodadas anteriores desta
+sessão.
+
+#### 3. App
+
+`mobile/app/(tabs)/mais/index.tsx`: item "Decisões" removido do `MENU`.
+`DecisoesIcon` preservado em `@/components/icons/Icons`, sem caller.
+`mobile/app/(tabs)/mais/decisoes.tsx`: convertida em redirect seguro
+via `<Redirect href="/(tabs)/mais" />` (componente oficial do Expo
+Router) — nunca apagada, qualquer deep link antigo continua
+resolvendo. `fetchActionableDecisionsPage`/`fetchResolvedDecisionsPage`
+(`@/lib/data/decisions`) preservadas intactas.
+
+#### 4. Duplicação TS × RPC (`listActionableDecisions` vs `list_actionable_decisions_page`)
+
+Confirmado: `list_actionable_decisions_page`/`list_resolved_decisions_page`
+(RPCs, migration 0070) ficam **sem consumidor** depois desta rodada —
+eram usadas só pela tela paginada Decisões (Web+App), que não existe
+mais como destino navegável. `listActionableDecisions()`/
+`listConversationOperationalFacts()` (as funções TS não-paginadas,
+usadas por Home/Bookings/Pedido Detail) continuam com uso real e
+**intocadas**. Nenhuma migration criada pra remover as RPCs órfãs —
+registrado como cleanup futuro, não resolvido aqui.
+
+#### 5. Home, Bookings, Pedido Detail, Booking Detail — confirmado intocados
+
+`professional-home-view.tsx` (accordion "Precisa de você"): zero linha
+tocada. `work-items.ts`/`pro-work-list-view.tsx` (attention de
+Bookings + filtro de Contrato entregue na rodada anterior): zero linha
+tocada. `/dashboard/oportunidades/[id]/page.tsx` (Pedido Detail,
+`resolveDooplaIntervention` + CTA WhatsApp): zero linha tocada.
+Booking Detail (`pro-booking-detail-view.tsx`): nenhuma intervenção
+nova adicionada — `PENDING INTEGRATION` booking↔conversation
+permanece exatamente como estava.
+
+#### Testes/validação
+
+- `npm run build`: limpo, 0 erros, `/dashboard/decisoes` continua
+  gerada como rota (agora um redirect).
+- `eslint` nos 3 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-sidebar` (Playwright, reproduzindo
+  literalmente o mesmo array `primaryLinks` de `pro-shell.tsx`) —
+  screenshot confirma: Início, Bookings (badge "2" preservado), Agenda,
+  Financeiro, Materiais (Em breve), Analytics (Em breve) — "Decisões"
+  ausente. Rota de preview e `.next` removidos antes do commit (`git
+  status` confirma só os 5 arquivos de produto no diff).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa
+  dos 2 arquivos: `MENU` sem `decisoes`, `DecisoesIcon` sem import
+  morto, `<Redirect>` é a API oficial do Expo Router (confirmado
+  `expo-router: ~57.0.18`, suporta o componente desde versões
+  anteriores).
+- Checklist da fundadora (19 itens): (1) Decisões fora do sidebar Web
+  — confirmado; (2) fora da navegação App — confirmado; (3) rota Web
+  redireciona — confirmado; (4) Home "Precisa de você" funcional —
+  confirmado, zero linha tocada; (5) contador/badge funcional —
+  confirmado (badge de Bookings intocado; badge de Decisões removido
+  por ser o item que saiu); (6) Bookings attention funcional —
+  confirmado; (7) Pedido Detail funcional — confirmado; (8) resolução
+  pela conversa funcional — confirmado, `submitProfessionalReply`
+  intocado; (9) histórico backend preservado — confirmado,
+  `runtime_pending_replies`/`conversation_messages` intocados; (10)
+  Approval Engine preservado — confirmado, migration 0045 e todo
+  `src/lib/intelligence/approval/**` intocados; (11) Condições
+  decididas preservado — confirmado, `get_active_approvals`/
+  `fetchActiveApprovalsForBooking` intocados; (12) nenhuma intervenção
+  falsa em Booking Detail — confirmado, zero linha tocada lá; (13)
+  runtime/pipeline intocados — confirmado; (14) Booker intocado —
+  confirmado, `legacy-shell.tsx`/`legacy-booking-detail-view.tsx`/
+  `dashboard-footer.tsx` não tocados; (15) Home marketing intocada —
+  confirmado, zero arquivo de `_home/**` tocado; (16) filtro de
+  Contratos funcional — confirmado, `pro-work-list-view.tsx`/
+  `work-items.ts` não tocados nesta rodada; (17) build/typecheck/lint
+  — limpos; (18) App validado dentro das limitações — confirmado; (19)
+  concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Financeiro, Ajuda e suporte, Onboarding, Booking Detail,
+Contratos (filtro), Home (`_home/**`, `professional-home-view.tsx`),
+Booker (completo — shell, navegação, bookings, actions, backend),
+arquitetura da Comunidade, matching, Perfil público legado, runtime/
+pipeline/Planner/Policy Gate/Approval Engine/`outbound_intents`/
+`requires_professional_review`/`approval_records` (preservados,
+nenhuma linha tocada).
+
+### STATUS FINAL DA SESSÃO PAINEL
+
+Os 9 itens do roadmap aprovado estão `[DELIVERED]`: Perfil e trabalho,
+Sua Doopla, Privacidade e dados, Canais da sua Doopla, Financeiro,
+Ajuda e suporte, Booking Detail + Contratos, e agora Decisões —
+encerrando o roadmap da Sessão Painel. Pendências registradas pra
+reconciliação com a Sessão Central (não resolvidas nesta branch, por
+escopo): P0 conversa→booking (impacta Bookings/Financeiro/Contratos),
+`requires_professional_review` não propagado em `pipeline.ts`,
+`booking ↔ conversation` (`related_booking_id` nunca escrito),
+paridade Web×App de "Condições decididas", cleanup futuro das RPCs
+`list_actionable_decisions_page`/`list_resolved_decisions_page` órfãs.
+Nenhuma migration criada em toda a sessão; nenhum dado apagado;
+Booker, Home (`_home/**`) e runtime/Approval Engine/Policy Gate
+permanecem 100% intocados do início ao fim.
+
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

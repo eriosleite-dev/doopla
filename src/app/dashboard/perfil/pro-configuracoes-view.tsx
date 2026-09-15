@@ -2,16 +2,11 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
-import type { CommunityProfileSnapshot } from '@/lib/community/data';
 import { SUPPORT_EMAIL } from '@/lib/support';
-import type { LinkRoutingMode, Subscription } from '@/lib/supabase/types';
+import type { Subscription } from '@/lib/supabase/types';
 
-import type { BookerOption } from '../link-routing-form';
 import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
-import { ProLinkRoutingForm } from '../pro-link-routing-form';
-import { CommunityPrivacyForm } from './privacidade/comunidade/community-privacy-form';
 import { DeleteAccountModal } from './delete-account-modal';
-import { AttentionChannelForm } from './preferencias/attention-channel-form';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 import { ProSettingsRow } from './settings-ui';
 
@@ -23,11 +18,11 @@ import { ProSettingsRow } from './settings-ui';
 // (Assinatura e cobrança, Sua conta, Perfil e trabalho) — fluxos
 // genuinamente complexos (Stripe, reautenticação, formulários grandes)
 // onde uma página dedicada com "← Configurações" ainda é a escolha
-// certa. As outras 5 seções (Sua Doopla, Notificações, Canais da sua
-// Doopla, Privacidade e dados, Ajuda e suporte) são pequenas o
-// suficiente pra caber inline, dentro do próprio acordeão, sem
-// navegação nenhuma — exatamente o pedido da fundadora de "menos
-// perguntas, menos páginas, mais naturalidade".
+// certa. As outras 4 seções (Notificações, Canais da sua Doopla,
+// Privacidade e dados, Ajuda e suporte) são pequenas o suficiente pra
+// caber inline, dentro do próprio acordeão, sem navegação nenhuma —
+// exatamente o pedido da fundadora de "menos perguntas, menos
+// páginas, mais naturalidade".
 //
 // "Perfil público" saiu por completo (achado da auditoria de legado:
 // vitrine pública não é produto atual) — a linha, a rota
@@ -35,34 +30,88 @@ import { ProSettingsRow } from './settings-ui';
 // mais aqui. A rota em si não foi apagada (regra da fundadora: nunca
 // apagar infraestrutura só pra esta tarefa de beta), só ficou
 // inalcançável pela navegação normal.
+//
+// "Sua Doopla" saiu por completo (auditoria de legado, 15/09/2026):
+// a única "configuração" que existia lá (WhatsApp/Painel/Ambos,
+// attention_channel) nunca alterou comportamento real — nenhum código
+// de notificação/WhatsApp a lia, só existia como UI. Decisão canônica
+// da fundadora: "Precisa de você" é comportamento canônico do produto,
+// não preferência configurável — o painel sempre reflete pendência,
+// independente de canal. Coluna/action/componente preservados
+// (attention_channel, updateAttentionChannelAction,
+// AttentionChannelForm) — só a superfície de Configurações foi
+// desconectada, nada apagado.
+//
+// "Privacidade e dados" simplificada (auditoria de legado, 15/09/2026):
+// "Seus dados" (placeholder "em breve", zero infra de exportação por
+// trás) e os 7 toggles de "Privacidade na Comunidade" saíram daqui.
+// Auditoria confirmou que NENHUM dos 7 (cidade/foto/bio/especialidades/
+// tipos de trabalho/Instagram/portfólio) tem efeito visível hoje — a
+// view `community_profiles_public` já aplica a regra no servidor, mas
+// `CommunityAuthorSnapshot` (o tipo que a UI da Comunidade de fato usa)
+// só carrega profileId/displayName/professionLabel/isPro/isIncomplete/
+// city/state/avatarUrl/publicId; nenhum componente da Comunidade
+// renderiza bio/specialties/workTypes/instagramUrl/portfolioUrl, e
+// city/avatarUrl também não aparecem em lugar nenhum. 2 dos 7
+// (especialidades/tipos de trabalho) ainda dependiam de `genres`/
+// `work_types` — colunas sem superfície de edição desde a
+// simplificação de "Perfil e trabalho". Schema/RLS/RPC/`community_profiles`/
+// `community_profiles_public`/`CommunityPrivacyForm`/regra de ativação
+// (`ensureCommunityProfileActivated`, disparada ao visitar qualquer
+// página real da Comunidade — nunca dependeu deste formulário)
+// preservados, só a superfície de Configurações desconectada. Quando a
+// Comunidade passar a exibir esses campos de verdade, revisar quais
+// controles voltam.
+//
+// "Canais da sua Doopla" redesenhada (auditoria de legado, 15/09/2026):
+// princípio da fundadora — não é tela de integrações, não é tela de
+// Booker, não é tela técnica: só "como um cliente chega até a Doopla
+// desse profissional". "Quem recebe seus pedidos de orçamento"
+// (ProLinkRoutingForm, roteamento pro Booker) saiu daqui — Booker é
+// produto/role separado, tratado em outro bloco, não uma configuração
+// dentro do Professional. `artist_link_routing`, `updateLinkRoutingAction`
+// e `ProLinkRoutingForm` continuam intactos (só perderam este caller;
+// `getArtistBookers`/`getArtistLinkRouting` só deixaram de ser
+// chamados por `page.tsx` aqui — seguem existindo em `../data.ts`).
+// No lugar, "WhatsApp da Doopla" (número oficial, `whatsappPublicNumber()`,
+// nunca hardcoded) ganhou um segundo elemento: "Seu código"
+// (`profiles.slug` — o MESMO identificador já usado no link de booking
+// e no token do WhatsApp inbound, `extractDooplaSlugToken`; nenhuma
+// coluna/RPC/identificador novo foi criado). "Seu link de orçamento"
+// virou "Seu link de booking" (só copy — mesma URL `/orcamento/[slug]`,
+// mesma action, mesmo tracking de origem, intocados).
+//
+// "Dados de recebimento" saiu daqui (auditoria de Financeiro,
+// 15/09/2026) — Financeiro (`/dashboard/dinheiro`) passou a ser a
+// ÚNICA superfície canônica pra esse formulário; existia nos dois
+// lugares (mesmo componente `PaymentDetailsFields`/mesma action, só
+// duplicação de navegação). `paymentConfigured` removido da
+// assinatura — só existia pra alimentar essa linha. `/dashboard/perfil/recebimento`
+// vira redirect pra `/dashboard/dinheiro`.
+//
+// "Ajuda e suporte" simplificada (auditoria de legado, 15/09/2026) —
+// só FAQ + Suporte, nada mais. FAQ aponta pro `#faq` real (já existe
+// na Home, `src/app/_home/home.html` — nunca duplicado/reescrito
+// aqui, só linkado como destino; `/ajuda` continua intocada, é um
+// stub do universo Home/site, fora de escopo). Suporte usa
+// `SUPPORT_EMAIL` (`src/lib/support.ts`), única fonte no Web — nenhum
+// hardcode novo. Travessão removido da copy.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
   whatsappStatus,
   whatsappVerifiedNumber,
-  paymentConfigured,
-  attentionChannel,
-  bookers,
-  linkRoutingMode,
-  linkRoutingBookerId,
   orcamentoUrl,
-  communityProfile,
+  professionalSlug,
+  whatsappNumber,
 }: {
   hasPro: boolean;
   subscription: Subscription | null;
   whatsappStatus: string | null;
   whatsappVerifiedNumber: string | null;
-  paymentConfigured: boolean;
-  attentionChannel: 'whatsapp' | 'painel' | 'ambos' | null;
-  bookers: BookerOption[];
-  linkRoutingMode: LinkRoutingMode;
-  linkRoutingBookerId: string | null;
   orcamentoUrl: string | null;
-  // Leitura pura (getMyCommunityProfile, sem ativar nada) — null
-  // quando o profissional nunca entrou na Comunidade. Ver correção
-  // 14/09/2026: visualizar Configurações nunca pode ativar
-  // participação, só a ação explícita de salvar uma preferência aqui.
-  communityProfile: CommunityProfileSnapshot | null;
+  professionalSlug: string | null;
+  whatsappNumber: string | null;
 }) {
   const isTrialing = subscription?.status === 'trialing';
   const isCanceled = Boolean(subscription?.canceled_at);
@@ -86,11 +135,6 @@ export function ProConfiguracoesView({
         <ProAccordion title="Assinatura e cobrança" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{planSummary}</span>}>
           <RowList>
             <ProSettingsRow href="/dashboard/perfil/assinatura" label="Plano e assinatura" summary={planSummary} />
-            <ProSettingsRow
-              href="/dashboard/perfil/recebimento"
-              label="Dados de recebimento"
-              summary={paymentConfigured ? 'Configurados ✓' : 'Ainda não configurados'}
-            />
           </RowList>
         </ProAccordion>
 
@@ -102,17 +146,14 @@ export function ProConfiguracoesView({
         </ProAccordion>
 
         <ProAccordion title="Perfil e trabalho">
+          {/* Redesign 15/09/2026 — "Dados profissionais" e "Como você
+              trabalha" eram 2 rotas separadas sob este mesmo accordion;
+              unificadas numa página só (/dashboard/perfil/dados, 3
+              grupos: Informações profissionais / Seu trabalho / Valores
+              e condições), então este accordion agora tem 1 destino só. */}
           <RowList>
-            <ProSettingsRow href="/dashboard/perfil/dados" label="Dados profissionais" />
-            <ProSettingsRow href="/dashboard/perfil/trabalho" label="Como você trabalha" />
+            <ProSettingsRow href="/dashboard/perfil/dados" label="Editar perfil e trabalho" />
           </RowList>
-        </ProAccordion>
-
-        <ProAccordion title="Sua Doopla">
-          <div className="flex flex-col gap-2">
-            <p className="text-[12.5px] text-[var(--pro-tx-50)]">Como sua Doopla fala com você quando precisar de você.</p>
-            <AttentionChannelForm initialChannel={attentionChannel} />
-          </div>
         </ProAccordion>
 
         <ProAccordion title="Notificações">
@@ -130,16 +171,11 @@ export function ProConfiguracoesView({
         <ProAccordion title="Canais da sua Doopla" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{whatsappSummary}</span>}>
           <div className="flex flex-col gap-3.5">
             <p className="text-[12.5px] text-[var(--pro-tx-50)]">
-              A porta de entrada pro cliente iniciar um booking com você — não é um perfil público.
+              Escolha como colocar sua Doopla em contato com um cliente.
             </p>
+            <DooplaWhatsappAndCodeCard whatsappNumber={whatsappNumber} professionalSlug={professionalSlug} />
+            <BookingLinkCard orcamentoUrl={orcamentoUrl} />
             <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappVerifiedNumber} />
-            <OrcamentoLinkCard orcamentoUrl={orcamentoUrl} />
-            <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Quem recebe seus pedidos de orçamento</p>
-              <div className="mt-3">
-                <ProLinkRoutingForm bookers={bookers} currentMode={linkRoutingMode} currentBookerId={linkRoutingBookerId} />
-              </div>
-            </div>
           </div>
         </ProAccordion>
 
@@ -155,31 +191,6 @@ export function ProConfiguracoesView({
               </Link>
             </div>
 
-            <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Seus dados</p>
-              <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">Exportação de dados ainda não está disponível — em breve.</p>
-            </div>
-
-            <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Privacidade na Comunidade</p>
-              <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">
-                O que outros profissionais veem no seu perfil público dentro da Comunidade — não afeta seus dados
-                profissionais gerais na Doopla.
-              </p>
-              <div className="mt-3">
-                <CommunityPrivacyForm
-                  availableForReferrals={communityProfile?.availableForReferrals ?? false}
-                  showCity={communityProfile?.showCity ?? false}
-                  showAvatar={communityProfile?.showAvatar ?? false}
-                  showBio={communityProfile?.showBio ?? false}
-                  showSpecialties={communityProfile?.showSpecialties ?? false}
-                  showWorkTypes={communityProfile?.showWorkTypes ?? false}
-                  showInstagram={communityProfile?.showInstagram ?? false}
-                  showPortfolio={communityProfile?.showPortfolio ?? false}
-                />
-              </div>
-            </div>
-
             <div className="border-t border-[var(--pro-line)] pt-4">
               <DeleteAccountModal />
             </div>
@@ -187,17 +198,29 @@ export function ProConfiguracoesView({
         </ProAccordion>
 
         <ProAccordion title="Ajuda e suporte">
-          <div className="flex flex-col gap-2">
-            <p className="text-[12.5px] text-[var(--pro-tx-50)]">
-              Problema com sua conta, assinatura ou o painel? Isso é diferente de &ldquo;Falar com minha Doopla&rdquo;
-              (sua representante, na Home) — aqui é sobre o produto em si.
-            </p>
-            <a
-              href={`mailto:${SUPPORT_EMAIL}`}
-              className="self-start rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12.5px] font-semibold text-white"
-            >
-              Enviar e-mail para o suporte
-            </a>
+          <div className="flex flex-col gap-4">
+            <p className="text-[12.5px] text-[var(--pro-tx-50)]">Precisa de ajuda com a Doopla? Estamos aqui para ajudar.</p>
+
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">FAQ</p>
+              <Link
+                href="/#faq"
+                className="mt-2 inline-block self-start rounded-full border border-[var(--pro-line)] px-4 py-2 text-[12.5px] font-semibold text-[var(--pro-off)]"
+              >
+                Ver FAQ
+              </Link>
+            </div>
+
+            <div>
+              <p className="font-pro-sub text-[13.5px] font-bold">Suporte</p>
+              <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">{SUPPORT_EMAIL}</p>
+              <a
+                href={`mailto:${SUPPORT_EMAIL}`}
+                className="mt-2 inline-block self-start rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12.5px] font-semibold text-white"
+              >
+                Enviar e-mail para o suporte
+              </a>
+            </div>
           </div>
         </ProAccordion>
 
@@ -217,11 +240,59 @@ function RowList({ children }: { children: ReactNode }) {
   );
 }
 
-function OrcamentoLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
+// "WhatsApp da Doopla" (número oficial, whatsappPublicNumber() —
+// nunca hardcoded, estado honesto "Em configuração" quando a env não
+// está setada) + "Seu código" (profiles.slug, o MESMO identificador
+// já usado em /orcamento/[slug] e no token do WhatsApp inbound —
+// nenhum identificador novo). O código não depende do número estar
+// configurado: é um dado próprio e estável do profissional, sempre
+// disponível assim que existe (ensurePublicId garante isso desde a
+// primeira visita ao painel).
+function DooplaWhatsappAndCodeCard({
+  whatsappNumber,
+  professionalSlug,
+}: {
+  whatsappNumber: string | null;
+  professionalSlug: string | null;
+}) {
+  return (
+    <div>
+      <p className="font-pro-sub text-[13.5px] font-bold">WhatsApp da Doopla</p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+        {whatsappNumber ? (
+          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{whatsappNumber}</span>
+        ) : (
+          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
+        )}
+        {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Copiar número" />}
+      </div>
+
+      {professionalSlug && (
+        <div className="mt-3">
+          <p className="text-[12.5px] text-[var(--pro-tx-50)]">Vai passar este número para um cliente?</p>
+          <p className="mt-1 text-[12.5px] font-semibold text-[var(--pro-off)]">Envie também seu código:</p>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{professionalSlug}</span>
+            <ProCopyButton value={professionalSlug} label="Copiar código" />
+          </div>
+          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Assim sua Doopla sabe que o cliente veio falar com você.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Renomeado de "Seu link de orçamento" (copy, 15/09/2026) — mesma URL
+// /orcamento/[slug], mesma action/RPC/tracking de origin/channel,
+// intocados.
+function BookingLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
   if (!orcamentoUrl) return null;
   return (
     <div>
-      <p className="font-pro-sub text-[13.5px] font-bold">Seu link de orçamento</p>
+      <p className="font-pro-sub text-[13.5px] font-bold">Seu link de booking</p>
+      <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
+        Compartilhe este link e o cliente já começa o pedido conectado a você.
+      </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
         <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{orcamentoUrl}</span>
         <ProCopyButton value={orcamentoUrl} label="Copiar link" />

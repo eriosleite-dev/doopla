@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { getMyCommunityProfile } from '@/lib/community/data';
 import { siteOrigin } from '@/lib/site-url';
 import { hasDooplaPro } from '@/lib/subscription';
-import type { LinkRoutingMode } from '@/lib/supabase/types';
+import { whatsappPublicNumber } from '@/lib/supabase/env';
 import { PlanCard } from '../booker-pro/plan-card';
-import { getActivePaymentDetails, getArtistBookers, getArtistLinkRouting, getSubscription } from '../data';
+import { getSubscription } from '../data';
 import { getCachedProfessionalHomeFacts } from '../pro-home-cache';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
@@ -42,38 +41,20 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, attentionData, bookers, routing, origin, communityProfile] =
-      await Promise.all([
-        getSubscription(user.id, supabase),
-        getCachedProfessionalHomeFacts(supabase),
-        getActivePaymentDetails(user.id, supabase),
-        supabase
-          .from('artist_profiles')
-          .select('attention_channel')
-          .eq('profile_id', user.id)
-          .maybeSingle<{ attention_channel: 'whatsapp' | 'painel' | 'ambos' | null }>(),
-        getArtistBookers(user.id, supabase),
-        getArtistLinkRouting(user.id, supabase),
-        siteOrigin(),
-        // Leitura pura (getMyCommunityProfile nunca ativa nada — só
-        // `null` quando o profissional nunca entrou na Comunidade,
-        // ver correção 14/09/2026 abaixo) — segura pra rodar sempre
-        // que Configurações carrega, sem nenhum efeito colateral.
-        getMyCommunityProfile(supabase),
-      ]);
+    const [subscription, homeFacts, origin] = await Promise.all([
+      getSubscription(user.id, supabase),
+      getCachedProfessionalHomeFacts(supabase),
+      siteOrigin(),
+    ]);
     return (
       <ProConfiguracoesView
         hasPro={hasDooplaPro(subscription)}
         subscription={subscription}
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         whatsappVerifiedNumber={homeFacts?.whatsappVerifiedNumber ?? null}
-        paymentConfigured={paymentDetails !== null}
-        attentionChannel={attentionData.data?.attention_channel ?? null}
-        bookers={bookers.map((b) => ({ profileId: b.profileId, fullName: b.fullName }))}
-        linkRoutingMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
-        linkRoutingBookerId={routing?.booker_id ?? null}
         orcamentoUrl={profile.slug ? `${origin}/orcamento/${profile.slug}` : null}
-        communityProfile={communityProfile}
+        professionalSlug={profile.slug}
+        whatsappNumber={whatsappPublicNumber()}
       />
     );
   }

@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import { getConversationIdForBooking, getConversationOperationalFacts } from '@/lib/conversations/data';
-
 import { getBookingCheckpoints, getBookingDetail, getBookingReviews } from '../../data';
 import { getSessionProfile } from '../../session';
 import { LegacyBookingDetailView } from './legacy-booking-detail-view';
@@ -18,6 +16,18 @@ export const metadata: Metadata = {
 // 'booker'` → tema legado intocado; artista/agência → tema --pro-*
 // novo). Zero mudança na busca de dados/lógica de negócio — só a
 // escolha de qual componente visual renderiza o resultado.
+//
+// PENDING INTEGRATION — booking ↔ conversation (auditoria 15/09/2026,
+// mesma nota em pro-booking-detail-view.tsx). A busca de
+// conversationId/conversationFacts foi removida daqui: já era gatilhada
+// só pra role='artista' dono do booking, e `getConversationIdForBooking`
+// sempre retornava null na prática (`conversations.related_booking_id`
+// nunca é escrito com um valor real em nenhum caminho de código atual
+// — só limpo pra null, migration 0051). Booker (LegacyBookingDetailView,
+// intocado) já recebia sempre `conversationId: null` antes desta
+// mudança — comportamento idêntico preservado abaixo, só sem a
+// consulta desperdiçada. Helpers preservados intactos em
+// src/lib/conversations/data.ts pra reconciliação futura.
 export default async function BookingDetailPage(
   props: PageProps<'/dashboard/bookings/[id]'>
 ) {
@@ -35,16 +45,8 @@ export default async function BookingDetailPage(
       ? await getBookingReviews(booking.id, user.id, supabase)
       : null;
 
-  // Conversas Bloco 2 — "Ver conversa" só existe pra quem a Doopla
-  // representa (represented_professional_id É sempre o artista, nunca
-  // o booker): um booker olhando este mesmo booking nunca tem
-  // conversation nenhuma sua aqui, RLS devolveria vazio de qualquer
-  // forma, mas a checagem de role evita a query à toa.
-  const conversationId =
-    profile.role === 'artista' && booking.artist_profile_id === user.id
-      ? await getConversationIdForBooking(supabase, booking.id, user.id)
-      : null;
-  const conversationFacts = conversationId ? await getConversationOperationalFacts(supabase, conversationId) : null;
+  const conversationId = null;
+  const conversationFacts = null;
 
   const viewProps = {
     booking,

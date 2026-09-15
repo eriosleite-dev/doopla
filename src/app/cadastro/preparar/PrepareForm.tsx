@@ -7,7 +7,11 @@ import { savePrepareAction, type OnboardingFormState } from '../actions';
 import '../onboarding.css';
 
 const initialState: OnboardingFormState = {};
-const SUBSTEPS = 4; // Etapas 2 a 5 (globais) = índices 0 a 3 aqui
+// Correção 15/09/2026 (achado da fundadora) — a etapa "Como sua Doopla
+// fala com você" (WhatsApp/Painel/Ambos, attention_channel) saiu do
+// onboarding: nunca representou escolha operacional real. SUBSTEPS
+// 4→3, funil total 6→5 (ver OnboardingShell.tsx, totalSteps).
+const SUBSTEPS = 3; // Etapas 2 a 4 (globais) = índices 0 a 2 aqui
 
 // Rola o ancestral rolável mais próximo de volta pro topo — usado ao
 // trocar de sub-etapa (carrossel horizontal por transform, que não mexe
@@ -81,7 +85,6 @@ export function PrepareForm({
   initialBio,
   initialLink,
   initialNegotiationNotes,
-  initialChannel,
   modalMode = false,
   onStepComplete,
   boxed = false,
@@ -92,7 +95,13 @@ export function PrepareForm({
   initialBio: string;
   initialLink: string;
   initialNegotiationNotes: string;
-  initialChannel: 'whatsapp' | 'painel' | 'ambos' | null;
+  // Aceita e ignora de propósito (15/09/2026, remoção da etapa de
+  // canal do onboarding) — CreateAccountModal.tsx (src/app/_home/**,
+  // superfície de outra sessão, não tocada nesta rodada) ainda passa
+  // `initialChannel={null}`; manter a prop aqui, opcional e sem uso,
+  // evita editar um arquivo fora de escopo só por causa de um tipo.
+  // Remover quando aquele call site for atualizado por quem é dono dele.
+  initialChannel?: 'whatsapp' | 'painel' | 'ambos' | null;
   // Funil iniciado no modal da Home (ver CreateAccountModal.tsx) — quando
   // true, savePrepareAction não faz redirect() (ver cadastro/actions.ts);
   // este componente detecta o sucesso via state.success e chama
@@ -124,14 +133,9 @@ export function PrepareForm({
 
   const [negotiationNotes, setNegotiationNotes] = useState(initialNegotiationNotes);
 
-  const [channel, setChannel] = useState<'whatsapp' | 'painel' | 'ambos' | null>(initialChannel);
-
   function canAdvance(s: number): boolean {
     if (s === 0) {
       return Boolean(stageName.trim() && profession.trim() && local.trim() && bio.trim());
-    }
-    if (s === 2) {
-      return Boolean(channel);
     }
     return true;
   }
@@ -154,7 +158,6 @@ export function PrepareForm({
       <input type="hidden" name="bio" value={bio} />
       <input type="hidden" name="link" value={link} />
       <input type="hidden" name="negotiationNotes" value={negotiationNotes} />
-      <input type="hidden" name="channel" value={channel ?? ''} />
 
       <OnboardingShell
         step={sub + 2}
@@ -189,7 +192,7 @@ export function PrepareForm({
         >
           {/* Etapa 2 — Prepare sua Doopla */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 2 de 6</div>
+            <div className="eyebrow">Etapa 2 de 5</div>
             <h1 className="headline">Vamos preparar sua Doopla.</h1>
             <p className="sub">
               Vamos começar pelo essencial. Sua Doopla vai conhecer melhor seu jeito de trabalhar
@@ -251,7 +254,7 @@ export function PrepareForm({
 
           {/* Etapa 3 — Como você trabalha */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 3 de 6</div>
+            <div className="eyebrow">Etapa 3 de 5</div>
             <h1 className="headline">Como você trabalha.</h1>
             <p className="sub">
               Contexto comercial e regras básicas que podem afetar como sua Doopla representa
@@ -271,44 +274,9 @@ export function PrepareForm({
             </div>
           </div>
 
-          {/* Etapa 4 — Como falar com você */}
+          {/* Etapa 4 — Conclusão */}
           <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 4 de 6</div>
-            <h1 className="headline">Como sua Doopla fala com você.</h1>
-            <p className="sub">Quando sua Doopla precisar de você, como prefere ser avisado?</p>
-
-            <div
-              className={`option-card${channel === 'whatsapp' ? ' selected' : ''}`}
-              onClick={() => setChannel('whatsapp')}
-            >
-              <div className="option-radio" />
-              <div>
-                <div className="option-title">WhatsApp</div>
-              </div>
-            </div>
-            <div
-              className={`option-card${channel === 'painel' ? ' selected' : ''}`}
-              onClick={() => setChannel('painel')}
-            >
-              <div className="option-radio" />
-              <div>
-                <div className="option-title">Painel</div>
-              </div>
-            </div>
-            <div
-              className={`option-card${channel === 'ambos' ? ' selected' : ''}`}
-              onClick={() => setChannel('ambos')}
-            >
-              <div className="option-radio" />
-              <div>
-                <div className="option-title">WhatsApp + Painel</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Etapa 5 — Conclusão */}
-          <div className="ob-step" style={{ width: `${100 / SUBSTEPS}%`, flex: '0 0 auto' }}>
-            <div className="eyebrow">Etapa 5 de 6</div>
+            <div className="eyebrow">Etapa 4 de 5</div>
             <div className="done-mark" />
             <h1 className="headline">
               Sua Doopla já tem o

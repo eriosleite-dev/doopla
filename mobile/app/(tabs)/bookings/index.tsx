@@ -20,12 +20,24 @@ const CHIPS: { key: BookingChip | 'todos'; label: string }[] = [
   { key: 'cancelados', label: 'Cancelados' },
 ];
 
+// Filtro de Contrato (auditoria de Booking Detail/Contratos,
+// 15/09/2026) — paridade com o filtro "Contrato" do Web
+// (pro-work-list-view.tsx), mesma fonte real (booking.contract_url),
+// nunca um contract_type inventado.
+type ContractChip = 'todos' | 'com' | 'sem';
+const CONTRACT_CHIPS: { key: ContractChip; label: string }[] = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'com', label: 'Com contrato' },
+  { key: 'sem', label: 'Sem contrato' },
+];
+
 export default function BookingsListScreen() {
   const router = useRouter();
   const { professionalId } = useAuth();
   const [phase, setPhase] = useState<Phase>('loading');
   const [bookings, setBookings] = useState<BookingWithOtherParty[]>([]);
   const [activeChip, setActiveChip] = useState<BookingChip | 'todos'>('todos');
+  const [activeContractChip, setActiveContractChip] = useState<ContractChip>('todos');
 
   const load = useCallback(() => {
     if (!professionalId) return;
@@ -44,9 +56,13 @@ export default function BookingsListScreen() {
 
   const filtered = useMemo(() => {
     if (!professionalId) return [];
-    if (activeChip === 'todos') return bookings;
-    return bookings.filter((b) => classifyBookingForChip(b, professionalId) === activeChip);
-  }, [bookings, activeChip, professionalId]);
+    return bookings.filter((b) => {
+      if (activeChip !== 'todos' && classifyBookingForChip(b, professionalId) !== activeChip) return false;
+      if (activeContractChip === 'com' && !b.contract_url) return false;
+      if (activeContractChip === 'sem' && b.contract_url) return false;
+      return true;
+    });
+  }, [bookings, activeChip, activeContractChip, professionalId]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -59,6 +75,21 @@ export default function BookingsListScreen() {
           const active = chip.key === activeChip;
           return (
             <Pressable key={chip.key} onPress={() => setActiveChip(chip.key)} style={[styles.chip, active && styles.chipActive]}>
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{chip.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.contractChips}>
+        {CONTRACT_CHIPS.map((chip) => {
+          const active = chip.key === activeContractChip;
+          return (
+            <Pressable
+              key={chip.key}
+              onPress={() => setActiveContractChip(chip.key)}
+              style={[styles.chip, styles.contractChip, active && styles.chipActive]}
+            >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>{chip.label}</Text>
             </Pressable>
           );
@@ -109,12 +140,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  contractChips: {
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
   chip: {
     borderWidth: 1,
     borderColor: colors.line,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
+  },
+  contractChip: {
+    paddingVertical: 6,
   },
   chipActive: {
     backgroundColor: colors.red,

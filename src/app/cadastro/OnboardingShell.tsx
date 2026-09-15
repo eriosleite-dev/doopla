@@ -11,7 +11,11 @@ import { useEffect } from 'react';
 // Doopla, que tem 4 sub-etapas dentro de uma página só).
 export function OnboardingShell({
   step,
-  totalSteps = 6,
+  // Funil 6→5 etapas (15/09/2026) — a etapa de canal (WhatsApp/Painel/
+  // Ambos) saiu do onboarding, nenhuma escolha operacional real por
+  // trás dela. Único default usado pelos 3 callers (CreateAccountForm,
+  // PrepareForm, PlanForm) — nenhum passa totalSteps explícito.
+  totalSteps = 5,
   onBack,
   footer,
   children,

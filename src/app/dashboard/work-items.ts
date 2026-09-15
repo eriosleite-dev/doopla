@@ -65,6 +65,12 @@ export type WorkItem = {
   statusLabel: string;
   statusTone: ProPillTone;
   sortDate: string;
+  // Filtro de Contrato (auditoria de Booking Detail/Contratos,
+  // 15/09/2026) — só a informação real existente hoje
+  // (bookings.contract_url), nunca um contract_type inventado. Pedidos
+  // (opportunities ainda não convertidas em booking) nunca têm
+  // contrato — essa coluna só existe em `bookings`.
+  hasContract: boolean;
 };
 
 const ATTENTION_ORDER: Record<WorkAttention, number> = {
@@ -130,6 +136,7 @@ function bookingWorkItem(
     statusLabel,
     statusTone: bookingStatusTone(b, userId),
     sortDate: b.updated_at,
+    hasContract: b.contract_url != null,
   };
 }
 
@@ -165,6 +172,7 @@ function pedidoWorkItem(o: Opportunity, conversation: ConversationOperationalFac
     statusLabel,
     statusTone,
     sortDate: o.created_at,
+    hasContract: false,
   };
 }
 
