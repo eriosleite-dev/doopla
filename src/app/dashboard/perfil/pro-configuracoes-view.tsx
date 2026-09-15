@@ -11,7 +11,6 @@ import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
 import { ProLinkRoutingForm } from '../pro-link-routing-form';
 import { CommunityPrivacyForm } from './privacidade/comunidade/community-privacy-form';
 import { DeleteAccountModal } from './delete-account-modal';
-import { AttentionChannelForm } from './preferencias/attention-channel-form';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
 import { ProSettingsRow } from './settings-ui';
 
@@ -23,11 +22,11 @@ import { ProSettingsRow } from './settings-ui';
 // (Assinatura e cobrança, Sua conta, Perfil e trabalho) — fluxos
 // genuinamente complexos (Stripe, reautenticação, formulários grandes)
 // onde uma página dedicada com "← Configurações" ainda é a escolha
-// certa. As outras 5 seções (Sua Doopla, Notificações, Canais da sua
-// Doopla, Privacidade e dados, Ajuda e suporte) são pequenas o
-// suficiente pra caber inline, dentro do próprio acordeão, sem
-// navegação nenhuma — exatamente o pedido da fundadora de "menos
-// perguntas, menos páginas, mais naturalidade".
+// certa. As outras 4 seções (Notificações, Canais da sua Doopla,
+// Privacidade e dados, Ajuda e suporte) são pequenas o suficiente pra
+// caber inline, dentro do próprio acordeão, sem navegação nenhuma —
+// exatamente o pedido da fundadora de "menos perguntas, menos
+// páginas, mais naturalidade".
 //
 // "Perfil público" saiu por completo (achado da auditoria de legado:
 // vitrine pública não é produto atual) — a linha, a rota
@@ -35,13 +34,23 @@ import { ProSettingsRow } from './settings-ui';
 // mais aqui. A rota em si não foi apagada (regra da fundadora: nunca
 // apagar infraestrutura só pra esta tarefa de beta), só ficou
 // inalcançável pela navegação normal.
+//
+// "Sua Doopla" saiu por completo (auditoria de legado, 15/09/2026):
+// a única "configuração" que existia lá (WhatsApp/Painel/Ambos,
+// attention_channel) nunca alterou comportamento real — nenhum código
+// de notificação/WhatsApp a lia, só existia como UI. Decisão canônica
+// da fundadora: "Precisa de você" é comportamento canônico do produto,
+// não preferência configurável — o painel sempre reflete pendência,
+// independente de canal. Coluna/action/componente preservados
+// (attention_channel, updateAttentionChannelAction,
+// AttentionChannelForm) — só a superfície de Configurações foi
+// desconectada, nada apagado.
 export function ProConfiguracoesView({
   hasPro,
   subscription,
   whatsappStatus,
   whatsappVerifiedNumber,
   paymentConfigured,
-  attentionChannel,
   bookers,
   linkRoutingMode,
   linkRoutingBookerId,
@@ -53,7 +62,6 @@ export function ProConfiguracoesView({
   whatsappStatus: string | null;
   whatsappVerifiedNumber: string | null;
   paymentConfigured: boolean;
-  attentionChannel: 'whatsapp' | 'painel' | 'ambos' | null;
   bookers: BookerOption[];
   linkRoutingMode: LinkRoutingMode;
   linkRoutingBookerId: string | null;
@@ -110,13 +118,6 @@ export function ProConfiguracoesView({
           <RowList>
             <ProSettingsRow href="/dashboard/perfil/dados" label="Editar perfil e trabalho" />
           </RowList>
-        </ProAccordion>
-
-        <ProAccordion title="Sua Doopla">
-          <div className="flex flex-col gap-2">
-            <p className="text-[12.5px] text-[var(--pro-tx-50)]">Como sua Doopla fala com você quando precisar de você.</p>
-            <AttentionChannelForm initialChannel={attentionChannel} />
-          </div>
         </ProAccordion>
 
         <ProAccordion title="Notificações">

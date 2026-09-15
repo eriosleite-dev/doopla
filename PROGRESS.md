@@ -14442,6 +14442,164 @@ trabalho" fechado. Próximo item da ordem revisada: "Sua Doopla" —
 aguardando autorização explícita pra começar.
 
 
+### "Sua Doopla" — remoção de Configurações + achados registrados — `[PARCIAL: item 1 DELIVERED / item 2 BLOCKED, aguardando decisão / itens 3-4 registrados]` — 15/09/2026
+
+Decisão canônica da fundadora (aprovando a auditoria anterior, com 1
+ajuste): "Sua Doopla" não é uma seção de Configurações no beta atual —
+"Precisa de você" é comportamento canônico do produto, nunca
+preferência configurável. Protocolo de concorrência checado antes de
+editar (`git fetch`): 1 commit novo (`b426503`, só `docs:`), zero diff
+nos arquivos tocados desde `ff77afc`. Sem conflito.
+
+#### 1. Remoção de "Sua Doopla" das Configurações — `DELIVERED`
+
+- `pro-configuracoes-view.tsx`: removido o `<ProAccordion title="Sua
+  Doopla">` (copy + `AttentionChannelForm`), removido o prop
+  `attentionChannel` da assinatura do componente, removido o import de
+  `AttentionChannelForm`. Comentário do topo do arquivo atualizado (de
+  "5 seções inline" pra "4 seções inline") e uma nota nova explicando a
+  decisão e o que foi preservado.
+- `dashboard/perfil/page.tsx`: removida a query
+  `.select('attention_channel')` (só existia pra alimentar o prop que
+  acabou de sumir) e o prop `attentionChannel={...}` na chamada de
+  `ProConfiguracoesView`.
+- `/dashboard/perfil/preferencias/page.tsx`: virou **redirect puro**
+  pra `/dashboard/perfil` (pedido explícito da fundadora — não deixar
+  página órfã acessível). O conteúdo antigo (card de WhatsApp/Painel/
+  Ambos + card-preview de "Perfil e trabalho", este último já
+  redundante desde o redesign anterior) foi substituído.
+
+**Preservado, nada apagado**: coluna `artist_profiles.attention_channel`
+(schema/dados intactos), action `updateAttentionChannelAction`
+(`actions.ts:2101-2112`, sem chamador na UI agora, mas presente e
+funcional), componente `AttentionChannelForm`
+(`preferencias/attention-channel-form.tsx`, arquivo intocado, só
+desimportado). Nenhuma migration criada ou alterada.
+
+**Achado incidental, não corrigido (fora de escopo)**: um comentário em
+`src/app/dashboard/perfil/privacidade/page.tsx:27` ainda cita
+`perfil/preferencias/page.tsx` como precedente de um padrão de
+role-gating que não existe mais lá (a rota virou redirect puro). É só
+comentário, sem efeito funcional — não corrigido porque teria exigido
+editar um arquivo de "Privacidade", explicitamente fora do escopo desta
+rodada. Registrado aqui pra não se perder.
+
+#### 2. `attention_channel` no onboarding — `BLOCKED, aguardando decisão da fundadora`
+
+Auditado antes de tocar em qualquer coisa, conforme instruído. Achado:
+**existe sim uma dependência inesperada além da gravação da coluna.**
+
+`src/app/cadastro/preparar/page.tsx:41`:
+```
+if (artistProfile.stage_name && artistProfile.category && artistProfile.bio && artistProfile.attention_channel) {
+  redirect('/cadastro/plano');
+}
+```
+Comentário do próprio código (linha 39-40): *"attention_channel só
+existe depois do submit final do carrossel (etapa Conclusão), então é
+o sinal mais confiável de 'já terminou'."* — **`attention_channel` é
+usado hoje como o sinal de "onboarding já concluído"**, pra decidir se
+quem volta à página `/cadastro/preparar` é mandado direto pra
+`/cadastro/plano` (retomada) ou vê o formulário de novo.
+
+Se eu removesse a pergunta E a escrita de `attention_channel` em
+`savePrepareAction` sem tratar isso, todo profissional NOVO nunca mais
+teria essa coluna preenchida — a condição de retomada ficaria
+permanentemente falsa, e quem já tivesse terminado o cadastro (nome +
+categoria + bio preenchidos) voltaria a ver o formulário do zero toda
+vez que reabrisse `/cadastro/preparar`, em vez de seguir pra
+`/cadastro/plano`. Efeito colateral real, silencioso, e só apareceria
+depois — exatamente o tipo de coisa que a fundadora pediu pra eu parar
+e reportar antes de mexer.
+
+**Não implementado.** Nenhum arquivo de onboarding foi tocado. Preciso
+de uma decisão antes de prosseguir — por exemplo (não decidido, só
+opções pra ilustrar o tipo de escolha):
+- trocar o sinal de "onboarding concluído" pra outro campo que já é
+  obrigatório de qualquer forma (`stage_name`/`category`/`bio` sozinhos
+  já cobrem 3 dos 4 requisitos atuais);
+- manter a etapa/pergunta apenas como gravação silenciosa de um valor
+  padrão (sem perguntar visualmente), só pra preservar o sinal de
+  conclusão, até a lógica de retomada ser reescrita.
+
+Aguardando orientação da fundadora sobre qual caminho seguir.
+
+#### 3. `negotiation_notes` — registro formal de dívida
+
+**Status: `ACTIVE CONTEXT / PRODUCT COPY DEBT`.**
+
+- Coluna: `artist_profiles.negotiation_notes` (migration 0037). Dado
+  existente preservado, nada alterado.
+- Consumo atual: `get-professional-business-context.ts` →
+  `context-builder/sections.ts`, sempre exposto ao Intelligence Context
+  como fato declarado `negotiationNotes` — **intocado, chegando ao
+  Business Context exatamente como antes**.
+- Não conectado (e continua não devendo ser conectado sem decisão
+  própria) a Approval Engine, Policy Gate ou qualquer mecanismo de
+  autorização. Confirmado por grep antes desta rodada: zero referência
+  fora do Intelligence Context.
+- Não movido pra "Perfil e trabalho". Não criada nenhuma superfície em
+  "Sua Doopla" (que nem existe mais) só pra editar este campo.
+- **Problema conceitual registrado, não resolvido**: a pergunta do
+  onboarding (*"Tem algo que sua Doopla sempre deve saber antes de
+  negociar por você?"*, hint *"...algo que você sempre faz questão de
+  aprovar"*) usa linguagem de regra/mandato, mas o campo é tratado
+  tecnicamente como contexto declarado, nunca autorização. Decisões
+  pendentes, em aberto pra uma rodada futura dedicada:
+  1. se `negotiation_notes` permanece perguntado no onboarding;
+  2. qual deveria ser a copy correta (pra não prometer um mandato que
+     o sistema não aplica);
+  3. como o profissional corrige/atualiza essa informação depois (hoje
+     não tem superfície de edição nenhuma, write-once no onboarding,
+     mesmo problema estrutural do antigo `attention_channel` antes do
+     Settings V2);
+  4. como distinguir, de forma geral no produto, contexto comercial
+     declarado de autorização real — pergunta maior que este campo
+     sozinho.
+- **Regra até a decisão**: nunca tratar `negotiation_notes` como
+  autorização em nenhum código futuro sem essa decisão explícita
+  primeiro.
+
+#### 4. WhatsApp proativo pro profissional — gap registrado, não resolvido
+
+Confirmado na auditoria anterior e reconfirmado aqui: quando a Doopla
+precisa consultar o profissional (`responsePlan='consult_professional'`),
+`resolveOutboundAction` (`src/lib/runtime/recipient.ts`) sempre resolve
+`persist_ai_message` — mensagem só em app, nunca envio real de
+WhatsApp pro profissional. **Não existe hoje a perna operacional pra
+"Doopla avisa pelo WhatsApp" chegar ao próprio profissional** (o canal
+de outbound real, `send-outbound-intents`, é exclusivo de
+`external_participant`/cliente).
+
+**Não resolvido nesta rodada, por instrução explícita.** Nenhum
+provider/fluxo novo criado. Fica registrado como reconciliação futura,
+junto com: "Precisa de você" (`doopla-intervention.ts`, já
+channel-independente e correto), Decisões, `intervention`,
+`requires_professional_review` (Policy Gate) e o mecanismo de liberação
+de mensagem retida (Approval Engine). Nenhum desses componentes foi
+tocado nesta rodada.
+
+#### Validação
+
+- `tsc --noEmit`: limpo.
+- `eslint` nos 3 arquivos alterados: limpo (exit 0).
+- `npm run build`: completo, sem erros/warnings.
+- Confirmado manualmente (leitura de código, sem Supabase real neste
+  ambiente): nenhuma referência a `AttentionChannelForm` sobrevive fora
+  do próprio arquivo do componente — desconectado da UI, mas presente
+  no repo. `updateAttentionChannelAction` inalterada. Coluna
+  `attention_channel` não tocada em nenhum UPDATE/migration.
+- Onboarding: **não alterado**, então não há risco de etapa quebrada
+  nesta entrega (o risco identificado é hipotético, sobre uma mudança
+  que não foi feita).
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Canais da sua Doopla, Privacidade, Financeiro,
+Ajuda, Decisões, Home, Booker, Approval Engine,
+`requires_professional_review`, `intervention`.
+
+
 
 ## Como usar isso
 

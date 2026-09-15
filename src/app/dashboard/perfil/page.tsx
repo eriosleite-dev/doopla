@@ -42,16 +42,11 @@ export default async function PerfilPage() {
   const { supabase, user, profile } = await getSessionProfile();
 
   if (profile.role === 'artista') {
-    const [subscription, homeFacts, paymentDetails, attentionData, bookers, routing, origin, communityProfile] =
+    const [subscription, homeFacts, paymentDetails, bookers, routing, origin, communityProfile] =
       await Promise.all([
         getSubscription(user.id, supabase),
         getCachedProfessionalHomeFacts(supabase),
         getActivePaymentDetails(user.id, supabase),
-        supabase
-          .from('artist_profiles')
-          .select('attention_channel')
-          .eq('profile_id', user.id)
-          .maybeSingle<{ attention_channel: 'whatsapp' | 'painel' | 'ambos' | null }>(),
         getArtistBookers(user.id, supabase),
         getArtistLinkRouting(user.id, supabase),
         siteOrigin(),
@@ -68,7 +63,6 @@ export default async function PerfilPage() {
         whatsappStatus={homeFacts?.whatsappIdentityStatus ?? null}
         whatsappVerifiedNumber={homeFacts?.whatsappVerifiedNumber ?? null}
         paymentConfigured={paymentDetails !== null}
-        attentionChannel={attentionData.data?.attention_channel ?? null}
         bookers={bookers.map((b) => ({ profileId: b.profileId, fullName: b.fullName }))}
         linkRoutingMode={(routing?.mode ?? 'eu') as LinkRoutingMode}
         linkRoutingBookerId={routing?.booker_id ?? null}
