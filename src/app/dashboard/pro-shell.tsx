@@ -8,13 +8,25 @@ import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
 import { ProSidebarReferralLink } from './pro-sidebar-referral-link';
 import { initialsFromName } from './ui';
 
+// "Decisões" saiu do sidebar (auditoria de legado, 15/09/2026,
+// decisão canônica da fundadora) — a tela nunca tinha capacidade
+// própria de resolução (auditoria confirmou: todo CTA navegava pra
+// dentro de uma conversa). A CAPACIDADE real de "Precisa de você"
+// (runtime_pending_replies/outbound_intents/deriveConversationState/
+// resolveDooplaIntervention) continua 100% intacta — só o item de
+// navegação/badge dedicado desapareceu. `decisionsCount` (contava a
+// mesma coisa que o badge de "Bookings" já cobre em outro nível)
+// removido da assinatura; `getCachedConversationStateSummary` (fonte
+// do número) segue existindo e é chamada direto por
+// professional-home-view.tsx pro accordion "Precisa de você" da Home,
+// que não foi tocado. `/dashboard/decisoes` vira redirect — ver
+// decisoes/page.tsx.
 export function ProfessionalShell({
   fullName,
   email,
   avatarUrl,
   hasDooplaPro,
   bookingsAwaitingCount,
-  decisionsCount,
   referralEligible,
   children,
 }: {
@@ -34,7 +46,6 @@ export function ProfessionalShell({
   // pedidosAbertosCount, porque a área ainda existia). Ver
   // layout.tsx/ProfessionalShellGate pra composição da soma.
   bookingsAwaitingCount: number;
-  decisionsCount: number;
   referralEligible: boolean;
   children: ReactNode;
 }) {
@@ -42,12 +53,6 @@ export function ProfessionalShell({
     { href: '/dashboard', label: 'Início', icon: proNavIcons.inicio },
     { href: '/dashboard/trabalhos', label: 'Bookings', icon: proNavIcons.bookings, badge: bookingsAwaitingCount },
     { href: '/dashboard/agenda', label: 'Agenda', icon: proNavIcons.agenda },
-    {
-      href: '/dashboard/decisoes',
-      label: 'Decisões',
-      icon: proNavIcons.decisoes,
-      badge: decisionsCount,
-    },
     { href: '/dashboard/dinheiro', label: 'Financeiro', icon: proNavIcons.financeiro },
     // Materiais/Analytics: arquitetura de informação aprovada (review
     // 04/09/2026) — a tela real ainda não existe, então o item fica

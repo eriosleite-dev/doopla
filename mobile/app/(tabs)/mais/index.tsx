@@ -7,12 +7,16 @@ import { colors, fonts } from '@/theme/tokens';
 import { useAuth } from '@/hooks/useAuth';
 import { AccountCard } from '@/components/mais/AccountCard';
 import { MaisMenuRow } from '@/components/mais/MaisMenuRow';
-import { DecisoesIcon, MoneyIcon, MateriaisIcon, AnalyticsIcon, ForumPeopleIcon, ConfiguracoesIcon } from '@/components/icons/Icons';
+import { MoneyIcon, MateriaisIcon, AnalyticsIcon, ForumPeopleIcon, ConfiguracoesIcon } from '@/components/icons/Icons';
 import { fetchArtistProfile, fetchArtistSubscription } from '@/lib/data/artistProfile';
 import type { ArtistProfile, ArtistSubscription } from '@/types/artistProfile';
 
+// "Decisões" saiu do menu Mais (auditoria de legado, 15/09/2026,
+// mesma decisão do Web, ver pro-shell.tsx) — sem capacidade própria de
+// resolução, "Precisa de você" já vive em Home/Bookings/Pedido Detail
+// com a mesma fonte real. DecisoesIcon preservado em
+// @/components/icons/Icons (só perdeu este caller).
 const MENU = [
-  { key: 'decisoes', label: 'Decisões', route: '/(tabs)/mais/decisoes', icon: <DecisoesIcon size={18} color={colors.tx70} /> },
   { key: 'financeiro', label: 'Financeiro', route: '/(tabs)/mais/financeiro', icon: <MoneyIcon size={18} color={colors.tx70} /> },
   { key: 'materiais', label: 'Materiais', route: '/(tabs)/mais/materiais', icon: <MateriaisIcon size={18} color={colors.tx70} /> },
   { key: 'analytics', label: 'Analytics', route: '/(tabs)/mais/analytics', icon: <AnalyticsIcon size={18} color={colors.tx70} /> },

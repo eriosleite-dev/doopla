@@ -15440,6 +15440,177 @@ Engine/`outbound_intents`/`requires_professional_review` (só
 documentados, nenhuma linha tocada).
 
 
+### "Decisões" — SUPERSEDED como área própria; "Precisa de você" e "Condições decididas" preservados como capacidades distribuídas — `[DELIVERED]` — 15/09/2026, último item da Sessão Painel
+
+Protocolo de concorrência checado 2× (antes de implementar, antes do
+commit): mesmo tip conhecido (`b426503`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### Decisão canônica registrada
+
+**DECISÕES PROFESSIONAL = SUPERSEDED como superfície própria.** A
+auditoria anterior confirmou, lendo o código inteiro da tela, que ela
+nunca teve capacidade própria de resolução — todo CTA ("Revisar e
+enviar"/"Resolver") só navegava pra dentro de uma conversa, onde a
+resolução de fato acontece. A lista de pendentes usa exatamente a
+mesma fonte (`runtime_pending_replies`+`outbound_intents` via
+`deriveConversationState`) que já alimenta, com o mesmo número, Home
+(accordion "Precisa de você"), badge da sidebar e attention de
+Bookings/Pedido Detail — confirmado via `pro-home-cache.ts`, que é
+explícito: essas 3 superfícies + a antiga tela de Decisões "chamam
+SEMPRE esta função, nunca uma reimplementação".
+
+**"PRECISA DE VOCÊ" = MANTIDO como capacidade distribuída e
+contextual.** Nada do sistema real foi tocado: `runtime_pending_replies`,
+`outbound_intents`, `deriveConversationState`
+(`src/lib/conversations/state.ts`), `resolveDooplaIntervention`
+(`doopla-intervention.ts`), `attention` de `WorkItem`
+(`work-items.ts`), `getCachedConversationStateSummary`/
+`getCachedActionableDecisions`/`getCachedConversationOperationalFacts`
+(`pro-home-cache.ts`) — zero linha alterada em qualquer um desses
+arquivos.
+
+**"CONDIÇÕES DECIDIDAS" = MANTIDO** como histórico de condições
+comerciais efetivamente aprovadas (Approval Engine, `approval_records`,
+Bloco 5), vivendo dentro do contexto do Booking (App), nunca dentro de
+uma central chamada Decisões — confirmado que são sistemas
+estruturalmente diferentes (auditoria anterior). Gap de paridade
+Web×App (só o App mostra) **registrado, não resolvido nesta rodada**
+— exigiria o mesmo vínculo booking↔conversation que já está `PENDING
+INTEGRATION`.
+
+**`requires_professional_review` = `PENDING CENTRAL / INTEGRATION`** —
+achado já registrado no P0, reconfirmado nesta rodada sem nenhuma
+correção: `pipeline.ts`, `outbound_intents`, Planner, Policy Gate,
+Approval Engine, runtime — zero arquivo tocado.
+
+**`booking ↔ conversation` = `PENDING INTEGRATION`** — mesmo status já
+registrado na rodada de Booking Detail, reconfirmado: nenhuma relação
+artificial criada nesta rodada também.
+
+#### 1. Sidebar Web
+
+`pro-shell.tsx`: item "Decisões" removido de `primaryLinks`.
+`decisionsCount` (prop que só alimentava esse badge — mesmo valor de
+`conversationSummary.needsYouCount`, já coberto por Home) removido da
+assinatura de `ProfessionalShell`. `layout.tsx`
+(`ProfessionalShellGate`): parou de buscar `getCachedConversationStateSummary`
+só pra esse badge (`professional-home-view.tsx` já chama a mesma
+função `cache()`-ada direto pra Home, então nada deixa de ser
+calculado onde de fato importa — só a busca redundante em toda
+navegação fora da Home que desapareceu). `bookingsAwaitingCount`
+(badge real de "Bookings") **intocado**. `proNavIcons.decisoes`
+(`pro-sidebar-nav.tsx`) preservado, sem caller.
+
+#### 2. Rota `/dashboard/decisoes`
+
+Convertida em `redirect('/dashboard')` — nunca apagada, links antigos
+continuam funcionando. `ProDecisoesView`, `format-cards.ts`,
+`decisoes/actions.ts` preservados intactos, sem chamador — mesmo
+padrão de rota órfã já usado em todas as rodadas anteriores desta
+sessão.
+
+#### 3. App
+
+`mobile/app/(tabs)/mais/index.tsx`: item "Decisões" removido do `MENU`.
+`DecisoesIcon` preservado em `@/components/icons/Icons`, sem caller.
+`mobile/app/(tabs)/mais/decisoes.tsx`: convertida em redirect seguro
+via `<Redirect href="/(tabs)/mais" />` (componente oficial do Expo
+Router) — nunca apagada, qualquer deep link antigo continua
+resolvendo. `fetchActionableDecisionsPage`/`fetchResolvedDecisionsPage`
+(`@/lib/data/decisions`) preservadas intactas.
+
+#### 4. Duplicação TS × RPC (`listActionableDecisions` vs `list_actionable_decisions_page`)
+
+Confirmado: `list_actionable_decisions_page`/`list_resolved_decisions_page`
+(RPCs, migration 0070) ficam **sem consumidor** depois desta rodada —
+eram usadas só pela tela paginada Decisões (Web+App), que não existe
+mais como destino navegável. `listActionableDecisions()`/
+`listConversationOperationalFacts()` (as funções TS não-paginadas,
+usadas por Home/Bookings/Pedido Detail) continuam com uso real e
+**intocadas**. Nenhuma migration criada pra remover as RPCs órfãs —
+registrado como cleanup futuro, não resolvido aqui.
+
+#### 5. Home, Bookings, Pedido Detail, Booking Detail — confirmado intocados
+
+`professional-home-view.tsx` (accordion "Precisa de você"): zero linha
+tocada. `work-items.ts`/`pro-work-list-view.tsx` (attention de
+Bookings + filtro de Contrato entregue na rodada anterior): zero linha
+tocada. `/dashboard/oportunidades/[id]/page.tsx` (Pedido Detail,
+`resolveDooplaIntervention` + CTA WhatsApp): zero linha tocada.
+Booking Detail (`pro-booking-detail-view.tsx`): nenhuma intervenção
+nova adicionada — `PENDING INTEGRATION` booking↔conversation
+permanece exatamente como estava.
+
+#### Testes/validação
+
+- `npm run build`: limpo, 0 erros, `/dashboard/decisoes` continua
+  gerada como rota (agora um redirect).
+- `eslint` nos 3 arquivos Web alterados: limpo (exit 0).
+- QA visual real via `/dev/preview-sidebar` (Playwright, reproduzindo
+  literalmente o mesmo array `primaryLinks` de `pro-shell.tsx`) —
+  screenshot confirma: Início, Bookings (badge "2" preservado), Agenda,
+  Financeiro, Materiais (Em breve), Analytics (Em breve) — "Decisões"
+  ausente. Rota de preview e `.next` removidos antes do commit (`git
+  status` confirma só os 5 arquivos de produto no diff).
+- App: sem toolchain de typecheck/lint neste ambiente (mesma limitação
+  documentada em rodadas anteriores) — validado por leitura completa
+  dos 2 arquivos: `MENU` sem `decisoes`, `DecisoesIcon` sem import
+  morto, `<Redirect>` é a API oficial do Expo Router (confirmado
+  `expo-router: ~57.0.18`, suporta o componente desde versões
+  anteriores).
+- Checklist da fundadora (19 itens): (1) Decisões fora do sidebar Web
+  — confirmado; (2) fora da navegação App — confirmado; (3) rota Web
+  redireciona — confirmado; (4) Home "Precisa de você" funcional —
+  confirmado, zero linha tocada; (5) contador/badge funcional —
+  confirmado (badge de Bookings intocado; badge de Decisões removido
+  por ser o item que saiu); (6) Bookings attention funcional —
+  confirmado; (7) Pedido Detail funcional — confirmado; (8) resolução
+  pela conversa funcional — confirmado, `submitProfessionalReply`
+  intocado; (9) histórico backend preservado — confirmado,
+  `runtime_pending_replies`/`conversation_messages` intocados; (10)
+  Approval Engine preservado — confirmado, migration 0045 e todo
+  `src/lib/intelligence/approval/**` intocados; (11) Condições
+  decididas preservado — confirmado, `get_active_approvals`/
+  `fetchActiveApprovalsForBooking` intocados; (12) nenhuma intervenção
+  falsa em Booking Detail — confirmado, zero linha tocada lá; (13)
+  runtime/pipeline intocados — confirmado; (14) Booker intocado —
+  confirmado, `legacy-shell.tsx`/`legacy-booking-detail-view.tsx`/
+  `dashboard-footer.tsx` não tocados; (15) Home marketing intocada —
+  confirmado, zero arquivo de `_home/**` tocado; (16) filtro de
+  Contratos funcional — confirmado, `pro-work-list-view.tsx`/
+  `work-items.ts` não tocados nesta rodada; (17) build/typecheck/lint
+  — limpos; (18) App validado dentro das limitações — confirmado; (19)
+  concorrência — checada 2×.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Sua Doopla, Privacidade e dados, Canais da sua
+Doopla, Financeiro, Ajuda e suporte, Onboarding, Booking Detail,
+Contratos (filtro), Home (`_home/**`, `professional-home-view.tsx`),
+Booker (completo — shell, navegação, bookings, actions, backend),
+arquitetura da Comunidade, matching, Perfil público legado, runtime/
+pipeline/Planner/Policy Gate/Approval Engine/`outbound_intents`/
+`requires_professional_review`/`approval_records` (preservados,
+nenhuma linha tocada).
+
+### STATUS FINAL DA SESSÃO PAINEL
+
+Os 9 itens do roadmap aprovado estão `[DELIVERED]`: Perfil e trabalho,
+Sua Doopla, Privacidade e dados, Canais da sua Doopla, Financeiro,
+Ajuda e suporte, Booking Detail + Contratos, e agora Decisões —
+encerrando o roadmap da Sessão Painel. Pendências registradas pra
+reconciliação com a Sessão Central (não resolvidas nesta branch, por
+escopo): P0 conversa→booking (impacta Bookings/Financeiro/Contratos),
+`requires_professional_review` não propagado em `pipeline.ts`,
+`booking ↔ conversation` (`related_booking_id` nunca escrito),
+paridade Web×App de "Condições decididas", cleanup futuro das RPCs
+`list_actionable_decisions_page`/`list_resolved_decisions_page` órfãs.
+Nenhuma migration criada em toda a sessão; nenhum dado apagado;
+Booker, Home (`_home/**`) e runtime/Approval Engine/Policy Gate
+permanecem 100% intocados do início ao fim.
+
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
