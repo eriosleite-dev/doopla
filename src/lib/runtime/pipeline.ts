@@ -448,6 +448,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         channel: event.channel,
         recipientExternalParticipantId: conversation.external_participant_id!,
         content: decision.proposedResponse,
+        requiresProfessionalReview: decision.requiresProfessionalReviewBeforeSend,
       });
       outboundIntentId = intent.id;
 
@@ -608,6 +609,10 @@ async function runColdOutreachTemplateBranch(
     recipientExternalParticipantId: conversation.external_participant_id!,
     content: renderedContent,
     sendAs: 'template',
+    // Template fixo pré-aprovado pela Meta (sem conteúdo gerado/
+    // negociável) — nunca passa por requiresProfessionalReviewBeforeSend
+    // (não existe Planner neste ramo), sempre seguro por construção.
+    requiresProfessionalReview: false,
   });
 
   await finishOrchestratorRun(supabase, {

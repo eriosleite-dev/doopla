@@ -105,7 +105,10 @@ export async function resolveRuntimePendingReplyAllowed(
     // profissional (ex.: responsePlan virou consult_professional na
     // reavaliação) — aí a function só faz o claim, sem outbound_intent
     // (chamador usa persistAiMessage por fora, best-effort).
-    outbound: { channel: string; recipientExternalParticipantId: string; content: string } | null;
+    // requiresProfessionalReview: mesmo sinal/achado de outbound.ts
+    // (createOutboundIntent) — default false no lado da RPC, espelhado
+    // aqui só pra deixar explícito no tipo.
+    outbound: { channel: string; recipientExternalParticipantId: string; content: string; requiresProfessionalReview?: boolean } | null;
   }
 ): Promise<{ claimed: boolean; outboundIntentId: string | null }> {
   const { data, error } = await supabase
@@ -116,6 +119,7 @@ export async function resolveRuntimePendingReplyAllowed(
       p_channel: params.outbound?.channel ?? null,
       p_recipient_external_participant_id: params.outbound?.recipientExternalParticipantId ?? null,
       p_content: params.outbound?.content ?? null,
+      p_requires_review: params.outbound?.requiresProfessionalReview ?? false,
     })
     .single();
   if (error || !data) throw new Error(`resolve_runtime_pending_reply_allowed falhou: ${error?.message ?? 'sem dado'}`);

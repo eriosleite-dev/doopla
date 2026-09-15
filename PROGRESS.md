@@ -13723,8 +13723,8 @@ devem ser adicionados aqui, nunca substituir esta lista.
 | # | Finding | Classificação | Origem | Status |
 |---|---|---|---|---|
 | 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
-| 2 | `send-outbound-intents` (cron real, `vercel.json`, 1×/min) auto-envia via WhatsApp Graph API qualquer `outbound_intent` em `policy_allowed`/`queued`/`failed_transient`, sem nenhum gate de revisão humana no meio — reproduzido ao vivo no harness local (`claim_outbound_intent_for_send` como `service_role` transiciona `policy_allowed`→`sending` numa chamada só). Contradiz a premissa escrita em `src/lib/conversations/state.ts` ("nenhum worker de auto-send existe além de policy_allowed"), premissa da qual `doopla-intervention.ts`/"Precisa de você" depende. Autorização em si está correta (`authenticated` é bloqueado, só `service_role` chama); o achado é semântico/arquitetural, não uma falha de segurança. | `FINDING — NÃO CORRIGIDO, aguardando decisão da fundadora` | Sessão Central, P0 backend/E2E (§106) | **OPEN** |
-| 3 | `_create_conversation_core` (migração 0082): o `revoke` cobre só `anon, authenticated`, nunca `service_role` — confirmado no harness que `service_role` tem `EXECUTE` direto na função, contra a intenção declarada da própria migração ("núcleo interno... só chamável função-a-função"). Baixa severidade (`service_role` já bypassa RLS e nenhum código chama a função diretamente hoje). Correção proposta, não aplicada: nova migração com `revoke execute on function public._create_conversation_core from service_role;`. | `FINDING NÃO-BLOQUEANTE — não corrigido` | Sessão Central, P0 backend/E2E (§106) | **OPEN** |
+| 2 | `send-outbound-intents` (cron real, `vercel.json`, 1×/min) auto-enviava via WhatsApp Graph API qualquer `outbound_intent` em `policy_allowed`/`queued`/`failed_transient`, sem nenhum gate de revisão humana no meio — inclusive drafts que o próprio Planner (Bloco 4) marcava `requiresProfessionalReviewBeforeSend=true` (ex.: `answer_with_known_information`, risco de dado de terceiro). Classificado pela fundadora como **P0 de beta**. Infraestrutura fail-closed implementada (migração 0083 + propagação em TS) — ver §107. **Mecanismo de liberação da mensagem retida AINDA NÃO existe** (decisão explícita: não inventar um segundo sistema de aprovação, reconciliar depois com a auditoria da Sessão Painel sobre "Decisões/Precisa de você"). `state.ts`/`doopla-intervention.ts`: só o comentário obsoleto foi corrigido — a lógica de `needs_you` ainda não distingue `requires_professional_review`, registrado como integração pendente (colide com Home/Painel). | `P0 DE BETA — infra fail-closed IMPLEMENTADA, liberação e integração com needs_you PENDENTES` | Sessão Central, P0 backend/E2E (§106/§107) | **OPEN (parcial)** |
+| 3 | `_create_conversation_core` (migração 0082): o `revoke` cobria só `anon, authenticated`, nunca `service_role`. **Corrigido** (migração 0084, §107): `revoke execute ... from service_role`, validado no harness (`service_role` agora recebe `permission denied`; `create_conversation()`/`submit_orcamento_request()` continuam funcionando pelos caminhos legítimos, chamada função-a-função sob `SECURITY DEFINER`). | `FIXED` | Sessão Central, P0 backend/E2E (§106/§107) | **CLOSED** |
 
 ## 106. Sessão Central — P0 QA/E2E: aprovação/rejeição de decisão, persistência, isolamento cross-tenant, RLS — `[P0: PASS]` — 15/09/2026
 
@@ -13779,6 +13779,103 @@ p0_approval_test.sql`, `/tmp/p0_outbound_intent_test.sql`, ambos fora
 do repositório). P1 (Agenda, Financeiro, Comunidade, Notificações,
 Avatar/Storage, Settings, encerramento de conta) e Painel Admin **não
 iniciados**, per instrução explícita.
+
+## 107. Sessão Central — correção dos 2 achados do P0 (auto-send sem revisão + hardening `_create_conversation_core`) — `[Achado 1: infra fail-closed IMPLEMENTADA, liberação PENDENTE]` `[Achado 2: FIXED]` — 15/09/2026
+
+Escopo autorizado pela fundadora após classificar o achado 1 (§106)
+como **P0 de beta**: "mensagem marcada para revisão profissional não
+pode ser enviada antes dessa revisão" é uma regra DIFERENTE de
+"compromisso protegido precisa de approval válido" (Post-model Gate +
+Approval Engine, intocados) — as duas precisam sobreviver até o envio.
+Pré-checagem: `git fetch` + comparação de branches sem avanço novo de
+Painel/Home nesta janela.
+
+### O que foi implementado (Achado 1 — infraestrutura, NUNCA a liberação)
+
+- Nova coluna `outbound_intents.requires_professional_review boolean
+  not null default false` (migração 0083) — carrega o sinal que já
+  existia desde o Bloco 4 (`requiresProfessionalReviewBeforeSend`,
+  `disposition.ts`) e nunca sobrevivia até o envio.
+- `create_outbound_intent` e `resolve_runtime_pending_reply_allowed`
+  ganham `p_requires_review` (default `false` — nenhum chamador
+  existente muda de comportamento sem passar o parâmetro).
+  Assinatura mudou → `drop function` explícito antes do `create`,
+  mesmo cuidado já documentado na migração 0058 (`send_as`), grants
+  restabelecidos (`service_role` apenas).
+- `list_claimable_outbound_intents` e `claim_outbound_intent_for_send`
+  (mesma assinatura, `create or replace` basta): nunca listam/reclamam
+  uma linha com `requires_professional_review=true` — **fail-closed**,
+  checagem duplicada nas duas funções (defesa em profundidade, mesmo
+  padrão já usado no resto do bloco de Runtime).
+- `src/lib/runtime/outbound.ts` (`createOutboundIntent`),
+  `pending-replies.ts` (`resolveRuntimePendingReplyAllowed`): TS
+  wrappers ganham `requiresProfessionalReview`.
+- `pipeline.ts`: o ciclo normal passa
+  `decision.requiresProfessionalReviewBeforeSend`; o ramo de outreach
+  frio (template fixo pré-aprovado pela Meta, sem conteúdo
+  gerado/negociável) passa `false` explícito, sempre seguro por
+  construção.
+- `resumption.ts`: mesma propagação no caminho de retomada pós-
+  aprovação.
+- Comentário desatualizado de `outbound.ts` corrigido ("sem nenhum
+  chamador real ainda" não era mais verdade desde que
+  `send-outbound-intents` foi construído).
+
+**O que NÃO foi feito, de propósito** (instrução explícita da
+fundadora): nenhuma tela nova, nenhum segundo fluxo de aprovação,
+nenhuma alteração em `/dashboard/decisoes`, nenhuma decisão unilateral
+de como o profissional libera uma mensagem retida. Hoje uma linha
+`requires_professional_review=true` fica retida indefinidamente — real
+e esperado, não um bug residual.
+
+### `state.ts` / `doopla-intervention.ts` — só o comprovadamente obsoleto foi tocado
+
+`state.ts` tinha um comentário afirmando "nenhum worker de auto-send
+existe" — falso desde que `send-outbound-intents` foi construído.
+Comentário corrigido (texto, zero mudança de comportamento). A
+mudança de LÓGICA que a fundadora pediu condicionalmente ("`needs_you`
+relacionado a outbound retido exista somente quando
+`requires_professional_review=true`") **não foi implementada**: colide
+com (a) `professional-home-view.tsx`, consumidor de
+`doopla-intervention.ts` e superfície da Sessão Home (fora do escopo
+desta sessão); (b) a auditoria conceitual em andamento da Sessão
+Painel sobre "Decisões/Precisa de você", que a própria fundadora disse
+que viria depois. **Registrado como integração pendente** — ver
+achado 2 da tabela de Open Findings acima.
+
+### Achado 2 — hardening `_create_conversation_core`
+
+Migração 0084: `revoke execute on function
+public._create_conversation_core from service_role;`. Auditado antes
+(§106): zero chamador TS/edge-function direto; os dois consumidores
+legítimos (`create_conversation()`, `submit_orcamento_request()`)
+chamam a função internamente sob `SECURITY DEFINER`, checado contra o
+dono da function chamadora — não quebra com o revoke.
+
+### CORREÇÃO | ARQUIVOS/MIGRATION | TESTE | RESULTADO | EVIDÊNCIA | PENDÊNCIA
+
+| CORREÇÃO | ARQUIVOS/MIGRATION | TESTE | RESULTADO | EVIDÊNCIA | PENDÊNCIA |
+|---|---|---|---|---|---|
+| `requires_professional_review` (coluna + RPCs) | `supabase/migrations/0083_outbound_intent_professional_review_gate.sql` | 1. `requires_review=false` + Gate allowed → claim | **PASS** | `granted=true` em `claim_outbound_intent_for_send` | Nenhuma |
+| idem | idem | 2. `requires_review=true` + Gate allowed → claim | **PASS** | `granted=false` (linha nunca sai de `policy_allowed`) | Nenhuma |
+| idem | idem | 3. `requires_review=true` nunca aparece no que o cron lista | **PASS** | `list_claimable_outbound_intents` retorna 0 linhas pra essa linha | Nenhuma |
+| Regressão Approval Engine | — (nenhum arquivo do Bloco 5 tocado) | 4/5. Compromisso protegido sem/com approval continua bloqueado/permitido; RLS; cross-tenant; replay | **PASS (8/8, idêntico ao §106)** | Suite completa re-rodada do zero (fixture limpa) após aplicar 0083/0084 | Nenhuma |
+| Propagação em `pipeline.ts`/`outbound.ts` | `src/lib/runtime/{pipeline,outbound}.ts` | 6. Fluxo autônomo normal (sem passar o parâmetro novo) não quebrou | **PASS** | `requires_professional_review` default `false` preservado, claim liberado | Nenhuma |
+| Propagação em `resumption.ts`/`pending-replies.ts` | `src/lib/runtime/{resumption,pending-replies}.ts`, `resolve_runtime_pending_reply_allowed` (0083) | 7. Retomada pós-aprovação com `requires_review=true` também trava | **PASS** | Outbound criado com `requires_professional_review=true`, claim `granted=false` | Nenhuma |
+| Grants da nova infra | 0083 | 8. `authenticated` não pode chamar `list_claimable_outbound_intents` | **PASS** | `permission denied for function list_claimable_outbound_intents` | Nenhuma |
+| Hardening achado 2 | `supabase/migrations/0084_conversation_core_revoke_service_role.sql` | 9. `service_role` não executa mais `_create_conversation_core` direto | **PASS** | `permission denied for function _create_conversation_core` | Nenhuma |
+| idem | idem | 10. `create_conversation()`/`submit_orcamento_request()` continuam funcionando | **PASS** | Ambos criaram conversation/opportunity reais no harness; `submit_orcamento_request` (anon, via slug) confirmado linkando `related_opportunity_id` corretamente | Nenhuma |
+| Typecheck/lint | todos os arquivos TS acima | — | **PASS** | `tsc --noEmit` (só os 3 erros pré-existentes de `.next/types`, confirmados idênticos antes/depois via `git stash`); `eslint` limpo | Nenhuma |
+
+**Limitação explícita**: validação 100% harness local (mesma limitação
+já registrada em todos os blocos anteriores) — nunca contra
+`doopla-qa-staging` real.
+
+### O que ainda falta — mecanismo de liberação (destacado à parte, per pedido da fundadora)
+
+1. **Como o profissional libera uma mensagem `requires_professional_review=true` retida** — não implementado, não desenhado. Decisão explícita: ligar ao mecanismo canônico de decisão/aprovação existente (Approval Engine/Bloco 5), nunca um segundo sistema paralelo — mas o desenho concreto (que ação, que UI, que RPC) não foi feito nesta rodada.
+2. **`needs_you` (`state.ts`/`doopla-intervention.ts`) não distingue ainda `requires_professional_review`** — hoje continua dependendo só de `lastOutboundIntentDeliveryState === 'policy_allowed'` (comentário corrigido, lógica não). Uma mensagem retida por revisão E uma mensagem que vai sair sozinha em segundos disparam o mesmo `needs_you`, sem diferenciação.
+3. Ambos os pontos acima dependem de reconciliação com a auditoria da Sessão Painel sobre "Decisões/Precisa de você" — explicitamente combinado que viria depois, não decidido unilateralmente aqui.
 
 ## Como usar isso
 

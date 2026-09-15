@@ -1,0 +1,18 @@
+-- Doopla Intelligence Core v1 — hardening (Sessão Central, achado 2 da
+-- auditoria de P0). _create_conversation_core (0082) é um núcleo
+-- interno: "NUNCA GRANT a anon/authenticated/public... só chamável
+-- função-a-função" (comentário original da 0082). O revoke explícito
+-- ali cobriu anon/authenticated, mas nunca service_role — que ganhou
+-- EXECUTE por default privilege (mesmo comportamento automático do
+-- Supabase pra toda função nova), contra a intenção declarada da
+-- própria migration.
+--
+-- Auditado antes desta correção: nenhum código em src/ (TS/edge
+-- functions) chama _create_conversation_core diretamente via RPC —
+-- os dois únicos chamadores (create_conversation(), migration 0039/
+-- 0062; submit_orcamento_request(), migration 0023/0082) invocam a
+-- function internamente dentro de PL/pgSQL, checado sob SECURITY
+-- DEFINER contra o DONO da function chamadora (postgres), nunca
+-- contra o grant do caller externo — revogar de service_role não
+-- toca esse caminho.
+revoke execute on function public._create_conversation_core from service_role;

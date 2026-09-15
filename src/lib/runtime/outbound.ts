@@ -3,14 +3,20 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // Doopla Intelligence Core v1 — Runtime: wrappers finos sobre
 // outbound_intents (migration 0051).
 //
-// createOutboundIntent é o único destes chamado pelo pipeline
-// (pipeline.ts) nesta rodada — é o teto do que o Runtime automatiza
-// (ver comentário em types.ts sobre requiresProfessionalReviewBeforeSend).
-// claimOutboundIntentForSend/markOutboundIntent* ficam prontos e
-// testados (ver testes adversariais SQL da migration 0051), mas sem
-// nenhum chamador real ainda — reservados pra um worker de envio de
-// canal futuro, fora de escopo aqui (nenhum WhatsApp/Meta/Resend
-// nesta rodada).
+// createOutboundIntent é chamado por pipeline.ts e resumption.ts
+// (via resolve_runtime_pending_reply_allowed, pending-replies.ts).
+// claimOutboundIntentForSend/markOutboundIntent* têm chamador real
+// hoje: src/app/api/runtime/send-outbound-intents/route.ts (cron,
+// vercel.json, 1×/min) — comentário anterior ("sem nenhum chamador
+// real ainda") ficou obsoleto quando esse worker foi construído.
+// Achado de auditoria (Sessão Central, P0 de beta, migration 0083):
+// esse worker só sabia checar delivery_state — não tinha como
+// distinguir um outbound_intent que o Bloco 4 marcou como precisando
+// de revisão humana (requiresProfessionalReviewBeforeSend, ver
+// disposition.ts) de um trivialmente seguro. Corrigido persistindo
+// requires_professional_review em outbound_intents; claim/list agora
+// recusam qualquer linha com isto=true (fail-closed) até existir um
+// mecanismo de liberação — ainda não implementado, ver PROGRESS.md.
 
 export async function createOutboundIntent(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,6 +34,17 @@ export async function createOutboundIntent(
     // (mesmo default da RPC, espelhado aqui só pra deixar explícito no
     // tipo — nunca uma segunda fonte de verdade sobre o default real).
     sendAs?: 'free_text' | 'template';
+    // Achado real de auditoria (Sessão Central, P0 de beta): sinal do
+    // Bloco 4 (decision.requiresProfessionalReviewBeforeSend) que
+    // nunca sobrevivia até o envio — send-outbound-intents (cron real)
+    // não tinha como distinguir um draft que precisa dos olhos do
+    // profissional (ex.: answer_with_known_information, risco de dado
+    // de terceiro) de um trivialmente seguro. Default false preserva
+    // 100% do comportamento anterior pra todo chamador que não passa
+    // isto. Nunca confundir com o Post-model Gate (compromisso
+    // protegido x approval_records) — são checagens independentes,
+    // as duas precisam passar.
+    requiresProfessionalReview?: boolean;
   }
 ): Promise<{ id: string }> {
   const { data, error } = await supabase
@@ -40,6 +57,7 @@ export async function createOutboundIntent(
       p_recipient_external_participant_id: params.recipientExternalParticipantId,
       p_content: params.content,
       p_send_as: params.sendAs ?? 'free_text',
+      p_requires_review: params.requiresProfessionalReview ?? false,
     })
     .single();
   if (error || !data) throw new Error(`create_outbound_intent falhou: ${error?.message ?? 'sem dado'}`);

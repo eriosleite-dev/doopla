@@ -440,7 +440,12 @@ async function runResumptionCycle(
       pendingReplyId: pending.id,
       newPolicyGateDecisionId: newPolicyDecisionId,
       runId: run?.id ?? null,
-      outbound: { channel: triggerRow.channel, recipientExternalParticipantId: conversation.external_participant_id!, content: decision.proposedResponse },
+      outbound: {
+        channel: triggerRow.channel,
+        recipientExternalParticipantId: conversation.external_participant_id!,
+        content: decision.proposedResponse,
+        requiresProfessionalReview: decision.requiresProfessionalReviewBeforeSend,
+      },
     });
     outboundIntentId = result.outboundIntentId;
     claimed = result.claimed;

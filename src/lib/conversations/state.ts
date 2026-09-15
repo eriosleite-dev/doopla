@@ -40,10 +40,26 @@ export function deriveConversationState(facts: ConversationOperationalFactsForSt
   //    (Approval Engine bloqueado esperando uma decisão do
   //    profissional, runtime_pending_replies status='pending'), ou o
   //    último outbound_intent está em 'policy_allowed' (draft já
-  //    autorizado pelo Post-model Gate, mas ainda não enviado — hoje
-  //    NENHUM outbound_intent avança sozinho além de policy_allowed,
-  //    nenhum worker de auto-send existe, então isto sempre representa
-  //    uma ação pendente do profissional).
+  //    autorizado pelo Post-model Gate, ainda não enviado).
+  //
+  //    ACHADO DE AUDITORIA (Sessão Central, P0 de beta, 15/09/2026):
+  //    o comentário anterior aqui ("nenhum outbound_intent avança
+  //    sozinho além de policy_allowed, nenhum worker de auto-send
+  //    existe") ficou desatualizado — send-outbound-intents (cron
+  //    real, vercel.json, 1×/min) manda automaticamente qualquer
+  //    outbound_intent com requires_professional_review=false
+  //    (migration 0083) em até ~1min, sem ação do profissional. Este
+  //    ramo continua correto pra outbound_intents genuinamente
+  //    retidos (requires_professional_review=true, nenhum mecanismo
+  //    de liberação ainda), mas hoje também dispara 'needs_you' pra
+  //    drafts que serão enviados sozinhos em segundos — não
+  //    corrigido aqui de propósito: exigiria expor
+  //    requires_professional_review até esta camada, que colide com
+  //    a auditoria em andamento da Sessão Painel sobre "Decisões /
+  //    Precisa de você" e com Home (consumidor deste estado via
+  //    professional-home-view.tsx). Integração pendente, registrada
+  //    em PROGRESS.md — não decidir/alterar aqui sem reconciliar com
+  //    aquela sessão.
   if (facts.hasPendingRuntimeReply || facts.lastOutboundIntentDeliveryState === 'policy_allowed') {
     return 'needs_you';
   }
