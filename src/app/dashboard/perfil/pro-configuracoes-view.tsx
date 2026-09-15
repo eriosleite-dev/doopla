@@ -169,13 +169,15 @@ export function ProConfiguracoesView({
         </ProAccordion>
 
         <ProAccordion title="Canais da sua Doopla" rightBadge={<span className="text-[12px] text-[var(--pro-tx-50)]">{whatsappSummary}</span>}>
-          <div className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-4">
             <p className="text-[12.5px] text-[var(--pro-tx-50)]">
-              Escolha como colocar sua Doopla em contato com um cliente.
+              Escolha como seus clientes podem chegar até a sua Doopla.
             </p>
             <DooplaWhatsappAndCodeCard whatsappNumber={whatsappNumber} professionalSlug={professionalSlug} />
             <BookingLinkCard orcamentoUrl={orcamentoUrl} />
-            <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappVerifiedNumber} />
+            <div className="border-t border-[var(--pro-line)] pt-4">
+              <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappVerifiedNumber} />
+            </div>
           </div>
         </ProAccordion>
 
@@ -198,27 +200,26 @@ export function ProConfiguracoesView({
         </ProAccordion>
 
         <ProAccordion title="Ajuda e suporte">
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-5">
             <p className="text-[12.5px] text-[var(--pro-tx-50)]">Precisa de ajuda com a Doopla? Estamos aqui para ajudar.</p>
 
             <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">FAQ</p>
+              <p className="font-pro-sub text-[13.5px] font-bold text-[var(--pro-off)]">FAQ</p>
               <Link
                 href="/#faq"
-                className="mt-2 inline-block self-start rounded-full border border-[var(--pro-line)] px-4 py-2 text-[12.5px] font-semibold text-[var(--pro-off)]"
+                className="mt-1.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[var(--pro-off)] hover:text-[var(--pro-tx-50)]"
               >
-                Ver FAQ
+                Ver FAQ <span aria-hidden="true">→</span>
               </Link>
             </div>
 
             <div>
-              <p className="font-pro-sub text-[13.5px] font-bold">Suporte</p>
-              <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">{SUPPORT_EMAIL}</p>
+              <p className="font-pro-sub text-[13.5px] font-bold text-[var(--pro-off)]">Suporte</p>
               <a
                 href={`mailto:${SUPPORT_EMAIL}`}
-                className="mt-2 inline-block self-start rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12.5px] font-semibold text-white"
+                className="mt-1.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[var(--pro-off)] hover:text-[var(--pro-tx-50)]"
               >
-                Enviar e-mail para o suporte
+                Enviar e-mail para o suporte <span aria-hidden="true">→</span>
               </a>
             </div>
           </div>
@@ -240,6 +241,19 @@ function RowList({ children }: { children: ReactNode }) {
   );
 }
 
+// Cabeçalho compartilhado dos 3 itens de "Canais da sua Doopla"
+// (ajuste pontual de UX, 16/09/2026): título em negrito + explicação
+// única na MESMA linha no desktop; quebra natural no mobile quando a
+// largura não comporta as duas (flex-wrap, sem font-size reduzido).
+function ChannelItemHeader({ title, description }: { title: string; description: string }) {
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-1.5">
+      <span className="font-pro-sub text-[13.5px] font-bold text-[var(--pro-off)]">{title}</span>
+      <span className="text-[12px] text-[var(--pro-tx-50)]">{description}</span>
+    </p>
+  );
+}
+
 // "WhatsApp da Doopla" (número oficial, whatsappPublicNumber() —
 // nunca hardcoded, estado honesto "Em configuração" quando a env não
 // está setada) + "Seu código" (profiles.slug, o MESMO identificador
@@ -247,7 +261,9 @@ function RowList({ children }: { children: ReactNode }) {
 // nenhum identificador novo). O código não depende do número estar
 // configurado: é um dado próprio e estável do profissional, sempre
 // disponível assim que existe (ensurePublicId garante isso desde a
-// primeira visita ao painel).
+// primeira visita ao painel). Copy simplificada (16/09/2026): cada
+// item com uma única explicação, nunca duas perguntas/frases
+// empilhadas.
 function DooplaWhatsappAndCodeCard({
   whatsappNumber,
   professionalSlug,
@@ -256,26 +272,29 @@ function DooplaWhatsappAndCodeCard({
   professionalSlug: string | null;
 }) {
   return (
-    <div>
-      <p className="font-pro-sub text-[13.5px] font-bold">WhatsApp da Doopla</p>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
-        {whatsappNumber ? (
-          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{whatsappNumber}</span>
-        ) : (
-          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
-        )}
-        {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Copiar número" />}
+    <div className="flex flex-col gap-4">
+      <div>
+        <ChannelItemHeader title="WhatsApp da Doopla" description="Passe este número para o cliente." />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+          {whatsappNumber ? (
+            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{whatsappNumber}</span>
+          ) : (
+            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
+          )}
+          {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Copiar número" />}
+        </div>
       </div>
 
       {professionalSlug && (
-        <div className="mt-3">
-          <p className="text-[12.5px] text-[var(--pro-tx-50)]">Vai passar este número para um cliente?</p>
-          <p className="mt-1 text-[12.5px] font-semibold text-[var(--pro-off)]">Envie também seu código:</p>
+        <div>
+          <ChannelItemHeader
+            title="Seu código"
+            description="Envie este código sempre que compartilhar o WhatsApp da Doopla. É assim que ela sabe que é você."
+          />
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
             <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{professionalSlug}</span>
             <ProCopyButton value={professionalSlug} label="Copiar código" />
           </div>
-          <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Assim sua Doopla sabe que o cliente veio falar com você.</p>
         </div>
       )}
     </div>
@@ -289,10 +308,7 @@ function BookingLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
   if (!orcamentoUrl) return null;
   return (
     <div>
-      <p className="font-pro-sub text-[13.5px] font-bold">Seu link de booking</p>
-      <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
-        Compartilhe este link e o cliente já começa o pedido conectado a você.
-      </p>
+      <ChannelItemHeader title="Seu link de booking" description="Compartilhe este link nas suas redes sociais ou envie para o cliente." />
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
         <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{orcamentoUrl}</span>
         <ProCopyButton value={orcamentoUrl} label="Copiar link" />

@@ -208,15 +208,14 @@ export default function ConfiguracoesScreen() {
           <Text style={styles.sheetTitle}>Ajuda e suporte</Text>
           <Text style={styles.sheetSubtext}>Precisa de ajuda com a Doopla? Estamos aqui para ajudar.</Text>
 
-          <Text style={[styles.label, { marginTop: 20 }]}>FAQ</Text>
-          <Pressable style={styles.ghostBtn} onPress={() => Linking.openURL(`${apiBaseUrl()}/#faq`)}>
-            <Text style={styles.ghostBtnText}>Ver FAQ</Text>
+          <Text style={[styles.label, { marginTop: 24 }]}>FAQ</Text>
+          <Pressable onPress={() => Linking.openURL(`${apiBaseUrl()}/#faq`)} hitSlop={6}>
+            <Text style={styles.helpLinkText}>Ver FAQ →</Text>
           </Pressable>
 
-          <Text style={[styles.label, { marginTop: 20 }]}>Suporte</Text>
-          <Text style={styles.sheetText}>{SUPPORT_EMAIL}</Text>
-          <Pressable style={[styles.submit, { marginTop: 10 }]} onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
-            <Text style={styles.submitText}>Enviar e-mail para o suporte</Text>
+          <Text style={[styles.label, { marginTop: 24 }]}>Suporte</Text>
+          <Pressable onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} hitSlop={6}>
+            <Text style={styles.helpLinkText}>Enviar e-mail para o suporte →</Text>
           </Pressable>
 
           <Text style={[styles.aiDisclaimer, { marginTop: 20 }]}>
@@ -325,7 +324,9 @@ function DooplaWhatsappAndCodeSheet({ professionalSlug }: { professionalSlug: st
 
   return (
     <View>
-      <Text style={styles.sheetTitle}>WhatsApp da Doopla</Text>
+      <Text style={styles.sheetTitle}>
+        WhatsApp da Doopla <Text style={styles.sheetTitleDesc}>Passe este número para o cliente.</Text>
+      </Text>
 
       <View style={styles.linkBox}>
         <Text style={styles.linkText}>{whatsappNumber ?? 'Em configuração'}</Text>
@@ -338,8 +339,12 @@ function DooplaWhatsappAndCodeSheet({ professionalSlug }: { professionalSlug: st
         </View>
       )}
 
-      <Text style={[styles.sheetSubtext, { marginTop: 20 }]}>Vai passar este número para um cliente?</Text>
-      <Text style={styles.label}>Envie também seu código:</Text>
+      <Text style={[styles.sheetTitle, { marginTop: 20 }]}>
+        Seu código{' '}
+        <Text style={styles.sheetTitleDesc}>
+          Envie este código sempre que compartilhar o WhatsApp da Doopla. É assim que ela sabe que é você.
+        </Text>
+      </Text>
       <View style={styles.linkBox}>
         <Text style={styles.linkText}>{professionalSlug}</Text>
       </View>
@@ -348,7 +353,6 @@ function DooplaWhatsappAndCodeSheet({ professionalSlug }: { professionalSlug: st
           <Text style={styles.ghostBtnText}>{copiedCode ? 'Copiado!' : 'Copiar código'}</Text>
         </Pressable>
       </View>
-      <Text style={styles.sheetSubtext}>Assim sua Doopla sabe que o cliente veio falar com você.</Text>
     </View>
   );
 }
@@ -550,8 +554,10 @@ function BookingLinkSheet({ slug }: { slug: string }) {
 
   return (
     <View>
-      <Text style={styles.sheetTitle}>Seu link de booking</Text>
-      <Text style={styles.sheetSubtext}>Compartilhe este link e o cliente já começa o pedido conectado a você.</Text>
+      <Text style={styles.sheetTitle}>
+        Seu link de booking{' '}
+        <Text style={styles.sheetTitleDesc}>Compartilhe este link nas suas redes sociais ou envie para o cliente.</Text>
+      </Text>
 
       <View style={styles.linkBox}>
         <Text style={styles.linkText}>{orcamentoUrl}</Text>
@@ -803,11 +809,19 @@ const styles = StyleSheet.create({
   signOutBtn: { marginTop: 24, borderWidth: 1, borderColor: 'rgba(226,41,28,.4)', borderRadius: 999, paddingVertical: 12, alignItems: 'center' },
   signOutText: { color: '#ff8b80', fontFamily: fonts.subBold, fontSize: 13 },
   sheetTitle: { color: colors.off, fontFamily: fonts.subBold, fontSize: 15, marginBottom: 12 },
+  // Ajuste pontual de UX (16/09/2026): explicação única inline junto do
+  // título (Text aninhado, quebra natural no RN quando não cabe), mesmo
+  // padrão do Web (título em negrito + explicação na mesma linha).
+  sheetTitleDesc: { color: colors.tx50, fontFamily: fonts.body, fontSize: 12.5 },
   sheetText: { color: colors.off, fontFamily: fonts.body, fontSize: 13 },
   sheetSubtext: { color: colors.tx50, fontFamily: fonts.body, fontSize: 11.5, marginTop: 6 },
   gapNote: { color: colors.tx30, fontFamily: fonts.body, fontSize: 10.5, lineHeight: 15, marginTop: 12 },
   aiDisclaimer: { color: colors.tx70, fontFamily: fonts.body, fontSize: 12.5, lineHeight: 19 },
   label: { color: colors.tx50, fontFamily: fonts.body, fontSize: 11, marginBottom: 6, marginTop: 10 },
+  // Ajuste pontual de UX (16/09/2026) — "Ver FAQ"/"Enviar e-mail para o
+  // suporte" como ação de texto simples, mesmo padrão visual pros dois
+  // (nunca um botão/pill/card), espelhando a simplificação do Web.
+  helpLinkText: { color: colors.off, fontFamily: fonts.subBold, fontSize: 13 },
   input: {
     backgroundColor: 'rgba(255,255,255,.05)',
     borderWidth: 1,
