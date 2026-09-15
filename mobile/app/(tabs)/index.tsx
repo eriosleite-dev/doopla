@@ -201,17 +201,21 @@ export default function HomeScreen() {
               <Text style={styles.emptyText}>Tudo certo por aqui.</Text>
             ) : (
               <>
+                {/* Simplificação de UI (14/09/2026, paridade com o
+                   painel Web) — 1 linha clicável por pendência em vez
+                   de um bloco de 3 linhas + pill própria. Mesma
+                   contagem/estado/lógica, só a apresentação mudou. */}
                 {bookingsNeedingResponse.map((b, i) => (
                   <Pressable
                     key={b.id}
-                    style={[styles.bookingAttentionCard, i > 0 && styles.bookingAttentionCardBordered]}
+                    style={[styles.bookingAttentionRow, i > 0 && styles.bookingAttentionCardBordered]}
                     onPress={() => router.push(`/(tabs)/bookings/${b.id}`)}
                   >
-                    <Text style={styles.bookingAttentionName}>{b.otherPartyName}</Text>
-                    <Text style={styles.bookingAttentionNote}>Proposta de booking aguardando sua resposta.</Text>
-                    <View style={styles.bookingAttentionPill}>
-                      <StatusPill label={STATUS_LABELS[b.status]} tone={bookingStatusTone(b, professionalId ?? '')} />
-                    </View>
+                    <Text style={styles.bookingAttentionLine} numberOfLines={1}>
+                      <Text style={styles.bookingAttentionName}>{b.otherPartyName}</Text>
+                      {' — Proposta de booking aguardando sua resposta.'}
+                    </Text>
+                    <StatusPill label={STATUS_LABELS[b.status]} tone={bookingStatusTone(b, professionalId ?? '')} />
                   </Pressable>
                 ))}
                 {decisions.map((d, i) => {
@@ -337,27 +341,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     paddingVertical: 6,
   },
-  bookingAttentionCard: {
-    paddingVertical: 12,
+  bookingAttentionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 10,
   },
   bookingAttentionCardBordered: {
     borderTopWidth: 1,
     borderTopColor: colors.line,
   },
+  bookingAttentionLine: {
+    flex: 1,
+    color: colors.tx70,
+    fontFamily: fonts.body,
+    fontSize: 12.5,
+  },
   bookingAttentionName: {
     color: colors.off,
     fontFamily: fonts.subBold,
-    fontSize: 13.5,
-    marginBottom: 3,
-  },
-  bookingAttentionNote: {
-    color: colors.tx50,
-    fontFamily: fonts.body,
-    fontSize: 11.5,
-    lineHeight: 16,
-  },
-  bookingAttentionPill: {
-    marginTop: 8,
-    alignItems: 'flex-start',
+    fontSize: 13,
   },
 });

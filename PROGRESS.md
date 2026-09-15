@@ -1207,6 +1207,50 @@ backend real**.
   **Booker intocado**: `getOpportunitiesBadgeCount`/branch booker de
   `/dashboard/oportunidades`/`DiscoverWorkDeck` — nenhuma linha
   alterada. `tsc --noEmit` e `eslint` limpos (repo inteiro).
+
+### Achados do QA Web — rodada seguinte (14-15/09/2026)
+
+- ✅ **CORRIGIDO — "Precisa de você" com "card dentro de card"**. Achado
+  da fundadora: o grid de caixas (pedidos + bookings aguardando
+  resposta) ocupava espaço demais. Substituído por lista fluida — 1
+  linha clicável por pendência (`nome — descrição curta` + pill de
+  status), com divisor fino entre linhas, sem caixa própria por item.
+  Mesma contagem/estado/lógica de antes (`attentionCount`,
+  `pedidosRecebidosAbertos`, `bookingsNeedingResponse`) — só a
+  apresentação mudou, como pedido. `needsYouDecisions` (cards de
+  Decisões) não foi tocado — formato/conteúdo diferente (preview de
+  rascunho da IA + botão "Ver conversa"), fora do exemplo dado.
+  **App**: `mobile/app/(tabs)/index.tsx` já usava divisores finos (não
+  caixas cheias) pra "Precisa de você", mas ainda em 3 linhas por item
+  — comprimido pra 1 linha, mesmo padrão do Web. Não adicionei
+  "pedidos recebidos" à Home do App nesta rodada (gap à parte, não
+  pedido agora — só ajustei a densidade do que já existia lá).
+  `tsc --noEmit` limpo em Web e App.
+
+- 🔍 **AUDITORIA (sem implementação) — superfície legada em "Pedidos" →
+  detalhe** (14-15/09/2026). Ver diagnóstico completo na resposta ao
+  vivo — resumo: `/dashboard/oportunidades/[id]/page.tsx` mistura
+  conteúdo atual (descrição do pedido, cliente, cachê/comissão) com
+  conteúdo do modelo antigo de marketplace ("Oportunidade publicada",
+  "Buscar ajuda de um booker" → link já quebrado
+  `/dashboard/bookers#descubra`, seção "Bookers interessados"). Achado
+  técnico: pra pedidos `source='artist_link'`,
+  `distribution_mode='meus_bookers'` sempre (hardcoded na RPC
+  `submit_orcamento_request`) — "Bookers interessados" nunca renderiza
+  nesse fluxo (`canReceiveInterest` é sempre falso), só é alcançável
+  puramente pelo lado antigo de oportunidade publicada em mural. Zona
+  cinzenta sinalizada, não decidida: "Bookers convidados" + convidar um
+  booker que já representa o artista — pode ser delegação legítima
+  (mesmo padrão de "Minha equipe", já preservado) ou pode continuar
+  parecendo matching pra fundadora; ela decide.
+  Proposta (não implementada): reusar o padrão canônico já existente
+  em Bookings — `ProSearchFilter` (busca + filtros + itens
+  compactos) pra lista "Pedidos", e o padrão de
+  `ProBookingDetailView` (`ProPageHeader` + poucos `ProCard`
+  objetivos) pro detalhe — nenhuma arquitetura nova, só reaproveitar o
+  que Bookings já faz certo. Aguardando decisão da fundadora sobre o
+  destino exato antes de qualquer código.
+
 - ⏳ Decisões / "Precisa de você"
 - ⏳ Aprovação/rejeição com sessão autenticada (onde automatizável)
 - ⏳ Persistência e isolamento cross-tenant

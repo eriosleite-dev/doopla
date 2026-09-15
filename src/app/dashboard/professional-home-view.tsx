@@ -171,38 +171,40 @@ export async function ProfessionalHomeView({
               </p>
             ) : (
               <>
-                {pedidosRecebidosAbertos.length > 0 && (
-                  <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {(pedidosRecebidosAbertos.length > 0 || bookingsNeedingResponse.length > 0) && (
+                  // Simplificação de UI (14/09/2026, achado da fundadora
+                  // no QA): "card dentro de card" ocupava espaço demais —
+                  // vira 1 linha clicável por pendência (nome/cliente —
+                  // descrição curta, badge de status), nunca mais um
+                  // grid de caixas. Mesma contagem/estado/lógica de
+                  // antes, só a apresentação mudou.
+                  <div className="mb-3 divide-y divide-[var(--pro-line)] border-b border-[var(--pro-line)]">
                     {pedidosRecebidosAbertos.map((o) => (
                       <Link
                         key={o.id}
                         href={`/dashboard/oportunidades/${o.id}`}
-                        className="block rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4"
+                        className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
                       >
-                        <p className="font-pro-sub text-[14.5px] font-bold">{o.client_name || 'Novo pedido'}</p>
-                        <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
-                          Pedido novo pelo seu link de booking.
+                        <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
+                          <span className="font-pro-sub font-bold">{o.client_name || 'Novo pedido'}</span> — Pedido novo
+                          pelo seu link de booking.
                         </p>
-                        <span className="mt-3 inline-block rounded-full border border-[var(--pro-line)] px-2.5 py-1 text-[11px] font-semibold text-[var(--pro-off)]">
+                        <span className="flex-none rounded-full border border-[var(--pro-line)] px-2.5 py-1 text-[11px] font-semibold text-[var(--pro-off)]">
                           Aberta
                         </span>
                       </Link>
                     ))}
-                  </div>
-                )}
-                {bookingsNeedingResponse.length > 0 && (
-                  <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {bookingsNeedingResponse.map((b) => (
                       <Link
                         key={b.id}
                         href={`/dashboard/bookings/${b.id}`}
-                        className="block rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4"
+                        className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
                       >
-                        <p className="font-pro-sub text-[14.5px] font-bold">{b.otherPartyName}</p>
-                        <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
-                          Proposta de booking aguardando sua resposta.
+                        <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
+                          <span className="font-pro-sub font-bold">{b.otherPartyName}</span> — Proposta de booking
+                          aguardando sua resposta.
                         </p>
-                        <span className={`mt-3 inline-block ${proStatusPillClass(bookingStatusTone(b, userId))}`}>
+                        <span className={`flex-none ${proStatusPillClass(bookingStatusTone(b, userId))}`}>
                           {STATUS_LABELS[b.status]}
                         </span>
                       </Link>
