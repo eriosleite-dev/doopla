@@ -13946,6 +13946,38 @@ desktop completa (8 capturas) e Home mobile completa (12 capturas).
 integração. **Pacote ainda não fechado** — aguardando novo QA visual
 da fundadora.
 
+## 111. Correção da correção — intercalar cor dos balões, cinza sem verde, profissões — `[AGUARDANDO QA VISUAL]` — 15/09/2026
+
+Fetch de concorrência refeito: Professional em `b426503`, mesmo do
+bloco anterior, zero overlap com `_home/`.
+
+- **Balões**: o padrão vermelho→5 escuros em bloco→vermelho (§110)
+  ficou pesado no centro e lido como bloco separado. Corrigido pra
+  intercalar a cada balão: 1/3/5/7 vermelhos, 2/4/6 cinza
+  (`.bubble.out`/`.bubble.neutral` alternados na marcação).
+- **Cor do cinza**: `.bubble.neutral` estava reaproveitando o mesmo
+  `#1c211d` de `.bubble.in`, que tem viés esverdeado real (G>R,B) —
+  sinalizado explicitamente como indesejado. Agora tem cor própria,
+  `#1d1c1c`, cinza neutro sem verde. `.bubble.in` não foi tocado (usado
+  em outro lugar, fora do pedido).
+- **Profissões**: Encanadores + Pedreiros → Serviços gerais (1 item no
+  lugar de 2, ícone de caixa de ferramentas). Lista final: DJs,
+  Fotógrafos, Beauty, Músicos, Professores, Eletricistas, Serviços
+  gerais, Freelancers, e muito mais (9 itens). Espaçamento
+  (`gap:36px`, flex-wrap) já ficou equilibrado com 9 itens, confirmado
+  no render — nenhum ajuste de CSS extra precisou ser feito.
+
+Nada mais tocado: copy dos balões preservada, tamanho/posição/
+alinhamento preservados, resto da Home intocado, `home.js` continua
+com zero diff desde `b0db655`.
+
+**Arquivos alterados**: `home.css`, `home.html`.
+
+**Validado**: `tsc --noEmit` limpo, lint sem novos erros em `_home/`.
+
+**Status**: commitado (`4419d4e`), branch isolado, sem push, sem
+integração. **Pacote ainda não fechado** — aguardando QA visual.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
