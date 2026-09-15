@@ -13978,6 +13978,39 @@ com zero diff desde `b0db655`.
 **Status**: commitado (`4419d4e`), branch isolado, sem push, sem
 integração. **Pacote ainda não fechado** — aguardando QA visual.
 
+## 112. Pacote de reposicionamento de comunicação da Home — FECHADO — `[DELIVERED + VISUAL QA APPROVED]` — 15/09/2026
+
+Fundadora aprovou o QA visual da rodada §111. Pacote de reposicionamento
+("uma nova forma de agenciamento", §109-111) **fechado oficialmente**.
+
+**Aprovado nesta rodada**: nova comunicação de agenciamento; Hero;
+iPhone e copy das capacidades; balões intercalados vermelho/cinza;
+"SUA DOOPLA TRABALHANDO POR VOCÊ."; faixa de profissionais com
+"Serviços gerais"; as 3 seções novas ("Cliente chamou? Manda pra
+Doopla.", "Sua Doopla também encontra trabalho para você.",
+"Por que a Doopla existe"); correção responsiva do mascote mobile;
+Home desktop completa; Home mobile completa; ordem atual das 11
+seções (8 aprovadas + 3 novas, nenhuma reordenada).
+
+**Explicitamente fora desta aprovação**: Planos Básico x Pro seguem
+como **PENDÊNCIA DE PRODUTO separada** — só o título ("Escolha sua
+Doopla.") foi alterado; os benefícios/limites/preço atuais **não**
+foram revisados nem aprovados por este QA, ficam para uma rodada
+própria quando a visão universal do agenciamento for decidida.
+
+Resumo do que os dois pacotes (visual §106-108 + comunicação §109-112)
+deixam na Home, juntos: identidade visual (olhos/mascotes/grid/cores)
+100% preservada do redesign original; copy e composição atualizadas
+pra "agenciamento" em vez de "IA de representação"; 3 seções novas;
+`home.js` nunca tocado em nenhuma das duas rodadas.
+
+**Branch**: `claude/home-pacote-7-ajustes-ui-4tq8lz`, isolado,
+preservado. **HEAD**: `51f60cf`. Working tree limpo. **Sem push, sem
+merge/rebase/cherry-pick, sem integração com a linha canônica** —
+segue aguardando o checkpoint de integração combinado no início desta
+sessão (reconciliar contra o HEAD canônico mais recente daquele
+momento, preservando o trabalho das outras sessões).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
