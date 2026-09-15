@@ -53,8 +53,11 @@ tratada, mas qualquer erro de rede/RPC nesse bloco).
   racional já documentado em 0039), único caminho de escrita é
   `submit_contact_message` (security definer), rate limit (3 msgs/e-mail/
   10 min) funciona antes do insert, e nada disso depende do Resend.
-  ⏳ **Aguardando você rodar a migration no SQL Editor do Supabase** —
-  conteúdo completo entregue na conversa, pronto pra copiar/colar.
+  ✅ **Migration aplicada pelo usuário nos dois ambientes**: primeiro em
+  `doopla-qa-staging`, depois em `doopla` (produção) — mesmo SQL nos
+  dois, sem alteração entre um e outro. Falta só o teste de ponta a
+  ponta no site de produção (preencher `/contato` e conferir a linha em
+  `contact_messages` no Supabase Studio) pra fechar de vez.
 - 🔒 **Resend: integração preparada, configuração externa e notificação
   automática PENDENTES.** `RESEND_API_KEY` não configurada.
   Domínio/DNS de `doopla.pro` no Resend não configurado. Enquanto isso
