@@ -54,6 +54,17 @@ async function requireArtist() {
 // no redesign de 15/09/2026) — esta action simplesmente para de
 // escrever nela; nunca sobrescreve pra null um valor que já tenha sido
 // preenchido depois, no perfil.
+//
+// Mesmo tratamento agora pra "Como sua Doopla fala com você?" (15/09/2026,
+// achado da fundadora): a etapa de canal (WhatsApp/Painel/Ambos,
+// attention_channel) saiu do onboarding — auditoria confirmou zero
+// consumidor operacional real (nenhum código de notificação/WhatsApp
+// lia essa coluna, só existia como UI). Esta action para de exigir e
+// de escrever `channel`/`attention_channel`; coluna preservada,
+// nenhum dado histórico alterado. O resume-check de
+// /cadastro/preparar/page.tsx não depende mais disso (ver comentário
+// lá — passou a usar stage_name/category/local/bio, os outros 4 campos
+// que este mesmo UPDATE sempre grava juntos).
 export async function savePrepareAction(
   _prevState: OnboardingFormState,
   formData: FormData
@@ -67,15 +78,11 @@ export async function savePrepareAction(
   const link = String(formData.get('link') ?? '').trim();
 
   const negotiationNotes = String(formData.get('negotiationNotes') ?? '').trim();
-  const channel = String(formData.get('channel') ?? '');
 
   if (!stageName || !profession || !local || !bio) {
     return {
       error: 'Preencha nome profissional, o que você faz, cidade-base e conte sobre seu trabalho.',
     };
-  }
-  if (channel !== 'whatsapp' && channel !== 'painel' && channel !== 'ambos') {
-    return { error: 'Escolha como sua Doopla deve falar com você.' };
   }
 
   const { error } = await supabase
@@ -87,7 +94,6 @@ export async function savePrepareAction(
       bio,
       other_links: link || null,
       negotiation_notes: negotiationNotes || null,
-      attention_channel: channel as 'whatsapp' | 'painel' | 'ambos',
     })
     .eq('profile_id', user.id);
 

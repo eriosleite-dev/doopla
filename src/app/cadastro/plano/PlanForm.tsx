@@ -35,7 +35,7 @@ export function PlanForm({
     <form action={formAction}>
       {modalMode && <input type="hidden" name="modalMode" value="1" />}
       <OnboardingShell
-        step={6}
+        step={5}
         boxed={boxed}
         footer={
           <button type="submit" className="btn-primary" disabled={pending}>
@@ -44,7 +44,7 @@ export function PlanForm({
         }
       >
         <div className="ob-step">
-          <div className="eyebrow">Etapa 6 de 6</div>
+          <div className="eyebrow">Etapa 5 de 5</div>
           <h1 className="headline">Escolha como quer começar.</h1>
           <p className="sub">{TRIAL_DAYS} dias grátis em qualquer plano, sem pedir cartão agora.</p>
 

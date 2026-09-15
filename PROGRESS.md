@@ -14600,6 +14600,127 @@ Ajuda, Decisões, Home, Booker, Approval Engine,
 `requires_professional_review`, `intervention`.
 
 
+### "Sua Doopla" — desacoplamento completo de `attention_channel` (Configurações + onboarding) — `[DELIVERED]` — 15/09/2026
+
+Protocolo de concorrência checado antes de editar (`git fetch`): mesmo
+tip já conhecido (`b426503`, só `docs:`), zero diff nos arquivos
+tocados desde `ff77afc`. Sem conflito.
+
+#### Resume check (`/cadastro/preparar/page.tsx`)
+
+Condição trocada exatamente conforme aprovado:
+```
+// de: stage_name && category && bio && attention_channel
+// para: stage_name && category && local && bio
+```
+Comentário reescrito explicando a condição real atual (os 4 campos que
+`savePrepareAction` sempre grava juntos, no mesmo UPDATE atômico —
+`local` é o mais robusto dos 4, nenhuma outra tela do sistema escreve
+nele). Nenhum campo novo, nenhuma migration.
+
+#### Remoção da etapa de canal do onboarding
+
+`PrepareForm.tsx`: removida a Etapa 4 inteira (WhatsApp/Painel/Ambos —
+UI, estado `channel`, hidden input, gate de `canAdvance`).
+`SUBSTEPS` 4→3. Renumeração em cascata pra não deixar etapa vazia/
+salto: "Etapa 2 de 6"/"Etapa 3 de 6" → "de 5" (mesmo conteúdo,
+inalterado); Conclusão vira "Etapa 4 de 5" (era "Etapa 5 de 6").
+`OnboardingShell.tsx`: `totalSteps` default 6→5 (único lugar que
+precisava mudar — os 3 callers usam o default, nenhum passa
+explícito). `CreateAccountForm.tsx`: "Etapa 1 de 6"→"de 5".
+`plano/PlanForm.tsx`: `step={6}`→`step={5}`, "Etapa 6 de 6"→"Etapa 5
+de 5". `plano/page.tsx`: comentário desatualizado ("Etapa 7, última do
+funil", já inconsistente com o "de 6" renderizado antes desta rodada)
+corrigido pra "Etapa 5".
+
+`cadastro/actions.ts` (`savePrepareAction`): para de ler/validar/
+escrever `channel`/`attention_channel`. Omitido do payload do UPDATE
+— mesmo padrão de sempre pra campo retirado, nunca sobrescreve dado
+histórico pra null.
+
+#### Achado durante a implementação — dependência em `src/app/_home/**`
+
+`CreateAccountModal.tsx` (Home pública, funil no modal) reaproveita o
+MESMO `PrepareForm` e passava `initialChannel={null}`. Removendo essa
+prop da assinatura do componente, esse arquivo pararia de compilar —
+mas `src/app/_home/**` é propriedade da Sessão Home, fora de escopo
+pra eu editar. Resolvido sem tocar no arquivo: `initialChannel` continua
+aceito no tipo de `PrepareForm`, como prop **opcional e sem uso**
+(documentado no código, com nota pra remover quando o call site do
+modal for atualizado por quem é dono dele). Nenhuma funcionalidade
+perdida — o modal da Home continua funcionando exatamente igual, só
+não lê mais essa prop internamente. Registrado aqui em vez de resolvido
+silenciosamente, conforme o protocolo combinado.
+
+#### Infra preservada, nada apagado
+
+Coluna `artist_profiles.attention_channel` (schema/dados intactos),
+`updateAttentionChannelAction`, `AttentionChannelForm` — já
+desconectados de Configurações na rodada anterior, continuam assim.
+Nenhuma migration criada ou alterada nesta rodada.
+
+#### `negotiation_notes`
+
+Intocado. Continua `ACTIVE CONTEXT / PRODUCT COPY DEBT` (registrado na
+rodada anterior). Onboarding, armazenamento, Business Context e
+consumo pelo LLM inalterados.
+
+#### Testes/validação
+
+- `tsc --noEmit`, `eslint` (7 arquivos alterados), `npm run build`:
+  todos limpos.
+- **Sem Supabase real neste ambiente** (mesma limitação já documentada
+  em rodadas anteriores) — validação dos 5 cenários pedidos feita por
+  combinação de leitura de código + render visual real do carrossel
+  (rota de preview temporária, `/dev/preview-onboarding`, sem auth/DB,
+  removida depois, nunca commitada):
+  - **A (novo usuário)**: renderizado e navegado de ponta a ponta —
+    nenhuma etapa de canal aparece; "Etapa 2 de 5" → preenchendo os
+    campos obrigatórios → "Continuar" habilita → "Etapa 3 de 5" (Como
+    você trabalha) → "Etapa 4 de 5" (Conclusão, botão "Continuar para
+    os planos"). Barra de progresso com 5 segmentos, preenchendo
+    corretamente a cada etapa. Screenshots confirmam visualmente.
+  - **B (retomada)**: por leitura de código — `savePrepareAction`
+    grava `stage_name`/`category`/`local`/`bio` sempre juntos, num
+    UPDATE atômico só; a nova condição de resume-check usa exatamente
+    esses 4, então qualquer usuário que já completou o carrossel tem
+    a condição `true` independente de `attention_channel` (que nem é
+    mais escrito). Não executável contra Postgres real neste ambiente.
+  - **C (onboarding não concluído)**: por leitura de código — sem os 4
+    campos preenchidos juntos, a condição continua `false`, comportamento
+    idêntico ao de antes.
+  - **D (usuário existente)**: nenhum UPDATE/migration toca
+    `attention_channel` nesta entrega — dado histórico inalterado por
+    construção (nenhuma linha de código grava nele mais).
+  - **E (plano)**: `savePlanAction`/`select_artist_plan` inalterados,
+    zero linha tocada.
+
+#### Dívida pré-existente registrada, não resolvida (por instrução)
+
+O resume-check de `/cadastro/preparar` continua derivado de campos de
+perfil (`stage_name`/`category`/`local`/`bio`), não de um estado
+explícito de onboarding. Como `stage_name`/`category`/`bio` podem ser
+limpos depois em "Perfil e trabalho" (Settings V2), existe um edge
+case de baixa probabilidade em que um usuário já onboardado, voltando
+manualmente a `/cadastro/preparar` depois de ter limpado esses campos,
+veria o formulário de novo em vez de pular pro plano. Risco já existia
+antes desta rodada com 3 dos 4 campos anteriores — não criado agora,
+não piorado, não resolvido. Não criar `onboarding_completed` só por
+causa disso, por instrução explícita.
+
+#### Escopo confirmado intocado
+
+Perfil e trabalho, Configurações (além da remoção já aprovada de "Sua
+Doopla"), `negotiation_notes`, Canais, Privacidade, Financeiro, Ajuda,
+Decisões, Home (`src/app/_home/**` e `src/app/page.tsx` não editados —
+dependência resolvida sem tocar neles, ver seção acima), Booker,
+Approval Engine, `intervention`, `requires_professional_review`.
+
+**Status final: "Sua Doopla" = `DELIVERED`. Remoção de
+`attention_channel` da experiência (Configurações + onboarding) =
+`DELIVERED`.**
+
+
 
 ## Como usar isso
 

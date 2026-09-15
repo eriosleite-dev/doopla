@@ -36,9 +36,18 @@ export default async function PrepararPage() {
 
   // Já preencheu essa etapa antes (retomando um onboarding iniciado) —
   // segue direto pra escolha de plano em vez de pedir tudo de novo.
-  // attention_channel só existe depois do submit final do carrossel
-  // (etapa Conclusão), então é o sinal mais confiável de "já terminou".
-  if (artistProfile.stage_name && artistProfile.category && artistProfile.bio && artistProfile.attention_channel) {
+  // Correção 15/09/2026 (achado da fundadora): a pergunta de canal
+  // (WhatsApp/Painel/Ambos, attention_channel) saiu do onboarding —
+  // nunca representou uma escolha operacional real (auditoria: zero
+  // consumidor no pipeline de notificação/WhatsApp). O sinal de "já
+  // terminou" passa a ser exatamente os OUTROS 4 campos que
+  // savePrepareAction sempre exige e grava juntos, no mesmo UPDATE
+  // atômico, no fim do carrossel — stage_name/category/local/bio.
+  // `local` é o mais robusto dos 4 (nenhuma outra tela do sistema
+  // escreve nele, diferente de stage_name/category/bio, editáveis
+  // depois em "Perfil e trabalho") — não é um campo novo nem uma
+  // heurística nova, é o restante do mesmo grupo já obrigatório.
+  if (artistProfile.stage_name && artistProfile.category && artistProfile.local && artistProfile.bio) {
     redirect('/cadastro/plano');
   }
 
@@ -50,7 +59,6 @@ export default async function PrepararPage() {
       initialBio={artistProfile.bio ?? ''}
       initialLink={artistProfile.other_links ?? ''}
       initialNegotiationNotes={artistProfile.negotiation_notes ?? ''}
-      initialChannel={artistProfile.attention_channel}
     />
   );
 }
