@@ -13637,6 +13637,151 @@ devem ser adicionados aqui, nunca substituir esta lista.
 |---|---|---|---|---|
 | 1 | `artist_link_routing`: policy de RLS do INSERT não valida `representations` (só a de UPDATE valida) — booker que não representa o artista pode ser gravado na primeira escrita, se alguém bypassar o Next.js com uma sessão `authenticated` válida. Blindado hoje pela aplicação (`updateLinkRoutingAction`), não explorável pelo fluxo real. | `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE` | Categoria A, §104 | **OPEN** |
 
+## 106. Pacote "10 melhorias Professional UX" — sessão isolada `claude/professional-ux-improvements` — roadmap consolidado — `[REGISTRADO / NÃO IMPLEMENTADO]` — 15/09/2026
+
+### Contexto — 3 sessões em paralelo
+
+Nesta etapa existem 3 sessões Claude Code trabalhando ao mesmo tempo na
+mesma árvore de origem (`categoria-b-supabase-env-qsbdq9`):
+
+- **Sessão Principal**: Professional / QA / E2E / backend, trabalhando
+  diretamente em `categoria-b-supabase-env-qsbdq9` (a mesma linha dos
+  blocos 101-105 acima).
+- **Sessão Home**: focada especificamente na Home. Não deve ser
+  interferida por esta sessão.
+- **Esta sessão**: isolada num worktree e branch próprios, responsável
+  exclusivamente pelo pacote das 10 melhorias abaixo.
+
+### Ambiente isolado desta sessão
+
+- Worktree: `/home/user/doopla-professional-ux` (separado do worktree
+  principal em `/home/user/doopla`).
+- Branch: `claude/professional-ux-improvements` (novo, local, ainda sem
+  push).
+- Base: `ff77afc` ("feat: Item 1 aprovado — pedido do link cria
+  conversation vinculada"), HEAD de `origin/claude/categoria-b-supabase-env-qsbdq9`
+  no momento em que este pacote foi iniciado.
+- Confirmado presente no worktree: `src/app/dashboard/decisoes/`,
+  `src/app/dashboard/conversas/`, `src/app/dashboard/comunidade/`,
+  `src/app/dashboard/perfil/notificacoes/`,
+  `src/app/dashboard/perfil/privacidade/comunidade/`,
+  `src/app/dashboard/work-items.ts`, `src/app/dashboard/doopla-intervention.ts`,
+  `src/lib/professional-doopla-cta.ts` + `mobile/src/lib/professional-doopla-cta.ts`,
+  árvore `mobile/` completa, migrations até `0082_public_link_conversation.sql`.
+- Isolamento: nenhum reset/merge/rebase/cherry-pick/checkout destrutivo
+  foi feito em `claude/nice-wright-g6ryer` (worktree principal desta
+  sessão antes da troca) nem em `categoria-b-supabase-env-qsbdq9`. Todo
+  commit deste pacote vai exclusivamente para
+  `claude/professional-ux-improvements`, sem push para as outras duas
+  linhas.
+
+### Fonte de verdade
+
+Os 10 itens abaixo vêm literalmente dos prompts reais enviados nesta
+sessão (não reconstruídos de memória, não resumidos a ponto de perder
+regra/copy/checkpoint). Cada um preserva: objetivo, superfície, regras
+de auditoria obrigatória, copies já aprovadas, e o que foi
+explicitamente proibido de fazer.
+
+### Tabela consolidada
+
+| # | Item | Superfície | Audit? | Web | App | Dependências | Status |
+|---|---|---|---|---|---|---|---|
+| 1 | Remover Decisões como área/navegação independente | Nav + Home + Bookings + detalhe do booking | **Sim** (obrigatório, reportar antes de remover) | Sim | A confirmar | Depende de #2 (CTA no detalhe do booking) e #7 (regra "Painel sempre reflete") pra ser seguro | PENDING |
+| 2 | Ajustes no detalhe do booking (voltar, badge, estado inicial, regra global sem travessão) | Detalhe do booking (`ProBookingDetailView` ou equivalente) | Parcial (audit de ocorrências de travessão) | Sim | A confirmar (mesma tela?) | Reusa `buildTalkToYourDooplaUrl` | PENDING |
+| 3 | Bug: "Contexto profissional · 1/4" não desaparece da Home após completar | Home ("Deixe sua Doopla pronta") + Perfil/Configurações | **Sim** (reportar fonte de verdade do 1/4 antes de corrigir) | Sim | Sim (fonte compartilhada) | Toca Home — ver conflito §Home abaixo. Acoplado a #4 e #6 | AUDIT |
+| 4 | Alinhar os 4 critérios de completude aos campos canônicos atuais (remover legado: what_you_do/where_you_serve antigos etc.) | Mesma superfície de #3 + lógica compartilhada Web/App | **Sim** (reportar os 4 critérios atuais e qual está travando) | Sim | Sim | Mesmo de #3; pré-requisito de #6 (novo modelo de campos) | AUDIT |
+| 5 | Remover bloco "Recebimentos" (resíduo de modelo legado de pagamento) + revisar 3 indicadores + manter "Dados de recebimento" + auditar estado canônico de pagamento | Financeiro | **Sim** (auditar lógica antiga de payout/repasse antes de remover; reportar se existe fonte canônica de "pago" antes de criar UI) | Sim | A confirmar | Nenhuma forte; não mexer em Booker | PENDING |
+| 6 | Redesign completo de "Perfil e trabalho" (unificar Dados profissionais + Como você trabalha; 3 grupos: Informações profissionais / Seu trabalho / Valores e condições; cachê de referência + info extra; nota fiscal) | Configurações | **Sim** (auditoria completa obrigatória antes de qualquer implementação; parar se exigir schema novo) | Sim | Sim (mesmo modelo, mesma fonte de verdade) | Fundacional para #3/#4 (completude) e #9 (toggles de especialidades/tipos de trabalho) | AUDIT |
+| 7 | Auditar/possivelmente remover a preferência "WhatsApp / Painel / WhatsApp+Painel" em Configurações > Sua Doopla | Configurações | **Sim** (reportar onde é armazenada, quem consome, se altera envio de fato, antes de mudar) | Sim | A confirmar | Fundacional para #1 (Painel sempre reflete) e #8 (semântica de canal WhatsApp) | AUDIT |
+| 8 | Redesign de "Canais da sua Doopla" (WhatsApp da Doopla, código individual, "Doopla chama o cliente", link de booking, Seu WhatsApp; remover lógica antiga de booker só da superfície Professional) | Configurações | **Sim** (auditoria extensa; NÃO simular fluxo outbound se não estiver operacional ponta a ponta) | Sim | Sim (mesma fonte: número oficial, código, slug, WhatsApp Identity, deep link) | Depende de #7 (semântica WhatsApp) e reusa padrão de #2 (`buildTalkToYourDooplaUrl`) | PENDING |
+| 9 | Ajustes de UX em "Privacidade e dados" (remover "Seus dados" vazio, renomear seção Comunidade + copy, renomear botão Salvar, auditar 2 toggles ligados a campos legados) | Configurações | Parcial (só os 2 toggles: "Mostrar minhas especialidades" / "Mostrar tipos de trabalho") | Sim | Sim (mesma regra/nomenclatura) | Toggles dependem da conclusão de #6 (campos legados de matching) | PENDING |
+| 10 | Simplificar "Ajuda e suporte" (remover copy explicativa, reusar FAQ canônico, "Falar com o suporte" via contato@doopla.pro) | Configurações | Leve (confirmar rota do FAQ e e-mail canônico) | Sim | Sim (mesma fonte) | Nenhuma | PENDING |
+
+Se a contagem divergir de 10 numa auditoria futura (por exemplo um dos
+itens se desdobrar em dois durante a implementação), reportar antes de
+ajustar — não renumerar silenciosamente esta tabela.
+
+### Regra transversal (não é item numerado, vale para todos os 10)
+
+**Nunca usar travessão (`—`) em nenhum texto de interface/mensagem de
+produto da Doopla.** Regra registrada pelo item #2, mas se aplica a
+toda copy nova criada em qualquer um dos 10 itens. Não fazer
+substituição mecânica que deixe frase ruim — reescrever naturalmente
+com ponto, vírgula ou outra construção. No fechamento do pacote (ver
+"Ordem de execução", passo final), rodar uma varredura de travessão em
+todas as superfícies tocadas pelos 10 itens.
+
+### Ordem de execução recomendada (por dependência, não por ordem de envio)
+
+1. **#6 — Perfil e trabalho** (AUDIT primeiro). Fundacional: define o
+   modelo canônico de campos que #3/#4 e #9 dependem. Parar e reportar
+   se exigir schema novo antes de implementar.
+2. **#7 — Sua Doopla / preferência de canal** (AUDIT primeiro).
+   Fundacional: define a semântica "Painel sempre reflete + WhatsApp
+   avisa" que #1 e #8 dependem.
+3. **#3 + #4 — Bug de completude na Home** (AUDIT: reportar os 4
+   critérios atuais e qual trava o card, usando a conclusão de #6).
+   **Toca Home — não avançar pra implementação sem alinhar com a
+   Sessão Home antes** (ver conflitos abaixo).
+4. **#9 — Privacidade e dados** (implementar as partes independentes
+   direto; os 2 toggles de especialidades/tipos de trabalho só depois
+   da conclusão de #6).
+5. **#2 — Ajustes no detalhe do booking** (implementação direta +
+   audit de travessão local).
+6. **#1 — Remoção de Decisões** (AUDIT, usando a conclusão de #7 e a
+   presença do CTA de #2 no detalhe do booking).
+7. **#8 — Canais da sua Doopla** (AUDIT extensa, usando a conclusão de
+   #7; não prometer outbound se não estiver operacional).
+8. **#5 — Financeiro** (AUDIT independente; pode rodar em paralelo a
+   qualquer momento acima se não houver conflito de arquivo).
+9. **#10 — Ajuda e suporte** (baixo risco, pode ser feito a qualquer
+   momento; deixado por último por ser o de menor prioridade real).
+10. **Passo final** — varredura de travessão em todas as superfícies
+    tocadas, validação Web + auditoria técnica App, checkpoint
+    consolidado `10/10` (tabela ITEM | WEB | APP | BACKEND | STATUS |
+    QA MANUAL), atualização final deste registro no `PROGRESS.md`.
+
+### Itens que exigem AUDIT/checkpoint antes de qualquer código
+
+`#1`, `#3`, `#4`, `#5`, `#6`, `#7`, `#8` têm checkpoint explícito de
+"reportar antes de implementar" no prompt original — não pular. `#2`,
+`#9`, `#10` têm apenas auditorias pontuais (travessão; 2 toggles; rota
+de FAQ/e-mail) que não bloqueiam o resto do item.
+
+### Pontos de possível conflito com as outras 2 sessões (registrados, não resolvidos)
+
+- **Home (#3/#4)**: o bug fica dentro da própria Home ("Deixe sua
+  Doopla pronta"). A instrução geral desta sessão é evitar mexer em
+  Home, "salvo se algum item exigir explicitamente uma correção
+  compartilhada indispensável" — este é exatamente esse caso. Antes de
+  editar qualquer arquivo de Home, confirmar com a fundadora que a
+  Sessão Home não está com o mesmo arquivo aberto, para não perder
+  trabalho dela nem duplicar a correção.
+- **Configurações (#6, #7, #8, #9, #10)**: todas vivem em
+  `src/app/dashboard/perfil/**`. Se a Sessão Principal (Professional/
+  QA/E2E/backend) estiver tocando Configurações ao mesmo tempo (não
+  confirmado — ela está na mesma linha `categoria-b-...` de onde este
+  pacote nasceu), pode haver divergência quando esta branch precisar
+  sincronizar com uma base mais nova. Não resolvido agora porque ainda
+  não há trabalho implementado; fica registrado para checar antes do
+  primeiro sync/rebase desta branch contra uma base mais nova.
+- **Navegação (#1)**: remover Decisões do menu mexe num componente de
+  navegação compartilhado. Se a Sessão Home também tocar a sidebar/menu
+  (histórico da linha mostra um bloco anterior "menu com as 6 abas do
+  documento"), há risco de conflito estrutural no mesmo arquivo. Checar
+  antes de implementar #1.
+- **Financeiro (#5)**: a Sessão Principal inclui "backend"; se ela
+  estiver mexendo em lógica de pagamento/payout ao mesmo tempo, a
+  auditoria de #5 (fonte canônica de "pago") pode encontrar código em
+  movimento. Reportar se acontecer, não presumir que o achado é
+  definitivo sem checar se está sendo alterado em paralelo.
+
+Nenhum destes pontos bloqueia o início dos AUDITs (que são só leitura).
+Bloqueiam apenas o momento de escrever código nas superfícies citadas
+— nesse momento, checar de novo antes de editar.
+
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
