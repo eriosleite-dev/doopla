@@ -146,8 +146,15 @@ export function ProfessionalShell({
       </aside>
 
       <div className="flex flex-1 flex-col md:flex-row">
-        <main className="min-w-0 flex-1 px-5 py-6 sm:px-8 sm:py-7">
-          <div className="mb-4 flex items-center justify-end gap-2.5">
+        {/* pt/mb abaixo alinham o início do conteúdo (h1 da página) com
+            "Início" no sidebar (auditoria QA visual, 15/09/2026) — o
+            padding-top aqui replica o da <aside> (py-4/md:py-[18px]) e a
+            margem da faixa de ícones utilitários foi reduzida pra
+            compensar a altura maior dela (h-9) vs. a linha de logo do
+            sidebar. Não mexe no sidebar nem cria offset por página —
+            só o shell compartilhado. */}
+        <main className="min-w-0 flex-1 px-5 pt-4 pb-6 sm:px-8 sm:pt-[18px] sm:pb-7">
+          <div className="mb-2 flex items-center justify-end gap-2.5">
             <NotificationBell />
             <Link
               href="/dashboard/comunidade"

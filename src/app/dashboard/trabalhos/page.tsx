@@ -80,7 +80,7 @@ export default async function TrabalhosPage() {
 
   return (
     <main>
-      <ProPageHeader title="Bookings" subtitle="Todos os seus trabalhos, do primeiro contato até a conclusão." />
+      <ProPageHeader title="Bookings" subtitle="Todos os seus trabalhos, contratos e negociações em um só lugar." />
       <ProWorkListView items={items} />
     </main>
   );

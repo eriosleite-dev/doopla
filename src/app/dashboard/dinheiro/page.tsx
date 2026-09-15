@@ -6,11 +6,10 @@ import {
   computeArtistStats,
   computeBookerStats,
   getActivePaymentDetails,
-  getArtistReceivedBookings,
   getReferralSummary,
   getUserBookings,
 } from '../data';
-import { ProCard, ProEmptyState, ProPageHeader } from '../pro-ui';
+import { ProCard, ProPageHeader } from '../pro-ui';
 import { getSessionProfile } from '../session';
 import { cardClass, eyebrowClass } from '../ui';
 import { PaymentDetailsCard } from './payment-details-card';
@@ -46,6 +45,16 @@ export const metadata: Metadata = {
 // cobrança foi removida, ver pro-configuracoes-view.tsx — mesmo
 // PaymentDetailsFields/RPC, nenhuma duplicação de lógica, só de
 // navegação).
+//
+// QA visual (15/09/2026) — removida a lista "Bookings concluídos" que
+// existia abaixo de "Dados de recebimento": era uma segunda listagem de
+// bookings dentro de Financeiro, sobrepondo o que a página Bookings já
+// cobre. Financeiro (App, mobile/app/(tabs)/mais/financeiro.tsx) nunca
+// teve essa lista — só os 3 stats de valor —, então a remoção também
+// alinha Web à arquitetura compartilhada já usada no App. Nenhum dado
+// novo foi criado nem removido do modelo: os 3 cards de valor acima
+// (que já eram os únicos números "financeiros" de verdade da página)
+// continuam intactos, sem mudança de cálculo ou de copy.
 export default async function DinheiroPage() {
   const { supabase, user, profile } = await getSessionProfile();
   const bookings = await getUserBookings(user.id, profile.role, supabase);
@@ -82,8 +91,6 @@ export default async function DinheiroPage() {
     getActivePaymentDetails(user.id, supabase),
   ]);
 
-  const receivedBookings = getArtistReceivedBookings(bookings);
-
   return (
     <main>
       <ProPageHeader title="Financeiro" subtitle="Valores dos seus bookings e os dados que a Doopla usa pra orientar o pagamento." />
@@ -104,34 +111,6 @@ export default async function DinheiroPage() {
       </div>
 
       <ProPaymentDetailsCard active={paymentDetails} />
-
-      <div className="mt-4">
-        <ProCard>
-          <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Bookings concluídos</p>
-          {receivedBookings.length === 0 ? (
-            <ProEmptyState message="Nenhum booking concluído ainda." />
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {receivedBookings.map((b) => (
-                <li key={b.id} className="flex items-center justify-between gap-3 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-[var(--pro-off)]">{b.otherPartyName}</p>
-                    <p className="text-[11.5px] text-[var(--pro-tx-50)]">{formatRelativeDate(b.receivedAtIso)}</p>
-                  </div>
-                  <div className="flex flex-none flex-col items-end gap-0.5">
-                    <span className="font-doopla-mono text-[12.5px] font-bold text-[var(--pro-green)]">{formatCentsAsBRL(b.netCents)}</span>
-                    {b.commissionCents > 0 && (
-                      <span className="text-[10.5px] text-[var(--pro-tx-30)]">
-                        {formatCentsAsBRL(b.grossCents)} − comissão {formatCentsAsBRL(b.commissionCents)}
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </ProCard>
-      </div>
 
       {referralSummary && referralSummary.referrals.length > 0 && (
         <div className="mt-4">

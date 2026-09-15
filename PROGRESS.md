@@ -9,7 +9,7 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-09-14.
+Última atualização: 2026-09-15.
 
 **Nota de reconciliação de branch (14/09/2026)**: este arquivo é o
 resultado de um merge entre duas branches que divergiram — a sessão
@@ -21,6 +21,144 @@ OPEN FINDINGS — Beta Readiness) está preservado mais abaixo neste
 arquivo, na numeração "## N. Título — data". Nada foi perdido no
 merge, só concatenado — reorganizar cronologicamente fica pra depois,
 não é prioridade agora.
+
+---
+
+## QA visual pontual — Bookings + Financeiro (Professional Web) — 15/09/2026
+
+Pacote de correções pontuais pedido depois do QA visual do beta já
+implementado — não é redesign, não reabre nenhum bloco fechado.
+Escopo: alinhamento do shell (compartilhado), subtítulo de Bookings,
+hierarquia visual do popover de filtro, auditoria do filtro de
+Contrato, e o bloco "Bookings concluídos" + cards do topo do
+Financeiro. Só o shell/rotas do **profissional** (`ProfessionalShell`,
+`pro-shell.tsx`) foram tocados — Booker continua no shell legado,
+intocado, como em toda rodada anterior.
+
+- ✅ **Alinhamento sidebar × conteúdo**: corrigido só no shell
+  compartilhado (`pro-shell.tsx`), nunca por página. Causa raiz: o
+  `<main>` do conteúdo tinha padding-top maior que o da `<aside>`
+  (`py-6`/`sm:py-7` vs. `py-4`/`md:py-[18px]`) **e** uma faixa de
+  ícones utilitários (sino, Comunidade, Configurações — `h-9`, mais
+  alta que a linha de logo do sidebar) empurrando o título pra baixo
+  antes mesmo de o conteúdo da página começar. Padding-top do `<main>`
+  alinhado ao da `<aside>`; margem da faixa de ícones reduzida
+  (`mb-4`→`mb-2`) pra compensar a diferença de altura. Sidebar não foi
+  tocado. Não testado visualmente num browser real (sem acesso a UI
+  neste ambiente) — validar no preview; o ajuste é só de espaçamento
+  (Tailwind), sem mudança estrutural, mesmo padrão em toda rota que
+  usa `ProfessionalShell` (Bookings/Agenda/Financeiro/Minha
+  equipe/Configurações).
+- ✅ **Bookings — subtítulo**: trocado pra "Todos os seus trabalhos,
+  contratos e negociações em um só lugar." (`trabalhos/page.tsx`,
+  branch do profissional — Booker mantém o header antigo, não fazia
+  parte do pedido).
+- ✅ **Bookings — hierarquia do popover de Filtrar**: causa raiz era
+  `--pro-panel` (4% de branco) + `backdrop-blur-xl` — opacidade baixa
+  demais pra um popover flutuante sobre cards que usam a MESMA cor de
+  fundo, então card/badge por trás ficavam visíveis através do filtro.
+  Trocado pra `--pro-panel-solid` (já existente, usado por
+  `NotificationBell` e pelos menus de Comunidade pro mesmo tipo de
+  overlay) — sem `backdrop-blur` (deixa de fazer sentido com fundo
+  opaco, e evita a classe de bug já documentada em `DECISOES.md`
+  09/09/2026 sobre `backdrop-filter` criar containing block pra
+  elementos `fixed` descendentes). Fechar ao clicar fora e
+  responsividade (`sm:w-[320px]`) preservados, nenhuma outra mudança
+  no filtro.
+- ✅ **Bookings — filtro de Contrato, auditado**: já está correto.
+  `matchesContract()` (`pro-work-list-view.tsx`) usa só
+  `WorkItem.hasContract`, que vem de `b.contract_url != null`
+  (`work-items.ts`). O schema de bookings só tem duas situações
+  possíveis pra contrato — `contract_url` preenchido ou não
+  (`contractStatus()` em `data.ts` só retorna `'anexado'` ou
+  `'sem_contrato'`) — **não existe nenhum conceito de "assinado"**
+  no banco hoje. Ou seja, "Com contrato" já significa exatamente
+  "existe um contrato anexado ao booking", nunca "contrato assinado".
+  Nenhum código alterado aqui — já é a semântica pedida.
+- ✅ **Financeiro — removido o bloco "Bookings concluídos"**
+  (`dinheiro/page.tsx`, branch do profissional): era uma segunda
+  listagem de bookings (nome do cliente, data, pill) dentro de
+  Financeiro, redundante com a página Bookings. O equivalente no App
+  (`mobile/app/(tabs)/mais/financeiro.tsx`) nunca teve essa lista — só
+  os 3 stats de valor —, então a remoção também alinha Web à
+  arquitetura compartilhada Web + App já em produção no App. Função
+  `getArtistReceivedBookings`/tipo `ReceivedBookingCard` removidos de
+  `data.ts` por ficarem sem nenhum consumidor depois da remoção
+  (conferido: não usados em mais nenhum lugar do Web nem do App).
+  Nenhum dado novo inventado pra preencher o espaço, como pedido.
+- ✅ **Financeiro — cards do topo, auditados, NENHUMA mudança
+  automática** (conforme pedido explícito — decisão de produto fica
+  com a fundadora):
+  - **Estados de pagamento que existem hoje**: `bookings.status` tem
+    só `'concluida'` como estado terminal "de dinheiro"; **não existe
+    nenhum estado intermediário tipo "pago, aguardando confirmação"
+    nem confirmação de gateway/PSP**.
+  - **`'concluida'` é sempre auto-reportado, nunca verificado por
+    terceiro**: só 2 caminhos no código/banco levam um booking a esse
+    status — `markPaidAction` (o Booker declara "paguei", sem
+    processador por trás) ou o último estágio do fluxo de Nota Fiscal
+    (`advanceInvoiceStage`, o próprio Artista declara que recebeu a
+    comissão). Confirmado por auditoria de código (comentário já
+    existente em `computeArtistStats`, `data.ts`) — nenhum outro
+    caminho seta esse status.
+  - **Valor final/acordado do booking**: existe —
+    `bookings.cache_amount_cents`, é o valor usado hoje nos 3 cards.
+  - **Data de pagamento**: existe só parcialmente. Fluxo de NF grava
+    `invoice_commission_paid_at` (timestamp real do momento em que o
+    artista confirma o recebimento). Fluxo `markPaidAction` (Booker)
+    **não grava nenhuma data própria** — usa `updated_at` do booking
+    como proxy, que é a data da própria transição de status (não sofre
+    o problema de "evento secundário reescrevendo a data" porque
+    `'concluida'` é estado terminal, mas ainda não é um campo
+    dedicado de "data de pagamento").
+  - **Resposta direta ao item 6**: **hoje a Doopla NÃO tem como saber
+    que um pagamento foi de fato recebido pelo profissional** — só
+    sabe que alguém (Booker ou Artista) *declarou* que recebeu, sem
+    nenhuma confirmação de gateway/PSP por trás (coerente com a regra
+    de negócio: Doopla não processa pagamento, cliente paga direto ao
+    profissional). Por isso os cards atuais ("Valor em bookings
+    confirmados/concluídos", "Valor concluído este mês") já usam copy
+    que evita a palavra "Recebido" — reescrita feita numa auditoria
+    anterior no mesmo dia (commit `fd0a038`, ver comentário em
+    `dinheiro/page.tsx`) exatamente pelo motivo que este pedido
+    também levanta. **Não toquei nesses cards nesta rodada** — trocar
+    pra "A receber/Recebido/Recebido este mês" exigiria um evento de
+    pagamento verdadeiramente confiável (confirmação de PSP ou, no
+    mínimo, uma data de pagamento dedicada e não-auto-reportada) que
+    não existe hoje; seria inventar confiabilidade que o dado não tem.
+- ✅ **Dados de recebimento**: nenhuma mudança — `ProPaymentDetailsCard`
+  continua a única superfície canônica (decisão de 15/09/2026 anterior
+  a este pedido), sem carteira/saldo/saque/processamento novo.
+
+### Arquivos alterados
+- `src/app/dashboard/pro-shell.tsx` — alinhamento do shell.
+- `src/app/dashboard/trabalhos/page.tsx` — subtítulo de Bookings
+  (branch do profissional).
+- `src/app/dashboard/trabalhos/pro-work-list-view.tsx` — popover de
+  Filtrar com superfície sólida.
+- `src/app/dashboard/dinheiro/page.tsx` — remoção do bloco "Bookings
+  concluídos" (branch do profissional).
+- `src/app/dashboard/data.ts` — remoção de `getArtistReceivedBookings`/
+  `ReceivedBookingCard`, sem consumidor depois da mudança acima.
+
+### Pendente de decisão (não implementado de propósito)
+- Se/quando reestruturar os 3 cards do topo do Financeiro pra
+  "A receber/Recebido/Recebido este mês" — depende de existir um
+  evento de pagamento confiável (PSP real ou, no mínimo, uma data de
+  pagamento não-auto-reportada), que não existe hoje.
+- Alinhamento do shell foi validado só por leitura de código/CSS
+  (sem browser neste ambiente) — vale confirmar visualmente no
+  preview antes de considerar fechado.
+
+### Regressão
+Build (`npm run build`), `tsc --noEmit` e `eslint` rodados de verdade
+depois de cada mudança — limpos, sem erro novo introduzido (os 3 erros
+de `tsc` pré-existentes são `PageProps`/`LayoutProps` do Next 16,
+gerados só em build/dev, nada relacionado a este pacote). Nenhuma
+outra rota/página do shell foi tocada — `legacy-shell.tsx` (Booker) e
+as demais páginas que usam `ProfessionalShell` continuam com o mesmo
+código de antes, exceto o próprio `pro-shell.tsx` (mudança de
+espaçamento, aplicada igualmente a todas elas).
 
 ---
 
