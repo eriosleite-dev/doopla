@@ -401,9 +401,27 @@ function initSectionReveal() {
   window.__homeMarketingRevealObserver = observer;
 }
 
+// "Ver mais"/"Ver menos" dos cards de plano — expande o próprio card
+// (classe .expanded, animação por CSS em .plan-more), nunca navega nem
+// abre modal. Cada botão só controla o .plan-card ancestral dele, então
+// os dois cards (Doopla/Pro) já são independentes por construção — não
+// existe estado compartilhado nenhum aqui.
+function initPlanCards() {
+  var toggles = Array.prototype.slice.call(document.querySelectorAll('#home-marketing .plan-more-toggle'));
+  toggles.forEach(function (btn) {
+    btn.onclick = function () {
+      var card = btn.closest('.plan-card');
+      if (!card) return;
+      var expanded = card.classList.toggle('expanded');
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    };
+  });
+}
+
 window.__bootHomeMarketing = function boot() {
   initMascotEyes();
   initMascotBlink();
   initLegacyEyesMotion();
   initSectionReveal();
+  initPlanCards();
 };

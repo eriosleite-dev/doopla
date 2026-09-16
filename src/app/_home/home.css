@@ -378,7 +378,10 @@
 
   /* ===== PLANOS ===== */
   #home-marketing .plans-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:24px; flex-wrap:wrap; max-width:1180px; margin:0 auto; }
-  #home-marketing .plans{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:46px; }
+  /* align-items:start (era o stretch padrão do grid): cada card precisa
+     ter a própria altura, nunca esticar pra acompanhar o outro quando
+     só um dos dois está expandido (Ver mais). */
+  #home-marketing .plans{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:46px; align-items:start; }
   #home-marketing .plan-card{ background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:32px; display:flex; flex-direction:column; gap:16px; }
   #home-marketing .plan-card.pro{ background:linear-gradient(165deg,#1c0d0e,#100708); border:1px solid rgba(226,41,28,.4); box-shadow:0 0 40px rgba(226,41,28,.12); }
   #home-marketing .plan-name{ font-size:.8rem; font-weight:600; color:var(--tx-50); text-transform:uppercase; letter-spacing:.06em; font-family:'IBM Plex Mono',monospace; }
@@ -390,6 +393,24 @@
   #home-marketing .plan-features li{ padding-left:16px; position:relative; }
   #home-marketing .plan-features li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
   #home-marketing .plan-cta{ margin-top:auto; text-align:center; }
+
+  /* "Ver mais"/"Ver menos" — expande o próprio card, sem navegar nem
+     abrir modal. grid-template-rows 0fr->1fr (em vez de max-height com
+     valor chutado) porque anima com precisão pro tamanho real do
+     conteúdo, em qualquer altura de lista/qualquer breakpoint, sem
+     JS medindo pixel nenhum. */
+  #home-marketing .plan-more-toggle{
+    background:none; border:none; padding:2px 0; margin-top:-4px; align-self:flex-start;
+    color:var(--tx-50); font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase; cursor:pointer;
+  }
+  #home-marketing .plan-more-toggle:hover{ color:var(--off); }
+  #home-marketing .plan-more-toggle .more-label{ display:none; }
+  #home-marketing .plan-card.expanded .plan-more-toggle .less-label{ display:none; }
+  #home-marketing .plan-card.expanded .plan-more-toggle .more-label{ display:inline; }
+  #home-marketing .plan-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows 280ms ease; }
+  #home-marketing .plan-more > ul{ overflow:hidden; min-height:0; }
+  #home-marketing .plan-card.expanded .plan-more{ grid-template-rows:1fr; }
 
   /* ===== FAQ (mantido da Home anterior — sem seção equivalente no novo
      mockup; overlay do Menu referencia "FAQ" como destino, então a
