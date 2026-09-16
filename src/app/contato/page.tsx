@@ -12,16 +12,20 @@ export const metadata: Metadata = {
 export default function ContatoPage() {
   return (
     <PageShell>
-      <section className="contact-compact">
-        <div className="inner">
-          <span className="eyebrow">Contato</span>
-          <h1>Quer falar com a Doopla?</h1>
-          <p className="lead">Dúvida, problema, parceria ou qualquer outra coisa: chama a gente.</p>
+      <section className="contact-section">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Contato</span>
+            <h1>Quer falar com a Doopla?</h1>
+            <p className="lead">Dúvida, problema, parceria ou qualquer outra coisa: chama a gente.</p>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="contact-email">
+              {SUPPORT_EMAIL}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
+          </div>
           <ContactForm />
-          <p className="email-alt">
-            Prefere falar por e-mail?{' '}
-            <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
-          </p>
         </div>
       </section>
     </PageShell>

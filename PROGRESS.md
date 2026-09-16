@@ -11,6 +11,54 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-16.
 
+## Site público: correção da direção visual das páginas institucionais — layout da Home V2, não só cor/tipografia — 16/09/2026
+
+Achado do usuário sobre a rodada anterior (densidade/hierarquia, seção
+abaixo): as 5 páginas já usavam cores/tipografia da Home V2, mas o
+LAYOUT continuava centralizado/simétrico (título no meio, blocos em
+coluna única, CTA em card grande centralizado) — lia como "template
+institucional genérico com a paleta certa", não como a mesma Home.
+Correção: reaproveitar a lógica estrutural real da Home, não só os
+tokens visuais.
+
+- ✅ Toda composição de Sobre/Segurança/Contato agora usa `.two-col`
+  — o MESMO componente da Home (`max-width:1180px`, colunas 1fr/1fr,
+  colapso em 1 coluna a 1080px, sem valores próprios): esquerda =
+  título/mensagem, direita = conteúdo/ação.
+- ✅ **Sobre**: bloco 1 ganha os olhos grandes reais da Home
+  (`.legacy-eyes-*`, os mesmos de "Sempre com você" — antes usava o
+  par pequeno `.eye-slot`, presença fraca pro que o usuário pediu).
+  Bloco 2 vira `.stack-list` (mesma lógica de divisor sutil de
+  `.problem-list`, sem a coluna de ícone) em vez do grid de 3 colunas
+  simétricas. CTA final vira barra horizontal compacta (`.inst-cta`),
+  nunca mais um card centralizado.
+- ✅ **Segurança**: mesma composição `.two-col` (texto à esquerda,
+  `.stack-list` com os 3 princípios à direita, incluindo o link "Ver
+  Política de Privacidade →"). CTA final também virou `.inst-cta`.
+- ✅ **Contato**: `.two-col` com eyebrow/h1/lead/e-mail à esquerda,
+  formulário à direita — e-mail não repete mais embaixo do form.
+  Botão "Enviar mensagem" ganhou a seta (mesmo ícone/convenção dos
+  CTAs da Home).
+- ✅ **Termos/Privacidade**: topo virou `.legal-hero` em duas colunas
+  (eyebrow+h1 à esquerda, data de atualização+intro à direita). Corpo
+  do documento (12/10 seções numeradas) permanece com a MESMA copy,
+  sem nenhuma alteração de texto — só re-embrulhado em
+  `.legal-content .container .legal-body`, uma coluna de leitura de
+  680px alinhada à borda esquerda do grid de 1180px (antes era
+  `margin:0 auto` no próprio texto, um bloco solto centralizado).
+- ✅ Nenhuma copy aprovada foi alterada nesta rodada — só direção
+  visual, grid e composição, como pedido. Home V2 não foi tocada.
+- ✅ Validado: `next build` limpo, `tsc --noEmit` limpo, ESLint sem
+  erros nos arquivos tocados, e verificação visual via Playwright
+  (desktop 1440px + mobile 390px) nas 5 rotas — composição
+  esquerda/direita no desktop, empilhamento em 1 coluna no mobile,
+  sem overflow, olhos com contraste correto.
+
+**Arquivos alterados**: `src/app/_home/site-chrome.css`,
+`src/app/sobre/page.tsx`, `src/app/seguranca/page.tsx`,
+`src/app/contato/page.tsx`, `src/app/contato/ContactForm.tsx`,
+`src/app/termos/page.tsx`, `src/app/privacidade/page.tsx`.
+
 ## Site público: revisão de densidade/hierarquia das páginas institucionais — 16/09/2026
 
 Depois da migração visual (seção abaixo), as 5 páginas ainda pareciam
