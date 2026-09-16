@@ -30,6 +30,7 @@ import { buildStructuralFacts } from './structural-facts';
 import { resolveSystemActorContext } from './system-actor';
 import type { InboundEvent, RuntimeCycleOutcome } from './types';
 import { renderColdOutreachTemplateContent } from '../channels/whatsapp/cold-outreach-template';
+import { createServiceRoleClient } from '../supabase/service-role';
 
 // Doopla Intelligence Core v1 — Orchestrator/Runtime: pipeline
 // principal. Encadeia os Blocos 1–6 numa única execução determinística
@@ -77,6 +78,58 @@ export async function processInboundEvent(
     await finishInboundEvent(supabase, { eventId: claim.eventId, status: 'failed', conversationMessageId: null, error: detail });
     return { kind: 'failed', error: detail };
   }
+}
+
+// Pura, sem I/O — testável determinística sem mock de Supabase. Único
+// critério: pelo menos um registro committado agora É accept_or_decline_work
+// com approved_value.accepted === true, exatamente e nunca mais que
+// isso (nunca a mera presença da categoria — correção semântica
+// 16/09/2026 — nem outra categoria qualquer, preço incluso).
+export function hasCanonicalWorkAcceptance(
+  records: readonly { decision_category: string; approved_value: Record<string, unknown> | null }[]
+): boolean {
+  return records.some((r) => r.decision_category === 'accept_or_decline_work' && r.approved_value?.accepted === true);
+}
+
+// Direct Booking sem Booker (16/09/2026) — único gatilho automático
+// permitido, por decisão de produto explícita: nenhum botão manual,
+// nenhuma outra evidência (preço discutido, conversa existir) conta.
+// Só dispara quando ESTE commit do Approval Engine (approvalRecordIds
+// recém-escritos, nesta mesma chamada de runCycle) inclui um
+// accept_or_decline_work com accepted=true (hasCanonicalWorkAcceptance
+// acima) — nunca reinterpreta um registro antigo/de outra chamada.
+// Usa service-role de propósito: convert_opportunity_to_booking() só
+// aceita is_system_caller() (por decisão de produto: nenhum caminho de
+// UI/authenticated comum pode chamá-la), e a autorização real já foi
+// validada por runApprovalEngine/commit_approval_resolution acima —
+// este client nunca herda o que quer que tenha disparado o ciclo
+// (webhook do WhatsApp já é service-role; resposta do profissional
+// pelo painel usa a sessão dele, que nunca teria privilégio suficiente
+// pra esta RPC sozinha). convert_opportunity_to_booking() revalida
+// tudo de novo internamente (get_active_approvals fresco) — este
+// helper nunca é a fonte de autorização, só o gatilho.
+async function maybeConvertToDirectBooking(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  params: { opportunityId: string | null; bookingId: string | null; approvalRecordIds: string[] }
+): Promise<void> {
+  if (!params.opportunityId || params.bookingId || params.approvalRecordIds.length === 0) return;
+
+  const { data: committedRecords, error } = await supabase
+    .from('approval_records')
+    .select('decision_category, approved_value')
+    .in('id', params.approvalRecordIds);
+  if (error) return;
+  if (!hasCanonicalWorkAcceptance(committedRecords ?? [])) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const serviceRoleClient: SupabaseClient<any> = createServiceRoleClient();
+  await serviceRoleClient.rpc('convert_opportunity_to_booking', { p_opportunity_id: params.opportunityId });
+  // Erro aqui nunca derruba o ciclo do Runtime (a mensagem/aprovação já
+  // foram commitadas de verdade) — só significa que a conversão em
+  // Booking fica pendente pra uma próxima tentativa. A function é
+  // idempotente (unique index + advisory lock), então repetir nunca
+  // duplica nada quando/se uma retentativa futura existir.
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -343,6 +396,13 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         commercialRootId,
         approvalRecordIds: approvalResult.approvalRecordIds,
         workerId: event.workerId,
+      });
+
+      // Direct Booking sem Booker — ver comentário de maybeConvertToDirectBooking.
+      await maybeConvertToDirectBooking(supabase, {
+        opportunityId: effectiveOpportunityId,
+        bookingId: effectiveBookingId,
+        approvalRecordIds: approvalResult.approvalRecordIds,
       });
     }
   }

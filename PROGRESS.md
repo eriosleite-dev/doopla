@@ -17050,6 +17050,117 @@ de sequer cogitar aplicar as migrations em produção.
 **Arquivos**: `supabase/migrations/0086_opportunity_status_convertida.sql`,
 `supabase/migrations/0087_direct_booking_no_booker.sql`.
 
+## 122. Direct Booking sem Booker — retomado do checkpoint §121: fixes de UI, type e wiring do Runtime — `[EM ANDAMENTO, migrations ainda não aplicadas]` — 16/09/2026
+
+Continuação direta do §121, na ordem que ele já deixava marcada.
+
+**1. `Booking.booker_profile_id` vira `string | null`** (Web
+`src/lib/supabase/types.ts` + App `mobile/src/types/booking.ts`) —
+deixou o compilador apontar todo call site real. Resultado: só 5 sites
+em toda a base, nenhuma query quebra (confirma o achado da auditoria
+de UI do §121 — toda a exposição real era só na camada de label):
+
+- `proposerProfileId` (`actions.ts`): tipo de retorno alargado pra
+  `string | null` — as comparações que já existiam (`user.id ===
+  proposerProfileId(...)`) continuam corretas sem nenhuma mudança de
+  lógica.
+- `generateContractAction` (`actions.ts`): gate explícito logo depois
+  de carregar o booking — `if (!booking.booker_profile_id) return {
+  error: '...' }` — nunca mais deixa a action tentar montar um
+  contrato que sabe de antemão que vai falhar.
+- `attachOtherPartyNames` (Web `data.ts` + App
+  `mobile/src/lib/data/bookings.ts`): pra um Direct Booking,
+  `otherPartyName` agora é `client_name` de verdade (mesmo padrão já
+  usado em produção no App, `bookings/[id].tsx:80`), nunca mais
+  "Alguém". Corrige de uma vez `pro-booking-detail-view.tsx`
+  (título/avatar da página), `work-items.ts` → `pro-work-list-view.tsx`
+  (nome do cliente na lista unificada de Bookings) e a Agenda
+  (`data.ts`, label "Booker: Alguém" → "Cliente: {nome real}").
+
+**2. Gate de contrato na UI** (`pro-contract-section.tsx`): "Gerar
+contrato com a doopla" só aparece quando `booking.booker_profile_id`
+não é null; sem Booker mostra uma nota explicando que o contrato
+padrão ainda não está disponível pra esse caso (PENDING, decisão de
+produto já registrada no §121 — nenhum template novo criado). "Anexar
+contrato próprio" continua disponível sempre (tecnicamente
+independente de Booker). `ContractSection`/`GenerateContractForm`
+legado (Booker) não foram tocados — confirmado estruturalmente
+inatingível por um Booker via RLS (`booker_profile_id = auth.uid()`
+nunca bate com `null`), então nunca recebe um Direct Booking.
+
+**3. Wiring do Runtime — o gatilho automático que faltava** (achado
+real: as migrations existiam, mas nada em TypeScript jamais chamava
+`convert_opportunity_to_booking`). Implementado em
+`src/lib/runtime/pipeline.ts`, dentro de `runCycle`, logo depois do
+commit do Approval Engine que já dispara `attemptResumptionsAfterApproval`:
+
+- `hasCanonicalWorkAcceptance(records)` — função pura, sem I/O,
+  exportada e testada deterministicamente (ver abaixo). Único critério:
+  pelo menos um registro committado AGORA (não um antigo) é
+  `accept_or_decline_work` com `approved_value.accepted === true`
+  exato — nunca a mera presença da categoria, nunca outra categoria,
+  nunca um legado `{}`.
+- `maybeConvertToDirectBooking(...)` — só roda quando há
+  `effectiveOpportunityId`, NÃO há `effectiveBookingId` ainda, e
+  `hasCanonicalWorkAcceptance` é true pros registros recém-commitados
+  deste ciclo. Chama `convert_opportunity_to_booking` via um client
+  **service-role dedicado** (`createServiceRoleClient()`, nunca o
+  client que processou o ciclo) — decisão deliberada: a function só
+  aceita `is_system_caller()` (nenhum authenticated comum, nem o
+  próprio profissional, pode chamá-la — decisão de produto do §121), e
+  a autorização real já foi validada pelo commit do Approval Engine
+  acima, não por quem disparou este ciclo (webhook do WhatsApp já é
+  service-role; resposta do profissional pelo painel usa a sessão dele,
+  que nunca teria privilégio suficiente sozinha). A RPC revalida tudo
+  de novo internamente — este helper nunca é fonte de autorização, só
+  o gatilho. Erro na conversão nunca derruba o ciclo do Runtime (a
+  aprovação já foi commitada de verdade); a function é idempotente, uma
+  retentativa futura nunca duplicaria nada.
+
+**Teste determinístico real (executado, não simulado)** —
+`hasCanonicalWorkAcceptance` importada direto do código de produção,
+zero mock:
+
+| # | Caso | Resultado |
+|---|---|---|
+| A | `accept_or_decline_work` + `accepted:true` | **PASS** — true |
+| B | `accept_or_decline_work` + `accepted:false` | **PASS** — false |
+| C | `accept_or_decline_work` + `{}` (legado) | **PASS** — false, fail-closed |
+| D | só `price_or_cache` | **PASS** — false |
+| E | nenhum registro | **PASS** — false |
+| F | `accepted:true` misturado com outras categorias | **PASS** — true |
+| G | `approved_value: null` (revocation) | **PASS** — false |
+
+**Ainda NÃO feito / limitações conhecidas**:
+- Migrations `0086`/`0087` continuam **não aplicadas em nenhum banco**
+  — sem Postgres real neste sandbox pra validar de verdade. Reprodução
+  E2E real (os 24 cenários A-X do pedido original) continua **BLOCKED
+  ENVIRONMENT**.
+- 2 nuances cosméticas encontradas mas NÃO corrigidas nesta rodada
+  (não são da classe "Alguém"/"Booker" — são rótulos genéricos que só
+  ficam levemente estranhos, nunca errados a ponto de confundir):
+  subtítulo "Negociação" no cabeçalho do Booking Detail, e "Comissão
+  proposta: 0%" (valor real, honesto — 0% é o que a conversão grava —
+  mas soa estranho sem contexto de que não há Booker).
+- **Gap de produto em aberto, não resolvido aqui**: o fluxo
+  `aguardando_pagamento` (`role==='artista'`, `requires_invoice !==
+  'sim'`) hoje espera uma confirmação de pagamento de "outra parte" —
+  pra um Booker isso faz sentido (ele confirma), pra um Direct Booking
+  sem nota fiscal não há Booker pra confirmar nada. O label já não
+  mostra mais "Alguém" (mostra o cliente real), mas QUEM de fato marca
+  esse tipo de Direct Booking como pago continua uma pergunta de
+  produto em aberto — registrado aqui de propósito, nunca resolvido
+  por invenção.
+
+**Validação**: `tsc --noEmit`, ESLint (44/6, baseline) e `npm run
+build` limpos na Web; `tsc --noEmit` limpo no App.
+
+**Arquivos alterados**: `src/lib/supabase/types.ts`,
+`mobile/src/types/booking.ts`, `src/app/dashboard/actions.ts`,
+`src/app/dashboard/data.ts`, `mobile/src/lib/data/bookings.ts`,
+`src/app/dashboard/bookings/[id]/pro-contract-section.tsx`,
+`src/lib/runtime/pipeline.ts`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
