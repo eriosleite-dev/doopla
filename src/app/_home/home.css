@@ -359,6 +359,15 @@
   #home-marketing .steps{ max-width:1180px; margin:44px auto 0; display:grid; grid-template-columns:repeat(4,1fr); gap:0; }
   #home-marketing .step{ padding:0 26px; position:relative; }
   #home-marketing .step:not(:first-child){ border-left:1px solid var(--line); }
+  /* .step tinha padding:0 26px nos 4 lados, inclusive o 1º (esquerda) e
+     o último (direita) — isso inseria o conteúdo do passo 01/04 pra
+     dentro do eixo real do container (mesmo max-width/margin de
+     .steps), descolando do alinhamento de "COMO FUNCIONA"/título acima.
+     Zerar só a borda externa: o padding continua existindo pra dar
+     respiro em volta do border-left (divisória entre cards), só não
+     empurra mais o conteúdo das pontas pra dentro do container. */
+  #home-marketing .step:first-child{ padding-left:0; }
+  #home-marketing .step:last-child{ padding-right:0; }
   #home-marketing .step .num{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--tx-50); font-weight:600; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
   #home-marketing .step .ring{ width:26px; height:26px; border:1px solid var(--line-strong); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--red); flex:none; }
   #home-marketing .step h4{ font-family:'Inter',sans-serif; font-size:1rem; font-weight:700; color:var(--off); margin:0 0 8px; }
@@ -454,6 +463,11 @@
     #home-marketing .with-you-copy{ order:1; }
     #home-marketing .steps{ grid-template-columns:repeat(2,1fr); row-gap:34px; }
     #home-marketing .step:nth-child(3){ border-left:none; }
+    /* 2 colunas: cada linha vira seu próprio par esquerda/direita —
+       item 2 (fim da linha 1) e item 3 (início da linha 2) também
+       precisam ficar rente às bordas do container, não só 1 e 4. */
+    #home-marketing .step:nth-child(2){ padding-right:0; }
+    #home-marketing .step:nth-child(3){ padding-left:0; }
     #home-marketing .cta-final{ grid-template-columns:1fr; text-align:left; gap:24px; padding:36px; }
     #home-marketing .cta-right{ align-items:flex-start; }
   }
@@ -494,7 +508,7 @@
     #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
     #home-marketing .with-you-visual{ padding-top:8px; }
     #home-marketing .steps{ grid-template-columns:1fr 1fr; gap:26px 20px; }
-    #home-marketing .step{ padding:0 4px; }
+    #home-marketing .step{ padding:0; }
     #home-marketing .step:nth-child(even){ border-left:1px solid var(--line); padding-left:20px; }
     #home-marketing .step:nth-child(odd){ border-left:none; }
     #home-marketing .plans{ grid-template-columns:1fr; }
@@ -506,7 +520,7 @@
   }
   @media (max-width:420px){
     #home-marketing .steps{ grid-template-columns:1fr; }
-    #home-marketing .step:nth-child(even){ border-left:none; padding-left:4px; }
+    #home-marketing .step:nth-child(even){ border-left:none; padding-left:0; }
   }
 
   /* Reduced motion: pupilas do mascote/logo ficam paradas, piscada
