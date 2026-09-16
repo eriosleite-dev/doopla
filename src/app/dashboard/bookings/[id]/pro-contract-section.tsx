@@ -43,14 +43,27 @@ export function ProContractSection({ booking }: { booking: BookingWithOtherParty
       </div>
 
       {mode === 'closed' && (
-        <div className="flex flex-wrap gap-4">
-          <button
-            type="button"
-            onClick={() => setMode('gerar')}
-            className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--pro-tx-50)] underline hover:text-[var(--pro-off)]"
-          >
-            Gerar contrato com a doopla
-          </button>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Direct Booking (16/09/2026) — o contrato padrão Doopla
+              exige um Booker real (buildContractContent monta as duas
+              PARTES). Sem Booker é uma ação impossível hoje (decisão
+              de produto: PENDING, sem template novo nesta rodada) —
+              nunca oferecer o botão sabendo que ele sempre falha.
+              "Anexar contrato próprio" continua disponível: é
+              tecnicamente independente de Booker. */}
+          {booking.booker_profile_id !== null ? (
+            <button
+              type="button"
+              onClick={() => setMode('gerar')}
+              className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--pro-tx-50)] underline hover:text-[var(--pro-off)]"
+            >
+              Gerar contrato com a doopla
+            </button>
+          ) : (
+            <span className="text-[11px] text-[var(--pro-tx-30)]">
+              Contrato padrão da Doopla ainda não disponível para bookings sem Booker.
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setMode('anexar')}

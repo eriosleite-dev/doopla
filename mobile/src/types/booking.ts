@@ -19,7 +19,10 @@ export type RequiresInvoice = 'sim' | 'nao' | 'nao_sei';
 export type Booking = {
   id: string;
   artist_profile_id: string;
-  booker_profile_id: string;
+  // Nullable desde 16/09/2026 (Direct Booking, Web) — null = booking
+  // sem Booker/agenciamento. App ainda não tem UI de criação, mas já
+  // pode LER essas linhas (mesma tabela bookings).
+  booker_profile_id: string | null;
   status: BookingStatus;
   proposed_by: 'artista' | 'booker' | 'agencia';
   commission_percent: number;

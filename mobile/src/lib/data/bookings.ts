@@ -97,13 +97,31 @@ export async function fetchBookingEvents(bookingId: string): Promise<BookingEven
 
 async function attachOtherPartyNames(bookings: Booking[], viewerId: string): Promise<BookingWithOtherParty[]> {
   if (bookings.length === 0) return [];
-  const otherIds = [...new Set(bookings.map((b) => (b.artist_profile_id === viewerId ? b.booker_profile_id : b.artist_profile_id)))];
+  // Direct Booking (16/09/2026): booker_profile_id null só aparece
+  // pro artista (o único que pode ler essa linha via RLS — nenhum
+  // booker tem booker_profile_id=viewerId batendo com null). Filtra
+  // antes do .in() (mesmo motivo do painel web: PostgREST nunca dá
+  // erro com null na lista, mas também nunca bate).
+  const otherIds = [
+    ...new Set(
+      bookings
+        .map((b) => (b.artist_profile_id === viewerId ? b.booker_profile_id : b.artist_profile_id))
+        .filter((id): id is string => id !== null)
+    ),
+  ];
   const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', otherIds);
   const nameById = new Map((profiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name]));
-  return bookings.map((b) => ({
-    ...b,
-    otherPartyName: nameById.get(b.artist_profile_id === viewerId ? b.booker_profile_id : b.artist_profile_id) ?? 'Alguém',
-  }));
+  return bookings.map((b) => {
+    if (b.artist_profile_id === viewerId && b.booker_profile_id === null) {
+      // Direct Booking: a "outra parte" é o cliente real, nunca
+      // "Alguém" (mesmo padrão já usado em bookings/[id].tsx:80).
+      return { ...b, otherPartyName: b.client_name ?? 'Cliente' };
+    }
+    return {
+      ...b,
+      otherPartyName: nameById.get(b.artist_profile_id === viewerId ? (b.booker_profile_id as string) : b.artist_profile_id) ?? 'Alguém',
+    };
+  });
 }
 
 // Portado 1:1 de src/app/dashboard/data.ts (getBookingCheckpoints) —

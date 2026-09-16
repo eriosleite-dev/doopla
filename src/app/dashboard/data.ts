@@ -71,11 +71,17 @@ async function attachOtherPartyNames(
 ): Promise<BookingWithOtherParty[]> {
   if (bookings.length === 0) return [];
 
+  // Direct Booking (16/09/2026) — booker_profile_id null nunca aparece
+  // pro papel 'booker' (getUserBookings filtra por
+  // booker_profile_id=userId, que nunca bate com null), só pro
+  // profissional. Filtra null aqui pra nunca mandar um id inválido
+  // pro .in() (PostgREST não dá erro, mas também nunca bate — é
+  // trabalho à toa).
   const otherIds = [
     ...new Set(
-      bookings.map((b) =>
-        role === 'booker' ? b.artist_profile_id : b.booker_profile_id
-      )
+      bookings
+        .map((b) => (role === 'booker' ? b.artist_profile_id : b.booker_profile_id))
+        .filter((id): id is string => id !== null)
     ),
   ];
   const { data: others } = await supabase
@@ -85,12 +91,21 @@ async function attachOtherPartyNames(
     .returns<Pick<Profile, 'id' | 'full_name'>[]>();
 
   const nameById = new Map((others ?? []).map((p) => [p.id, p.full_name]));
-  return bookings.map((b) => ({
-    ...b,
-    otherPartyName:
-      nameById.get(role === 'booker' ? b.artist_profile_id : b.booker_profile_id) ??
-      'Alguém',
-  }));
+  return bookings.map((b) => {
+    if (role !== 'booker' && b.booker_profile_id === null) {
+      // Direct Booking: não existe Booker/contraparte Doopla — a
+      // "outra parte" é o cliente real, nunca "Alguém"/"Booker".
+      // client_name sempre vem preenchido pela conversão
+      // (convert_opportunity_to_booking copia da opportunity), mas o
+      // fallback cobre o caso defensivo de vir vazio mesmo assim.
+      return { ...b, otherPartyName: b.client_name ?? 'Cliente' };
+    }
+    return {
+      ...b,
+      otherPartyName:
+        nameById.get(role === 'booker' ? b.artist_profile_id : (b.booker_profile_id as string)) ?? 'Alguém',
+    };
+  });
 }
 
 export async function getUserBookings(
@@ -1871,7 +1886,10 @@ export async function getAgendaEvents(
       date: b.event_date as string,
       kind: 'confirmado' as const,
       title: b.description || `Trabalho com ${b.otherPartyName}`,
-      sub: role === 'booker' ? `Artista: ${b.otherPartyName}` : `Booker: ${b.otherPartyName}`,
+      // Direct Booking (16/09/2026): sem Booker, "Booker: {nome}" seria
+      // falso — otherPartyName já é o cliente real (ver
+      // attachOtherPartyNames), então o rótulo vira "Cliente:".
+      sub: role === 'booker' ? `Artista: ${b.otherPartyName}` : b.booker_profile_id === null ? `Cliente: ${b.otherPartyName}` : `Booker: ${b.otherPartyName}`,
       bookingId: b.id,
     }));
 

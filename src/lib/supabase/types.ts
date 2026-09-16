@@ -167,7 +167,10 @@ export type RequiresInvoice = 'sim' | 'nao' | 'nao_sei';
 export type Booking = {
   id: string;
   artist_profile_id: string;
-  booker_profile_id: string;
+  // Nullable desde 16/09/2026 (Direct Booking) — null = booking sem
+  // Booker/agenciamento, criado direto a partir de um aceite do
+  // profissional (ver convert_opportunity_to_booking, migration 0087).
+  booker_profile_id: string | null;
   status: BookingStatus;
   proposed_by: UserRole;
   commission_percent: number;
@@ -216,6 +219,11 @@ export type Booking = {
   invoice_sent_to_client_at: string | null;
   invoice_client_paid_at: string | null;
   invoice_commission_paid_at: string | null;
+  // Bloco 5 (migration 0045) — link real da conversão oportunidade→booking.
+  // Nunca escrito em TypeScript antes de 16/09/2026 (Direct Booking,
+  // convert_opportunity_to_booking). Presente em todo booking já
+  // existente (sempre null antes desta rodada), não só nos diretos.
+  originated_from_opportunity_id: string | null;
 };
 
 export type BookingEvent = {

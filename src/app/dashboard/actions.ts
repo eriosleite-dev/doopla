@@ -329,7 +329,12 @@ export async function proposeBookingAction(
   redirect(`/dashboard/bookings/${booking.id}`);
 }
 
-function proposerProfileId(booking: Booking): string {
+// Direct Booking (booker_profile_id null) sempre nasce com proposed_by
+// 'artista' (convert_opportunity_to_booking, migration 0087), então
+// este branch nunca resolve pra null na prática — mas o tipo precisa
+// refletir a coluna real. Comparações (`user.id === proposerProfileId(...)`)
+// continuam corretas: nunca combinam com null.
+function proposerProfileId(booking: Booking): string | null {
   return booking.proposed_by === 'artista'
     ? booking.artist_profile_id
     : booking.booker_profile_id;
@@ -1615,6 +1620,18 @@ export async function generateContractAction(
     return { error: 'Você não faz parte desse booking.' };
   }
 
+  // Direct Booking (16/09/2026) — o contrato padrão Doopla depende de
+  // um Booker real (buildContractContent exige os dois "PARTES"). Sem
+  // Booker, gerar esse contrato é uma ação impossível — nunca deixar
+  // chegar ao ponto de falhar silenciosamente com "Não foi possível
+  // montar o contrato.". Contrato padrão Doopla pra Direct Booking
+  // continua PENDING (decisão de produto já registrada) — a UI
+  // (ContractSection/ProContractSection) já não oferece este botão
+  // pra booking sem Booker, este check é a segunda camada fail-closed.
+  if (!booking.booker_profile_id) {
+    return { error: 'Este booking não tem Booker — o contrato padrão da Doopla ainda não está disponível para esse caso.' };
+  }
+
   const { data: updatedBooking, error: updateError } = await supabase
     .from('bookings')
     .update({
@@ -1637,7 +1654,9 @@ export async function generateContractAction(
     supabase
       .from('profiles')
       .select('full_name')
-      .eq('id', updatedBooking.booker_profile_id)
+      // booking.booker_profile_id (não updatedBooking) — já confirmado
+      // not null pelo check acima; o UPDATE nunca toca essa coluna.
+      .eq('id', booking.booker_profile_id)
       .single<Pick<Profile, 'full_name'>>(),
   ]);
   if (!artist || !booker) return { error: 'Não foi possível montar o contrato.' };
