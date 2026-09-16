@@ -13,22 +13,30 @@ const UPDATED = '15 de setembro de 2026';
 export default function TermosPage() {
   return (
     <PageShell>
+      <section className="legal-hero">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Legal</span>
+            <h1>Termos de Uso</h1>
+          </div>
+          <div className="intro">
+            <div className="updated">Última atualização: {UPDATED}</div>
+            <p>
+              Estes Termos de Uso estabelecem as regras para utilização da
+              plataforma Doopla.
+            </p>
+            <p>
+              Ao criar uma conta ou utilizar nossos serviços, você declara que
+              leu e concorda com estes Termos e com nossa{' '}
+              <Link href="/privacidade">Política de Privacidade</Link>.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="legal-content">
-        <div className="inner">
-          <span className="eyebrow">Legal</span>
-          <h1>Termos de Uso</h1>
-          <div className="updated">Última atualização: {UPDATED}</div>
-
-          <p>
-            Estes Termos de Uso estabelecem as regras para utilização da
-            plataforma Doopla.
-          </p>
-          <p>
-            Ao criar uma conta ou utilizar nossos serviços, você declara que
-            leu e concorda com estes Termos e com nossa{' '}
-            <Link href="/privacidade">Política de Privacidade</Link>.
-          </p>
-
+        <div className="container">
+        <div className="legal-body">
           <h2>1. O que é a Doopla</h2>
           <p>
             A Doopla é uma plataforma digital de agenciamento para
@@ -134,6 +142,7 @@ export default function TermosPage() {
             Dúvidas relacionadas a estes Termos podem ser enviadas para{' '}
             <a href="mailto:contato@doopla.pro">contato@doopla.pro</a>.
           </p>
+        </div>
         </div>
       </section>
     </PageShell>

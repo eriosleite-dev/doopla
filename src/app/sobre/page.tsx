@@ -5,56 +5,68 @@ import { PageShell } from '../_home/PageShell';
 
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
-  description:
-    'A Doopla é uma nova forma de agenciamento para profissionais independentes. Encontra trabalhos, atende clientes, negocia e cuida de tudo até o trabalho acontecer.',
+  description: 'A Doopla é uma nova forma de agenciamento para profissionais independentes.',
 };
 
 export default function SobrePage() {
   return (
     <PageShell>
-      <section className="page-hero">
-        <span className="eyebrow">Sobre a Doopla</span>
-        <h1>Toda carreira merece sua Doopla.</h1>
-        <p>
-          A Doopla é uma nova forma de agenciamento para profissionais
-          independentes. Encontra trabalhos, atende clientes, negocia e cuida
-          de tudo até o trabalho acontecer.
-        </p>
-        <div className="hero-eyes" aria-hidden="true">
-          <span className="dot">
-            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--off)' }} />
-          </span>
-          <span className="dot">
-            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--off)' }} />
-          </span>
+      <section className="inst-hero">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Sobre a Doopla</span>
+            <h1>Toda carreira merece sua Doopla.</h1>
+            <p className="lead">A Doopla é uma nova forma de agenciamento para profissionais independentes.</p>
+          </div>
+          <div className="eyes-showcase" aria-hidden="true">
+            <div className="legacy-eyes-stage">
+              <div className="legacy-eyes-col a">
+                <div className="legacy-eyes-eye">
+                  <div className="legacy-eyes-pupil" />
+                </div>
+                <div className="legacy-eyes-shadow" />
+              </div>
+              <div className="legacy-eyes-col b">
+                <div className="legacy-eyes-eye">
+                  <div className="legacy-eyes-pupil" />
+                </div>
+                <div className="legacy-eyes-shadow" />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="page-content">
-        <div className="inner">
-          <h2>Você faz seu trabalho. Sua Doopla trabalha por você.</h2>
-          <div className="concepts">
-            <div className="concept">
-              <h3>Encontra trabalhos</h3>
-              <p>Sua Doopla identifica trabalhos que fazem sentido para você.</p>
+      <section className="inst-content">
+        <div className="two-col">
+          <div>
+            <h2>Uma Doopla para cuidar do que fica em volta do seu trabalho.</h2>
+          </div>
+          <div className="stack-list">
+            <div className="stack-item">
+              <h3>Atende e negocia</h3>
+              <p>Entende cada pedido, conversa com o cliente e conduz o booking.</p>
             </div>
-            <div className="concept">
-              <h3>Cuida de tudo</h3>
-              <p>Atende clientes, entende o trabalho, negocia e acompanha cada etapa.</p>
+            <div className="stack-item">
+              <h3>Acompanha cada booking</h3>
+              <p>Organiza condições, próximos passos, contratos e pagamentos.</p>
             </div>
-            <div className="concept">
-              <h3>Você decide</h3>
+            <div className="stack-item">
+              <h3>Você continua no controle</h3>
               <p>Quando uma decisão precisa ser sua, sua Doopla te chama.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="page-cta">
-        <div className="inner">
+      <section className="inst-cta">
+        <div className="bar">
           <h2>Tenha uma Doopla trabalhando por você.</h2>
           <Link href="/cadastro" className="btn btn-primary">
             Criar conta
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
           </Link>
         </div>
       </section>

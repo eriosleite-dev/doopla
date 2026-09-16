@@ -12,18 +12,26 @@ const UPDATED = '15 de setembro de 2026';
 export default function PrivacidadePage() {
   return (
     <PageShell>
+      <section className="legal-hero">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Legal</span>
+            <h1>Política de Privacidade</h1>
+          </div>
+          <div className="intro">
+            <div className="updated">Última atualização: {UPDATED}</div>
+            <p>
+              Esta Política explica como a Doopla coleta, utiliza e protege
+              informações pessoais durante o uso da plataforma e de seus
+              serviços.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section className="legal-content">
-        <div className="inner">
-          <span className="eyebrow">Legal</span>
-          <h1>Política de Privacidade</h1>
-          <div className="updated">Última atualização: {UPDATED}</div>
-
-          <p>
-            Esta Política explica como a Doopla coleta, utiliza e protege
-            informações pessoais durante o uso da plataforma e de seus
-            serviços.
-          </p>
-
+        <div className="container">
+        <div className="legal-body">
           <h2>1. Informações que podemos coletar</h2>
           <p>
             Podemos tratar informações fornecidas pelo usuário durante o
@@ -123,6 +131,7 @@ export default function PrivacidadePage() {
             ser enviadas para{' '}
             <a href="mailto:contato@doopla.pro">contato@doopla.pro</a>.
           </p>
+        </div>
         </div>
       </section>
     </PageShell>
