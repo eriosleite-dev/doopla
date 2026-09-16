@@ -16905,6 +16905,71 @@ registrada nesta sessão.
 `mobile/src/lib/data/community.ts`, `mobile/src/types/community.ts`,
 `mobile/app/forum/index.tsx`, `mobile/app/forum/novo.tsx`.
 
+## 121. Direct Booking sem Booker — checkpoint de migrations, `[EM ANDAMENTO, NÃO ENTREGUE]` — 16/09/2026
+
+Retomado depois da pausa pra tratar os bugs urgentes (§117-120).
+**Este item é um checkpoint de trabalho em andamento, nunca uma
+entrega** — commitado agora só pra não perder o progresso (arquivos
+estavam sem tracking no working tree).
+
+**Audit de schema/RLS/Approval Engine (feito, base pras migrations
+abaixo)**: `bookings` (0003) — `booker_profile_id NOT NULL` é o
+bloqueio confirmado; `originated_from_opportunity_id` (0045) já existe,
+nullable, nunca usado em TypeScript até aqui. `opportunities` — schema
+atual (via `src/lib/supabase/types.ts`) tem `status` sem nenhum valor
+que represente "convertido direto pra Booking" (`rascunho|aberta|
+em_distribuicao|interesse_recebido|booker_selecionado|cancelada` —
+`booker_selecionado` seria semanticamente ERRADO aqui). `conversations.related_opportunity_id`/
+`related_booking_id` (0039) já existem, sem constraint de exclusão
+mútua, `_create_conversation_core` (0082) já aceita os dois na
+criação. `get_active_approvals`/`resolve_commercial_root_id` (0045):
+`accept_or_decline_work` é categoria singular (`subject_key='primary'`,
+não está em `SUBJECT_KEY_TAXONOMY`). `is_system_caller()` (0051) é o
+padrão canônico de autorização Runtime-only.
+
+**Migrations criadas (não aplicadas em nenhum banco — sem Postgres
+real neste sandbox pra testar de verdade)**:
+- `0086_opportunity_status_convertida.sql` — adiciona `'convertida'` a
+  `opportunity_status` (precisa de migration própria, separada de
+  onde o valor é usado — Postgres não permite usar um valor de enum
+  recém-criado com segurança suficiente na mesma transação).
+- `0087_direct_booking_no_booker.sql` — `booker_profile_id` vira
+  nullable; unique index parcial em `originated_from_opportunity_id`;
+  `convert_opportunity_to_booking(p_opportunity_id)` (SECURITY DEFINER,
+  só `service_role`, STOP CONDITION física via `accept_or_decline_work`
+  ativo + `accepted=true` explícito, idempotente via advisory lock +
+  unique index); guarda em `create_pending_reviews` (0017) pra nunca
+  tentar criar review com participante null num Direct Booking
+  concluído (achado real da auditoria de UI abaixo — sem essa guarda,
+  o trigger quebraria com violação de NOT NULL).
+
+**Auditoria de impacto de UI (feita, delegada a um agente, achados
+reais, nada implementado ainda)**: contrato ("Gerar contrato" hoje é
+oferecido sem checar Booker — falha hoje com mensagem genérica, não
+crash, mas precisa de gate + copy explicando "sem intermediário");
+labels "Alguém"/"Booker:" em `pro-booking-detail-view.tsx` (título da
+página, avatar, narrativa de negociação), `work-items.ts`→
+`pro-work-list-view.tsx` (nome do cliente na lista principal de
+Bookings), Agenda (`data.ts`, "Booker: Alguém" hardcoded); App já tem
+o padrão de referência correto (`bookings/[id].tsx` prefere
+`client_name` sobre `otherPartyName`); `Booking.booker_profile_id:
+string` em `types.ts` precisa virar `| null`; Financeiro e as queries
+de listagem/detalhe (Web+App) confirmadas seguras (sem join, sem
+crash).
+
+**Ainda NÃO feito**: nenhuma alteração de TypeScript (Runtime,
+gate de contrato, correção das labels, `Booking.booker_profile_id`
+nullable no type); nenhum teste (os 24 cenários A-X do pedido
+original); migrations não aplicadas/validadas contra Postgres real;
+PROGRESS.md sem entrega formal ainda. Retomar exige, nesta ordem:
+aplicar os 2 fixes de UI mais urgentes (labels + gate de contrato),
+tornar `Booking.booker_profile_id` nullable no type e deixar o
+compilador apontar o resto, então validar tudo (`tsc`/lint/build) antes
+de sequer cogitar aplicar as migrations em produção.
+
+**Arquivos**: `supabase/migrations/0086_opportunity_status_convertida.sql`,
+`supabase/migrations/0087_direct_booking_no_booker.sql`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
