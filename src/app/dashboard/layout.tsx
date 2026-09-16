@@ -111,6 +111,7 @@ export default async function DashboardLayout({
             email={user.email ?? ''}
             avatarUrl={profile.avatar_url}
             referralEligible={!!referralUrl && !!referralSummary}
+            modal={modal}
           >
             {children}
           </ProfessionalShellGate>
@@ -129,7 +130,6 @@ export default async function DashboardLayout({
             {children}
           </LegacyDashboardShell>
         )}
-        {profile.role !== 'booker' && modal}
         <BookerProModal />
         {referralUrl && referralSummary && (
           <ReferralModal
@@ -151,6 +151,7 @@ async function ProfessionalShellGate({
   avatarUrl,
   referralEligible,
   children,
+  modal,
 }: {
   supabase: AnySupabaseClient;
   fullName: string;
@@ -158,6 +159,7 @@ async function ProfessionalShellGate({
   avatarUrl: string | null;
   referralEligible: boolean;
   children: React.ReactNode;
+  modal: React.ReactNode;
 }) {
   const [homeFacts, pedidosNeedingYouCount] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
@@ -171,6 +173,16 @@ async function ProfessionalShellGate({
     // NotificationBell, no topbar deste shell, e
     // CommunityNotificationsBell, dentro de /dashboard/comunidade —
     // ambos descendentes daqui).
+    //
+    // `modal` (slot @modal, painel da Comunidade) precisa estar AQUI
+    // DENTRO, não como irmão de <ProfessionalShellGate> em
+    // DashboardLayout — achado real, 16/09/2026: estava fora do
+    // Provider, então CommunityNotificationsBell (useNotifications())
+    // lançava "useNotifications precisa estar dentro de
+    // <NotificationsProvider>" toda vez que a Comunidade abria pelo
+    // ícone (navegação client-side, o caminho mais comum), crash
+    // capturado pelo error.tsx novo mas nunca corrigido de verdade até
+    // agora.
     <NotificationsProvider>
       <ProfessionalShell
         fullName={fullName}
@@ -182,6 +194,7 @@ async function ProfessionalShellGate({
       >
         {children}
       </ProfessionalShell>
+      {modal}
     </NotificationsProvider>
   );
 }

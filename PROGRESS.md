@@ -16623,6 +16623,55 @@ reais e quem precisa confirmar em QA real depois deste deploy.
 **Arquivos alterados**: `src/app/dashboard/actions.ts`,
 `src/app/dashboard/pro-shell.tsx`, `src/app/dashboard/pro-header-community-link.tsx` (novo).
 
+## 119. Causa raiz real da página em branco na Comunidade, encontrada e corrigida — `[DELIVERED + VALIDATED EM QA REAL]` — 16/09/2026
+
+O fix do §118 (prefetch da sidebar) não resolveu — a fundadora
+reportou em QA real que o ícone de Comunidade continuava quebrando
+mesmo no deployment novo, com Reload e aba anônima, numa conta QA
+recém-criada (zero bookings/conversas). Runtime Logs da Vercel não
+mostravam nenhum erro (só 200s) no período investigado — indício de
+que a falha era client-side, não server-side.
+
+**Diagnóstico**: adicionado `error.tsx` (nenhuma rota do app tinha
+isso até aqui) em `src/app/dashboard/comunidade/` e
+`src/app/dashboard/@modal/(.)comunidade/` (as duas árvores de rota da
+Comunidade — página cheia e painel via ícone), com a mensagem/digest
+do erro mostrados direto na tela (instrumentação temporária, já
+removida depois de achar a causa). Isso capturou o erro real:
+
+```
+useNotifications precisa estar dentro de <NotificationsProvider>.
+```
+
+**Causa raiz**: em `src/app/dashboard/layout.tsx`, o slot `{modal}`
+(rota interceptada `@modal/(.)comunidade` — o painel deslizante que
+abre ao clicar no ícone de Comunidade) era renderizado como IRMÃO de
+`<ProfessionalShellGate>`, fora do `<NotificationsProvider>` que
+`ProfessionalShellGate` monta internamente. `CommunityNotificationsBell`
+(dentro da Comunidade) chama `useNotifications()`, que lança exceção
+se não houver um `<NotificationsProvider>` ancestral — exatamente o
+caso do slot `{modal}`, que nunca tinha esse ancestral.
+
+**Correção**: `modal` agora é passado como prop pra
+`ProfessionalShellGate` e renderizado DENTRO do `<NotificationsProvider>`,
+ao lado de `{children}`, em vez de fora dele. Booker (que não tem sino
+de notificação, `LegacyDashboardShell`) não foi tocado — continua
+recebendo `modal` diretamente, sem Provider, como sempre.
+
+**Validação**: `tsc --noEmit` limpo, ESLint idêntico ao baseline (44
+erros/6 warnings), `npm run build` sem erros. **QA real confirmada
+pela fundadora** — depois deste fix, a Comunidade abre normalmente
+pelo ícone na conta de teste que antes quebrava consistentemente.
+
+Os 2 `error.tsx` (com a mensagem/digest de debug removida, só a UI de
+retry) permanecem no código como hardening permanente — nenhuma outra
+rota do app tem esse boundary ainda, fica registrado como gap conhecido
+pra uma rodada futura se fizer sentido generalizar.
+
+**Arquivos alterados**: `src/app/dashboard/layout.tsx`,
+`src/app/dashboard/comunidade/error.tsx`,
+`src/app/dashboard/@modal/(.)comunidade/error.tsx`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
