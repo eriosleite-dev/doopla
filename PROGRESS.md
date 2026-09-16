@@ -11,6 +11,87 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-16.
 
+## Home — alinhamento vertical do hero (coluna esquerda × celular) — 16/09/2026
+
+- ✅ **Causa raiz**: `.hero-grid{ align-items:center }` centralizava a
+  coluna de texto (mais baixa que os 542px do celular) no meio da
+  linha, sobrando espaço acima do eyebrow "Toda carreira merece sua
+  Doopla." Trocado por `align-items:start` — fix estrutural de grid,
+  não offset manual: `.phone` já nasce no topo de `.hero-visual` por
+  conta própria (é o único filho que participa do `align-items:center`
+  interno; `.hero-glow`/`.mascot-hero`/`.hero-side` são
+  `position:absolute`), então start alinha os dois topos exatamente.
+  Medido via Playwright: `eyebrow.top - phone.top = 0px`.
+- ✅ **Ritmo vertical da coluna esquerda reequilibrado**: com o topo
+  fixo, os gaps originais deixavam ~170px de vazio embaixo dos badges
+  antes do fim da linha. Aumento proporcional nos gaps já existentes
+  (mesmo sistema de spacing, nenhum elemento novo): eyebrow→h1 18→26px,
+  h1→lead 22→32px, lead→CTA 28→44px, CTA→badges 30→48px. Vazio residual
+  caiu pra ~123px — presença mais distribuída, sem virar espaçamento
+  artificial/uniforme.
+- ✅ Direita (celular, conversa, mascote, glow, "Sua Doopla trabalhando
+  por você.") inalterada — só a coluna esquerda mudou.
+- ✅ Responsivo preservado: `align-items` só afeta o layout de 2
+  colunas (>1080px) — abaixo disso `.hero-grid` já vira
+  `grid-template-columns:1fr` (empilhado), sem efeito visual do align.
+  Testado em 1440px (diff:0px confirmado), 900px (tablet, empilhado) e
+  390px (mobile, empilhado) — nenhuma quebra.
+
+**Arquivos alterados**: `src/app/_home/home.css`.
+
+## Site público: polimento Sobre/Segurança/Contato (spacing, tipografia, eye tracking, mascote) — 16/09/2026
+
+- ✅ **Sobre — respiro do hero**: gap entre "Toda carreira merece sua
+  Doopla." e o parágrafo de apoio ("A Doopla é uma nova forma...")
+  estava zerado (nenhuma margem entre h1 e p.lead). `.inst-hero h1`
+  ganha `margin-bottom:18px`, mesmo ritmo do padrão eyebrow→título→
+  supporting copy já usado no resto da Home.
+- ✅ **Sobre — hierarquia do bloco 2**: "Tenha uma Doopla trabalhando
+  por você." estava em negrito/tamanho de título (`font-weight:700,
+  1.05rem, var(--off)`), competindo com "Uma Doopla para atender,
+  negociar...". Agora segue exatamente o padrão do supporting copy do
+  hero (peso regular, `.98rem`, `var(--tx-70)`). Gap entre o h2 e esse
+  texto reduzido (18px, batendo com o ritmo do hero); gap até o botão
+  "Criar conta" um pouco maior (22px) — título→copy→CTA com
+  progressão de espaço, não mais um vazio grande seguido de texto
+  colado no botão.
+- ✅ **Sobre — eye tracking corrigido**: as pupilas amorteciam o
+  deslocamento pela distância até o cursor (fórmula portada de
+  `initMascotEyes()`, pensada pros olhos minúsculos do logo) — na
+  prática, cursor perto do bloco (o caso mais comum ao testar) quase
+  não movia a pupila. `EyesShowcase.tsx` agora usa deslocamento fixo
+  (28% do raio do olho, com folga real até a borda do globo) sempre no
+  ângulo certo entre o centro do olho e o cursor, sem amortecimento —
+  testado nas 8 posições extremas (esquerda/direita/cima/baixo/
+  diagonais) via Playwright, pupilas sempre coerentes com a posição
+  real do mouse, nunca cruzando o globo.
+- ✅ **Segurança — card final removido**: "Ainda ficou com alguma
+  dúvida sobre segurança? [Falar com a Doopla →]" não é mais uma seção
+  própria no fim da página. O botão "Falar com a Doopla" foi pra
+  dentro da coluna esquerda do bloco principal, logo abaixo do
+  parágrafo "A Doopla conduz o operacional...". `.inst-hero` (compartilhada
+  com Sobre) ganhou o modificador `.inst-hero-end` só pra esta página,
+  removendo a borda que separava da seção seguinte (que não existe
+  mais aqui) e ajustando o respiro até o footer — sem tocar no uso
+  compartilhado de `.inst-hero` em Sobre.
+- ✅ **Contato — mascote reposicionado**: estava numa seção própria
+  centralizada, embaixo do formulário. Agora vive dentro da coluna
+  esquerda, abaixo do e-mail, com respiro (56px) — nunca cola no
+  e-mail nem invade a coluna do formulário no desktop. Ganhou um
+  pouco mais de presença (`transform:scale(1.3)`, âncora à esquerda —
+  escala o conjunto inteiro já pronto do `.mascot-cta` sem recalcular
+  nada à mão, preserva proporção/glow exatos). No mobile, segue o
+  fluxo natural de empilhamento do `.two-col` (texto → e-mail →
+  mascote → formulário).
+- ✅ Validado: `next build`, `tsc --noEmit` e ESLint limpos;
+  verificação visual via Playwright (desktop 1440px + mobile 390px)
+  nas 3 páginas, incluindo as 8 posições extremas de cursor sobre os
+  olhos de Sobre.
+
+**Arquivos alterados**: `src/app/_home/site-chrome.css`,
+`src/app/_home/EyesShowcase.tsx`, `src/app/seguranca/page.tsx`,
+`src/app/contato/page.tsx`.
+
 ## Site público: Contato — copy + mascote real da Home no fechamento da página — 16/09/2026
 
 - ✅ **Copy**: "Quer falar com a Doopla?" / "Dúvida, problema, parceria

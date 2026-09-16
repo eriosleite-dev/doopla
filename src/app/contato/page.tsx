@@ -25,13 +25,12 @@ export default function ContatoPage() {
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
             </a>
+            <div className="contact-mascot">
+              <Mascot size="cta" />
+            </div>
           </div>
           <ContactForm />
         </div>
-      </section>
-
-      <section className="contact-mascot">
-        <Mascot size="cta" />
       </section>
     </PageShell>
   );
