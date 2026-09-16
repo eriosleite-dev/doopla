@@ -52,22 +52,30 @@
 }
 #home-marketing .inst-hero p.lead{ font-size:.98rem; line-height:1.65; color:var(--tx-70); max-width:440px; }
 
-/* Olhos grandes (Sobre) — bloco gráfico vermelho de verdade (não um
-   card pequeno), globo off-white + pupila preta (mesma polaridade do
-   .eye-slot do logo, só grande), com tracking real de cursor
-   (EyesShowcase.tsx — mesmo algoritmo de initMascotEyes() em home.js,
-   portado porque home.js nunca carrega nestas páginas). */
-#home-marketing .eyes-showcase{
-  background:var(--red); border-radius:28px; min-height:280px;
-  display:flex; align-items:center; justify-content:center; gap:clamp(24px,5vw,56px);
-  padding:40px 24px;
-}
+/* Olhos grandes com tracking real de cursor (EyesShowcase.tsx — mesmo
+   algoritmo de initMascotEyes() em home.js, portado porque home.js
+   nunca carrega nestas páginas). Duas variantes, cor sempre reaproveitada
+   de um par real já existente na Home — nunca inventada:
+   - .eyes-showcase-panel (Sobre, dentro de um bloco vermelho cheio):
+     globo preto + pupila off-white, mesma polaridade de .legacy-eyes-*.
+   - .eyes-showcase-plain (Termos/Privacidade, direto sobre o preto da
+     própria página): globo off-white + pupila preta, mesma polaridade
+     de .eye-slot — um globo preto sumiria no fundo quase preto (bug
+     de contraste já identificado e corrigido antes nesta sessão). */
+#home-marketing .eyes-showcase{ display:flex; align-items:center; justify-content:center; gap:clamp(24px,5vw,56px); }
 #home-marketing .eyes-showcase-eye{
   width:clamp(96px,11vw,150px); height:clamp(96px,11vw,150px); border-radius:50%;
-  background:var(--off); display:flex; align-items:center; justify-content:center;
-  position:relative; overflow:hidden;
+  display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
 }
-#home-marketing .eyes-showcase-pupil{ width:34%; height:34%; border-radius:50%; background:var(--black); will-change:transform; }
+#home-marketing .eyes-showcase-pupil{ width:34%; height:34%; border-radius:50%; will-change:transform; }
+
+#home-marketing .eyes-showcase-panel{ background:var(--red); border-radius:28px; min-height:280px; padding:40px 24px; }
+#home-marketing .eyes-showcase-panel .eyes-showcase-eye{ background:var(--black); }
+#home-marketing .eyes-showcase-panel .eyes-showcase-pupil{ background:var(--off); }
+
+#home-marketing .eyes-showcase-plain{ min-height:240px; }
+#home-marketing .eyes-showcase-plain .eyes-showcase-eye{ background:var(--off); }
+#home-marketing .eyes-showcase-plain .eyes-showcase-pupil{ background:var(--black); }
 
 #home-marketing .inst-content{ padding:48px 44px 72px; }
 #home-marketing .inst-content h2{
@@ -106,12 +114,20 @@
 
 /* Contato: mesma composição .two-col (texto+e-mail à esquerda,
    formulário à direita) — e-mail nunca repetido embaixo do form. */
-#home-marketing .contact-section{ padding:56px 44px 90px; }
+#home-marketing .contact-section{ padding:56px 44px 24px; }
 #home-marketing .contact-section h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
   font-size:clamp(1.7rem,3.2vw,2.3rem); line-height:1.15; margin:14px 0 0;
 }
 #home-marketing .contact-section p.lead{ font-size:.96rem; line-height:1.6; color:var(--tx-70); max-width:440px; }
+/* Mascote real da Home (Mascot.tsx, .mascot-cta) fechando a página
+   antes do footer — sem card, sem seção grande, só respiro correto.
+   home.css esconde .mascot-cta abaixo de 760px (decisão específica do
+   card do CTA final da Home, que fica apertado com o mascote junto);
+   aqui ele é o próprio conteúdo da seção, então essa regra não se
+   aplica — sobrescrita por especificidade, sem tocar home.css. */
+#home-marketing .contact-mascot{ display:flex; justify-content:center; padding:24px 44px 56px; }
+#home-marketing .contact-mascot .mascot-cta{ display:flex; }
 #home-marketing .contact-email{
   display:inline-flex; align-items:center; gap:6px; margin-top:18px;
   font-family:'IBM Plex Mono',monospace; font-size:.92rem; color:var(--red); text-decoration:underline;
@@ -139,17 +155,21 @@
 #home-marketing .form-message-success{ color:var(--off); font-weight:600; }
 
 /* ===== páginas editoriais (Termos, Privacidade) — mesma lógica de
-   .two-col no topo (título à esquerda, data+intro à direita) seguida do
-   corpo do documento como coluna de leitura alinhada à borda esquerda
-   do grid de 1180px (nunca um bloco solto centralizado com margin:auto
-   no próprio texto). Nunca vira landing page (sem CTA comercial, sem
-   cards). ===== */
+   .two-col no topo: esquerda = eyebrow+título+atualização+intro, um
+   bloco textual só, largura de leitura controlada (nunca esticando
+   pra preencher a coluna inteira só porque a direita ficou livre);
+   direita = elemento visual real da Home (EyesShowcase, variant
+   "plain"). Corpo do documento abaixo como coluna de leitura alinhada
+   à borda esquerda do grid de 1180px (nunca um bloco solto centralizado
+   com margin:auto no próprio texto). Nunca vira landing page (sem CTA
+   comercial, sem cards). ===== */
 #home-marketing .legal-hero{ padding:56px 44px 40px; border-bottom:1px solid var(--line); }
 #home-marketing .legal-hero h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
   font-size:clamp(1.8rem,3.6vw,2.6rem); line-height:1.14; margin:14px 0 0;
 }
-#home-marketing .legal-hero .updated{ font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--tx-50); margin:0 0 14px; }
+#home-marketing .legal-hero .updated{ font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--tx-50); margin:14px 0 0; }
+#home-marketing .legal-hero .intro{ max-width:440px; margin-top:18px; }
 #home-marketing .legal-hero .intro p{ font-size:.94rem; line-height:1.7; color:var(--tx-70); margin:0 0 12px; }
 #home-marketing .legal-hero .intro p:last-child{ margin-bottom:0; }
 #home-marketing .legal-hero .intro a{ color:var(--red); }
@@ -166,11 +186,13 @@
 
 @media (max-width:760px){
   #home-marketing .inst-hero{ padding:36px 22px 32px; }
-  #home-marketing .eyes-showcase{ min-height:200px; border-radius:20px; padding:28px 20px; }
+  #home-marketing .eyes-showcase-panel{ min-height:200px; border-radius:20px; padding:28px 20px; }
+  #home-marketing .eyes-showcase-plain{ min-height:160px; }
   #home-marketing .inst-content{ padding:36px 22px 56px; }
   #home-marketing .inst-cta{ padding:0 22px 44px; }
   #home-marketing .inst-cta .bar{ padding:22px 20px; }
-  #home-marketing .contact-section{ padding:36px 22px 56px; }
+  #home-marketing .contact-section{ padding:36px 22px 16px; }
+  #home-marketing .contact-mascot{ padding:16px 22px 40px; }
   #home-marketing .legal-hero{ padding:36px 22px 32px; }
   #home-marketing .legal-content{ padding:36px 22px 64px; }
 }

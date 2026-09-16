@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { PageShell } from '../_home/PageShell';
+import { EyesShowcase } from '../_home/EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Política de Privacidade — Doopla',
@@ -17,15 +18,16 @@ export default function PrivacidadePage() {
           <div>
             <span className="eyebrow">Legal</span>
             <h1>Política de Privacidade</h1>
-          </div>
-          <div className="intro">
             <div className="updated">Última atualização: {UPDATED}</div>
-            <p>
-              Esta Política explica como a Doopla coleta, utiliza e protege
-              informações pessoais durante o uso da plataforma e de seus
-              serviços.
-            </p>
+            <div className="intro">
+              <p>
+                Esta Política explica como a Doopla coleta, utiliza e protege
+                informações pessoais durante o uso da plataforma e de seus
+                serviços.
+              </p>
+            </div>
           </div>
+          <EyesShowcase variant="plain" />
         </div>
       </section>
 

@@ -11,6 +11,86 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-16.
 
+## Site público: Contato — copy + mascote real da Home no fechamento da página — 16/09/2026
+
+- ✅ **Copy**: "Quer falar com a Doopla?" / "Dúvida, problema, parceria
+  ou qualquer outra coisa: chama a gente." vira "Vamos conversar?" /
+  "Dúvidas, suporte ou parcerias. Fale com a Doopla." (título da aba
+  também atualizado). `contato@doopla.pro` mantido como estava.
+  Composição (esquerda texto+e-mail, direita formulário) inalterada.
+- ✅ **Mascote no fechamento**: nova seção `.contact-mascot` antes do
+  footer, com o mascote real da Home (`Mascot.tsx`, novo em
+  `src/app/_home/`) — mesmas classes de `home.css` (`.mascot.mascot-cta`,
+  glow vermelho, corpo, olhos, sorriso incluídos, nenhum estilo novo),
+  reaproveitando o tamanho já usado no CTA final da Home. Piscada
+  portada do mesmo timing de `initMascotBlink()` (home.js, que nunca
+  carrega nestas páginas), mesmo padrão já usado em `EyesShowcase.tsx`.
+  Sem card ao redor, fundo preto da própria página.
+- 🔧 **Achado durante o QA visual**: `home.css` esconde `.mascot-cta`
+  abaixo de 760px (`display:none`) — decisão específica do card do
+  CTA final da Home, que fica apertado com o mascote junto nesse
+  breakpoint. Como aqui o mascote É o conteúdo da seção (não um
+  acessório de um card menor), isso apagava o mascote no mobile.
+  Corrigido com uma regra mais específica em `site-chrome.css`
+  (`.contact-mascot .mascot-cta{ display:flex }`), sem tocar
+  `home.css`/Home.
+- ✅ Padding de `.contact-section` reduzido no rodapé pra abrir espaço
+  pro mascote sem dobrar a altura da página antes do footer.
+- ✅ Validado: `next build`, `tsc --noEmit` e ESLint limpos; Playwright
+  desktop (1440px) + mobile (390px) confirmando mascote visível, com
+  glow, nos dois breakpoints, e formulário/lógica intactos (nenhuma
+  mudança em `ContactForm.tsx`, Server Action, Supabase ou Resend).
+
+**Arquivos alterados**: `src/app/_home/Mascot.tsx` (novo),
+`src/app/_home/site-chrome.css`, `src/app/contato/page.tsx`.
+
+## Site público: refinamentos pontuais Sobre/Termos/Privacidade + copy Home/footer — 16/09/2026
+
+- ✅ **Sobre — olhos**: bloco superior direito vira painel vermelho de
+  verdade (`.eyes-showcase-panel`), globo preto + pupila off-white
+  (mesma polaridade de `.legacy-eyes-*`). Pupilas acompanham o cursor
+  de verdade: `EyesShowcase.tsx` (`src/app/_home/`) porta o mesmo
+  algoritmo de `initMascotEyes()` (`home.js` — clamp de distância,
+  easing suave, wander ocioso, respeita `prefers-reduced-motion`), já
+  que `home.js` nunca carrega nas páginas institucionais por decisão
+  de arquitetura (ver `PageShell.tsx`).
+- ✅ **Sobre — CTA final**: card isolado "Tenha uma Doopla trabalhando
+  por você." removido do fim da página. Agora vive dentro da coluna
+  esquerda do bloco "Uma Doopla para...", como parte da composição
+  (texto + botão pill `.btn.btn-primary`, sem card ao redor). Página
+  termina na seção de conteúdo, sem bloco extra antes do footer.
+- ✅ **Sobre — copy**: h2 do bloco 2 trocado para "Uma Doopla para
+  atender, negociar e acompanhar seus bookings."
+- ✅ **Termos/Privacidade — composição do hero**: reorganizado pra
+  esquerda = bloco textual único (eyebrow + título + atualização +
+  introdução, alinhado à esquerda, largura de leitura controlada a
+  440px — não estica só porque a direita ficou livre); direita =
+  elemento visual real da Home. Como o fundo da página é preto (não
+  vermelho, como em Sobre), `EyesShowcase` ganhou uma segunda
+  variante (`variant="plain"`): mesmos olhos/comportamento, globo
+  off-white + pupila preta (polaridade de `.eye-slot`) — um globo
+  preto sumiria no fundo quase preto, o mesmo bug de contraste já
+  identificado e corrigido antes nesta sessão. Corpo jurídico
+  (1. O que é a Doopla, 2. Conta do usuário...) inalterado, mesma
+  coluna de leitura alinhada à esquerda de antes. Nenhuma redação
+  jurídica foi tocada.
+- ✅ **Footer (Home + institucional, compartilhado)**: linha final
+  trocada de "Da cena para a sua carreira." para "Toda carreira
+  merece sua Doopla." — mesma string em `home.html` e
+  `SiteFooter.tsx` (footer das páginas institucionais reaproveita o
+  texto real da Home, nunca um próprio).
+- ✅ Validado: `next build`, `tsc --noEmit` e ESLint limpos nos
+  arquivos tocados; verificação visual via Playwright (desktop
+  1440px + mobile 390px) em Sobre/Termos/Privacidade, incluindo
+  simulação de movimento do mouse sobre os olhos pra confirmar o
+  tracking funcionando e a pupila nunca saindo do globo.
+
+**Arquivos alterados**: `src/app/_home/EyesShowcase.tsx` (novo,
+substitui `src/app/sobre/EyesShowcase.tsx`), `src/app/_home/
+site-chrome.css`, `src/app/_home/home.html`, `src/app/_home/
+SiteFooter.tsx`, `src/app/sobre/page.tsx`, `src/app/termos/page.tsx`,
+`src/app/privacidade/page.tsx`.
+
 ## Site público: correção da direção visual das páginas institucionais — layout da Home V2, não só cor/tipografia — 16/09/2026
 
 Achado do usuário sobre a rodada anterior (densidade/hierarquia, seção

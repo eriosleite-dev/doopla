@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PageShell } from '../_home/PageShell';
+import { EyesShowcase } from '../_home/EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Termos de Uso — Doopla',
@@ -18,19 +19,20 @@ export default function TermosPage() {
           <div>
             <span className="eyebrow">Legal</span>
             <h1>Termos de Uso</h1>
-          </div>
-          <div className="intro">
             <div className="updated">Última atualização: {UPDATED}</div>
-            <p>
-              Estes Termos de Uso estabelecem as regras para utilização da
-              plataforma Doopla.
-            </p>
-            <p>
-              Ao criar uma conta ou utilizar nossos serviços, você declara que
-              leu e concorda com estes Termos e com nossa{' '}
-              <Link href="/privacidade">Política de Privacidade</Link>.
-            </p>
+            <div className="intro">
+              <p>
+                Estes Termos de Uso estabelecem as regras para utilização da
+                plataforma Doopla.
+              </p>
+              <p>
+                Ao criar uma conta ou utilizar nossos serviços, você declara que
+                leu e concorda com estes Termos e com nossa{' '}
+                <Link href="/privacidade">Política de Privacidade</Link>.
+              </p>
+            </div>
           </div>
+          <EyesShowcase variant="plain" />
         </div>
       </section>
 
