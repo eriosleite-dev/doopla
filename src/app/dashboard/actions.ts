@@ -17,6 +17,7 @@ import type {
   Subscription,
 } from '@/lib/supabase/types';
 import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
+import { canMarkBookingPaid } from './data';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabaseClient = SupabaseClient<any>;
@@ -493,7 +494,6 @@ export async function markPaidAction(formData: FormData) {
   const ctx = await requireUserAndProfile();
   if (!ctx) return;
   const { supabase, user, profile } = ctx;
-  if (profile.role !== 'booker') return;
 
   const { data: booking } = await supabase
     .from('bookings')
@@ -501,11 +501,11 @@ export async function markPaidAction(formData: FormData) {
     .eq('id', bookingId)
     .single<Booking>();
   if (!booking || booking.status !== 'aguardando_pagamento') return;
-  if (user.id !== booking.booker_profile_id) return;
   // Trabalhos com NF fecham pelo próprio fluxo de faturamento (comissão
   // paga direto pelo artista) — a Doopla nunca processou esse pagamento
   // pra poder confirmá-lo aqui.
   if (booking.requires_invoice === 'sim') return;
+  if (!canMarkBookingPaid(booking, { role: profile.role, userId: user.id })) return;
 
   await supabase.from('bookings').update({ status: 'concluida' }).eq('id', bookingId);
   await supabase.from('booking_events').insert({

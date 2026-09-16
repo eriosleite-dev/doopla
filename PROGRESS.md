@@ -17242,6 +17242,83 @@ build` limpos na Web; `tsc --noEmit` limpo no App.
 `src/app/dashboard/bookings/[id]/pro-contract-section.tsx`,
 `src/lib/runtime/pipeline.ts`.
 
+## 123. Direct Booking sem Booker — fecha os 2 gaps do §122 (confirmação de pagamento + heranças cosméticas) — `[EM ANDAMENTO, migrations ainda não aplicadas]` — 16/09/2026
+
+Continuação direta do §122, resolvendo os 2 gaps que ele deixou
+registrados como "ainda não feito".
+
+**1. Confirmação de pagamento sem Booker.**
+
+Audit: `markPaidAction` (`src/app/dashboard/actions.ts`) começava com
+`if (profile.role !== 'booker') return;` — bloqueio incondicional.
+Pra um Direct Booking (`booker_profile_id null`), o profissional é
+sempre `role==='artista'`, então essa checagem sempre retornava cedo
+demais: não havia NENHUM caminho pra confirmar pagamento de um Direct
+Booking sem Nota Fiscal. Trabalhos com NF (`requires_invoice==='sim'`)
+já eram tratados à parte (fluxo de faturamento, nunca dependeu de
+`markPaidAction`) — esse fluxo continua 100% intacto e fora deste
+gap.
+
+Correção: extraída a autorização pra uma função pura
+`canMarkBookingPaid(booking, actor)` (`src/app/dashboard/data.ts`,
+testável determinística — precisou sair de `actions.ts` porque um
+arquivo `'use server'` só pode exportar Server Actions async, nunca
+uma função pura sync). Regra: sem Booker (`booker_profile_id===null`),
+autoriza `role==='artista' && userId===artist_profile_id` — o próprio
+profissional confirma que recebeu do cliente, nunca um Booker
+fictício. Com Booker real, comportamento **100% preservado**: só o
+Booker dono confirma, exatamente como antes.
+
+UI (`pro-booking-detail-view.tsx`): o bloco `aguardando_pagamento` +
+`role==='artista'` ganha o botão "Marcar como pago" quando
+`booker_profile_id===null` e não é NF — mesmo texto/ação que o Booker
+já usa hoje na visão dele. Texto de espera ("Aguardando confirmação de
+pagamento por {nome}") só aparece quando existe Booker de verdade pra
+esperar.
+
+**Teste determinístico real** — `canMarkBookingPaid` importada direto
+do código de produção, zero mock:
+
+| # | Caso | Resultado |
+|---|---|---|
+| 1 | Direct Booking: artista dono confirma | **PASS** — true |
+| 2 | Direct Booking: outro artista (não dono) | **PASS** — false |
+| 3 | Direct Booking: booker tentando (não existe) | **PASS** — false |
+| 4 | Com Booker: booker dono confirma | **PASS** — true (preservado) |
+| 5 | Com Booker: artista tentando confirmar | **PASS** — false (nunca) |
+| 6 | Com Booker: outro booker (não dono) | **PASS** — false |
+
+**2. Heranças cosméticas de Booker removidas — regra contextual, nunca esconde info válida de quem TEM Booker.**
+
+- Subtítulo "Negociação" (`ProPageHeader`, `pro-booking-detail-view.tsx`):
+  vira "Booking direto" quando `booker_profile_id===null` (nunca há
+  negociação de comissão pra um Direct Booking — ele nasce já
+  `aceita`). Com Booker: inalterado.
+- "Comissão proposta: 0%": a célula inteira do stat some quando
+  `booker_profile_id===null` (0% é um valor real mas sem nenhum
+  significado sem Booker pra receber comissão). Com Booker: célula
+  continua aparecendo normalmente, valor real.
+
+**Flagado, NÃO corrigido nesta rodada** (fora do escopo pedido, mesma
+classe de problema mas não nomeado explicitamente — registrado pra
+decisão futura, nunca resolvido por invenção): dentro do bloco de Nota
+Fiscal (`requires_invoice==='sim'`), a linha "Pagamento da comissão:
+Pelo artista, após o recebimento do cliente" também presume um Booker
+recebendo comissão — pra um Direct Booking com NF isso é igualmente
+impreciso. Não tocado porque a fundadora pediu especificamente só os
+2 itens acima ("sem abrir outro bloco").
+
+**Validação**: `tsc --noEmit`, ESLint (44/6, baseline) e `npm run
+build` limpos.
+
+**Arquivos alterados**: `src/app/dashboard/actions.ts`,
+`src/app/dashboard/data.ts`,
+`src/app/dashboard/bookings/[id]/pro-booking-detail-view.tsx`.
+
+**Migrations `0086`/`0087` continuam não aplicadas em nenhum banco.**
+Resumo/riscos/ordem de aplicação/plano de validação E2E entregues à
+fundadora em separado, conforme pedido, antes de qualquer aplicação.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

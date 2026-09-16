@@ -126,7 +126,10 @@ export function ProBookingDetailView({
 
       <ProPageHeader
         title={booking.otherPartyName}
-        subtitle="Negociação"
+        // Direct Booking (16/09/2026): "Negociação" nunca é o estado
+        // real aqui — não existe proposta de comissão nem contraparte
+        // Booker negociando. Booking com Booker: rótulo inalterado.
+        subtitle={booking.booker_profile_id === null ? 'Booking direto' : 'Negociação'}
         action={<span className={proStatusPillClass(bookingStatusTone(booking, userId))}>{STATUS_LABELS[booking.status]}</span>}
         badge={
           <span className="font-pro-sub flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white/10 text-[13px] font-bold text-[var(--pro-off)]">
@@ -137,10 +140,16 @@ export function ProBookingDetailView({
 
       <ProCard>
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <dt className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Comissão proposta</dt>
-            <dd className="font-pro-display mt-1 text-2xl">{formatPercent(booking.commission_percent)}</dd>
-          </div>
+          {/* Direct Booking (16/09/2026): sem Booker não existe
+              comissão aplicável — "0%" seria um valor técnico real mas
+              sem significado nenhum pro usuário. Nunca esconde info
+              válida: booking com Booker continua mostrando normalmente. */}
+          {booking.booker_profile_id !== null && (
+            <div>
+              <dt className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Comissão proposta</dt>
+              <dd className="font-pro-display mt-1 text-2xl">{formatPercent(booking.commission_percent)}</dd>
+            </div>
+          )}
           <div>
             <dt className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Cachê</dt>
             <dd className="font-pro-display mt-1 text-2xl">
@@ -445,7 +454,9 @@ export function ProBookingDetailView({
             <p className="text-sm text-[var(--pro-tx-70)]">
               {booking.requires_invoice === 'sim'
                 ? 'Trabalho realizado. Este é um trabalho com Nota Fiscal — marque as etapas do faturamento na seção acima.'
-                : `Trabalho realizado. Aguardando confirmação de pagamento por ${booking.otherPartyName}.`}
+                : booking.booker_profile_id === null
+                  ? 'Trabalho realizado. Quando o cliente pagar, marque o booking como concluído.'
+                  : `Trabalho realizado. Aguardando confirmação de pagamento por ${booking.otherPartyName}.`}
             </p>
             {booking.requires_invoice !== 'sim' &&
               (() => {
@@ -458,6 +469,21 @@ export function ProBookingDetailView({
                 {DISPUTE_LABELS[booking.dispute_status]}
                 {booking.dispute_opened_at && ` — ${formatRelativeDate(booking.dispute_opened_at)}`}.
               </p>
+            )}
+            {/* Direct Booking sem Booker (16/09/2026) — não existe Booker
+                pra confirmar o recebimento, e criar um fictício está fora
+                de cogitação. O próprio profissional confirma que recebeu
+                o pagamento do cliente (markPaidAction já aceita essa
+                autorização quando booker_profile_id é null). Booking com
+                Booker real: este botão nunca aparece aqui, comportamento
+                inalterado (só o Booker confirma, na visão dele). */}
+            {booking.requires_invoice !== 'sim' && booking.booker_profile_id === null && (
+              <form action={markPaidAction}>
+                <input type="hidden" name="bookingId" value={booking.id} />
+                <button type="submit" className={proPrimaryButtonClass}>
+                  Marcar como pago
+                </button>
+              </form>
             )}
             <div className="flex flex-wrap items-center gap-3">
               <ProRescheduleForm

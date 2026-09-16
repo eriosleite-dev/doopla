@@ -64,6 +64,22 @@ export function getBookingCheckpoints(booking: Booking): Checkpoint[] {
   ];
 }
 
+// Pura, sem I/O — testável determinística sem mock de Supabase.
+// Direct Booking (booker_profile_id null): não existe Booker pra
+// confirmar o recebimento, e criar um Booker fictício está fora de
+// cogitação (decisão de produto, §121/122) — o próprio profissional
+// confirma que recebeu o pagamento do cliente. Booking com Booker
+// real: comportamento 100% inalterado, só o Booker confirma (nunca o
+// artista, mesmo que ele peça).
+export function canMarkBookingPaid(
+  booking: Pick<Booking, 'booker_profile_id' | 'artist_profile_id'>,
+  actor: { role: string; userId: string }
+): boolean {
+  return booking.booker_profile_id === null
+    ? actor.role === 'artista' && actor.userId === booking.artist_profile_id
+    : actor.role === 'booker' && actor.userId === booking.booker_profile_id;
+}
+
 async function attachOtherPartyNames(
   bookings: Booking[],
   role: Profile['role'],
