@@ -352,7 +352,11 @@
   #home-marketing .with-you-visual{ display:flex; flex-direction:column; align-items:center; gap:48px; }
 
   /* ===== COMO FUNCIONA ===== */
-  #home-marketing .steps{ display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin-top:44px; }
+  /* Mesma largura útil de .two-col/.plans/.with-you/.faq .narrow (1180px
+     centralizado) — .steps é irmão de .two-col dentro de section.block,
+     então sem isso ele herdava só o padding:44px da section e estourava
+     lateralmente o alinhamento do título/texto acima em telas largas. */
+  #home-marketing .steps{ max-width:1180px; margin:44px auto 0; display:grid; grid-template-columns:repeat(4,1fr); gap:0; }
   #home-marketing .step{ padding:0 26px; position:relative; }
   #home-marketing .step:not(:first-child){ border-left:1px solid var(--line); }
   #home-marketing .step .num{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--tx-50); font-weight:600; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
@@ -405,10 +409,14 @@
   /* max-width igual a .two-col/.plans/.with-you/.faq .narrow — mesmo
      grid principal da Home, não um número novo. Estava em 1080px,
      sobrando margem lateral visível comparado às outras seções. */
+  /* Padding vertical reduzido (era 44px) — card ficava alto demais;
+     horizontal e max-width intactos, então largura/alinhamento lateral
+     não mudam. display:grid + align-items:center já recentraliza
+     mascote/texto/CTA sozinho dentro da altura menor. */
   #home-marketing .cta-final{
     max-width:1180px; margin:0 auto; border-radius:22px; background:linear-gradient(120deg,var(--panel-solid),var(--bg));
     border:1px solid var(--line); display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:40px;
-    padding:44px 48px; position:relative; overflow:hidden;
+    padding:28px 48px; position:relative; overflow:hidden;
   }
   #home-marketing .cta-final .glow{ position:absolute; left:-40px; bottom:-60px; width:260px; height:220px; background:radial-gradient(closest-side, var(--red-glow), transparent 72%); filter:blur(8px); z-index:0; }
   #home-marketing .mascot-cta{ width:110px; height:92px; position:relative; z-index:2; }
