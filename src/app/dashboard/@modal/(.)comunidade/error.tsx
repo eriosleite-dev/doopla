@@ -24,6 +24,13 @@ export default function ComunidadeModalError({ error, reset }: { error: Error & 
       <button type="button" onClick={reset} className={proPrimaryButtonClass}>
         Tentar de novo
       </button>
+      {/* Instrumentação temporária (16/09/2026) — ver nota em
+          ../../comunidade/error.tsx. Remover quando a causa raiz for
+          encontrada e corrigida. */}
+      <div className="mt-2 max-w-xs rounded-[10px] border border-[var(--pro-line)] bg-black/30 px-3 py-2 text-left font-mono text-[11px] text-[var(--pro-tx-50)]">
+        <p>mensagem: {error.message || '(vazia)'}</p>
+        {error.digest && <p>digest: {error.digest}</p>}
+      </div>
     </div>
   );
 }

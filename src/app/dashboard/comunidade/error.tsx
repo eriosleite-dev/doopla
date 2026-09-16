@@ -27,6 +27,15 @@ export default function ComunidadeError({ error, reset }: { error: Error & { dig
       <button type="button" onClick={reset} className={proPrimaryButtonClass}>
         Tentar de novo
       </button>
+      {/* Instrumentação temporária (16/09/2026) — causa raiz ainda não
+          identificada (Runtime Logs não mostraram nada no incidente
+          anterior). Mostra a mensagem/digest direto na tela pra poder
+          diagnosticar sem depender de DevTools/Vercel Logs. Remover
+          quando a causa raiz for encontrada e corrigida. */}
+      <div className="mt-2 max-w-md rounded-[10px] border border-[var(--pro-line)] bg-black/30 px-3 py-2 text-left font-mono text-[11px] text-[var(--pro-tx-50)]">
+        <p>mensagem: {error.message || '(vazia)'}</p>
+        {error.digest && <p>digest: {error.digest}</p>}
+      </div>
     </main>
   );
 }
