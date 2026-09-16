@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PageShell } from '../_home/PageShell';
-import { EyesShowcase } from './EyesShowcase';
+import { EyesShowcase } from '../_home/EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
@@ -26,7 +26,7 @@ export default function SobrePage() {
       <section className="inst-content">
         <div className="two-col">
           <div>
-            <h2>Uma Doopla para cuidar do que fica em volta do seu trabalho.</h2>
+            <h2>Uma Doopla para atender, negociar e acompanhar seus bookings.</h2>
             <div className="inst-content-cta">
               <p>Tenha uma Doopla trabalhando por você.</p>
               <Link href="/cadastro" className="btn btn-primary">

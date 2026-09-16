@@ -11,8 +11,13 @@ import { useEffect, useRef } from 'react';
  * institucionais (ver PageShell.tsx) — não é lógica nova, é a mesma
  * reescrita num escopo local, adaptada ao tamanho deste bloco via
  * getBoundingClientRect (não a valores fixos).
+ *
+ * `variant="panel"` (Sobre): globo off-white + pupila preta dentro de
+ * um bloco vermelho cheio. `variant="plain"` (Termos/Privacidade):
+ * mesmos olhos/comportamento, sem painel ao redor — o fundo é o preto
+ * da própria página, igual ao resto do conteúdo institucional.
  */
-export function EyesShowcase() {
+export function EyesShowcase({ variant = 'panel' }: { variant?: 'panel' | 'plain' }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,7 +86,7 @@ export function EyesShowcase() {
   }, []);
 
   return (
-    <div className="eyes-showcase" ref={rootRef} aria-hidden="true">
+    <div className={`eyes-showcase eyes-showcase-${variant}`} ref={rootRef} aria-hidden="true">
       <span className="eyes-showcase-eye">
         <span className="eyes-showcase-pupil" />
       </span>
