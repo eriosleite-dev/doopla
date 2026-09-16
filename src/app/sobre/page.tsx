@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PageShell } from '../_home/PageShell';
+import { EyesShowcase } from './EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
@@ -18,22 +19,7 @@ export default function SobrePage() {
             <h1>Toda carreira merece sua Doopla.</h1>
             <p className="lead">A Doopla é uma nova forma de agenciamento para profissionais independentes.</p>
           </div>
-          <div className="eyes-showcase" aria-hidden="true">
-            <div className="legacy-eyes-stage">
-              <div className="legacy-eyes-col a">
-                <div className="legacy-eyes-eye">
-                  <div className="legacy-eyes-pupil" />
-                </div>
-                <div className="legacy-eyes-shadow" />
-              </div>
-              <div className="legacy-eyes-col b">
-                <div className="legacy-eyes-eye">
-                  <div className="legacy-eyes-pupil" />
-                </div>
-                <div className="legacy-eyes-shadow" />
-              </div>
-            </div>
-          </div>
+          <EyesShowcase />
         </div>
       </section>
 
@@ -41,6 +27,15 @@ export default function SobrePage() {
         <div className="two-col">
           <div>
             <h2>Uma Doopla para cuidar do que fica em volta do seu trabalho.</h2>
+            <div className="inst-content-cta">
+              <p>Tenha uma Doopla trabalhando por você.</p>
+              <Link href="/cadastro" className="btn btn-primary">
+                Criar conta
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </Link>
+            </div>
           </div>
           <div className="stack-list">
             <div className="stack-item">
@@ -56,18 +51,6 @@ export default function SobrePage() {
               <p>Quando uma decisão precisa ser sua, sua Doopla te chama.</p>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section className="inst-cta">
-        <div className="bar">
-          <h2>Tenha uma Doopla trabalhando por você.</h2>
-          <Link href="/cadastro" className="btn btn-primary">
-            Criar conta
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </Link>
         </div>
       </section>
     </PageShell>
