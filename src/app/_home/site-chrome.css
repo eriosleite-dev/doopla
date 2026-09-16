@@ -52,15 +52,33 @@
 }
 #home-marketing .inst-hero p.lead{ font-size:.98rem; line-height:1.65; color:var(--tx-70); max-width:440px; }
 
-/* Olhos grandes (Sobre) — reaproveita .legacy-eyes-* como já existem
-   (mesma cor/sombra/tamanho de "Sempre com você" na Home), só estático
-   aqui (o tracking de cursor é home.js, que não carrega fora de "/"). */
-#home-marketing .eyes-showcase{ display:flex; align-items:center; justify-content:center; min-height:180px; }
+/* Olhos grandes (Sobre) — bloco gráfico vermelho de verdade (não um
+   card pequeno), globo off-white + pupila preta (mesma polaridade do
+   .eye-slot do logo, só grande), com tracking real de cursor
+   (EyesShowcase.tsx — mesmo algoritmo de initMascotEyes() em home.js,
+   portado porque home.js nunca carrega nestas páginas). */
+#home-marketing .eyes-showcase{
+  background:var(--red); border-radius:28px; min-height:280px;
+  display:flex; align-items:center; justify-content:center; gap:clamp(24px,5vw,56px);
+  padding:40px 24px;
+}
+#home-marketing .eyes-showcase-eye{
+  width:clamp(96px,11vw,150px); height:clamp(96px,11vw,150px); border-radius:50%;
+  background:var(--off); display:flex; align-items:center; justify-content:center;
+  position:relative; overflow:hidden;
+}
+#home-marketing .eyes-showcase-pupil{ width:34%; height:34%; border-radius:50%; background:var(--black); will-change:transform; }
 
-#home-marketing .inst-content{ padding:48px 44px 56px; border-bottom:1px solid var(--line); }
+#home-marketing .inst-content{ padding:48px 44px 72px; }
 #home-marketing .inst-content h2{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.015em; color:var(--off);
   font-size:clamp(1.4rem,2.8vw,1.9rem); line-height:1.2;
+}
+/* CTA embutido na coluna esquerda (Sobre) — nunca outro card, o botão
+   já é .btn.btn-primary (pill vermelho de home.css). */
+#home-marketing .inst-content-cta{ margin-top:32px; }
+#home-marketing .inst-content-cta p{
+  font-family:'Inter',sans-serif; font-weight:700; font-size:1.05rem; color:var(--off); margin:0 0 14px;
 }
 
 /* Listas empilhadas (Sobre bloco 2, Segurança) — mesma lógica de
@@ -148,10 +166,15 @@
 
 @media (max-width:760px){
   #home-marketing .inst-hero{ padding:36px 22px 32px; }
-  #home-marketing .inst-content{ padding:36px 22px 44px; }
+  #home-marketing .eyes-showcase{ min-height:200px; border-radius:20px; padding:28px 20px; }
+  #home-marketing .inst-content{ padding:36px 22px 56px; }
   #home-marketing .inst-cta{ padding:0 22px 44px; }
   #home-marketing .inst-cta .bar{ padding:22px 20px; }
   #home-marketing .contact-section{ padding:36px 22px 56px; }
   #home-marketing .legal-hero{ padding:36px 22px 32px; }
   #home-marketing .legal-content{ padding:36px 22px 64px; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  #home-marketing .eyes-showcase-pupil{ transition:none !important; transform:none !important; }
 }
