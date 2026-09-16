@@ -11,6 +11,34 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-16.
 
+## Home — alinhamento vertical do hero (coluna esquerda × celular) — 16/09/2026
+
+- ✅ **Causa raiz**: `.hero-grid{ align-items:center }` centralizava a
+  coluna de texto (mais baixa que os 542px do celular) no meio da
+  linha, sobrando espaço acima do eyebrow "Toda carreira merece sua
+  Doopla." Trocado por `align-items:start` — fix estrutural de grid,
+  não offset manual: `.phone` já nasce no topo de `.hero-visual` por
+  conta própria (é o único filho que participa do `align-items:center`
+  interno; `.hero-glow`/`.mascot-hero`/`.hero-side` são
+  `position:absolute`), então start alinha os dois topos exatamente.
+  Medido via Playwright: `eyebrow.top - phone.top = 0px`.
+- ✅ **Ritmo vertical da coluna esquerda reequilibrado**: com o topo
+  fixo, os gaps originais deixavam ~170px de vazio embaixo dos badges
+  antes do fim da linha. Aumento proporcional nos gaps já existentes
+  (mesmo sistema de spacing, nenhum elemento novo): eyebrow→h1 18→26px,
+  h1→lead 22→32px, lead→CTA 28→44px, CTA→badges 30→48px. Vazio residual
+  caiu pra ~123px — presença mais distribuída, sem virar espaçamento
+  artificial/uniforme.
+- ✅ Direita (celular, conversa, mascote, glow, "Sua Doopla trabalhando
+  por você.") inalterada — só a coluna esquerda mudou.
+- ✅ Responsivo preservado: `align-items` só afeta o layout de 2
+  colunas (>1080px) — abaixo disso `.hero-grid` já vira
+  `grid-template-columns:1fr` (empilhado), sem efeito visual do align.
+  Testado em 1440px (diff:0px confirmado), 900px (tablet, empilhado) e
+  390px (mobile, empilhado) — nenhuma quebra.
+
+**Arquivos alterados**: `src/app/_home/home.css`.
+
 ## Site público: polimento Sobre/Segurança/Contato (spacing, tipografia, eye tracking, mascote) — 16/09/2026
 
 - ✅ **Sobre — respiro do hero**: gap entre "Toda carreira merece sua
