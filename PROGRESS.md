@@ -22,6 +22,107 @@ arquivo, na numeração "## N. Título — data". Nada foi perdido no
 merge, só concatenado — reorganizar cronologicamente fica pra depois,
 não é prioridade agora.
 
+**Nota de reconciliação de branch (15/09/2026)**: mesmo problema da
+nota acima, branch diferente. A sessão "Site institucional" (Sobre/
+Termos/Privacidade/Contato/footer + formulário de contato com envio
+real) rodou em `claude/busy-wright-5z9kr8`, criada do mesmo ponto
+antigo (`f812aff`, antes de toda a evolução de Home/Settings V2/
+Runtime/Beta/Community desta branch) — por isso o Preview dela no
+Vercel mostrava a Home antiga. Auditoria confirmou: **nenhum arquivo de
+Home foi tocado nessa sessão** (Home V2 preservada intacta). Os deltas
+institucionais válidos foram reaplicados manualmente, um arquivo por
+vez, em cima do estado atual desta branch — nunca por merge ou
+overwrite de arquivo inteiro. Detalhe completo na seção logo abaixo.
+
+---
+
+## Site institucional: Sobre/Termos/Privacidade/Contato + footer + formulário de contato com envio real — 15/09/2026
+
+Trabalho de uma sessão isolada (`claude/busy-wright-5z9kr8`), reaplicado
+aqui depois de descoberta a divergência de branch (ver nota acima).
+Escopo: só `/sobre`, `/termos`, `/privacidade`, `/contato` e o footer
+compartilhado — nada de Home, Professional Web, Bookings, Financeiro,
+Contexto profissional ou Comunidade foi tocado.
+
+- ✅ **Sistema visual**: reaproveitado o `PageShell`/`SiteHeader`/
+  `SiteFooter`/`site-chrome.css` já existentes — sem redesenho. Único
+  ajuste preservado do lado visual desta branch (cor do eye-logo em
+  `.dot`/`.pupil`) mantido intocado; só as seções de footer/contato do
+  CSS ganharam adições.
+- ✅ **Sobre**: copy reescrita — "profissionais independentes" (nunca
+  "artista independente"), 3 pilares "Encontra trabalhos / Cuida de
+  tudo / Você decide", CTA final "Tenha uma Doopla trabalhando por
+  você." → "Criar conta".
+- ✅ **Termos**: seções 1, 3, 4, 5 (renomeada "Negociações e trabalhos"),
+  6 revisadas pra refletir agenciamento de trabalhos (não só bookings)
+  e uso de IA sob autorização do usuário. Seções 2, 7–11 preservadas
+  sem reescrita por estilo.
+- ✅ **Privacidade**: seções 1, 2, 3 ampliadas (conversas com clientes/
+  contratantes, dados de terceiros, processamento por IA) com base em
+  auditoria real do schema — sem inventar fornecedor, retenção ou
+  coleta que o produto não faz. "A Doopla não vende dados pessoais.",
+  direitos LGPD e contato@doopla.pro preservados.
+- ✅ **Termos e Privacidade — data**: "Última atualização" de ambos
+  atualizada para 15 de setembro de 2026, por causa da alteração
+  material de conteúdo acima (decisão do usuário, não assumida).
+- ✅ **Footer**: ganhou o link "Sobre" (fazia parte do escopo, não
+  existia) e a tagline "Toda carreira merece sua Doopla." — só no
+  `SiteFooter`/páginas institucionais, a Home usa markup próprio e não
+  foi tocada.
+- ✅ **Contato — layout**: removida a coluna "E-mail" gigante; e-mail
+  agora é uma linha discreta ("Prefere falar por e-mail?") abaixo do
+  formulário, usando `SUPPORT_EMAIL` de `src/lib/support.ts` (fonte
+  única já estabelecida nesta branch — nada hardcoded).
+- ✅ **Contato — formulário com envio real, concluído.** Antes: só
+  `mailto:` local, sem backend. Auditoria confirmou que o projeto não
+  tinha nenhuma infraestrutura de e-mail própria (sem Resend/
+  Nodemailer/SendGrid/SMTP). Decisão adotada: Supabase pra persistência
+  real + Resend pra notificação (preparado, não obrigatório), sem
+  Nodemailer/SMTP.
+  - Migration `0085_contact_messages.sql` (renumerada — nasceu como
+    `0045_contact_messages.sql` na branch isolada, que não tinha os
+    migrations `0045`+ desta branch; já rodou com esse conteúdo em
+    doopla-qa-staging e doopla/produção, então **não precisa rodar de
+    novo** nesses ambientes — só o nome do arquivo mudou aqui pra não
+    colidir com `0045_approval_engine.sql` desta branch). Tabela
+    `contact_messages`: RLS habilitada, zero policies, privilégio de
+    tabela revogado explicitamente de anon/authenticated (mesmo
+    racional de 0039). Único caminho de escrita: `submit_contact_message`
+    (security definer, valida campos + rate limit de 3 msgs/e-mail/10
+    min) e `mark_contact_message_notification` (bookkeeping da
+    tentativa de envio, só transiciona pending→sent/failed, `id` nunca
+    volta ao client).
+  - **Regra canônica**: formulário enviado → persistido no Supabase →
+    considerado recebido pela Doopla. Ausência de `RESEND_API_KEY` ou
+    falha do Resend nunca impede a persistência nem vira erro pro
+    usuário — o passo de notificação roda dentro de um `try/catch` que
+    nunca propaga.
+  - `src/app/contato/actions.ts` (Server Action, validação `zod`),
+    `src/lib/contact/notify.ts` (chamada isolada e server-only à API
+    REST do Resend via `fetch`, sem SDK), `ContactForm.tsx` reescrito
+    com `useActionState` (mesmo padrão de `LoginForm`/etc.): loading,
+    honeypot, prevenção de duplo envio, mensagens de sucesso/erro
+    acessíveis (`aria-live`), dados preservados no erro (inputs não
+    controlados).
+  - `src/lib/supabase/types.ts` ganhou `ContactMessage` +
+    entradas em `Tables`/`Functions`, inseridas nos pontos corretos do
+    arquivo atual (não por overwrite).
+  - `.env.local.example` documenta `RESEND_API_KEY`/`CONTACT_EMAIL_FROM`
+    (server-only, nunca `NEXT_PUBLIC_`).
+- 🔒 **Resend: preparado, configuração externa e notificação automática
+  PENDENTES.** `RESEND_API_KEY` não configurada. Domínio/DNS de
+  `doopla.pro` no Resend não configurado. Enquanto isso não acontecer,
+  toda mensagem persistida fica com `notification_status='failed'`
+  (esperado, não é bug). Não considerar a notificação por e-mail
+  concluída até essa configuração externa acontecer.
+- ❌ **Termos/Privacidade do novo sistema de Agenciamento/Discovery**
+  (pool opt-in, matching, oportunidades geradas pela Doopla, localização/
+  área de atendimento, apresentação de profissionais, sourcing assistido
+  no beta, Trust & Safety) continuam fora de escopo — não foram e não
+  devem ser alterados até esse produto ser definido.
+- ✅ Build/typecheck/lint completos desta branch, depois da reaplicação
+  dos deltas acima, sem regressão introduzida.
+
 ---
 
 ## QA visual pontual — Bookings + Financeiro (Professional Web) — 15/09/2026
