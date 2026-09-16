@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function SegurancaPage() {
   return (
     <PageShell>
-      <section className="inst-hero">
+      <section className="inst-hero inst-hero-end">
         <div className="two-col">
           <div>
             <span className="eyebrow">Segurança</span>
@@ -21,6 +21,12 @@ export default function SegurancaPage() {
               A Doopla conduz o operacional. Você continua no controle das
               decisões comerciais importantes.
             </p>
+            <Link href="/contato" className="btn btn-primary">
+              Falar com a Doopla
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </Link>
           </div>
           <div className="stack-list">
             <div className="stack-item">
@@ -48,18 +54,6 @@ export default function SegurancaPage() {
               </Link>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section className="inst-cta">
-        <div className="bar">
-          <h2>Ainda ficou com alguma dúvida sobre segurança?</h2>
-          <Link href="/contato" className="btn btn-primary">
-            Falar com a Doopla
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </Link>
         </div>
       </section>
     </PageShell>

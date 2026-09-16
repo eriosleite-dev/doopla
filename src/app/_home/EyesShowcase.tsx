@@ -55,6 +55,17 @@ export function EyesShowcase({ variant = 'panel' }: { variant?: 'panel' | 'plain
       idleTimer = setTimeout(startIdleWander, 2200);
     }
 
+    // Cada pupila mira o cursor de verdade: ângulo do centro do PRÓPRIO
+    // olho (getBoundingClientRect, recalculado a cada movimento — já
+    // correto sob resize/scroll) até a posição real do mouse, sem
+    // amortecer por distância. A versão anterior escalava o
+    // deslocamento por (distância/500px), pensada pros olhos minúsculos
+    // do logo — aqui, com olhos grandes, isso fazia a pupila ficar quase
+    // parada quando o cursor passava perto do bloco (exatamente o caso
+    // mais comum de teste). Deslocamento agora é um raio fixo, sempre
+    // no ângulo certo, com folga real até a borda do globo (globo tem
+    // metade da largura de raio; pupila tem 17% de raio; 28% deixa uns
+    // 5 pontos percentuais de margem — nunca atravessa).
     function trackTo(x: number, y: number) {
       pupils.forEach((pupil) => {
         const eye = pupil.parentElement;
@@ -64,10 +75,10 @@ export function EyesShowcase({ variant = 'panel' }: { variant?: 'panel' | 'plain
         const cy = rect.top + rect.height / 2;
         const dx = x - cx;
         const dy = y - cy;
-        const dist = Math.min(1, Math.hypot(dx, dy) / 500);
+        if (Math.hypot(dx, dy) < 1) return; // dead-zone mínima: evita ângulo instável bem no centro
         const angle = Math.atan2(dy, dx);
-        const max = rect.width * 0.16;
-        setPupilOffset(pupil, Math.cos(angle) * max * dist, Math.sin(angle) * max * dist, 140);
+        const max = rect.width * 0.28;
+        setPupilOffset(pupil, Math.cos(angle) * max, Math.sin(angle) * max, 140);
       });
     }
 

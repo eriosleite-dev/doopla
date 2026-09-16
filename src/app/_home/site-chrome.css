@@ -46,11 +46,16 @@
    card gigante centralizado pra texto curto), essas páginas ganham o
    mesmo tipo de fechamento (.inst-cta). */
 #home-marketing .inst-hero{ padding:56px 44px 40px; border-bottom:1px solid var(--line); }
+/* Segurança: .inst-hero é a última seção da página (card de CTA
+   inferior removido, botão movido pra dentro da coluna esquerda) —
+   sem a borda que antes separava do bloco seguinte, com respiro
+   equivalente ao usado nas outras páginas antes do footer. */
+#home-marketing .inst-hero-end{ border-bottom:none; padding-bottom:72px; }
 #home-marketing .inst-hero h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
-  font-size:clamp(1.8rem,3.6vw,2.6rem); line-height:1.14; margin:14px 0 0;
+  font-size:clamp(1.8rem,3.6vw,2.6rem); line-height:1.14; margin:14px 0 18px;
 }
-#home-marketing .inst-hero p.lead{ font-size:.98rem; line-height:1.65; color:var(--tx-70); max-width:440px; }
+#home-marketing .inst-hero p.lead{ font-size:.98rem; line-height:1.65; color:var(--tx-70); max-width:440px; margin:0 0 22px; }
 
 /* Olhos grandes com tracking real de cursor (EyesShowcase.tsx — mesmo
    algoritmo de initMascotEyes() em home.js, portado porque home.js
@@ -80,13 +85,15 @@
 #home-marketing .inst-content{ padding:48px 44px 72px; }
 #home-marketing .inst-content h2{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.015em; color:var(--off);
-  font-size:clamp(1.4rem,2.8vw,1.9rem); line-height:1.2;
+  font-size:clamp(1.4rem,2.8vw,1.9rem); line-height:1.2; margin:0 0 18px;
 }
 /* CTA embutido na coluna esquerda (Sobre) — nunca outro card, o botão
-   já é .btn.btn-primary (pill vermelho de home.css). */
-#home-marketing .inst-content-cta{ margin-top:32px; }
+   já é .btn.btn-primary (pill vermelho de home.css). O texto de apoio
+   segue exatamente o mesmo padrão do p.lead do hero (peso regular,
+   tx-70, mesmo tamanho) — nunca um segundo título em negrito. */
+#home-marketing .inst-content-cta{ margin-top:0; }
 #home-marketing .inst-content-cta p{
-  font-family:'Inter',sans-serif; font-weight:700; font-size:1.05rem; color:var(--off); margin:0 0 14px;
+  font-family:'Inter',sans-serif; font-weight:400; font-size:.98rem; line-height:1.65; color:var(--tx-70); margin:0 0 22px;
 }
 
 /* Listas empilhadas (Sobre bloco 2, Segurança) — mesma lógica de
@@ -114,20 +121,25 @@
 
 /* Contato: mesma composição .two-col (texto+e-mail à esquerda,
    formulário à direita) — e-mail nunca repetido embaixo do form. */
-#home-marketing .contact-section{ padding:56px 44px 24px; }
+#home-marketing .contact-section{ padding:56px 44px 72px; }
 #home-marketing .contact-section h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
   font-size:clamp(1.7rem,3.2vw,2.3rem); line-height:1.15; margin:14px 0 0;
 }
 #home-marketing .contact-section p.lead{ font-size:.96rem; line-height:1.6; color:var(--tx-70); max-width:440px; }
-/* Mascote real da Home (Mascot.tsx, .mascot-cta) fechando a página
-   antes do footer — sem card, sem seção grande, só respiro correto.
+/* Mascote real da Home (Mascot.tsx, .mascot-cta) na coluna esquerda,
+   abaixo do e-mail — nunca um card/fundo ao redor, direto sobre o
+   preto da página. Escala um pouco maior que o tamanho original do
+   CTA final (transform, preserva a proporção inteira — corpo, glow,
+   olhos, sorriso — sem recalcular nada à mão) pra ter presença visual
+   sem competir com o título. transform-origin na esquerda: cresce sem
+   deslocar o alinhamento com o resto da coluna.
    home.css esconde .mascot-cta abaixo de 760px (decisão específica do
    card do CTA final da Home, que fica apertado com o mascote junto);
-   aqui ele é o próprio conteúdo da seção, então essa regra não se
+   aqui ele é conteúdo normal da coluna, então essa regra não se
    aplica — sobrescrita por especificidade, sem tocar home.css. */
-#home-marketing .contact-mascot{ display:flex; justify-content:center; padding:24px 44px 56px; }
-#home-marketing .contact-mascot .mascot-cta{ display:flex; }
+#home-marketing .contact-mascot{ margin-top:56px; }
+#home-marketing .contact-mascot .mascot-cta{ display:flex; transform:scale(1.3); transform-origin:0% 50%; }
 #home-marketing .contact-email{
   display:inline-flex; align-items:center; gap:6px; margin-top:18px;
   font-family:'IBM Plex Mono',monospace; font-size:.92rem; color:var(--red); text-decoration:underline;
@@ -186,13 +198,14 @@
 
 @media (max-width:760px){
   #home-marketing .inst-hero{ padding:36px 22px 32px; }
+  #home-marketing .inst-hero-end{ padding-bottom:56px; }
   #home-marketing .eyes-showcase-panel{ min-height:200px; border-radius:20px; padding:28px 20px; }
   #home-marketing .eyes-showcase-plain{ min-height:160px; }
   #home-marketing .inst-content{ padding:36px 22px 56px; }
   #home-marketing .inst-cta{ padding:0 22px 44px; }
   #home-marketing .inst-cta .bar{ padding:22px 20px; }
-  #home-marketing .contact-section{ padding:36px 22px 16px; }
-  #home-marketing .contact-mascot{ padding:16px 22px 40px; }
+  #home-marketing .contact-section{ padding:36px 22px 56px; }
+  #home-marketing .contact-mascot{ margin-top:40px; }
   #home-marketing .legal-hero{ padding:36px 22px 32px; }
   #home-marketing .legal-content{ padding:36px 22px 64px; }
 }
