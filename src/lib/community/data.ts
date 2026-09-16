@@ -348,7 +348,9 @@ export async function listCommunityMentions(supabase: AnySupabaseClient, postIds
 export type CreateCommunityTopicParams = {
   title: string;
   body: string;
-  categoryId: string;
+  // Opcional desde 16/09/2026 (busca universal) — decisão de produto:
+  // Comunidade nunca obriga taxonomia fechada na criação de tópico.
+  categoryId?: string | null;
   audience?: CommunityTopicAudience;
   tagIds?: string[];
 };
@@ -358,7 +360,7 @@ export async function createCommunityTopic(supabase: AnySupabaseClient, params: 
     .rpc('create_community_topic', {
       p_title: params.title,
       p_body: params.body,
-      p_category_id: params.categoryId,
+      p_category_id: params.categoryId ?? null,
       p_audience: params.audience ?? 'all',
       p_tag_ids: params.tagIds ?? [],
     })

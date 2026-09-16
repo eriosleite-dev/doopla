@@ -13,7 +13,6 @@ import {
   countUnreadCommunityNotifications,
   ensureCommunityProfileActivated,
   fetchCommunityAuthors,
-  fetchCommunityCategories,
   fetchCommunityForYouTopics,
   fetchCommunityTopics,
   fetchCommunityTopicsByIds,
@@ -25,9 +24,15 @@ import {
   unsaveTopic,
   type CommunityAuthorSnapshot,
 } from '@/lib/data/community';
-import type { CommunityCategory, CommunityTopic } from '@/types/community';
+import type { CommunityTopic } from '@/types/community';
 
 type Phase = 'loading' | 'ready' | 'error';
+
+// Busca universal (16/09/2026, decisão canônica da fundadora) — mesma
+// mudança da Web (pro-comunidade-home-view.tsx): sem categorias fixas
+// obrigatórias, exemplos discretos só ensinam que dá pra pesquisar
+// livremente.
+const SEARCH_EXAMPLES = ['equipamentos de som', 'quanto cobrar', 'fotógrafos', 'cliente cancelou'];
 
 // Preview de Salvos na Home do App (08/09/2026) — fecha o gap de
 // paridade registrado no §74 do PROGRESS.md ("App vai direto pra tela
@@ -65,21 +70,18 @@ export default function ForumTopicListScreen() {
   const [forYouAuthorsById, setForYouAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
   const [trendingTopics, setTrendingTopics] = useState<CommunityTopic[]>([]);
   const [trendingAuthorsById, setTrendingAuthorsById] = useState<Map<string, CommunityAuthorSnapshot>>(new Map());
-  const [categories, setCategories] = useState<CommunityCategory[]>([]);
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [search, setSearch] = useState('');
   const [retryTick, setRetryTick] = useState(0);
   const [deletingTopicIds, setDeletingTopicIds] = useState<Set<string>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Categorias + salvos + ativação do perfil de Comunidade: uma vez só,
-  // no mount — não depende de busca/categoria ativa.
+  // Salvos + ativação do perfil de Comunidade: uma vez só, no mount —
+  // não depende de busca.
   const loadBase = useCallback(async () => {
     try {
       await ensureCommunityProfileActivated();
-      const [cats, saved, unreadCount, forYou, trending] = await Promise.all([
-        fetchCommunityCategories(),
+      const [saved, unreadCount, forYou, trending] = await Promise.all([
         fetchSavedTopicIds(),
         // Contagem exata (nunca derivada de fetchCommunityNotifications,
         // que hoje é só um preview das últimas 20 — correção 09/09/2026,
@@ -88,7 +90,6 @@ export default function ForumTopicListScreen() {
         fetchCommunityForYouTopics(6),
         fetchCommunityTrendingTopics(6),
       ]);
-      setCategories(cats);
       setSavedIds(new Set(saved));
       setUnreadNotifications(unreadCount);
       setForYouTopics(forYou);
@@ -122,20 +123,17 @@ export default function ForumTopicListScreen() {
     return () => clearTimeout(timer);
   }, [loadBase]);
 
-  // Fonte ÚNICA da listagem principal — roda no mount (search='',
-  // activeCategoryId=null) e de novo a cada busca/filtro de categoria.
-  // Busca real no servidor (search_community_topics, migration 0068),
-  // nunca filtro raso client-side sobre um array fixo como o mock antigo
-  // fazia.
+  // Fonte ÚNICA da listagem principal — roda no mount (search='') e de
+  // novo a cada busca. Busca real no servidor (search_community_topics,
+  // migration 0068), nunca filtro raso client-side sobre um array fixo
+  // como o mock antigo fazia.
   useEffect(() => {
     const trimmed = search.trim();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setPhase('loading');
       try {
-        const list = trimmed
-          ? await searchCommunityTopics({ query: trimmed, categoryId: activeCategoryId, limit: 30 })
-          : await fetchCommunityTopics({ categoryId: activeCategoryId ?? undefined, limit: 20 });
+        const list = trimmed ? await searchCommunityTopics({ query: trimmed, limit: 30 }) : await fetchCommunityTopics({ limit: 20 });
         const authors = await fetchCommunityAuthors([...new Set(list.map((t) => t.author_profile_id))]);
         setTopics(list);
         setAuthorsById(authors);
@@ -147,7 +145,7 @@ export default function ForumTopicListScreen() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [search, activeCategoryId, retryTick]);
+  }, [search, retryTick]);
 
   // Item 6 (08/09/2026, correção do ••• ausente nos cards) — mesmo
   // padrão já usado em forum/[topicId].tsx: Alert.alert nativo faz
@@ -210,15 +208,15 @@ export default function ForumTopicListScreen() {
   }
 
   // "Suas comunidades"/"Para você"/"Em alta agora" só existem na
-  // navegação neutra (sem busca/filtro de categoria ativos) — mesma
-  // regra da Web (pro-comunidade-home-view.tsx): busca substitui tudo
-  // por resultado, sem seções de descoberta por baixo. Deduplicação de
-  // apresentação (regra 17 da rodada): um tópico que já ocupou um slot
-  // em "Suas comunidades" não repete em "Para você"/"Em alta", e um que
-  // já apareceu em qualquer um dos dois anteriores não repete na
-  // listagem principal (Recentes) — nunca mexe nos datasets canônicos,
-  // só filtra a apresentação na ordem de prioridade da hierarquia.
-  const isDefaultBrowse = search.trim().length === 0 && activeCategoryId === null;
+  // navegação neutra (sem busca ativa) — mesma regra da Web
+  // (pro-comunidade-home-view.tsx): busca substitui tudo por resultado,
+  // sem seções de descoberta por baixo. Deduplicação de apresentação
+  // (regra 17 da rodada): um tópico que já ocupou um slot em "Suas
+  // comunidades" não repete em "Para você"/"Em alta", e um que já
+  // apareceu em qualquer um dos dois anteriores não repete na listagem
+  // principal (Recentes) — nunca mexe nos datasets canônicos, só filtra
+  // a apresentação na ordem de prioridade da hierarquia.
+  const isDefaultBrowse = search.trim().length === 0;
   const { dedupedForYou, dedupedTrending, dedupedTopics } = useMemo(() => {
     if (!isDefaultBrowse) return { dedupedForYou: [], dedupedTrending: [], dedupedTopics: topics };
     const used = new Set(savedPreview.map((t) => t.id));
@@ -237,12 +235,26 @@ export default function ForumTopicListScreen() {
         <View style={styles.searchRow}>
           <TextInput
             style={styles.search}
-            placeholder="Busque por assunto, profissão ou dúvida…"
+            placeholder="Busque qualquer assunto na Comunidade"
             placeholderTextColor={colors.tx50}
             value={search}
             onChangeText={setSearch}
           />
         </View>
+
+        {isDefaultBrowse && (
+          <Text style={styles.searchExamples}>
+            Experimente:{' '}
+            {SEARCH_EXAMPLES.map((example, i) => (
+              <Text key={example}>
+                <Text style={styles.searchExampleItem} onPress={() => setSearch(example)}>
+                  {example}
+                </Text>
+                {i < SEARCH_EXAMPLES.length - 1 ? ' · ' : ''}
+              </Text>
+            ))}
+          </Text>
+        )}
         <View style={styles.actionsRow}>
           <Pressable style={styles.actionBtn} onPress={() => router.push('/forum/salvos')}>
             <Text style={styles.actionText}>Salvos</Text>
@@ -327,22 +339,7 @@ export default function ForumTopicListScreen() {
           </View>
         )}
 
-        {categories.length > 0 && (
-          <View style={styles.chips}>
-            <Pressable onPress={() => setActiveCategoryId(null)} style={[styles.chip, activeCategoryId === null && styles.chipActive]}>
-              <Text style={[styles.chipText, activeCategoryId === null && styles.chipTextActive]}>Todos</Text>
-            </Pressable>
-            {categories.map((cat) => {
-              const active = cat.id === activeCategoryId;
-              return (
-                <Pressable key={cat.id} onPress={() => setActiveCategoryId(cat.id)} style={[styles.chip, active && styles.chipActive]}>
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-
+        {!isDefaultBrowse && dedupedTopics.length > 0 && <Text style={styles.sectionTitle}>Conversas relacionadas</Text>}
         {isDefaultBrowse && dedupedTopics.length > 0 && <Text style={styles.sectionTitle}>Recentes</Text>}
 
         {phase === 'loading' && <LoadingState label="Carregando tópicos…" />}
@@ -402,6 +399,18 @@ const styles = StyleSheet.create({
     color: colors.off,
     fontFamily: fonts.body,
   },
+  searchExamples: {
+    color: colors.tx30,
+    fontFamily: fonts.body,
+    fontSize: 11.5,
+    marginBottom: 14,
+  },
+  searchExampleItem: {
+    color: colors.tx30,
+    fontFamily: fonts.body,
+    fontSize: 11.5,
+    textDecorationLine: 'underline',
+  },
   actionsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -442,31 +451,6 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
   },
   actionPrimaryText: {
-    color: colors.off,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-    marginBottom: 16,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  chipActive: {
-    backgroundColor: colors.red,
-    borderColor: colors.red,
-  },
-  chipText: {
-    color: colors.tx70,
-    fontFamily: fonts.subSemiBold,
-    fontSize: 11,
-  },
-  chipTextActive: {
     color: colors.off,
   },
   savedPreviewSection: {

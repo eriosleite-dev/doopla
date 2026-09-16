@@ -8,10 +8,8 @@ import { createTopicAction } from '../actions';
 import { useComunidadeDraftGuard } from '../navigation-guard';
 
 export function ProComunidadeNovoForm({
-  categories,
   tags,
 }: {
-  categories: { id: string; label: string }[];
   tags: { id: string; label: string }[];
 }) {
   const [state, formAction, pending] = useActionState(createTopicAction, {});
@@ -48,12 +46,12 @@ export function ProComunidadeNovoForm({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className={proInputClass}
-            placeholder="Ex: Como negociar cachê com cliente antigo"
+            placeholder="O que você quer conversar?"
           />
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className={proLabelClass}>O que você quer perguntar ou discutir?</span>
+          <span className={proLabelClass}>Descrição</span>
           <textarea
             name="body"
             required
@@ -62,21 +60,8 @@ export function ProComunidadeNovoForm({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             className={`${proInputClass} resize-y`}
+            placeholder="Conte um pouco mais."
           />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className={proLabelClass}>Categoria</span>
-          <select name="categoryId" required defaultValue="" className={proInputClass}>
-            <option value="" disabled>
-              Escolha uma categoria
-            </option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
         </label>
 
         {tags.length > 0 && (

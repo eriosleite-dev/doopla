@@ -1025,7 +1025,9 @@ export type CommunityTopic = {
   author_profile_id: string;
   title: string;
   body: string;
-  category_id: string;
+  // Nullable desde 16/09/2026 (busca universal) — null = tópico sem
+  // categoria escolhida na criação, decisão de produto explícita.
+  category_id: string | null;
   audience: CommunityTopicAudience;
   status: CommunityContentStatus;
   // Conta TODAS as respostas já criadas, inclusive removidas depois —
@@ -1758,7 +1760,7 @@ export type Database = {
         Args: {
           p_title: string;
           p_body: string;
-          p_category_id: string;
+          p_category_id?: string | null;
           p_audience?: CommunityTopicAudience;
           p_tag_ids?: string[];
         };

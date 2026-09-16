@@ -16734,6 +16734,104 @@ pra uma rodada futura se fizer sentido generalizar.
 `src/app/dashboard/comunidade/error.tsx`,
 `src/app/dashboard/@modal/(.)comunidade/error.tsx`.
 
+## 120. Comunidade — busca universal, remoção da taxonomia fechada obrigatória — `[DELIVERED]` — 16/09/2026
+
+**Decisão canônica da fundadora**: a Comunidade não deve depender de
+categorias fixas/obrigatórias para descoberta — a arquitetura é
+"tópicos livres → busca universal → resultados relevantes", nunca
+"categoria → subcategoria → tópico". Categorias/profissões nunca viram
+taxonomia rígida de novo no futuro — registrado aqui explicitamente
+por pedido dela, pra não revisitarmos essa arquitetura sem querer.
+
+**Audit prévio (pedido explícito antes de mexer em schema)**:
+
+1. **Busca hoje**: `search_community_topics` (migration 0068) já fazia
+   full-text search REAL — `tsvector` gerado (título peso A, corpo peso
+   B) + `websearch_to_tsquery('portuguese', ...)` + `ts_rank` — nunca
+   `ILIKE`/match raso. Categoria/tag já entravam só como BOOST
+   condicional de ranking (+0.5/+0.3), nunca como filtro obrigatório —
+   `p_category_id`/`p_tag_id` já eram nullable na function.
+2. **Onde categorias vivem**: `community_categories` (tabela,
+   vocabulário fechado, migration 0059) + `community_topics.category_id`
+   (FK).
+3. **Schema, não só UI**: `category_id uuid not null references
+   community_categories(id)` — obrigatória de verdade no banco, e
+   `create_community_topic` (RPC) validava e EXIGIA um id válido.
+4. **Obrigatória pra criar tópico**: sim, nos dois lados — `create_community_topic`
+   rejeitava `p_category_id` ausente/inválido; a UI (Web
+   `ProComunidadeNovoForm`, App `forum/novo.tsx`) tinha um `<select>`/chips
+   `required`.
+5. **Campos que a busca consulta**: título (peso A), corpo (peso B),
+   label da categoria vinculada, labels das tags vinculadas — todos via
+   `tsvector`/`to_tsvector`, nunca string matching raso.
+6. **Full-text search real, não `ILIKE`**: confirmado — `tsvector`
+   armazenado (`generated always as ... stored`) + índice GIN, ranking
+   por `ts_rank`.
+7. **Outras telas dependentes**: `[topicId]/topic-header.tsx` mostra o
+   label da categoria do tópico (já tratava `categoryLabel: string |
+   null` opcionalmente) — única tela que exibe categoria fora do filtro/criação,
+   preservada sem alteração (mostrar metadado existente não é o
+   problema; obrigar a escolha na criação, sim).
+
+**Implementação** (migration `0088_community_category_optional.sql`,
+não-destrutiva — nenhuma tabela/coluna/constraint/dado apagado):
+
+- `community_topics.category_id` vira nullable (`alter column ...
+  drop not null`). Tópicos antigos mantêm sua categoria intacta.
+- `create_community_topic` (mesma assinatura) passa a validar categoria
+  só condicionalmente: se `p_category_id is not null`, continua
+  exigindo que seja uma categoria real/ativa; se vier `null`, pula a
+  validação — nunca aceita um id inválido só porque a coluna é
+  nullable.
+- Nenhuma mudança em `search_community_topics`/`get_community_for_you_topics`/
+  `get_community_trending_topics` — já toleravam `category_id` null
+  (boost vira 0 pra esse tópico, sem quebrar).
+
+**Web**:
+- Removido o `<select>` "Todas as categorias" da Home da Comunidade
+  (`pro-comunidade-home-view.tsx`) — sem substituto, busca ocupa o
+  espaço. Abaixo do campo, exemplos discretos e clicáveis ("Experimente:
+  equipamentos de som · quanto cobrar · fotógrafos · cliente cancelou")
+  só pra ensinar que dá pra pesquisar livremente — nunca chips
+  permanentes/categorias disfarçadas.
+- Resultado da busca renomeado de "Resultado da busca" pra "Conversas
+  relacionadas".
+- `ProComunidadeNovoForm`: campo "Categoria" removido inteiramente.
+  Labels simplificados pra "Título" (placeholder "O que você quer
+  conversar?") e "Descrição" (placeholder "Conte um pouco mais.") —
+  Tags continuam opcionais, sem alteração (não fazem parte do pedido).
+- `comunidade/page.tsx`/`novo/page.tsx`: pararam de buscar
+  `listCommunityCategories` (nenhum consumidor restante nessas telas).
+
+**App (paridade, mesma decisão)**:
+- `forum/index.tsx`: removidos os chips de categoria ("Todos" +
+  lista); mesmos exemplos discretos clicáveis abaixo da busca; título
+  "Conversas relacionadas" quando buscando.
+- `forum/novo.tsx`: removidos os chips de categoria obrigatórios;
+  mesmos labels/placeholders simplificados da Web.
+
+**Preservado sem alteração**: PIN/favoritos (Salvos), "Para você"/"Em
+alta agora" (ranking, migration 0079), privacidade
+(`community_profiles`), moderação, notificações, categoria exibida no
+cabeçalho de um tópico existente, Tags (continuam opcionais em ambas
+as plataformas).
+
+**Validação**: `tsc --noEmit` limpo (Web e App), ESLint Web idêntico
+ao baseline (44 erros/6 warnings), `npm run build` sem erros. QA visual
+real (logar e testar a busca/criação de tópico de verdade) **BLOCKED
+ENVIRONMENT** — sem Supabase real neste sandbox, mesma limitação já
+registrada nesta sessão.
+
+**Arquivos alterados**: `supabase/migrations/0088_community_category_optional.sql`,
+`src/lib/community/data.ts`, `src/lib/supabase/types.ts`,
+`src/app/dashboard/comunidade/actions.ts`,
+`src/app/dashboard/comunidade/page.tsx`,
+`src/app/dashboard/comunidade/pro-comunidade-home-view.tsx`,
+`src/app/dashboard/comunidade/novo/page.tsx`,
+`src/app/dashboard/comunidade/novo/pro-comunidade-novo-form.tsx`,
+`mobile/src/lib/data/community.ts`, `mobile/src/types/community.ts`,
+`mobile/app/forum/index.tsx`, `mobile/app/forum/novo.tsx`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

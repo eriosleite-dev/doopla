@@ -4,7 +4,6 @@ import { redirect } from 'next/navigation';
 import {
   ensureCommunityProfileActivated,
   getCommunityAuthors,
-  listCommunityCategories,
   listCommunityForYouTopics,
   listCommunityTopics,
   listCommunityTopicsByIds,
@@ -39,12 +38,13 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   // Comunidade (achado real, 16/09/2026: a página inteira quebrava sem
   // nenhum error.tsx pra capturar, sem status 5xx visível nos Runtime
   // Logs — reject de qualquer item do Promise.all rejeitava tudo).
-  // Recentes/Salvos/Categorias continuam fail-closed de verdade (essas
-  // sim essenciais pra tela fazer sentido).
-  const [recentTopics, savedTopicIds, categories, forYouTopics, trendingTopics] = await Promise.all([
+  // Recentes/Salvos continuam fail-closed de verdade (essas sim
+  // essenciais pra tela fazer sentido). Categorias não é mais buscada
+  // aqui (busca universal, 16/09/2026) — nenhum consumidor restante
+  // nesta página.
+  const [recentTopics, savedTopicIds, forYouTopics, trendingTopics] = await Promise.all([
     listCommunityTopics(supabase, { limit: 20 }),
     listSavedTopicIds(supabase),
-    listCommunityCategories(supabase),
     listCommunityForYouTopics(supabase, 6).catch((err) => {
       console.error('[comunidade] get_community_for_you_topics falhou', err);
       return [];
@@ -99,7 +99,6 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
         recentTopics={recentTopics.map(toCard)}
         initialQuery={q ?? ''}
         currentProfileId={profile.id}
-        categories={categories}
       />
     </main>
   );

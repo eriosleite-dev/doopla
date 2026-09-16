@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
-import { listCommunityCategories, listCommunityTags } from '@/lib/community/data';
+import { listCommunityTags } from '@/lib/community/data';
 
 import { ProPageHeader } from '../../pro-ui';
 import { getSessionProfile } from '../../session';
@@ -15,12 +15,15 @@ export default async function ComunidadeNovoPage() {
   const { supabase, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
-  const [categories, tags] = await Promise.all([listCommunityCategories(supabase), listCommunityTags(supabase)]);
+  // Busca universal (16/09/2026) — categoria deixou de ser exigida na
+  // criação de tópico, então esta página nem busca mais
+  // community_categories (nenhum consumidor restante aqui).
+  const tags = await listCommunityTags(supabase);
 
   return (
     <main>
       <ProPageHeader title="Criar tópico" subtitle="Pergunte, compartilhe ou peça conselho pra outros profissionais da Doopla." />
-      <ProComunidadeNovoForm categories={categories} tags={tags} />
+      <ProComunidadeNovoForm tags={tags} />
     </main>
   );
 }

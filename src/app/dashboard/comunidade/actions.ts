@@ -60,19 +60,16 @@ function toCard(topic: CommunityTopic, authorsById: Map<string, CommunityAuthorS
   };
 }
 
-// categoryId (08/09/2026, filtro por categoria na Web) — query vazia +
-// categoryId setado é um caso já suportado pelo RPC search_community_topics
-// (migration 0068): tsquery vazia bypassa o match de texto (q.tsq::text
-// = ''), sobrando só o filtro de categoria + ordenação por
-// last_activity_at — mesmo comportamento de "recentes filtrados por
-// categoria", nunca uma segunda query/RPC nova. Decisão de produto
-// (comentário de pro-comunidade-home-view.tsx) continua valendo: busca
-// é o mecanismo principal, categoria nunca vira grade de chips
-// dominando a tela — aqui é só um parâmetro a mais do mesmo fluxo de
-// busca já existente.
-export async function searchCommunityTopicsAction(query: string, categoryId?: string | null): Promise<CommunityTopicCard[]> {
+// Busca universal (16/09/2026) — filtro de categoria removido da UI
+// (decisão canônica: Comunidade nunca depende de taxonomia fixa pra
+// descoberta). searchCommunityTopics/search_community_topics (0068)
+// continuam aceitando p_category_id internamente (usado só como boost
+// opcional de ranking, nunca filtro obrigatório) — só o parâmetro
+// exposto aqui pra Web foi removido, nenhuma capacidade do backend foi
+// apagada.
+export async function searchCommunityTopicsAction(query: string): Promise<CommunityTopicCard[]> {
   const { supabase } = await requireArtista();
-  const topics = await searchCommunityTopics(supabase, { query, categoryId, limit: 20 });
+  const topics = await searchCommunityTopics(supabase, { query, limit: 20 });
   const authorsById = await getCommunityAuthors(supabase, [...new Set(topics.map((t) => t.author_profile_id))]);
   return topics.map((t) => toCard(t, authorsById));
 }
@@ -104,18 +101,20 @@ export async function createTopicAction(_prevState: CreateTopicActionState, form
 
   const title = String(formData.get('title') ?? '').trim();
   const body = String(formData.get('body') ?? '').trim();
-  const categoryId = String(formData.get('categoryId') ?? '').trim();
   const tagIds = formData.getAll('tagIds').map(String).filter(Boolean).slice(0, 5);
 
   if (title.length < 3) return { error: 'O título precisa ter pelo menos 3 caracteres.' };
   if (!body) return { error: 'Escreva o que você quer perguntar ou discutir.' };
-  if (!categoryId) return { error: 'Escolha uma categoria.' };
 
   await ensureCommunityProfileActivated(supabase);
 
   let topicId: string;
   try {
-    topicId = await createCommunityTopic(supabase, { title, body, categoryId, tagIds });
+    // Busca universal (16/09/2026) — Comunidade nunca exige categoria
+    // pra publicar. categoryId sempre null aqui: nenhum campo de
+    // categoria existe mais no formulário de criação (ver
+    // ProComunidadeNovoForm).
+    topicId = await createCommunityTopic(supabase, { title, body, categoryId: null, tagIds });
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Não foi possível criar o tópico.' };
   }

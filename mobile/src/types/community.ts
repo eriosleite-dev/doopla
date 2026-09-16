@@ -63,7 +63,9 @@ export type CommunityTopic = {
   author_profile_id: string;
   title: string;
   body: string;
-  category_id: string;
+  // Nullable desde 16/09/2026 (busca universal) — null = tópico sem
+  // categoria escolhida na criação, decisão de produto explícita.
+  category_id: string | null;
   audience: CommunityTopicAudience;
   status: CommunityContentStatus;
   reply_count: number;

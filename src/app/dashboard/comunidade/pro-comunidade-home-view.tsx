@@ -4,8 +4,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import type { CommunityCategory } from '@/lib/supabase/types';
-
 import { proInputClass, proPrimaryButtonClass } from '../pro-format';
 import { ProAccordion, ProEmptyState } from '../pro-ui';
 import { removeTopicAction, searchCommunityTopicsAction, type CommunityTopicCard } from './actions';
@@ -25,6 +23,16 @@ import { SaveTopicButton } from './save-topic-button';
 // Busca continua o mecanismo PRINCIPAL de descoberta; o ranking ajuda,
 // nunca domina (uma seção sem conteúdo útil simplesmente não aparece —
 // nunca uma caixa vazia grande fingindo atividade que não existe).
+// Busca universal (16/09/2026, decisão canônica da fundadora) — a
+// Comunidade não depende de categorias fixas/obrigatórias pra
+// descoberta. search_community_topics (migration 0068) já faz
+// full-text search real (título/corpo, categoria/tag só como boost
+// opcional de ranking) — o filtro de categoria que existia aqui era só
+// UI, nunca uma limitação do backend. Removido sem substituto (nenhum
+// novo dropdown/chips fixos): busca ocupa o espaço, exemplos abaixo
+// dela só ensinam que dá pra pesquisar livremente.
+const SEARCH_EXAMPLES = ['equipamentos de som', 'quanto cobrar', 'fotógrafos', 'cliente cancelou'];
+
 export function ProComunidadeHomeView({
   savedTopics,
   savedTopicIds,
@@ -33,7 +41,6 @@ export function ProComunidadeHomeView({
   recentTopics,
   initialQuery,
   currentProfileId,
-  categories,
 }: {
   savedTopics: (CommunityTopicCard & { saved: true })[];
   savedTopicIds: Set<string>;
@@ -47,7 +54,6 @@ export function ProComunidadeHomeView({
   recentTopics: CommunityTopicCard[];
   initialQuery: string;
   currentProfileId: string;
-  categories: CommunityCategory[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,7 +61,6 @@ export function ProComunidadeHomeView({
   const [results, setResults] = useState<CommunityTopicCard[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
-  const [categoryId, setCategoryId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
@@ -75,18 +80,18 @@ export function ProComunidadeHomeView({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const trimmed = query.trim();
-    if (!trimmed && !categoryId) {
+    if (!trimmed) {
       router.replace(pathname, { scroll: false });
       return;
     }
 
     const myRequestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(async () => {
-      if (trimmed) router.replace(`${pathname}?q=${encodeURIComponent(trimmed)}`, { scroll: false });
+      router.replace(`${pathname}?q=${encodeURIComponent(trimmed)}`, { scroll: false });
       setSearching(true);
       setSearchError(false);
       try {
-        const cards = await searchCommunityTopicsAction(trimmed, categoryId);
+        const cards = await searchCommunityTopicsAction(trimmed);
         if (requestIdRef.current === myRequestId) setResults(cards);
       } catch {
         if (requestIdRef.current === myRequestId) setSearchError(true);
@@ -98,14 +103,11 @@ export function ProComunidadeHomeView({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, categoryId]);
+  }, [query]);
 
-  const isSearchMode = query.trim().length > 0 || categoryId !== null;
+  const isSearchMode = query.trim().length > 0;
 
-  const activeCategoryLabel = categoryId ? categories.find((c) => c.id === categoryId)?.label : undefined;
-  const emptyResultMessage = query.trim()
-    ? `Nenhum resultado para "${query.trim()}"${activeCategoryLabel ? ` em ${activeCategoryLabel}` : ''}. Tente outras palavras ou um jeito diferente de perguntar.`
-    : `Nenhum tópico em ${activeCategoryLabel ?? 'categoria'} ainda.`;
+  const emptyResultMessage = `Nenhum resultado para "${query.trim()}". Tente outras palavras ou um jeito diferente de perguntar.`;
 
   // Deduplicação de apresentação (regra 17 da rodada) — um tópico que
   // já ocupou um slot em "Suas comunidades" não repete em "Para você"/
@@ -126,40 +128,45 @@ export function ProComunidadeHomeView({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 @lg:flex-row @lg:items-center">
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Busque por assunto, profissão, dúvida ou interesse — ex: “como negociar cachê”"
-          className={`${proInputClass} @lg:flex-1`}
-        />
-        {categories.length > 0 && (
-          <select
-            value={categoryId ?? ''}
-            onChange={(e) => setCategoryId(e.target.value || null)}
-            aria-label="Filtrar por categoria"
-            className={`${proInputClass} @lg:w-[180px] @lg:flex-none`}
-          >
-            <option value="">Todas as categorias</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        )}
-        <div className="flex items-center gap-2">
-          <CommunityNotificationsBell />
-          <Link href="/dashboard/comunidade/novo" className={`${proPrimaryButtonClass} flex-1 whitespace-nowrap @lg:flex-none`}>
-            Criar tópico
-          </Link>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 @lg:flex-row @lg:items-center">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Busque qualquer assunto na Comunidade"
+            className={`${proInputClass} @lg:flex-1`}
+          />
+          <div className="flex items-center gap-2">
+            <CommunityNotificationsBell />
+            <Link href="/dashboard/comunidade/novo" className={`${proPrimaryButtonClass} flex-1 whitespace-nowrap @lg:flex-none`}>
+              Criar tópico
+            </Link>
+          </div>
         </div>
+
+        {/* Exemplos discretos, nunca categorias/filtros permanentes — só
+            ensinam que dá pra pesquisar livremente. Somem assim que uma
+            busca real começa. Clicáveis por conveniência (preenchem a
+            busca), não são chips de taxonomia. */}
+        {!isSearchMode && (
+          <p className="text-[12px] text-[var(--pro-tx-30)]">
+            Experimente:{' '}
+            {SEARCH_EXAMPLES.map((example, i) => (
+              <span key={example}>
+                <button type="button" onClick={() => setQuery(example)} className="underline decoration-dotted hover:text-[var(--pro-tx-50)]">
+                  {example}
+                </button>
+                {i < SEARCH_EXAMPLES.length - 1 && ' · '}
+              </span>
+            ))}
+          </p>
+        )}
       </div>
 
       {isSearchMode ? (
         <TopicListSection
-          title="Resultado da busca"
+          title="Conversas relacionadas"
           loading={searching}
           error={searchError}
           topics={results ?? []}

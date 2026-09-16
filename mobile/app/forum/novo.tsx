@@ -6,8 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, fonts, radii } from '@/theme/tokens';
 import { FullSheetHeader } from '@/components/shared/FullSheetHeader';
 import { ErrorState, LoadingState } from '@/components/shared/ScreenState';
-import { createCommunityTopic, fetchCommunityCategories, fetchCommunityTags } from '@/lib/data/community';
-import type { CommunityCategory, CommunityTag } from '@/types/community';
+import { createCommunityTopic, fetchCommunityTags } from '@/lib/data/community';
+import type { CommunityTag } from '@/types/community';
 
 type Phase = 'loading' | 'ready' | 'error';
 
@@ -15,22 +15,23 @@ type Phase = 'loading' | 'ready' | 'error';
 // criar tópico é parte do loop central pedido (buscar → abrir →
 // responder → criar → salvar). Mesma RPC/validação que o painel web
 // (create_community_topic, migration 0059).
+//
+// Busca universal (16/09/2026) — categoria removida deste formulário
+// (decisão canônica: Comunidade nunca exige taxonomia fechada pra
+// publicar). Mesmo comportamento da Web (ProComunidadeNovoForm).
 export default function ForumNovoTopicoScreen() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('loading');
-  const [categories, setCategories] = useState<CommunityCategory[]>([]);
   const [tags, setTags] = useState<CommunityTag[]>([]);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchCommunityCategories(), fetchCommunityTags()])
-      .then(([cats, tgs]) => {
-        setCategories(cats);
+    fetchCommunityTags()
+      .then((tgs) => {
         setTags(tgs);
         setPhase('ready');
       })
@@ -48,12 +49,11 @@ export default function ForumNovoTopicoScreen() {
   async function handlePublish() {
     if (title.trim().length < 3) return setError('O título precisa ter pelo menos 3 caracteres.');
     if (!body.trim()) return setError('Escreva o que você quer perguntar ou discutir.');
-    if (!categoryId) return setError('Escolha uma categoria.');
 
     setError(null);
     setSubmitting(true);
     try {
-      const topicId = await createCommunityTopic({ title: title.trim(), body: body.trim(), categoryId, tagIds: selectedTagIds });
+      const topicId = await createCommunityTopic({ title: title.trim(), body: body.trim(), categoryId: null, tagIds: selectedTagIds });
       router.replace(`/forum/${topicId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível criar o tópico.');
@@ -69,29 +69,17 @@ export default function ForumNovoTopicoScreen() {
       {phase === 'ready' && (
         <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 32 }}>
           <Text style={styles.label}>Título</Text>
-          <TextInput style={styles.input} placeholder="Ex: Como negociar cachê com cliente antigo" placeholderTextColor={colors.tx50} value={title} onChangeText={setTitle} />
+          <TextInput style={styles.input} placeholder="O que você quer conversar?" placeholderTextColor={colors.tx50} value={title} onChangeText={setTitle} />
 
-          <Text style={styles.label}>O que você quer perguntar ou discutir?</Text>
+          <Text style={styles.label}>Descrição</Text>
           <TextInput
             style={[styles.input, styles.textarea]}
-            placeholder="Escreva aqui…"
+            placeholder="Conte um pouco mais."
             placeholderTextColor={colors.tx50}
             value={body}
             onChangeText={setBody}
             multiline
           />
-
-          <Text style={styles.label}>Categoria</Text>
-          <View style={styles.chips}>
-            {categories.map((cat) => {
-              const active = cat.id === categoryId;
-              return (
-                <Pressable key={cat.id} onPress={() => setCategoryId(cat.id)} style={[styles.chip, active && styles.chipActive]}>
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{cat.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
 
           {tags.length > 0 && (
             <>
