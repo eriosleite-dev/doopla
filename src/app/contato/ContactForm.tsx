@@ -85,7 +85,7 @@ export function ContactForm() {
         )}
       </div>
 
-      <button type="submit" disabled={pending}>
+      <button type="submit" className="btn btn-primary" disabled={pending}>
         {pending ? 'Enviando…' : 'Enviar mensagem'}
       </button>
     </form>

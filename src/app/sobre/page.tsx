@@ -22,10 +22,10 @@ export default function SobrePage() {
         </p>
         <div className="hero-eyes" aria-hidden="true">
           <span className="dot">
-            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--cream)' }} />
+            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--off)' }} />
           </span>
           <span className="dot">
-            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--cream)' }} />
+            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--off)' }} />
           </span>
         </div>
       </section>
@@ -51,10 +51,12 @@ export default function SobrePage() {
       </section>
 
       <section className="page-cta">
-        <h2>Tenha uma Doopla trabalhando por você.</h2>
-        <Link href="/cadastro" className="btn-cta">
-          Criar conta
-        </Link>
+        <div className="inner">
+          <h2>Tenha uma Doopla trabalhando por você.</h2>
+          <Link href="/cadastro" className="btn btn-primary">
+            Criar conta
+          </Link>
+        </div>
       </section>
     </PageShell>
   );

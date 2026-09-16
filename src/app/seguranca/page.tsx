@@ -53,17 +53,19 @@ export default function SegurancaPage() {
       </section>
 
       <section className="page-cta">
-        <h2>Ficou com alguma dúvida sobre segurança?</h2>
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Link href="/contato" className="btn-cta">
-            Falar com a Doopla
-          </Link>
-          <Link
-            href="/privacidade"
-            style={{ color: 'var(--off)', textDecoration: 'underline', alignSelf: 'center', fontSize: '.88rem' }}
-          >
-            Política de Privacidade
-          </Link>
+        <div className="inner">
+          <h2>Ficou com alguma dúvida sobre segurança?</h2>
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link href="/contato" className="btn btn-primary">
+              Falar com a Doopla
+            </Link>
+            <Link
+              href="/privacidade"
+              style={{ color: 'var(--tx-70)', textDecoration: 'underline', alignSelf: 'center', fontSize: '.88rem' }}
+            >
+              Política de Privacidade
+            </Link>
+          </div>
         </div>
       </section>
     </PageShell>

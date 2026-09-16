@@ -9,7 +9,69 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-09-15.
+Última atualização: 2026-09-16.
+
+## Site público: migração institucional pro visual da Home V2 + ajustes pontuais de Home — 16/09/2026
+
+Sessão isolada (originalmente `claude/busy-wright-5z9kr8`, reconciliada
+sobre esta branch canônica em 15-16/09 — ver nota de reconciliação
+abaixo). Trabalho, em ordem:
+
+- ✅ **Sobre/Segurança/Termos/Privacidade/Contato migradas pro sistema
+  visual real da Home V2** (fundo escuro, header/footer/botões/
+  tipografia reais de `home.css`, nunca mais o sistema separado
+  cream/vermelho antigo). Conteúdo/copy/funcionalidade preservados —
+  Server Action, validação, Supabase e Resend do formulário de contato
+  intocados. Validado visualmente (Playwright) nas 5 rotas.
+- ✅ **Home: 4 ajustes pontuais aprovados** — copy do Hero/balão do
+  iPhone focada em bookings; correção real de alinhamento do grid
+  "Como funciona" (`.steps`/`.step` ganharam max-width/margin e padding
+  de borda zerado nas pontas, pra bater exatamente com o eixo do
+  título, nos 3 formatos de grid); altura do card CTA final reduzida
+  (só padding vertical); Eletricistas → Influencers na lista de
+  profissões.
+- ✅ **Home: linguagem "encontra trabalhos" removida** de duas seções
+  ("Você cuida do seu trabalho" e "Novos trabalhos") — só copy, mesma
+  estrutura/layout. Nova frase-âncora: "Apareceu uma oportunidade? Sua
+  Doopla te chama." (comunica que oportunidades podem chegar pela
+  Doopla sem posicionar como marketplace nem prometer busca ativa).
+- ✅ **Home: cards de planos com "Ver mais"/"Ver menos"** — cada card
+  expande verticalmente e de forma independente (CSS
+  `grid-template-rows` 0fr→1fr + `.plans{align-items:start}` pra não
+  esticar o card vizinho), sem navegar nem abrir modal. JS novo
+  (`initPlanCards()` em `home.js`, chamado no boot) só alterna a classe
+  `.expanded` — nenhum estado compartilhado entre os dois cards.
+
+### ⚠️ Features Pro exibidas na Home que ainda são PENDING — compromisso de lançamento, não status atual do código
+
+Antes de escrever a copy do card Doopla Pro, auditei `src/lib/plans.ts`
+(catálogo canônico de features por plano, também consumido por
+`ProUpgradeModal`/`PlanPicker`) e o schema/rotas reais. Confirmado: só
+**Bookings ilimitados** e **Minha equipe/Booker** têm gate real hoje.
+As demais — **e-mail de representação**, **materiais profissionais**
+e **mais inteligência e automação** (automações avançadas) — estão
+marcadas como PENDING em `plans.ts` desde 07/09/2026 (comentário
+explícito no arquivo, corrigindo uma versão anterior que cometeu esse
+mesmo erro de anunciar como disponível).
+
+Reportei essa divergência antes de implementar. **Decisão do usuário**
+(16/09/2026): a Home é a Home de lançamento — essas 3 features fazem
+parte do escopo planejado do Pro pro go-live e podem/devem aparecer na
+comunicação pública agora, mesmo PENDING tecnicamente. Implementado
+conforme pedido, com os 3 itens PENDING no card Pro (inicial e
+expandido).
+
+**Isso não é status implementado — é compromisso de lançamento.**
+`src/lib/plans.ts` (fonte usada pelo painel/onboarding) continua
+refletindo só o que tem gate real hoje — não foi alterado nesta
+sessão, de propósito, pra não fazer o painel/onboarding prometerem algo
+que o backend ainda não garante. **E-mail de representação, materiais
+profissionais e automações avançadas do Doopla Pro precisam estar
+implementados e com gate real antes do go-live/produção** — a Home já
+promete publicamente, então esse é um bloqueio de lançamento, não um
+"nice to have" futuro.
+
+---
 
 **Nota de reconciliação de branch (14/09/2026)**: este arquivo é o
 resultado de um merge entre duas branches que divergiram — a sessão
