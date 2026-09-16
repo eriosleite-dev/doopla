@@ -30,52 +30,80 @@
 }
 #site-chrome .eye-logo .dot .pupil{ width:34%; height:34%; border-radius:50%; background:var(--black); }
 
-/* ===== conteúdo institucional (Sobre, Segurança, Contato) ===== */
-#home-marketing .page-hero{ padding:64px 44px 56px; text-align:center; border-bottom:1px solid var(--line); }
-#home-marketing .page-hero .eyebrow{ margin-bottom:16px; }
+/* ===== conteúdo institucional (Sobre, Segurança, Contato) =====
+   Revisão de densidade (16/09/2026): menos blocos, menos altura, menos
+   repetição — Sobre/Segurança/Contato são páginas institucionais
+   simples, não landing pages como a Home. Mesmos tokens/tipografia de
+   sempre, só padding/tamanho reduzidos e, no caso de Segurança e
+   Contato, hero fundido com o conteúdo numa seção só. */
+#home-marketing .page-hero{ padding:48px 24px 40px; text-align:center; border-bottom:1px solid var(--line); }
+#home-marketing .page-hero .eyebrow{ margin-bottom:14px; }
 #home-marketing .page-hero h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
-  font-size:clamp(1.9rem,4.4vw,2.9rem); line-height:1.12; max-width:720px; margin:0 auto 18px;
+  font-size:clamp(1.7rem,3.6vw,2.4rem); line-height:1.15; max-width:640px; margin:0 auto 14px;
 }
-#home-marketing .page-hero p{ font-size:1rem; line-height:1.6; color:var(--tx-70); max-width:520px; margin:0 auto; }
-#home-marketing .page-hero .hero-eyes{ display:flex; justify-content:center; gap:20px; margin:32px 0 4px; }
-#home-marketing .page-hero .hero-eyes .dot{
-  width:52px; height:52px; border-radius:50%; background:var(--black);
-  display:inline-flex; align-items:center; justify-content:center;
-}
+#home-marketing .page-hero p{ font-size:.96rem; line-height:1.6; color:var(--tx-70); max-width:480px; margin:0 auto; }
+/* Olhos decorativos: MESMA marcação/cor de .eye-slot/.mascot-pupil já
+   usada em nav-logo/foot-logo/overlay (círculo --off, pupila --black —
+   nunca um par preto sobre fundo escuro, que é o que fazia os olhos
+   "desaparecerem"). Só o tamanho é próprio daqui, via px direto em vez
+   do em-scaling normal (que depende do font-size do logo, contexto que
+   não existe aqui). */
+#home-marketing .page-hero .hero-eyes{ display:flex; justify-content:center; gap:16px; margin:20px 0 2px; }
+#home-marketing .page-hero .hero-eyes .eye-slot{ width:38px; height:38px; }
 
-#home-marketing .page-content{ padding:72px 44px; border-bottom:1px solid var(--line); }
+/* Segurança: hero + conteúdo numa seção só (era 2 blocos separados). */
+#home-marketing .page-main{ padding:48px 24px 56px; border-bottom:1px solid var(--line); }
+#home-marketing .page-main .inner{ max-width:1040px; margin:0 auto; text-align:center; }
+#home-marketing .page-main .eyebrow{ margin-bottom:14px; }
+#home-marketing .page-main h1{
+  font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
+  font-size:clamp(1.7rem,3.6vw,2.4rem); line-height:1.15; max-width:640px; margin:0 auto 14px;
+}
+#home-marketing .page-main > .inner > p{ font-size:.96rem; line-height:1.6; color:var(--tx-70); max-width:480px; margin:0 auto 40px; }
+#home-marketing .page-main .principles{ text-align:left; }
+
+#home-marketing .page-content{ padding:48px 24px 56px; border-bottom:1px solid var(--line); }
 #home-marketing .page-content .inner{ max-width:1040px; margin:0 auto; }
 #home-marketing .page-content h2{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.015em; color:var(--off);
-  font-size:clamp(1.5rem,3.2vw,2.2rem); line-height:1.15; max-width:640px; margin:0 auto 44px; text-align:center;
+  font-size:clamp(1.3rem,2.8vw,1.9rem); line-height:1.2; max-width:640px; margin:0 auto 32px; text-align:center;
 }
 
-#home-marketing .concepts{ display:grid; grid-template-columns:repeat(3,1fr); gap:36px; }
+#home-marketing .concepts{ display:grid; grid-template-columns:repeat(3,1fr); gap:28px; }
 #home-marketing .concepts .concept h3{ font-family:'Inter',sans-serif; font-weight:700; font-size:1.05rem; color:var(--off); margin-bottom:10px; }
 #home-marketing .concepts .concept p{ font-size:.9rem; color:var(--tx-70); line-height:1.6; }
 
-/* CTA final institucional — mesmo cartão/gradiente de .cta-final da
-   Home (nunca mais um bloco vermelho sólido gigante), sem o grid de 3
-   colunas (mascote/CTA) que só a Home usa. */
-#home-marketing .page-cta{ padding:56px 44px 72px; text-align:center; }
+/* CTA final institucional — compacto (mesmo cartão/gradiente de
+   .cta-final da Home, nunca mais um segundo hero gigante): max-width
+   menor, padding reduzido, título menor. */
+#home-marketing .page-cta{ padding:32px 24px 64px; text-align:center; }
 #home-marketing .page-cta .inner{
-  max-width:1180px; margin:0 auto; border-radius:22px; background:linear-gradient(120deg,var(--panel-solid),var(--bg));
-  border:1px solid var(--line); padding:48px 32px;
+  max-width:720px; margin:0 auto; border-radius:20px; background:linear-gradient(120deg,var(--panel-solid),var(--bg));
+  border:1px solid var(--line); padding:32px 28px;
 }
 #home-marketing .page-cta h2{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.015em; color:var(--off);
-  font-size:clamp(1.6rem,3.4vw,2.3rem); margin:0 auto 24px; max-width:600px;
+  font-size:clamp(1.35rem,2.8vw,1.9rem); margin:0 auto 18px; max-width:520px;
 }
 
 /* princípios / listas de 3 itens (Segurança) — mesma lógica de "conceitos" */
-#home-marketing .principles{ display:grid; grid-template-columns:repeat(3,1fr); gap:36px; }
+#home-marketing .principles{ display:grid; grid-template-columns:repeat(3,1fr); gap:28px; }
 #home-marketing .principles .principle h3{ font-family:'Inter',sans-serif; font-weight:700; font-size:1.05rem; color:var(--off); margin-bottom:10px; }
 #home-marketing .principles .principle p{ font-size:.9rem; color:var(--tx-70); line-height:1.6; }
 #home-marketing .principles .principle .discreet-link{ display:inline-block; margin-top:10px; font-size:.78rem; color:var(--red); text-decoration:underline; }
 
-/* contato: composição compacta, coluna única */
-#home-marketing .contact-layout{ max-width:560px; margin:0 auto; padding:56px 24px 90px; display:flex; flex-direction:column; gap:24px; }
+/* Contato: título + form na mesma composição contínua (era hero
+   separado + bloco de conteúdo à parte). */
+#home-marketing .contact-compact{ padding:48px 24px 90px; }
+#home-marketing .contact-compact .inner{ max-width:560px; margin:0 auto; text-align:center; }
+#home-marketing .contact-compact .eyebrow{ margin-bottom:12px; }
+#home-marketing .contact-compact h1{
+  font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
+  font-size:clamp(1.6rem,3.2vw,2.1rem); line-height:1.15; margin:0 0 10px;
+}
+#home-marketing .contact-compact p.lead{ font-size:.94rem; line-height:1.6; color:var(--tx-70); margin:0 0 28px; }
+#home-marketing .contact-compact form.contact-form{ text-align:left; margin-bottom:20px; }
 #home-marketing .email-alt{ text-align:center; font-size:.86rem; color:var(--tx-50); }
 #home-marketing .email-alt a{ font-family:'IBM Plex Mono',monospace; color:var(--red); text-decoration:underline; margin-left:4px; }
 #home-marketing form.contact-form{ display:flex; flex-direction:column; gap:16px; }
@@ -100,25 +128,33 @@
 #home-marketing .form-message-error{ color:var(--red); font-weight:600; }
 #home-marketing .form-message-success{ color:var(--off); font-weight:600; }
 
-/* ===== páginas editoriais (Termos, Privacidade) ===== */
-#home-marketing .legal-content{ padding:56px 24px 100px; }
+/* ===== páginas editoriais (Termos, Privacidade) — leitura de
+   documento: título compacto, conteúdo logo abaixo, largura
+   confortável. Nunca viram landing page (sem CTA comercial, sem
+   cards). ===== */
+#home-marketing .legal-content{ padding:44px 24px 90px; }
 #home-marketing .legal-content .inner{ max-width:680px; margin:0 auto; }
 #home-marketing .legal-content .eyebrow{ margin-bottom:14px; }
 #home-marketing .legal-content h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
   font-size:clamp(1.7rem,4vw,2.5rem); line-height:1.15; margin:0 0 10px;
 }
-#home-marketing .legal-content .updated{ font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--tx-50); margin-bottom:36px; }
-#home-marketing .legal-content h2{ font-family:'Inter',sans-serif; font-weight:700; font-size:1.1rem; color:var(--off); margin:36px 0 10px; }
+#home-marketing .legal-content .updated{ font-family:'IBM Plex Mono',monospace; font-size:.78rem; color:var(--tx-50); margin-bottom:28px; }
+#home-marketing .legal-content h2{ font-family:'Inter',sans-serif; font-weight:700; font-size:1.1rem; color:var(--off); margin:32px 0 10px; }
 #home-marketing .legal-content p, #home-marketing .legal-content li{ font-size:.94rem; line-height:1.7; color:var(--tx-70); }
 #home-marketing .legal-content ul{ list-style:disc; padding-left:20px; margin:8px 0; }
 #home-marketing .legal-content li{ margin-bottom:4px; }
 #home-marketing .legal-content a{ color:var(--red); }
 
 @media (max-width:760px){
-  #home-marketing .page-hero{ padding:44px 22px 40px; }
-  #home-marketing .page-content{ padding:48px 22px; }
-  #home-marketing .page-cta{ padding:40px 22px 54px; }
-  #home-marketing .page-cta .inner{ padding:36px 24px; }
-  #home-marketing .concepts, #home-marketing .principles{ grid-template-columns:1fr; gap:28px; }
+  #home-marketing .page-hero{ padding:36px 22px 32px; }
+  #home-marketing .page-hero .hero-eyes{ gap:14px; }
+  #home-marketing .page-hero .hero-eyes .eye-slot{ width:32px; height:32px; }
+  #home-marketing .page-main{ padding:36px 22px 44px; }
+  #home-marketing .page-main > .inner > p{ margin-bottom:32px; }
+  #home-marketing .page-content{ padding:40px 22px 44px; }
+  #home-marketing .page-cta{ padding:24px 22px 48px; }
+  #home-marketing .page-cta .inner{ padding:28px 22px; }
+  #home-marketing .contact-compact{ padding:36px 22px 64px; }
+  #home-marketing .concepts, #home-marketing .principles{ grid-template-columns:1fr; gap:26px; }
 }

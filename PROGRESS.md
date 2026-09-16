@@ -11,6 +11,31 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-16.
 
+## Site público: revisão de densidade/hierarquia das páginas institucionais — 16/09/2026
+
+Depois da migração visual (seção abaixo), as 5 páginas ainda pareciam
+mini-landing-pages (hero + bloco + CTA gigante, cada um seção própria).
+Ajuste de UX, mesma identidade V2, sem tocar na Home:
+
+- ✅ **Contato**: hero separado removido — título/subtítulo entram no
+  mesmo container do formulário, uma composição só, mais compacta.
+- ✅ **Segurança**: hero + conteúdo fundidos numa seção só
+  (`.page-main`, nova classe). CTA final compacto (era um segundo hero
+  gigante). Pequeno ajuste de copy nos 3 princípios, pedido junto.
+- ✅ **Sobre**: reescrita mais enxuta — hero sem a frase "Encontra
+  trabalhos..." (linguagem já removida da Home), 3 pontos novos (Atende
+  e negocia / Acompanha cada booking / Você continua no controle) no
+  lugar do bloco repetido, CTA final compacto. Olhos decorativos
+  trocados pra usar `.eye-slot`/`.mascot-pupil` (mesma cor/contraste já
+  usada em nav-logo/foot-logo da Home V2) — antes usavam um par
+  preto-sobre-preto customizado que sumia no fundo escuro.
+- ✅ **Termos/Privacidade**: título/conteúdo levemente mais compactos
+  (`padding`/`margin` reduzidos), continuam como páginas de leitura,
+  sem CTA comercial.
+- ✅ Validado visualmente (Playwright, desktop + mobile) nas 5 rotas
+  antes do commit — sem overflow, contraste dos olhos corrigido,
+  containers alinhados.
+
 ## Site público: migração institucional pro visual da Home V2 + ajustes pontuais de Home — 16/09/2026
 
 Sessão isolada (originalmente `claude/busy-wright-5z9kr8`, reconciliada

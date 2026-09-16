@@ -12,38 +12,32 @@ export const metadata: Metadata = {
 export default function SegurancaPage() {
   return (
     <PageShell>
-      <section className="page-hero">
-        <span className="eyebrow">Segurança</span>
-        <h1>Seu booking. Suas decisões.</h1>
-        <p>
-          A Doopla conduz o operacional. Você continua no controle das
-          decisões comerciais importantes.
-        </p>
-      </section>
-
-      <section className="page-content">
+      <section className="page-main">
         <div className="inner">
+          <span className="eyebrow">Segurança</span>
+          <h1>Seu booking. Suas decisões.</h1>
+          <p>
+            A Doopla conduz o operacional. Você continua no controle das
+            decisões comerciais importantes.
+          </p>
           <div className="principles">
             <div className="principle">
               <h3>Você aprova</h3>
               <p>
-                Valores, condições importantes e decisões comerciais não
-                precisam ser tomadas sem você.
+                Valores, condições importantes e decisões comerciais não são
+                tomadas sem você.
               </p>
             </div>
             <div className="principle">
               <h3>Você acompanha</h3>
               <p>
-                As informações importantes do booking ficam organizadas e
-                acessíveis para você.
+                As informações importantes de cada booking ficam organizadas
+                e acessíveis.
               </p>
             </div>
             <div className="principle">
               <h3>Seus dados são protegidos</h3>
-              <p>
-                A Doopla utiliza os dados necessários para prestar o serviço
-                e segue sua Política de Privacidade.
-              </p>
+              <p>A Doopla utiliza apenas os dados necessários para prestar o serviço.</p>
               <Link href="/privacidade" className="discreet-link">
                 Ver Política de Privacidade
               </Link>

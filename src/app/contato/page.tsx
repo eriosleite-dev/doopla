@@ -12,14 +12,11 @@ export const metadata: Metadata = {
 export default function ContatoPage() {
   return (
     <PageShell>
-      <section className="page-hero">
-        <span className="eyebrow">Contato</span>
-        <h1>Quer falar com a Doopla?</h1>
-        <p>Dúvida, problema, parceria ou qualquer outra coisa: chama a gente.</p>
-      </section>
-
-      <section className="page-content">
-        <div className="inner contact-layout">
+      <section className="contact-compact">
+        <div className="inner">
+          <span className="eyebrow">Contato</span>
+          <h1>Quer falar com a Doopla?</h1>
+          <p className="lead">Dúvida, problema, parceria ou qualquer outra coisa: chama a gente.</p>
           <ContactForm />
           <p className="email-alt">
             Prefere falar por e-mail?{' '}
