@@ -32,12 +32,27 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
 
   await ensureCommunityProfileActivated(supabase);
 
+  // "Para você"/"Em alta agora" são realces opcionais (cold start já
+  // devolve vazio de propósito, ver listCommunityForYouTopics/
+  // listCommunityTrendingTopics) — uma falha pontual nessas 2 RPCs
+  // (ranking, migration 0079) nunca pode derrubar a página inteira da
+  // Comunidade (achado real, 16/09/2026: a página inteira quebrava sem
+  // nenhum error.tsx pra capturar, sem status 5xx visível nos Runtime
+  // Logs — reject de qualquer item do Promise.all rejeitava tudo).
+  // Recentes/Salvos/Categorias continuam fail-closed de verdade (essas
+  // sim essenciais pra tela fazer sentido).
   const [recentTopics, savedTopicIds, categories, forYouTopics, trendingTopics] = await Promise.all([
     listCommunityTopics(supabase, { limit: 20 }),
     listSavedTopicIds(supabase),
     listCommunityCategories(supabase),
-    listCommunityForYouTopics(supabase, 6),
-    listCommunityTrendingTopics(supabase, 6),
+    listCommunityForYouTopics(supabase, 6).catch((err) => {
+      console.error('[comunidade] get_community_for_you_topics falhou', err);
+      return [];
+    }),
+    listCommunityTrendingTopics(supabase, 6).catch((err) => {
+      console.error('[comunidade] get_community_trending_topics falhou', err);
+      return [];
+    }),
   ]);
   const savedTopicIdSet = new Set(savedTopicIds);
   // Correção do item 2A (08/09/2026) — a versão anterior cortava em 20 e
