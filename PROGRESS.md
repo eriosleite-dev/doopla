@@ -11,6 +11,39 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-16.
 
+## Site público: Contato — copy + mascote real da Home no fechamento da página — 16/09/2026
+
+- ✅ **Copy**: "Quer falar com a Doopla?" / "Dúvida, problema, parceria
+  ou qualquer outra coisa: chama a gente." vira "Vamos conversar?" /
+  "Dúvidas, suporte ou parcerias. Fale com a Doopla." (título da aba
+  também atualizado). `contato@doopla.pro` mantido como estava.
+  Composição (esquerda texto+e-mail, direita formulário) inalterada.
+- ✅ **Mascote no fechamento**: nova seção `.contact-mascot` antes do
+  footer, com o mascote real da Home (`Mascot.tsx`, novo em
+  `src/app/_home/`) — mesmas classes de `home.css` (`.mascot.mascot-cta`,
+  glow vermelho, corpo, olhos, sorriso incluídos, nenhum estilo novo),
+  reaproveitando o tamanho já usado no CTA final da Home. Piscada
+  portada do mesmo timing de `initMascotBlink()` (home.js, que nunca
+  carrega nestas páginas), mesmo padrão já usado em `EyesShowcase.tsx`.
+  Sem card ao redor, fundo preto da própria página.
+- 🔧 **Achado durante o QA visual**: `home.css` esconde `.mascot-cta`
+  abaixo de 760px (`display:none`) — decisão específica do card do
+  CTA final da Home, que fica apertado com o mascote junto nesse
+  breakpoint. Como aqui o mascote É o conteúdo da seção (não um
+  acessório de um card menor), isso apagava o mascote no mobile.
+  Corrigido com uma regra mais específica em `site-chrome.css`
+  (`.contact-mascot .mascot-cta{ display:flex }`), sem tocar
+  `home.css`/Home.
+- ✅ Padding de `.contact-section` reduzido no rodapé pra abrir espaço
+  pro mascote sem dobrar a altura da página antes do footer.
+- ✅ Validado: `next build`, `tsc --noEmit` e ESLint limpos; Playwright
+  desktop (1440px) + mobile (390px) confirmando mascote visível, com
+  glow, nos dois breakpoints, e formulário/lógica intactos (nenhuma
+  mudança em `ContactForm.tsx`, Server Action, Supabase ou Resend).
+
+**Arquivos alterados**: `src/app/_home/Mascot.tsx` (novo),
+`src/app/_home/site-chrome.css`, `src/app/contato/page.tsx`.
+
 ## Site público: refinamentos pontuais Sobre/Termos/Privacidade + copy Home/footer — 16/09/2026
 
 - ✅ **Sobre — olhos**: bloco superior direito vira painel vermelho de

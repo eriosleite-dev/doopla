@@ -114,12 +114,20 @@
 
 /* Contato: mesma composição .two-col (texto+e-mail à esquerda,
    formulário à direita) — e-mail nunca repetido embaixo do form. */
-#home-marketing .contact-section{ padding:56px 44px 90px; }
+#home-marketing .contact-section{ padding:56px 44px 24px; }
 #home-marketing .contact-section h1{
   font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
   font-size:clamp(1.7rem,3.2vw,2.3rem); line-height:1.15; margin:14px 0 0;
 }
 #home-marketing .contact-section p.lead{ font-size:.96rem; line-height:1.6; color:var(--tx-70); max-width:440px; }
+/* Mascote real da Home (Mascot.tsx, .mascot-cta) fechando a página
+   antes do footer — sem card, sem seção grande, só respiro correto.
+   home.css esconde .mascot-cta abaixo de 760px (decisão específica do
+   card do CTA final da Home, que fica apertado com o mascote junto);
+   aqui ele é o próprio conteúdo da seção, então essa regra não se
+   aplica — sobrescrita por especificidade, sem tocar home.css. */
+#home-marketing .contact-mascot{ display:flex; justify-content:center; padding:24px 44px 56px; }
+#home-marketing .contact-mascot .mascot-cta{ display:flex; }
 #home-marketing .contact-email{
   display:inline-flex; align-items:center; gap:6px; margin-top:18px;
   font-family:'IBM Plex Mono',monospace; font-size:.92rem; color:var(--red); text-decoration:underline;
@@ -183,7 +191,8 @@
   #home-marketing .inst-content{ padding:36px 22px 56px; }
   #home-marketing .inst-cta{ padding:0 22px 44px; }
   #home-marketing .inst-cta .bar{ padding:22px 20px; }
-  #home-marketing .contact-section{ padding:36px 22px 56px; }
+  #home-marketing .contact-section{ padding:36px 22px 16px; }
+  #home-marketing .contact-mascot{ padding:16px 22px 40px; }
   #home-marketing .legal-hero{ padding:36px 22px 32px; }
   #home-marketing .legal-content{ padding:36px 22px 64px; }
 }
