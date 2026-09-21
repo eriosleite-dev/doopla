@@ -17882,6 +17882,84 @@ bloqueante pra fechar Direct Booking, mas vale uma auditoria dedicada
 desse ambiente depois, antes de confiar nele cegamente pra outro
 bloco que dependa de Runtime/Approval Engine.
 
+## Direct Booking — 3º bug real de E2E: subject_key + primeira validação de ponta a ponta completa — 21/09/2026
+
+**Achado 3 — `convert_opportunity_to_booking` nunca reconhecia um
+aceite real.** Mesmo com 0082/0083 corrigidas, o cenário #1 ainda
+falhava: a decisão `accept_or_decline_work` foi commitada
+(`approvalOutcome: "committed"`) mas nenhum Booking nascia.
+Investigação: `subject_key` é texto livre decidido pela IA
+(`resolver.ts`, schema `z.string()`) — a convenção `'primary'` pra
+categorias singulares (`SINGULAR_SUBJECT_KEY`,
+`decision-categories.ts`) é só instrução de PROMPT, nunca validada
+nem corrigida em código nenhum lugar do projeto. No teste real, a IA
+commitou `subject_key = <opportunity_id>`, não `'primary'` — a
+function (0087) exigia exatamente `'primary'` e por isso nunca
+encontrava o registro, sempre lançando `no_canonical_acceptance`
+mesmo com aceite válido já no banco.
+
+Auditado antes de corrigir: `hasCanonicalWorkAcceptance` (TS,
+`pipeline.ts`, o gatilho que decide SE chama esta RPC) já checa só
+`decision_category` + `accepted===true`, sem exigir subject_key —
+está correto. `doopla-intervention.ts` (label "precisa de você")
+também não depende disso. Bug isolado só à revalidação interna de
+`convert_opportunity_to_booking`.
+
+**Correção** (`0090_direct_booking_subject_key_fix.sql`, `create or
+replace`, mesma assinatura/grants — não-destrutiva): a function passa
+a checar só `decision_category = 'accept_or_decline_work'` com
+`accepted = true`, mesma regra do TS, sem exigir subject_key
+específico. Fail-closed preservado (registro legado `{}` ou
+`accepted=false` continua nunca passando).
+
+**Validação E2E completa, pela primeira vez, contra `doopla-qa-staging`
+real** (cenário #1, via UI real + `/dev/runtime-smoke-test` no lugar
+de WhatsApp, que ainda não está integrado neste ambiente):
+
+| Cenário | Resultado |
+|---|---|
+| Cliente pede orçamento → opportunity + conversation nascem juntas | ✅ |
+| Aceite real (IA + profissional) → decisão commitada | ✅ |
+| Booking direto nasce (`booker_profile_id=null`, `originated_from_opportunity_id` correto) | ✅ |
+| Reenvio de aceite → sem duplicar (idempotência) | ✅ (`count=1`) |
+| `conversations.related_booking_id` atualizado | ✅ |
+| `opportunities.status='convertida'` | ✅ |
+| Home conta certo ("Bookings confirmados: 1") | ✅ |
+| Bookings lista o Direct Booking, status "Aceita" | ✅ |
+| Detalhe: subtítulo "Booking direto" (não "Negociação") | ✅ |
+| Detalhe: sem célula "Comissão proposta" | ✅ |
+| Contrato padrão bloqueado, contrato próprio disponível | ✅ |
+| "Marcar como pago" aparece e funciona sem Booker | ✅ |
+| Conclusão do booking sem crash (guard do trigger de reviews) | ✅ |
+| Financeiro (R$0, null-safe) e Agenda (sem evento) | ✅ — comportamento correto, não bug (booking de teste sem data/valor estruturado) |
+
+**Achados cosméticos menores, não bloqueantes, registrados pra
+polimento futuro (não corrigidos agora, fora do escopo "sem abrir
+outro bloco")**: `<title>` da aba do navegador na página de detalhe
+continua "Negociação | Doopla" (só o head estático, não o conteúdo
+visível); texto de "Avaliação: Ainda não disponível" não explica que
+é porque não existe Booker (mensagem genérica, não incorreta);
+"Anexar contrato próprio" pede URL/link, não upload de arquivo do
+computador (comportamento pré-existente, não introduzido aqui).
+
+**Ainda não testado nesta rodada** (não bloqueante pro fechamento,
+mas registrado pra quem for rodar os 24 cenários completos depois):
+isolamento RLS entre profissionais diferentes, bloqueio de
+`anon`/`authenticated` chamando `convert_opportunity_to_booking`
+direto (auditado por leitura de código, não por teste ao vivo nesta
+rodada), Professional App (mobile), concorrência real de duas
+chamadas simultâneas (testado por design/advisory lock, não por
+teste de carga).
+
+**Status: Direct Booking com o mecanismo central validado de ponta a
+ponta, ambiente de QA agora íntegro (3 gaps de migration
+encontrados e corrigidos: 0082, 0083, 0090). Migrations 0086/0087/
+0090 aplicadas só em `doopla-qa-staging` — `doopla` (produção)
+continua intocado.** Ainda checkpoint/WIP, não DELIVERED — falta
+aplicar as migrations em produção e decidir se o restante dos 24
+cenários (RLS, App, concorrência) precisa de rodada dedicada antes
+disso.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
