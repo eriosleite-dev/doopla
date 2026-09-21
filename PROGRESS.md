@@ -17829,6 +17829,59 @@ lê do `doopla-qa-staging` (anon key), e o Runtime (via
 `SUPABASE_SERVICE_ROLE_KEY`) também escreve no `doopla-qa-staging` —
 sem risco de escrita cruzada em produção durante os testes.
 
+## Direct Booking — E2E revelou drift real de migrations em doopla-qa-staging (0082/0083/0084 faltando) — 21/09/2026
+
+Ao iniciar o cenário E2E #1 (cliente pede orçamento → profissional
+aceita → Booking direto nasce), dois erros reais de ambiente
+apareceram, nada relacionado à lógica do Direct Booking em si — o
+`doopla-qa-staging` estava com gaps de migrations não relacionados,
+nunca antes exercitados de ponta a ponta nesse projeto.
+
+**Achado 1 — `create_outbound_intent` com assinatura antiga.** O
+Runtime (via `/dev/runtime-smoke-test`, ferramenta interna já
+existente, usada aqui porque WhatsApp real não está integrado neste
+ambiente) falhou com `Could not find the function
+public.create_outbound_intent(...)` — a versão viva no banco tinha 8
+parâmetros (pré-`0083_outbound_intent_professional_review_gate.sql`),
+sem `p_requires_review`. Migration 0083 aplicada manualmente.
+
+**Achado 2 — `submit_orcamento_request` nunca criava a conversation.**
+Confirmado por auditoria: `related_opportunity_id` da conversa não
+existia pra opportunity de teste criada via `/orcamento/[slug]` —
+`0082_public_link_conversation.sql` (a migration que estende
+`submit_orcamento_request` pra criar `_create_conversation_core`
+junto, na mesma transação) nunca tinha sido aplicada nesse projeto.
+`0084_conversation_core_revoke_service_role.sql` (hardening de grant
+sobre a function que a 0082 cria) também nunca pôde ter sido
+aplicada, pelo mesmo motivo — as duas aplicadas juntas.
+
+**Método de descoberta, pra não repetir isso às cegas de novo**: como
+`supabase_migrations.schema_migrations` não existe nesse projeto
+(migrations sempre foram aplicadas manualmente, colando SQL, nunca
+via Supabase CLI — sem histórico automático), foi montada uma query
+de diagnóstico única checando, por nome de tabela/function
+"marcadora" de cada migration entre 0039 e 0089 (área de
+Conversas/IA/Runtime/Comunidade), se o objeto existe no banco.
+Resultado: só 0082 apareceu como `false` (0083 idem antes de
+corrigido) — todo o resto (0039-0081, 0085-0089) confirmado presente.
+Método tem uma limitação conhecida e registrada: migrations que só
+alteram o CORPO de uma function já existente (sem nome novo) não são
+detectáveis por essa checagem de existência — ficaram marcadas "sem
+marcador simples, verificar manualmente" (0050/0056/0061/0063/0076/
+0080/0084/0086) e não foram auditadas a fundo nesta rodada por não
+serem relacionadas ao caminho crítico do Direct Booking.
+
+**Ambos os fixes são não-destrutivos** (mesma garantia de cada
+migration original: `create or replace` preserva grants/comportamento
+existente, função nova sem grant a `anon`/`authenticated`).
+
+**Pendência registrada, fora do escopo do Direct Booking**: o
+`doopla-qa-staging` pode ter outros gaps não descobertos ainda (as 8
+migrations "sem marcador simples" acima). Recomendação: não é
+bloqueante pra fechar Direct Booking, mas vale uma auditoria dedicada
+desse ambiente depois, antes de confiar nele cegamente pra outro
+bloco que dependa de Runtime/Approval Engine.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
