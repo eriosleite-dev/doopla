@@ -26,7 +26,7 @@ export default function ContatoPage() {
               </svg>
             </a>
             <div className="contact-mascot">
-              <Mascot size="cta" />
+              <Mascot size="cta" tracking />
             </div>
           </div>
           <ContactForm />

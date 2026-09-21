@@ -9,7 +9,250 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-09-16.
+Última atualização: 2026-09-21.
+
+## BUG real — modal de login sem padding fora da Home (root cause encontrada e corrigida) — 21/09/2026
+
+QA reportou o card de login "errado" nas páginas institucionais
+(Contato, Termos, Sobre, Privacidade, Segurança), certo só pela Home.
+Comparação de prints não bastou pra provar — a diferença só ficou
+clara medindo CSS computado de verdade via Playwright:
+
+- ✅ **Causa raiz confirmada com medição**: `card.padding` = `0px` nas
+  páginas institucionais vs `40px` na Home (mesmo componente
+  `LoginModal.tsx` nos dois casos). Motivo: `home.css` tem
+  `#home-marketing *{margin:0;padding:0}` (reset necessário pro
+  conteúdo próprio da Home/institucional, correto onde deveria
+  estar). Na Home, `HomeLoginModal` renderiza o modal como peça
+  separada, FORA da div `#home-marketing` (a raiz React coexiste
+  com o HTML cru injetado, não dentro dele) — nunca é atingido pelo
+  reset. Nas páginas institucionais, `PageShell` embrulha `SiteHeader`
+  (e o modal dentro dele) INTEIRO em `#home-marketing` — o reset zera
+  todas as classes Tailwind de espaçamento do modal (`p-7`, `mt-7`,
+  `gap-2`, `py-3`...), deixando o conteúdo colado nas bordas do card.
+- ✅ **Fix estrutural, não patch**: `LoginModal.tsx` agora renderiza
+  via `createPortal(..., document.body)` — o card sai da árvore de
+  DOM de qualquer página que o monte, nunca mais refém de estar ou
+  não dentro de `#home-marketing`. O próprio wrapper `<div
+  id="site-chrome">` (que o `EyeLogo` interno precisa pro escopo de
+  --off/--black) foi movido pra DENTRO do componente, no portal —
+  `HomeLoginModal.tsx` e `SiteHeader.tsx` não precisam mais prover
+  esse wrapper cada um por fora.
+- ✅ Validado com medição repetida: `padding: 40px` e
+  `isInsideHomeMarketing: false` idênticos em Contato e Home depois
+  do fix. Fechamento (Escape, botão X) testado e funcionando.
+  Responsivo em mobile (390px) testado via resize, card ocupa a
+  largura certa com padding lateral (`px-4`), continua centralizado.
+  `next build`, `tsc --noEmit`, ESLint limpos.
+- 🔎 Nota pra próxima vez que um modal Tailwind for adicionado a uma
+  página institucional: `CreateAccountModal.tsx` tem a mesma
+  estrutura mas hoje só é usado na Home (`HomeCreateAccountModal`,
+  nunca dentro de `#home-marketing`) — não tinha esse bug porque nunca
+  foi colocado lá, mas teria o mesmo problema se alguém adicionasse um
+  gatilho pra ele numa página institucional sem passar pelo mesmo
+  padrão de portal.
+
+**Arquivos alterados**: `src/app/_home/LoginModal.tsx`,
+`src/app/_home/HomeLoginModal.tsx`, `src/app/_home/SiteHeader.tsx`.
+
+## Olhos/mascote — consolidação em hooks compartilhados + blink faltando + tracking faltando no mascote de Contato — 21/09/2026
+
+QA real reportou: Termos/Privacidade não piscavam e pareciam só reagir
+depois de um clique; Contato tinha o mascote parado (sem tracking).
+Auditoria + correção:
+
+- ✅ **Causa real confirmada**: `EyesShowcase.tsx` nunca teve piscada
+  (só tracking) — Termos/Privacidade realmente nunca piscaram, bug de
+  verdade, não impressão. `Mascot.tsx` nunca teve tracking (só
+  piscada, que é o comportamento canônico real dos mascotes da Home —
+  ver home.css: "o logo olha, os mascotes piscam") — Contato realmente
+  nunca teve o mascote seguindo o cursor, porque essa função nunca foi
+  implementada ali.
+- 🔍 **"Só reage depois do clique" — não reproduzido**: testado
+  exaustivamente via Playwright (Chromium real, não simulação) em dev
+  E em build de produção (`next build` + `next start`), sempre com
+  `page.goto` seguido de movimento de mouse IMEDIATO, zero clique, zero
+  wait — a pupila responde no primeiro movimento em 100% dos testes,
+  nos dois ambientes. Não encontrei nenhum caminho de código que
+  dependa de click/focus/interação prévia (o listener de `mousemove`
+  já era registrado direto no mount desde a implementação anterior).
+  Hipótese mais provável: o QA foi feito contra um preview do Vercel
+  desatualizado (anterior ao commit que corrigiu o amortecimento por
+  distância, sessão passada) — vale reabrir um preview fresco depois
+  deste push e testar de novo.
+- ✅ **Consolidação pedida**: toda a lógica de tracking e de piscada
+  foi extraída pra dois hooks únicos e compartilhados —
+  `useEyeTracking.ts` e `useBlink.ts` (novos, `src/app/_home/`).
+  `EyesShowcase.tsx` e `Mascot.tsx` agora só chamam esses hooks
+  (nenhuma lógica duplicada entre os dois componentes). O tracking
+  agrupa atualizações por `requestAnimationFrame` (no máximo 1 escrita
+  de estilo por frame) — sem debounce perceptível, só evita trabalho
+  redundante em mousemove de alta frequência.
+- ✅ **Termos/Privacidade agora piscam**: `EyesShowcase` chama
+  `useBlink(rootRef, '.eyes-showcase-eye')`. CSS novo em
+  `site-chrome.css` (`.eyes-showcase-eye.blink{transform:scaleY(.08)}`,
+  mesmo squash de `.mascot-eye.blink` de home.css, só que escopado pra
+  essa classe própria). Confirmado piscando sozinho, sem nenhuma
+  interação, ~2.8s depois do load numa das rodadas de teste.
+- ✅ **Mascote de Contato agora segue o cursor**: `Mascot` ganhou prop
+  `tracking?: boolean` (default `false` — não muda o comportamento
+  canônico do mascote em nenhum outro lugar). `contato/page.tsx` liga
+  com `<Mascot size="cta" tracking />`. maxRatio calibrado mais
+  conservador (0.2) que o das EyesShowcase (0.28) porque a pupila do
+  mascote é proporcionalmente maior (~45% da largura do olho vs 34%) —
+  nunca atravessa a borda do globo em nenhum dos 2 tamanhos.
+- ✅ **Sincronização entre as duas pupilas**: medido via Playwright —
+  as duas pupilas de cada instância são atualizadas dentro do MESMO
+  loop síncrono (`applyTrack`), mesmo frame de rAF, sempre. Não
+  encontrei desvio real entre elas nos testes (valores muito próximos,
+  convergindo coerentemente pro cursor). Se o que ficou "fora de
+  sincronia" na experiência anterior era a ausência total de piscada
+  (parecendo "morto"/inconsistente com o resto da identidade viva da
+  Home), isso já está corrigido acima.
+- ✅ Validado: `next build`, `tsc --noEmit`, ESLint limpos; QA real em
+  navegador (Playwright/Chromium) contra build de produção — tracking
+  imediato sem clique em Sobre/Termos/Contato, piscada autônoma sem
+  interação em Termos, sem erros de console, mobile/touch sem crash
+  (sem depender de mouse), Home sem regressão (alinhamento do hero
+  ainda em 0px de diff, tracking do logo do nav intacto).
+
+**Card de login "diferente" — não é bug**: auditado
+`LoginModal.tsx`/`HomeLoginModal.tsx`/`globals.css`. O título "ENTRE
+NA SUA CONTA DOOPLA." usa `.font-pro-display` (`font-family:'Anton'`),
+a mesma fonte de destaque usada em TODO o sistema Pro/login —
+inclusive a rota real `/login/page.tsx` usa exatamente a mesma marcação
+(`font-pro-display text-[28px] uppercase`). Nenhum arquivo desse modal
+foi tocado nesta sessão nem em nenhuma sessão recente (`git log`
+confirma o último commit nesses arquivos é de antes desta rodada). O
+card é idêntico esteja aberto pela Home ou pelas páginas
+institucionais (mesmo componente `LoginModal.tsx` nos dois casos) — é
+o design real e intencional do login, não uma regressão.
+
+**Arquivos alterados**: `src/app/_home/useEyeTracking.ts` (novo),
+`src/app/_home/useBlink.ts` (novo), `src/app/_home/EyesShowcase.tsx`,
+`src/app/_home/Mascot.tsx`, `src/app/_home/site-chrome.css`,
+`src/app/contato/page.tsx`.
+
+## Home — copy do lead do hero — 21/09/2026
+
+- ✅ "Sua Doopla atende, negocia e cuida de cada booking até o trabalho
+  acontecer." vira "Sua Doopla atende, prospecta, negocia e acompanha
+  seus bookings." Nenhuma outra parte do hero tocada (celular,
+  mascote, badges, alinhamento).
+
+**Arquivos alterados**: `src/app/_home/home.html`.
+
+## Comunidade — QA real pós-busca-universal: 4 bugs em Criar tópico — 16/09/2026
+
+Pedido explícito: não redesenhar a Comunidade, corrigir especificamente
+os 4 pontos reportados e investigar a causa real, não mascarar. Decisão
+canônica registrada em DECISOES.md: categorias continuam opcionais
+(0088) e agora **tags também são livres/opcionais, nunca uma taxonomia
+pré-definida** (reverte 0059).
+
+- ✅ **1. Header do "Criar tópico" sobreposto**: causa raiz — os
+  botões ←/✕ do slide-over (`@modal/(.)comunidade/layout.tsx`) vêm em
+  `position: absolute`, soltos do fluxo do conteúdo; é a MESMA causa já
+  corrigida pro header do tópico em 08/09/2026 ("Restruturação do
+  header do tópico"), só que "novo" tinha ficado de fora daquela
+  correção. Resolvido do mesmo jeito: `novo-header.tsx` novo, header
+  composto de verdade (voltar / título+subtítulo / fechar na MESMA row
+  flex, via `useComunidadeChromeActions`, sem duplicar guarda de
+  rascunho/profundidade/diálogo de descarte), e `isNovo` no layout do
+  slide-over pra parar de desenhar os botões absolutos nessa rota
+  especificamente. "Salvos" continua com os botões absolutos antigos —
+  **mesmo bug estrutural provavelmente existe lá também, não
+  reproduzido/reportado desta vez, não tocado** (fora do escopo pedido:
+  "corrigir especificamente estes pontos"). Sinalizando aqui pra não
+  esquecer.
+- ✅ **2. Tags livres**: ver decisão completa em DECISOES.md. Migration
+  0089 (`community_slugify` + `create_community_topic` ganha
+  `p_tag_labels`, find-or-create por slug, sem apagar nada de 0059).
+  `ProComunidadeNovoForm`/`ForumNovoTopicoScreen` (App) trocam os 10
+  chips fixos por input livre (Enter cria chip, × remove, máx. 5,
+  validado no client E no servidor). `listCommunityTags`/
+  `fetchCommunityTags` removidas (sem nenhum outro consumidor depois
+  da troca — conferido). Testado de verdade num Postgres local: criar
+  sem tag, criar com 1 tag livre nova, reusar a mesma tag com
+  maiúscula/espaço diferente (dedupe por slug, confirmado 1 linha só),
+  6 tags rejeitadas (`too_many_tags`), tag de 1 caractere rejeitada
+  (`invalid_tag_label`), tag por id antiga continua funcionando,
+  tópico com categoria continua funcionando. `search_community_topics`
+  (0068) já fazia full-text sobre `community_tags.label` de qualquer
+  tag ligada ao tópico — testei buscar exatamente a tag livre criada
+  ("equipamento de som") e o tópico apareceu, zero mudança necessária
+  na busca.
+- ✅ **3. Bug P0 "Não foi possível criar o tópico"**: rastreado E2E de
+  verdade (não assumido) — detalhe completo do teste em DECISOES.md.
+  RPC/migration testadas num Postgres local com as 88 migrations reais
+  aplicadas: categoria null funciona, e o cenário sem a 0088 aplicada
+  produz `invalid_category` (mensagem real, nunca um erro mudo). Causa
+  raiz do sintoma relatado: `err instanceof Error ? err.message :
+  'fallback'` em `comunidade/actions.ts`/`forum/novo.tsx` — frágil
+  pra qualquer erro que não seja literalmente essa classe. Trocado por
+  extração por duck-typing (`'message' in err`) + `console.error` do
+  erro completo no servidor dos dois lados (Web/App). **Limite
+  honesto**: sem acesso ao Supabase de produção real nesta sessão, não
+  dá pra confirmar qual era exatamente a causa isolada byte a byte —
+  o que fica garantido é que a lógica de banco está correta e testada,
+  e que qualquer falha real (essa ou outra) agora aparece com a
+  mensagem verdadeira na tela e no log do servidor.
+- ✅ **4. Performance da abertura da Comunidade**: auditoria real de
+  `comunidade/page.tsx` (rota reaproveitada pelo slide-over e pela
+  página cheia). Achados: (a) `ensureCommunityProfileActivated`
+  rodava ANTES do lote de leituras, sequencial — auditoria de RLS/RPC
+  (nenhuma policy de `community_topics`/`community_saved_topics`/
+  `get_community_for_you_topics`/`get_community_trending_topics`
+  referencia `community_profiles`) + teste real num Postgres local
+  (as 4 leituras funcionam pra um profile que nunca ativou a
+  Comunidade) confirmam que é seguro rodar em paralelo com as leituras,
+  não antes; (b) `savedTopics` (busca por id) só começava depois que
+  os OUTROS 3 itens do mesmo `Promise.all` (incluindo as 2 RPCs de
+  ranking, potencialmente as mais lentas) terminassem, mesmo só
+  dependendo de `savedTopicIds` — desacoplado pra disparar assim que
+  `savedTopicIds` resolve, sobrepondo com recentTopics/forYou/trending
+  em vez de esperar todos os 4. Resultado: de 4 round-trips
+  sequenciais pro Supabase antes do primeiro render pra 2 (lote
+  paralelo de 4 + authors, que genuinamente precisa dos ids de autor
+  de todos os 4 primeiro — dependência real, não dava pra paralelizar
+  sem reestruturar as RPCs, fora de escopo). Categorias não são mais
+  buscadas aqui desde 0088 (já não pesava). Não toquei em
+  `getSessionProfile` (2 queries sequenciais de auth/profile) nem no
+  prefetch do ícone de Comunidade no header (`prefetch={false}` até
+  hover/touch) — os dois são coisas que já existiam antes deste pedido
+  por motivos próprios documentados (dedupe por request; correção do
+  bug de página em branco em 08/09/2026), mudar qualquer um dos dois
+  seria escopo maior que "otimizar a causa real da demora de abrir
+  Comunidade" e arrisca reabrir um bug já fechado. Sem benchmark
+  numérico antes/depois (sem browser/ambiente real neste sandbox) —
+  a mudança é estrutural (menos round-trips seriais, garantido por
+  leitura do código + teste de dependência real), não uma medição de
+  ms.
+
+### Arquivos alterados
+- `supabase/migrations/0089_community_free_tags.sql` (nova).
+- `src/app/dashboard/comunidade/novo/novo-header.tsx` (novo).
+- `src/app/dashboard/comunidade/novo/page.tsx`,
+  `pro-comunidade-novo-form.tsx`.
+- `src/app/dashboard/@modal/(.)comunidade/layout.tsx`.
+- `src/app/dashboard/comunidade/actions.ts`, `page.tsx`.
+- `src/lib/community/data.ts`.
+- `mobile/app/forum/novo.tsx`, `mobile/src/lib/data/community.ts`.
+
+### QA obrigatório rodado nesta sessão
+`tsc --noEmit` (Web e App), `eslint` (Web, arquivos tocados), `npm run
+build` (Web) — todos limpos, sem erro novo. Migration 0089 testada de
+verdade num Postgres local com as 88 migrations reais aplicadas em
+sequência (zero erro), incluindo os cenários específicos pedidos no QA
+obrigatório: criar sem tag, criar com tag livre nova, criar com tag
+repetida (dedupe), limite de 5, remover tag antes de publicar (client,
+coberto pela própria UI), busca encontrando a tag livre criada,
+compatibilidade com tópicos antigos (categoria + tag por id). **Não
+testado**: fluxo real no navegador/app (sem ambiente com browser nem
+credenciais do Supabase de produção neste sandbox) — a Comunidade não
+deve ser marcada como DELIVERED de novo até alguém confirmar o E2E de
+verdade (criar → persistir → aparecer → buscar) num ambiente real, como
+pedido explicitamente.
 
 ## Comunidade — QA real pós-busca-universal: 4 bugs em Criar tópico — 16/09/2026
 
@@ -17430,6 +17673,41 @@ build` limpos.
 **Migrations `0086`/`0087` continuam não aplicadas em nenhum banco.**
 Resumo/riscos/ordem de aplicação/plano de validação E2E entregues à
 fundadora em separado, conforme pedido, antes de qualquer aplicação.
+
+## Direct Booking sem Booker — migrations 0086/0087 aplicadas em QA/Staging — 21/09/2026
+
+Antes de aplicar, diagnóstico rodado pela fundadora no SQL Editor do
+projeto `doopla-qa-staging` confirmou ambiente limpo e dependências
+presentes: `is_system_caller()` e `get_active_approvals()` já
+existiam (migrations 0051/0045, herdadas do Approval Engine já em
+produção); `'convertida'` ainda não estava no enum
+`opportunity_status`; `bookings.booker_profile_id` ainda `NOT NULL`;
+`convert_opportunity_to_booking` ainda não existia. Nenhum drift
+entre repo e banco.
+
+Aplicação feita pela fundadora, em duas execuções separadas (nunca
+coladas juntas — Postgres não permite usar um valor de enum recém-
+criado na mesma transação em que foi adicionado):
+
+1. `0086_opportunity_status_convertida.sql` → `Success. No rows
+   returned`.
+2. `0087_direct_booking_no_booker.sql` (bloco completo: coluna
+   nullable, unique index, function `convert_opportunity_to_booking`,
+   guarda em `create_pending_reviews`) → `Success. No rows returned`.
+
+Confirmação final (query de verificação, mesmo SQL Editor):
+`enum_convertida = convertida`, `booker_nullable = YES`,
+`function_criada = convert_opportunity_to_booking`, `index_criado =
+bookings_originated_from_opportunity_unique_idx` — as 4 confirmadas.
+
+**Aplicado só em `doopla-qa-staging`. `doopla` (produção) continua
+intocado — só recebe as mesmas duas migrations depois da validação
+E2E completa neste ambiente.**
+
+**Status: checkpoint/WIP, NÃO DELIVERED.** Próximo passo: executar o
+checklist E2E dos 24 cenários (grupos A/B/C já definidos) contra
+`doopla-qa-staging`. Direct Booking só vira DELIVERED depois da
+validação E2E aqui E da aplicação das mesmas migrations em produção.
 
 ## Como usar isso
 

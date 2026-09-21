@@ -21,11 +21,9 @@ import { LoginModal } from './LoginModal';
 //
 // O card do modal em si (LoginModal) é compartilhado com o "Entrar" do
 // SiteHeader (Sobre, Segurança etc.) — aqui só cuida de quem dispara o
-// open/close. home.html não tem nenhum ancestral `#site-chrome`
-// (sistema de chrome das páginas institucionais), por isso precisa
-// prover o próprio wrapper pro EyeLogo dentro do modal renderizar
-// certo — SiteHeader não precisa disso porque já vive dentro do
-// `#site-chrome` do PageShell.
+// open/close. LoginModal se renderiza via portal em document.body e já
+// provê o próprio wrapper `#site-chrome` (EyeLogo interno) internamente
+// — não precisa de nada extra aqui nem no SiteHeader.
 export function HomeLoginModal() {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -47,9 +45,5 @@ export function HomeLoginModal() {
     triggerRef.current?.focus();
   }
 
-  return (
-    <div id="site-chrome">
-      <LoginModal open={open} onClose={handleClose} />
-    </div>
-  );
+  return <LoginModal open={open} onClose={handleClose} />;
 }
