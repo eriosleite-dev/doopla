@@ -11,6 +11,50 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-21.
 
+## BUG real — modal de login sem padding fora da Home (root cause encontrada e corrigida) — 21/09/2026
+
+QA reportou o card de login "errado" nas páginas institucionais
+(Contato, Termos, Sobre, Privacidade, Segurança), certo só pela Home.
+Comparação de prints não bastou pra provar — a diferença só ficou
+clara medindo CSS computado de verdade via Playwright:
+
+- ✅ **Causa raiz confirmada com medição**: `card.padding` = `0px` nas
+  páginas institucionais vs `40px` na Home (mesmo componente
+  `LoginModal.tsx` nos dois casos). Motivo: `home.css` tem
+  `#home-marketing *{margin:0;padding:0}` (reset necessário pro
+  conteúdo próprio da Home/institucional, correto onde deveria
+  estar). Na Home, `HomeLoginModal` renderiza o modal como peça
+  separada, FORA da div `#home-marketing` (a raiz React coexiste
+  com o HTML cru injetado, não dentro dele) — nunca é atingido pelo
+  reset. Nas páginas institucionais, `PageShell` embrulha `SiteHeader`
+  (e o modal dentro dele) INTEIRO em `#home-marketing` — o reset zera
+  todas as classes Tailwind de espaçamento do modal (`p-7`, `mt-7`,
+  `gap-2`, `py-3`...), deixando o conteúdo colado nas bordas do card.
+- ✅ **Fix estrutural, não patch**: `LoginModal.tsx` agora renderiza
+  via `createPortal(..., document.body)` — o card sai da árvore de
+  DOM de qualquer página que o monte, nunca mais refém de estar ou
+  não dentro de `#home-marketing`. O próprio wrapper `<div
+  id="site-chrome">` (que o `EyeLogo` interno precisa pro escopo de
+  --off/--black) foi movido pra DENTRO do componente, no portal —
+  `HomeLoginModal.tsx` e `SiteHeader.tsx` não precisam mais prover
+  esse wrapper cada um por fora.
+- ✅ Validado com medição repetida: `padding: 40px` e
+  `isInsideHomeMarketing: false` idênticos em Contato e Home depois
+  do fix. Fechamento (Escape, botão X) testado e funcionando.
+  Responsivo em mobile (390px) testado via resize, card ocupa a
+  largura certa com padding lateral (`px-4`), continua centralizado.
+  `next build`, `tsc --noEmit`, ESLint limpos.
+- 🔎 Nota pra próxima vez que um modal Tailwind for adicionado a uma
+  página institucional: `CreateAccountModal.tsx` tem a mesma
+  estrutura mas hoje só é usado na Home (`HomeCreateAccountModal`,
+  nunca dentro de `#home-marketing`) — não tinha esse bug porque nunca
+  foi colocado lá, mas teria o mesmo problema se alguém adicionasse um
+  gatilho pra ele numa página institucional sem passar pelo mesmo
+  padrão de portal.
+
+**Arquivos alterados**: `src/app/_home/LoginModal.tsx`,
+`src/app/_home/HomeLoginModal.tsx`, `src/app/_home/SiteHeader.tsx`.
+
 ## Olhos/mascote — consolidação em hooks compartilhados + blink faltando + tracking faltando no mascote de Contato — 21/09/2026
 
 QA real reportou: Termos/Privacidade não piscavam e pareciam só reagir

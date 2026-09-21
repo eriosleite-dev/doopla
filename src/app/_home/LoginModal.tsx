@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 import { EyeLogo } from './EyeLogo';
 import './site-chrome.css';
@@ -15,12 +16,26 @@ import { LoginForm } from '../login/login-form';
 // dispara o open/close muda por chamador (ver HomeLoginModal.tsx e
 // SiteHeader.tsx).
 //
-// Não embrulha o EyeLogo num `id="site-chrome"` próprio: espera um
-// ancestral `#site-chrome` de verdade pro escopo de --off/--black/
-// .eye-logo (site-chrome.css). SiteHeader já vive dentro do
-// `#site-chrome` do PageShell — não precisa de nada extra. Quem NÃO
-// tem esse ancestral (a Home real, home.html não usa PageShell) precisa
-// prover o próprio wrapper no call site (ver HomeLoginModal.tsx).
+// Renderiza via createPortal em document.body (21/09/2026, bug real de
+// QA) — antes disso, o card dependia de onde a árvore React o montava:
+// na Home (HomeLoginModal), fica fora de #home-marketing por
+// construção; nas páginas institucionais (SiteHeader dentro de
+// PageShell), a árvore inteira vive DENTRO de #home-marketing, e
+// `#home-marketing *{margin:0;padding:0}` (home.css, reset necessário
+// pro conteúdo próprio da Home/institucional) zerava também o
+// padding/margin das classes Tailwind do card (p-7, mt-7, gap-2...) —
+// medido: 0px de padding no card fora da Home, 40px na Home. O portal
+// tira o card da árvore de DOM de qualquer página de uma vez por
+// todas — nunca mais fica refém de estar ou não dentro de
+// #home-marketing. O próprio `<div id="site-chrome">` que o EyeLogo
+// interno precisa (--off/--black/.eye-logo, ver site-chrome.css) agora
+// vai DENTRO do portal, então os chamadores (HomeLoginModal.tsx,
+// SiteHeader.tsx) não precisam mais prover esse wrapper eles mesmos.
+// `open` só vira `true` via um clique real (handlers em
+// HomeLoginModal.tsx/SiteHeader.tsx) — nunca no estado inicial nem
+// durante SSR —, então quando este componente chega a renderizar o
+// portal, `document` já existe garantidamente; não precisa de um
+// estado "mounted" auxiliar só pra isso.
 export function LoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -64,8 +79,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
 
   if (!open) return null;
 
-  return (
-    <div className="pro-shell contents">
+  return createPortal(
+    <div id="site-chrome" className="pro-shell contents">
       <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6 sm:items-center" role="presentation">
         <div
           className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -108,6 +123,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

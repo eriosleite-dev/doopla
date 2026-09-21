@@ -60,13 +60,10 @@ export function SiteHeader() {
 
       <SiteMenuOverlay open={menuOpen} onClose={() => setMenuOpen(false)} />
 
-      {/* LoginModal espera um ancestral #site-chrome de verdade pro
-          EyeLogo interno (ver site-chrome.css) — mesmo wrapper local que
-          HomeLoginModal.tsx já usa pra Home real, que também não tem
-          #site-chrome no resto da árvore. */}
-      <div id="site-chrome">
-        <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-      </div>
+      {/* LoginModal se renderiza via portal em document.body e já
+          provê o próprio wrapper #site-chrome internamente (ver
+          LoginModal.tsx) — não precisa de nada extra aqui. */}
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </>
   );
 }
