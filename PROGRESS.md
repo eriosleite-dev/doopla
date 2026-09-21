@@ -18013,6 +18013,64 @@ pra aplicação em produção. Próximo passo: aplicar `0086`/`0087`/
 `0090` em `doopla` (produção), na mesma ordem/cuidado já usado no
 `doopla-qa-staging`.
 
+## Direct Booking sem Booker — `[DELIVERED]` — migrations aplicadas em produção — 21/09/2026
+
+**Aplicação em `doopla` (produção), confirmada ao vivo, na mesma
+ordem/cuidado do QA**: antes de aplicar, diagnóstico revelou que
+produção tinha gaps próprios, diferentes dos do QA — `0082` e `0083`
+(versão antiga, 8 parâmetros, sem `p_requires_review`) também
+faltavam lá, além de `0086`/`0087`/`0090` (esperado). Auditado antes
+de aplicar: nenhuma das migrations do Direct Booking depende de nada
+das migrations 0069-0072/0089 (também ausentes em produção, acesso
+não relacionado — ver "Pendência separada" abaixo).
+
+Aplicadas em produção, em 5 blocos sequenciais, cada um confirmado
+antes do próximo: `0082`+`0084` (conversation do link de orçamento),
+`0083` completa (outbound intent com `p_requires_review`), `0086`
+sozinha (enum, própria transação), `0087` (Direct Booking), `0090`
+(fix do subject_key). Confirmação final: `enum_convertida=convertida`,
+`booker_nullable=YES`, `function_criada=convert_opportunity_to_booking`,
+`index_criado` presente, `tem_0082=true`, assinatura de
+`create_outbound_intent` com 9 parâmetros (`0083` real, não a
+versão antiga de `0058`).
+
+**Pendência separada, registrada mas fora do escopo Direct Booking**:
+produção está sem `0069` (invite regression hotfix), `0070`
+(paginação de decisões), `0071` (lookup por public_id), `0072`
+(multi-role foundation — tabela `profile_roles`) e `0089` (Comunidade
+— tags livres). Nenhuma delas é dependência do Direct Booking
+(auditado antes de aplicar), mas é uma drift real de produção que
+merece uma rodada de sincronização dedicada, decisão da fundadora
+sobre quando.
+
+**Checklist E2E fechado nesta sessão** (real, ao vivo, contra
+`doopla-qa-staging`, depois espelhado em produção): fluxo completo
+cliente→aceite→Booking direto (via `/dev/runtime-smoke-test`, já que
+WhatsApp real não está integrado neste ambiente); idempotência;
+labels contextuais; contrato; confirmação de pagamento sem Booker;
+conclusão sem crash; bloqueio de `anon`/`authenticated`; isolamento
+RLS entre profissionais diferentes (2ª conta de teste criada via
+Supabase Dashboard, contornando rate limit de e-mail do projeto).
+Cobertos por auditoria de código, não teste ao vivo (registrado e
+aceito explicitamente pela fundadora): Professional App/mobile (sem
+dispositivo disponível) e concorrência real de 2 chamadas simultâneas
+(garantia estrutural via advisory lock + unique index, não testável
+por clique manual).
+
+**3 bugs reais encontrados e corrigidos no processo** (nenhum
+existia antes desta sessão de validação E2E — todos migrations
+próprias, `0082`→já existia no repo mas nunca aplicada,
+`0083`→idem, `0090`→nova, escrita nesta sessão):
+1. `submit_orcamento_request` nunca criava a conversation (faltava 0082).
+2. `create_outbound_intent` com assinatura antiga (faltava 0083).
+3. `convert_opportunity_to_booking` exigia `subject_key='primary'`,
+   que a IA nunca garante emitir mesmo pra categoria singular (0090).
+
+**Direct Booking sem Booker está DELIVERED**: mecanismo central
+validado de ponta a ponta, migrations aplicadas em QA e produção,
+comportamento de bookings com Booker 100% preservado (nunca alterado
+neste bloco).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
