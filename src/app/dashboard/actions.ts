@@ -1593,6 +1593,68 @@ export async function setContractUrlAction(
   return {};
 }
 
+const CONTRACT_FILE_EXTENSION_BY_MIME: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+};
+
+// Achado de UX real (Sessão Central, 21/09/2026): "Anexar contrato
+// próprio" só aceitava colar uma URL — sem forma de enviar um arquivo
+// do computador. Mesmo padrão de uploadAvatarAction acima (bucket
+// próprio, arquivo por usuário em `{user_id}/...`, upsert), salvando
+// no mesmo `bookings.contract_url` que setContractUrlAction já usa —
+// nenhuma duplicação de coluna/lógica de posse, só uma segunda forma
+// de preencher o mesmo campo.
+export async function uploadContractFileAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const file = formData.get('contractFile');
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (!bookingId) return { error: 'Booking inválido.' };
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: 'Selecione um arquivo.' };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { error: 'O arquivo precisa ter até 10MB.' };
+  }
+  const extension = CONTRACT_FILE_EXTENSION_BY_MIME[file.type];
+  if (!extension) {
+    return { error: 'Formato não suportado. Use PDF, Word, JPG ou PNG.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('id, artist_profile_id, booker_profile_id')
+    .eq('id', bookingId)
+    .single<{ id: string; artist_profile_id: string; booker_profile_id: string | null }>();
+  if (!booking || (user.id !== booking.artist_profile_id && user.id !== booking.booker_profile_id)) {
+    return { error: 'Você não faz parte desse booking.' };
+  }
+
+  const path = `${user.id}/${bookingId}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from('contracts')
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (uploadError) return { error: 'Não foi possível enviar o arquivo.' };
+
+  const { data: publicUrlData } = supabase.storage.from('contracts').getPublicUrl(path);
+  const contractUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
+
+  await supabase.from('bookings').update({ contract_url: contractUrl }).eq('id', bookingId);
+
+  revalidatePath('/dashboard/contratos');
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  return {};
+}
+
 export async function generateContractAction(
   _prevState: { error?: string },
   formData: FormData

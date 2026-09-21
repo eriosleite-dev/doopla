@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react';
 
-import { setContractUrlAction } from '../../actions';
+import { setContractUrlAction, uploadContractFileAction } from '../../actions';
 import { ProGenerateContractForm } from '../../contratos/pro-generate-contract-form';
 import { contractStatus, type BookingWithOtherParty } from '../../data';
 import { proInputClass, proPrimaryButtonClass, proStatusPillClass } from '../../pro-format';
@@ -16,6 +16,7 @@ export function ProContractSection({ booking }: { booking: BookingWithOtherParty
   const status = contractStatus(booking);
   const [mode, setMode] = useState<Mode>('closed');
   const [state, formAction, pending] = useActionState(setContractUrlAction, {});
+  const [uploadState, uploadFormAction, uploadPending] = useActionState(uploadContractFileAction, {});
   const generatedByDoopla = booking.contract_url?.startsWith('/dashboard/contratos/documento/');
 
   return (
@@ -77,21 +78,40 @@ export function ProContractSection({ booking }: { booking: BookingWithOtherParty
       {mode === 'gerar' && <ProGenerateContractForm booking={booking} onCancel={() => setMode('closed')} />}
 
       {mode === 'anexar' && (
-        <form action={formAction} className="flex flex-wrap items-center gap-2">
-          <input type="hidden" name="bookingId" value={booking.id} />
-          <input type="url" name="contractUrl" required placeholder="https://..." className={`min-w-0 flex-1 ${proInputClass}`} />
-          <button type="submit" disabled={pending} className={proPrimaryButtonClass}>
-            {pending ? 'Salvando…' : 'Salvar'}
-          </button>
+        <div className="flex flex-col gap-3">
+          <form action={uploadFormAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="bookingId" value={booking.id} />
+            <input
+              type="file"
+              name="contractFile"
+              required
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              className="min-w-0 flex-1 text-[12px] text-[var(--pro-tx-50)] file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-[11px] file:text-[var(--pro-off)]"
+            />
+            <button type="submit" disabled={uploadPending} className={proPrimaryButtonClass}>
+              {uploadPending ? 'Enviando…' : 'Enviar arquivo'}
+            </button>
+            {uploadState.error && <p className="w-full text-sm text-[#ff8b80]">{uploadState.error}</p>}
+          </form>
+
+          <form action={formAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="bookingId" value={booking.id} />
+            <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--pro-tx-30)]">ou cole um link</span>
+            <input type="url" name="contractUrl" placeholder="https://..." className={`min-w-0 flex-1 ${proInputClass}`} />
+            <button type="submit" disabled={pending} className={proPrimaryButtonClass}>
+              {pending ? 'Salvando…' : 'Salvar'}
+            </button>
+            {state.error && <p className="w-full text-sm text-[#ff8b80]">{state.error}</p>}
+          </form>
+
           <button
             type="button"
             onClick={() => setMode('closed')}
-            className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
+            className="font-doopla-mono w-fit text-[11px] uppercase tracking-[.05em] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]"
           >
             Cancelar
           </button>
-          {state.error && <p className="w-full text-sm text-[#ff8b80]">{state.error}</p>}
-        </form>
+        </div>
       )}
     </div>
   );
