@@ -1,35 +1,71 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useState, type KeyboardEvent } from 'react';
 
 import { proInputClass, proLabelClass, proPrimaryButtonClass } from '../../pro-format';
 import { ProCard } from '../../pro-ui';
 import { createTopicAction } from '../actions';
 import { useComunidadeDraftGuard } from '../navigation-guard';
 
-export function ProComunidadeNovoForm({
-  tags,
-}: {
-  tags: { id: string; label: string }[];
-}) {
+const MAX_TAGS = 5;
+
+function normalizeTagForCompare(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+// Tags livres (16/09/2026, QA real) — decisão canônica reverte a
+// "vocabulário controlado" de 0059 (ver DECISOES.md): a Comunidade não
+// tenta prever todo assunto possível. A pessoa digita, Enter vira tag,
+// até 5, removível antes de publicar — nunca um catálogo/dropdown de
+// sugestões fixas. O texto vai como `tagLabels` (hidden inputs) pro
+// createTopicAction, que manda pra create_community_topic (migration
+// 0089) fazer find-or-create por slug no servidor — validação de
+// verdade (limite, tamanho, dedupe) sempre server-side também, esta
+// validação no client é só feedback imediato, nunca a única barreira.
+export function ProComunidadeNovoForm() {
   const [state, formAction, pending] = useActionState(createTopicAction, {});
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [tagError, setTagError] = useState<string | null>(null);
 
   // Proteção de rascunho (07/09/2026) — o layout do slide-over consulta
   // isto antes de deixar Voltar/Fechar/Escape/clique-fora acontecerem.
-  // title/body precisaram virar controlados pra essa pergunta ser
-  // respondível a qualquer momento (antes eram uncontrolled, lidos só
-  // no submit via FormData).
-  useComunidadeDraftGuard(() => title.trim().length > 0 || body.trim().length > 0 || selectedTagIds.length > 0);
+  useComunidadeDraftGuard(() => title.trim().length > 0 || body.trim().length > 0 || tags.length > 0);
 
-  function toggleTag(id: string) {
-    setSelectedTagIds((prev) => {
-      if (prev.includes(id)) return prev.filter((t) => t !== id);
-      if (prev.length >= 5) return prev;
-      return [...prev, id];
-    });
+  function addTag() {
+    const value = tagInput.trim();
+    if (!value) {
+      setTagError(null);
+      return;
+    }
+    if (value.length < 2 || value.length > 40) {
+      setTagError('A tag precisa ter entre 2 e 40 caracteres.');
+      return;
+    }
+    if (tags.length >= MAX_TAGS) {
+      setTagError(`Máximo de ${MAX_TAGS} tags.`);
+      return;
+    }
+    if (tags.some((t) => normalizeTagForCompare(t) === normalizeTagForCompare(value))) {
+      setTagInput('');
+      setTagError(null);
+      return;
+    }
+    setTags((prev) => [...prev, value]);
+    setTagInput('');
+    setTagError(null);
+  }
+
+  function removeTag(tag: string) {
+    setTags((prev) => prev.filter((t) => t !== tag));
+  }
+
+  function handleTagKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    addTag();
   }
 
   return (
@@ -64,34 +100,52 @@ export function ProComunidadeNovoForm({
           />
         </label>
 
-        {tags.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <span className={proLabelClass}>Tags (opcional, até 5)</span>
+        <div className="flex flex-col gap-1.5">
+          <span className={proLabelClass}>Tags (opcional, até {MAX_TAGS})</span>
+
+          {tags.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {tags.map((tag) => {
-                const checked = selectedTagIds.includes(tag.id);
-                return (
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="font-doopla-mono inline-flex items-center gap-1.5 rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] py-1.5 pl-3 pr-2 text-[10.5px] uppercase tracking-[.04em] text-[var(--pro-tx-70)]"
+                >
+                  {tag}
                   <button
-                    key={tag.id}
                     type="button"
-                    onClick={() => toggleTag(tag.id)}
-                    aria-pressed={checked}
-                    className={`font-doopla-mono rounded-full border px-3 py-1.5 text-[10.5px] uppercase tracking-[.04em] transition-colors ${
-                      checked
-                        ? 'border-[var(--pro-red)] bg-[var(--pro-red)]/15 text-[var(--pro-red)]'
-                        : 'border-[var(--pro-line)] text-[var(--pro-tx-50)] hover:border-[var(--pro-tx-30)]'
-                    }`}
+                    onClick={() => removeTag(tag)}
+                    aria-label={`Remover tag ${tag}`}
+                    className="flex h-4 w-4 items-center justify-center opacity-60 hover:opacity-100"
                   >
-                    {tag.label}
+                    ×
                   </button>
-                );
-              })}
+                </span>
+              ))}
             </div>
-            {selectedTagIds.map((id) => (
-              <input key={id} type="hidden" name="tagIds" value={id} />
-            ))}
-          </div>
-        )}
+          )}
+
+          {tags.length < MAX_TAGS && (
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => {
+                setTagInput(e.target.value);
+                if (tagError) setTagError(null);
+              }}
+              onKeyDown={handleTagKeyDown}
+              onBlur={addTag}
+              maxLength={40}
+              className={proInputClass}
+              placeholder="Adicione uma tag..."
+            />
+          )}
+
+          {tagError && <p className="text-[12px] text-[#ff8b80]">{tagError}</p>}
+
+          {tags.map((tag) => (
+            <input key={tag} type="hidden" name="tagLabels" value={tag} />
+          ))}
+        </div>
 
         {state?.error && <p className="text-[12.5px] text-[#ff8b80]">{state.error}</p>}
 

@@ -118,6 +118,12 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
 
   const isTopicDetail = /^\/dashboard\/comunidade\/(?!novo$|salvos$)[^/]+$/.test(pathname);
   const isList = pathname === '/dashboard/comunidade';
+  // QA visual (16/09/2026) — mesma correção do tópico (comentário
+  // abaixo, 08/09/2026): "Criar tópico" ganhou seu próprio header
+  // composto (novo-header.tsx), então os botões ←/✕ soltos em
+  // `position: absolute` abaixo precisam parar de se desenhar aqui
+  // também pra essa rota, senão os dois pares ficariam duplicados.
+  const isNovo = pathname === '/dashboard/comunidade/novo';
 
   const depthRef = useRef(0);
   const prevPathnameRef = useRef<string | null>(null);
@@ -282,9 +288,11 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
              chamando attemptNav via useComunidadeChromeActions (mesmo
              guard de rascunho, mesmo diálogo de descarte, mesmo
              back()/history.go(-depth) — nada disso muda, só ONDE o
-             botão é desenhado no DOM). Lista/novo/salvos continuam
-             exatamente como antes. */}
-          {!isList && !isTopicDetail && (
+             botão é desenhado no DOM). Lista/salvos continuam
+             exatamente como antes. "novo" ganhou a mesma correção em
+             16/09/2026 (QA real, header sobrepondo o título) — ver
+             novo-header.tsx e isNovo acima. */}
+          {!isList && !isTopicDetail && !isNovo && (
             <button
               type="button"
               onClick={() => attemptNav('back')}
@@ -294,7 +302,7 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
               ←
             </button>
           )}
-          {!isTopicDetail && (
+          {!isTopicDetail && !isNovo && (
             <button
               type="button"
               onClick={() => attemptNav('close')}

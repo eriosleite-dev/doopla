@@ -11,7 +11,6 @@ import type {
   CommunityProfile,
   CommunityProfilePublic,
   CommunitySavedTopic,
-  CommunityTag,
   CommunityTopic,
   CommunityTopicAudience,
   CommunityTopicRead,
@@ -159,12 +158,6 @@ export async function listCommunityCategories(supabase: AnySupabaseClient): Prom
   const { data, error } = await supabase.from('community_categories').select('*').eq('active', true).order('sort_order', { ascending: true });
   if (error) throw error;
   return (data ?? []) as CommunityCategory[];
-}
-
-export async function listCommunityTags(supabase: AnySupabaseClient): Promise<CommunityTag[]> {
-  const { data, error } = await supabase.from('community_tags').select('*').eq('active', true).order('label', { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as CommunityTag[];
 }
 
 // --- Tópicos / posts ---------------------------------------------------
@@ -352,6 +345,13 @@ export type CreateCommunityTopicParams = {
   // Comunidade nunca obriga taxonomia fechada na criação de tópico.
   categoryId?: string | null;
   audience?: CommunityTopicAudience;
+  // Tags livres (16/09/2026, QA real — decisão canônica reverte
+  // "vocabulário controlado" de 0059): texto digitado pela pessoa,
+  // até 5. A RPC (migration 0089) resolve cada label numa tag
+  // existente ou cria uma nova por slug — nunca um catálogo fechado.
+  // `tagIds` continua existindo pra quem precisar referenciar uma tag
+  // já conhecida por id (nenhum caller hoje usa isso).
+  tagLabels?: string[];
   tagIds?: string[];
 };
 
@@ -363,6 +363,7 @@ export async function createCommunityTopic(supabase: AnySupabaseClient, params: 
       p_category_id: params.categoryId ?? null,
       p_audience: params.audience ?? 'all',
       p_tag_ids: params.tagIds ?? [],
+      p_tag_labels: params.tagLabels ?? [],
     })
     .single();
   if (error || !data) throw error ?? new Error('create_community_topic: sem dado');
