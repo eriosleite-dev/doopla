@@ -68,9 +68,26 @@ export function ProComunidadeNovoForm() {
     addTag();
   }
 
+  // Bug real de QA (16/09/2026) — Enter dentro do campo Título publicava
+  // o tópico sozinho: comportamento NATIVO do HTML (Enter num <input>
+  // de uma linha dispara o submit implícito do <form> em volta), não
+  // específico das tags — só ficou fácil de bater nele porque o fluxo
+  // natural é preencher as tags antes e terminar no Título. O input de
+  // tag já tinha seu próprio preventDefault (handleTagKeyDown acima,
+  // pra virar chip em vez de submeter), mas o Título nunca tinha
+  // nenhum tratamento. Guarda no <form> inteiro: Enter nunca submete
+  // por conta própria em nenhum campo, só o clique real em "Publicar
+  // tópico" — exceto dentro da Descrição (textarea), onde Enter precisa
+  // continuar sendo quebra de linha, comportamento nativo de sempre.
+  function handleFormKeyDown(e: KeyboardEvent<HTMLFormElement>) {
+    if (e.key !== 'Enter') return;
+    if ((e.target as HTMLElement).tagName === 'TEXTAREA') return;
+    e.preventDefault();
+  }
+
   return (
     <ProCard>
-      <form action={formAction} className="flex flex-col gap-4">
+      <form action={formAction} onKeyDown={handleFormKeyDown} className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
           <span className={proLabelClass}>Título</span>
           <input
