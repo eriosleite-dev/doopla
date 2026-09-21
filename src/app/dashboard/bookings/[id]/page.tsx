@@ -6,8 +6,12 @@ import { getSessionProfile } from '../../session';
 import { LegacyBookingDetailView } from './legacy-booking-detail-view';
 import { ProBookingDetailView } from './pro-booking-detail-view';
 
+// Título genérico (não mais "Negociação | Doopla") — Direct Booking
+// nunca é uma negociação (nasce já aceito), e o título estático da
+// aba não tem acesso ao booking pra decidir dinamicamente sem uma
+// segunda consulta só pra isso.
 export const metadata: Metadata = {
-  title: 'Negociação | Doopla',
+  title: 'Booking | Doopla',
 };
 
 // Re-skin do Booking Detail (Bloco 7, P1 — 08/09/2026): page.tsx só

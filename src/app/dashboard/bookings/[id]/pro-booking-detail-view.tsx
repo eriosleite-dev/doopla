@@ -531,7 +531,7 @@ export function ProBookingDetailView({
         </ProCard>
       )}
 
-      {reviews && (
+      {reviews && booking.booker_profile_id !== null && (
         <ProCard id="avaliacao">
           <p className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Avaliação</p>
           <div className="mt-4">
