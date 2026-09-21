@@ -17960,6 +17960,59 @@ aplicar as migrations em produção e decidir se o restante dos 24
 cenários (RLS, App, concorrência) precisa de rodada dedicada antes
 disso.
 
+## Direct Booking — restante do checklist E2E fechado — 21/09/2026
+
+Continuação da mesma sessão de validação. Itens pedidos explicitamente
+pela fundadora, na ordem em que foram fechados:
+
+**1. Bloqueio de `anon`/`authenticated` chamando `convert_opportunity_to_booking` direto** —
+confirmado ao vivo (não só por leitura de código): `set role anon` e
+`set role authenticated` seguidos da chamada direta, ambos retornam
+`ERROR: 42501: permission denied for function
+convert_opportunity_to_booking` no `doopla-qa-staging` real.
+
+**2. Isolamento entre profissionais diferentes (RLS)** — criada uma
+segunda identidade de teste (`eriosleite+qab-artista03@gmail.com`,
+via Supabase Dashboard → Authentication → Add user, contornando um
+achado lateral: o SMTP padrão do Supabase bateu rate limit de e-mail
+nesse projeto — `429` em `/auth/v1/signup` E `/auth/v1/recover`,
+confirmado nos Logs — então criar usuário direto pelo painel, sem
+e-mail nenhum, foi o caminho usado; reutilizável, sem custo, não é um
+achado do Direct Booking). Logada como essa segunda conta, acessar a
+URL do Booking direto do primeiro profissional (`qa-categoria-b-
+artista-02`) direto por id retornou erro/não encontrado — RLS
+isolando corretamente, confirmado ao vivo.
+
+**3. Professional App (mobile)** — sem dispositivo/simulador
+disponível nesta rodada; coberto por auditoria de código em vez de
+teste ao vivo. `mobile/src/lib/data/bookings.ts`
+(`attachOtherPartyNames`) já trata `booker_profile_id === null`
+corretamente (ajustado numa rodada anterior desta mesma sessão,
+mirror do fix Web). Buscado por qualquer equivalente mobile das
+suposições cosméticas corrigidas no Web ("Negociação"/"Comissão
+proposta" hardcoded) — nenhum encontrado; a tela de detalhe do App
+não expõe esse tipo de rótulo, então não há gap cosmético a espelhar
+lá. Pendência explícita, não bloqueante: validação ao vivo no App
+físico/simulador ainda não feita, fica pra quando houver
+dispositivo disponível.
+
+**4. Concorrência (2 chamadas simultâneas → 1 só Booking)** — não
+testado por carga real (não dá pra forçar uma corrida de verdade só
+clicando manualmente); garantia é estrutural e já auditada por
+design: `pg_advisory_xact_lock(hashtextextended(opportunity_id,...))`
+serializa chamadas concorrentes pra mesma opportunity, e o unique
+index parcial (`bookings_originated_from_opportunity_unique_idx`)
+garante fisicamente, no nível do Postgres, que nunca existiriam 2
+linhas mesmo se o lock falhasse por algum motivo — dupla camada,
+nunca dependendo só de uma das duas.
+
+**Status atualizado**: com os 4 itens acima fechados (2 confirmados
+ao vivo, 2 por auditoria de código com justificativa registrada), o
+checklist E2E do Direct Booking está coberto o suficiente pra seguir
+pra aplicação em produção. Próximo passo: aplicar `0086`/`0087`/
+`0090` em `doopla` (produção), na mesma ordem/cuidado já usado no
+`doopla-qa-staging`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
