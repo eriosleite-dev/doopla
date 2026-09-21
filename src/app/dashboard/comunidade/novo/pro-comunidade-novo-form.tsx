@@ -141,21 +141,30 @@ export function ProComunidadeNovoForm() {
             </div>
           )}
 
-          {tags.length < MAX_TAGS && (
-            <input
-              type="text"
-              value={tagInput}
-              onChange={(e) => {
-                setTagInput(e.target.value);
-                if (tagError) setTagError(null);
-              }}
-              onKeyDown={handleTagKeyDown}
-              onBlur={addTag}
-              maxLength={40}
-              className={proInputClass}
-              placeholder="Adicione uma tag..."
-            />
-          )}
+          {/* Bug real de QA (16/09/2026) — este input nunca deve DESMONTAR
+              condicionalmente (como era antes: `{tags.length < MAX_TAGS &&
+              <input .../>}`). Ao adicionar a 5ª tag via Enter, o React
+              removia o elemento ainda focado no mesmo evento de tecla; o
+              navegador então movia o foco pro próximo elemento focável
+              (o botão "Publicar tópico"), e o "soltar" da tecla Enter
+              acabava ativando esse botão — submetendo o formulário
+              sozinho, sem nenhum clique real. Corrigido mantendo o input
+              sempre montado (nunca perde foco por conta própria) — o
+              limite de 5 já é aplicado por `addTag()` abaixo, que recusa
+              com uma mensagem clara em vez de esconder o campo. */}
+          <input
+            type="text"
+            value={tagInput}
+            onChange={(e) => {
+              setTagInput(e.target.value);
+              if (tagError) setTagError(null);
+            }}
+            onKeyDown={handleTagKeyDown}
+            onBlur={addTag}
+            maxLength={40}
+            className={proInputClass}
+            placeholder="Adicione uma tag..."
+          />
 
           {tagError && <p className="text-[12px] text-[#ff8b80]">{tagError}</p>}
 

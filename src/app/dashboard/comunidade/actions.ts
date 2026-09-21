@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect, RedirectType } from 'next/navigation';
 
 import {
   communityContentVisibility,
@@ -150,7 +150,16 @@ export async function createTopicAction(_prevState: CreateTopicActionState, form
   }
 
   revalidatePath('/dashboard/comunidade');
-  redirect(`/dashboard/comunidade/${topicId}`);
+  // Bug real de QA (16/09/2026) — `redirect()` dentro de uma Server
+  // Action usa `push` por padrão (documentado em
+  // node_modules/next/dist/docs/01-app/03-api-reference/04-functions/
+  // redirect.md: "push (default in Server Actions)"), então o histórico
+  // ficava Comunidade → Criar tópico → Detalhe (3 entradas) — "←" no
+  // detalhe voltava pro formulário de criação em vez de pular direto
+  // pra Home. `RedirectType.replace` faz a entrada de "Criar tópico"
+  // ser SUBSTITUÍDA pela do Detalhe (2 entradas), então "←" já cai
+  // direto na Home da Comunidade.
+  redirect(`/dashboard/comunidade/${topicId}`, RedirectType.replace);
 }
 
 export type ReplyActionState = { error?: string; post?: ChatTimelineMessage };

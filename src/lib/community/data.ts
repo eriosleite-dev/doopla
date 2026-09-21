@@ -172,10 +172,25 @@ export type ListCommunityTopicsParams = {
 // Sem busca por texto (gap registrado — 0059 nunca teve tsvector, é
 // bloco futuro explícito). Só filtro estrutural por categoria/tag.
 // Paginação por last_activity_at (cursor = valor da última linha lida).
+//
+// Bug real de QA (16/09/2026) — tópico excluído pelo próprio autor
+// reaparecia em "Recentes" depois de navegar e voltar. Causa raiz: a
+// policy de RLS "community_topics: select visible" (migration 0059)
+// deixa o AUTOR ver o próprio tópico mesmo com
+// status='removed_by_author' (`status = 'published' OR
+// author_profile_id = auth.uid()`) — provavelmente pensada pra outro
+// caso de uso, não pra listagem. Esta função nunca filtrava status
+// explicitamente, só confiava na RLS — por isso o autor via seus
+// próprios tópicos removidos de volta. search_community_topics/
+// get_community_for_you_topics/get_community_trending_topics (0068/
+// 0079) já filtram `status = 'published'` direto no SQL, nunca tiveram
+// esse gap — só as duas listagens simples (esta e
+// listCommunityTopicsByIds, abaixo) confiavam só na RLS.
 export async function listCommunityTopics(supabase: AnySupabaseClient, params: ListCommunityTopicsParams = {}): Promise<CommunityTopic[]> {
   let query = supabase
     .from('community_topics')
     .select('*')
+    .eq('status', 'published')
     .order('last_activity_at', { ascending: false })
     .limit(params.limit ?? 20);
 
@@ -246,11 +261,16 @@ export async function listCommunityForYouTopics(supabase: AnySupabaseClient, lim
 // Usado pra "Salvos" (Home preview + página dedicada) — busca tópicos
 // específicos por id, mesma RLS "select visible" de sempre. Ordena por
 // atividade recente, não pela ordem dos ids.
+// Mesmo bug/mesma causa raiz de listCommunityTopics acima (RLS deixa o
+// autor ver o próprio tópico removido) — usada por "Salvos", que tem o
+// mesmo risco se alguém salvar/for autora de um tópico que depois
+// remove.
 export async function listCommunityTopicsByIds(supabase: AnySupabaseClient, ids: string[], limit = 20): Promise<CommunityTopic[]> {
   if (ids.length === 0) return [];
   const { data, error } = await supabase
     .from('community_topics')
     .select('*')
+    .eq('status', 'published')
     .in('id', ids)
     .order('last_activity_at', { ascending: false })
     .limit(limit);

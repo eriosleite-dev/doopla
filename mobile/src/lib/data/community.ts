@@ -144,10 +144,16 @@ export type FetchCommunityTopicsParams = {
 
 // Sem busca por texto (gap registrado, mesmo do Web) — só filtro por
 // categoria/tag.
+//
+// Bug real de QA (16/09/2026, mesmo do Web — ver src/lib/community/
+// data.ts) — a RLS de community_topics deixa o autor ver o próprio
+// tópico mesmo removido; esta função nunca filtrava status
+// explicitamente. Corrigido do mesmo jeito.
 export async function fetchCommunityTopics(params: FetchCommunityTopicsParams = {}): Promise<CommunityTopic[]> {
   let query = supabase
     .from('community_topics')
     .select('*')
+    .eq('status', 'published')
     .order('last_activity_at', { ascending: false })
     .limit(params.limit ?? 20);
 
@@ -210,6 +216,7 @@ export async function fetchCommunityTopicsByIds(ids: string[], limit = 20): Prom
   const { data, error } = await supabase
     .from('community_topics')
     .select('*')
+    .eq('status', 'published')
     .in('id', ids)
     .order('last_activity_at', { ascending: false })
     .limit(limit);
