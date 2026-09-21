@@ -17319,6 +17319,41 @@ build` limpos.
 Resumo/riscos/ordem de aplicação/plano de validação E2E entregues à
 fundadora em separado, conforme pedido, antes de qualquer aplicação.
 
+## Direct Booking sem Booker — migrations 0086/0087 aplicadas em QA/Staging — 21/09/2026
+
+Antes de aplicar, diagnóstico rodado pela fundadora no SQL Editor do
+projeto `doopla-qa-staging` confirmou ambiente limpo e dependências
+presentes: `is_system_caller()` e `get_active_approvals()` já
+existiam (migrations 0051/0045, herdadas do Approval Engine já em
+produção); `'convertida'` ainda não estava no enum
+`opportunity_status`; `bookings.booker_profile_id` ainda `NOT NULL`;
+`convert_opportunity_to_booking` ainda não existia. Nenhum drift
+entre repo e banco.
+
+Aplicação feita pela fundadora, em duas execuções separadas (nunca
+coladas juntas — Postgres não permite usar um valor de enum recém-
+criado na mesma transação em que foi adicionado):
+
+1. `0086_opportunity_status_convertida.sql` → `Success. No rows
+   returned`.
+2. `0087_direct_booking_no_booker.sql` (bloco completo: coluna
+   nullable, unique index, function `convert_opportunity_to_booking`,
+   guarda em `create_pending_reviews`) → `Success. No rows returned`.
+
+Confirmação final (query de verificação, mesmo SQL Editor):
+`enum_convertida = convertida`, `booker_nullable = YES`,
+`function_criada = convert_opportunity_to_booking`, `index_criado =
+bookings_originated_from_opportunity_unique_idx` — as 4 confirmadas.
+
+**Aplicado só em `doopla-qa-staging`. `doopla` (produção) continua
+intocado — só recebe as mesmas duas migrations depois da validação
+E2E completa neste ambiente.**
+
+**Status: checkpoint/WIP, NÃO DELIVERED.** Próximo passo: executar o
+checklist E2E dos 24 cenários (grupos A/B/C já definidos) contra
+`doopla-qa-staging`. Direct Booking só vira DELIVERED depois da
+validação E2E aqui E da aplicação das mesmas migrations em produção.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
