@@ -11,6 +11,79 @@ Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava
 
 Última atualização: 2026-09-21.
 
+## Comunidade — 3 bugs reais de QA em "Criar tópico" (auto-submit, navegação, delete) — 21/09/2026
+
+QA real em `doopla-qa-staging`, depois do pacote de 16/09 (header/tags
+livres/P0/performance) já estar no ar. Pedido explícito: identificar
+causa técnica de cada bug antes de corrigir, não fazer refactor amplo.
+Três bugs distintos, sem relação de causa entre si.
+
+- ✅ **Tag publicava o tópico sozinho**: causa raiz real, não
+  assumida — o campo de adicionar tag desmontava condicionalmente
+  (`{tags.length < 5 && <input/>}`) assim que a 5ª tag era adicionada.
+  Como isso acontecia DENTRO do mesmo evento de tecla (Enter), o React
+  removia do DOM um elemento que ainda estava focado; o navegador
+  então movia o foco pro próximo elemento focável — o botão "Publicar
+  tópico" — e o keyup do mesmo Enter acabava ativando esse botão
+  (comportamento nativo de teclado em `<button>` focado), submetendo o
+  formulário sem clique nenhum. Corrigido em
+  `pro-comunidade-novo-form.tsx`: o input nunca mais desmonta — fica
+  sempre montado, e `addTag()` (que já existia) continua recusando
+  além de 5 com mensagem clara. Bug diferente do corrigido em 16/09
+  (Enter no Título) — mesma classe de sintoma ("publica sozinho"),
+  mecanismo diferente.
+- ✅ **"←" no detalhe voltava pra "Criar tópico"**: confirmado na
+  documentação do próprio Next.js instalado
+  (`node_modules/next/dist/docs/.../redirect.md`): `redirect()` dentro
+  de Server Action usa `push` por padrão (não `replace`), empilhando
+  Comunidade → Criar tópico → Detalhe (3 entradas) em vez de
+  substituir a entrada de "Criar tópico" pela do Detalhe. Corrigido em
+  `comunidade/actions.ts` com `redirect(path, RedirectType.replace)`.
+  Também ajustado (pedido explícito): o X de "Criar tópico" agora
+  navega pra Home da Comunidade (`router.back()`, mesmo mecanismo do
+  seu próprio ←) em vez de sair da Comunidade inteira — comportamento
+  que continua sendo o certo pra TODA outra rota (lista/salvos/tópico),
+  só "novo" ganhou esse caso especial (`performNav`, `@modal/(.)comunidade/layout.tsx`).
+- ✅ **Tópico excluído reaparecia**: não é cache nem exclusão
+  fictícia — `remove_community_topic` (migration 0059) já faz soft
+  delete de verdade (`status = 'removed_by_author'`), confirmado
+  persistente no banco. Causa raiz real: a policy de RLS
+  `community_topics: select visible` deixa o AUTOR ver o próprio
+  tópico mesmo removido (`status = 'published' OR author_profile_id =
+  auth.uid()`) — pensada pra outro caso de uso, não pra listagem — e
+  `listCommunityTopics`("Recentes")/`listCommunityTopicsByIds`("Salvos")
+  nunca filtravam `status` explicitamente, só confiavam na RLS.
+  `search_community_topics`/`get_community_for_you_topics`/
+  `get_community_trending_topics` (0068/0079) já filtravam
+  `status = 'published'` direto no SQL — nunca tiveram esse gap.
+  Corrigido com `.eq('status', 'published')` explícito nas duas
+  funções, Web e App (mesmo gap existia em `fetchCommunityTopics`/
+  `fetchCommunityTopicsByIds` do mobile). O "sumiço" inicial que a
+  fundadora via ao excluir era só remoção otimista no estado local do
+  React (`handleTopicDeleted`) — nunca uma revalidação real; ao
+  navegar e a Home buscar de novo do servidor, a query sem filtro
+  trazia os removidos de volta. Nenhuma migration/RLS alterada — só as
+  queries da aplicação ficaram explícitas sobre o que já deveriam ter
+  filtrado desde o início.
+
+### Arquivos alterados
+- `src/app/dashboard/comunidade/novo/pro-comunidade-novo-form.tsx`
+- `src/app/dashboard/comunidade/actions.ts`
+- `src/app/dashboard/@modal/(.)comunidade/layout.tsx`
+- `src/lib/community/data.ts`
+- `mobile/src/lib/data/community.ts`
+
+Nenhuma migration nova — os 3 bugs eram só de código de aplicação.
+
+### QA rodado
+`tsc --noEmit` e `eslint` (Web e App) limpos, `npm run build` (Web)
+sem erro. Fluxo completo (criar com várias tags sem publicar → clicar
+Publicar → detalhe → ← → Home; excluir tópico → navegar pra fora e
+voltar → confirmar que continua excluído) não testado no navegador
+real neste ambiente (sem acesso a browser/Supabase de produção) — pede
+confirmação real da fundadora antes de considerar fechado, como nas
+rodadas anteriores.
+
 ## BUG real — modal de login sem padding fora da Home (root cause encontrada e corrigida) — 21/09/2026
 
 QA reportou o card de login "errado" nas páginas institucionais
