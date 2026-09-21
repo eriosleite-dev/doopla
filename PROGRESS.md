@@ -17709,6 +17709,53 @@ checklist E2E dos 24 cenários (grupos A/B/C já definidos) contra
 `doopla-qa-staging`. Direct Booking só vira DELIVERED depois da
 validação E2E aqui E da aplicação das mesmas migrations em produção.
 
+## Direct Booking — auditoria Vercel Preview × doopla-qa-staging, achado real corrigido — 21/09/2026
+
+Antes do E2E, a fundadora pediu auditoria read-only de que o
+Environment **Preview** da Vercel (`doopla-zr9p`) realmente aponta
+pro `doopla-qa-staging`, não pro `doopla` de produção — sem acesso a
+Vercel nesta sessão (mesma limitação de sempre), o trabalho foi feito
+guiando a fundadora campo a campo, com screenshots reais como
+evidência.
+
+**Achado real, corrigido na hora**: `SUPABASE_SERVICE_ROLE_KEY`
+(Production e Preview, as duas linhas) estava marcada como
+**Sensitive** na Vercel — valor nunca revelável pela UI, nem pra quem
+criou. Não dava pra confirmar se os valores estavam certos ou
+trocados só olhando (aparecia um placeholder idêntico mascarado em
+todas). Resolvido pelo mesmo método já usado em 14/09 pra
+`NEXT_PUBLIC_*`: em vez de tentar ler o valor antigo (impossível),
+recolocado o valor certo direto da fonte — a fundadora copiou a
+`service_role` key (Legacy API Keys) de cada projeto Supabase
+(`doopla` e `doopla-qa-staging`) e colou de novo na linha
+correspondente (Production/Preview) na Vercel.
+
+**Confirmado sem ambiguidade** (`NEXT_PUBLIC_SUPABASE_URL`, tipo não-
+Sensitive, revelado normalmente): Preview → `https://ahsyoxjzxkxcsbhqmdzv.supabase.co`
+(`doopla-qa-staging`); Production → `https://ysjzhirlhuujxoysbava.supabase.co`
+(`doopla`). Bate exatamente com o que já estava documentado na
+correção de 14/09 — sem drift.
+
+**Deploy confirmado**: branch `claude/categoria-b-supabase-env-qsbdq9`
+tem deployment de Preview próprio e estável
+(`doopla-zr9p-git-claude-categoria-b-supabase-env-qsbdq9-doopla.vercel.app`).
+Redeploy manual disparado (sem build cache) depois da correção da
+service role key, pra garantir que o build ativo já lê o valor certo
+— `Ready`, Environment `Preview`, commit `9fd97a9` (inclui todo o
+código do Direct Booking + trabalho de outra sessão paralela em
+Comunidade/Login, sincronizado sem conflito).
+
+**Nota lateral, sem ação necessária**: durante a auditoria apareceram
+deployments de uma branch `qa-comunidade-criar-topico` (sessão
+paralela) que fez merge da nossa branch pra dentro dela — não é
+mistura de trabalho, é ela se atualizando; não precisou reconciliar
+nada aqui.
+
+**Ambiente agora confirmado seguro pra rodar os 24 cenários E2E**: UI
+lê do `doopla-qa-staging` (anon key), e o Runtime (via
+`SUPABASE_SERVICE_ROLE_KEY`) também escreve no `doopla-qa-staging` —
+sem risco de escrita cruzada em produção durante os testes.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
