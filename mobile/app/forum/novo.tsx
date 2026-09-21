@@ -1,15 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fonts, radii } from '@/theme/tokens';
 import { FullSheetHeader } from '@/components/shared/FullSheetHeader';
-import { ErrorState, LoadingState } from '@/components/shared/ScreenState';
-import { createCommunityTopic, fetchCommunityTags } from '@/lib/data/community';
-import type { CommunityTag } from '@/types/community';
+import { createCommunityTopic } from '@/lib/data/community';
 
-type Phase = 'loading' | 'ready' | 'error';
+const MAX_TAGS = 5;
+
+function normalizeTagForCompare(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+    const message = (err as { message: string }).message.trim();
+    if (message) return message;
+  }
+  return fallback;
+}
 
 // Comunidade — Fase 1 (06/09/2026). Tela que não existia no mock —
 // criar tópico é parte do loop central pedido (buscar → abrir →
@@ -19,31 +29,50 @@ type Phase = 'loading' | 'ready' | 'error';
 // Busca universal (16/09/2026) — categoria removida deste formulário
 // (decisão canônica: Comunidade nunca exige taxonomia fechada pra
 // publicar). Mesmo comportamento da Web (ProComunidadeNovoForm).
+//
+// Tags livres (16/09/2026, QA real) — mesma correção da Web: a lista
+// fixa de tags (fetchCommunityTags, chips pré-definidos) era a MESMA
+// taxonomia fechada disfarçada que a busca universal já tinha corrigido
+// pra categoria. Trocado por input de texto livre + Enter, até 5,
+// removível — nunca um catálogo/dropdown. Isso também elimina a
+// espera de rede antes de mostrar o formulário (não existe mais
+// `phase: 'loading'` — nada bloqueia o primeiro render).
 export default function ForumNovoTopicoScreen() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('loading');
-  const [tags, setTags] = useState<CommunityTag[]>([]);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [tagError, setTagError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchCommunityTags()
-      .then((tgs) => {
-        setTags(tgs);
-        setPhase('ready');
-      })
-      .catch(() => setPhase('error'));
-  }, []);
+  function addTag() {
+    const value = tagInput.trim();
+    if (!value) {
+      setTagError(null);
+      return;
+    }
+    if (value.length < 2 || value.length > 40) {
+      setTagError('A tag precisa ter entre 2 e 40 caracteres.');
+      return;
+    }
+    if (tags.length >= MAX_TAGS) {
+      setTagError(`Máximo de ${MAX_TAGS} tags.`);
+      return;
+    }
+    if (tags.some((t) => normalizeTagForCompare(t) === normalizeTagForCompare(value))) {
+      setTagInput('');
+      setTagError(null);
+      return;
+    }
+    setTags((prev) => [...prev, value]);
+    setTagInput('');
+    setTagError(null);
+  }
 
-  function toggleTag(id: string) {
-    setSelectedTagIds((prev) => {
-      if (prev.includes(id)) return prev.filter((t) => t !== id);
-      if (prev.length >= 5) return prev;
-      return [...prev, id];
-    });
+  function removeTag(tag: string) {
+    setTags((prev) => prev.filter((t) => t !== tag));
   }
 
   async function handlePublish() {
@@ -53,10 +82,11 @@ export default function ForumNovoTopicoScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      const topicId = await createCommunityTopic({ title: title.trim(), body: body.trim(), categoryId: null, tagIds: selectedTagIds });
+      const topicId = await createCommunityTopic({ title: title.trim(), body: body.trim(), categoryId: null, tagLabels: tags });
       router.replace(`/forum/${topicId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível criar o tópico.');
+      console.error('ForumNovoTopicoScreen: create_community_topic falhou', err);
+      setError(extractErrorMessage(err, 'Não foi possível criar o tópico. Tente de novo em instantes.'));
       setSubmitting(false);
     }
   }
@@ -64,46 +94,57 @@ export default function ForumNovoTopicoScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <FullSheetHeader title="Criar tópico" onBack={() => router.back()} onClose={() => router.dismissAll()} />
-      {phase === 'loading' && <LoadingState label="Carregando…" />}
-      {phase === 'error' && <ErrorState message="Não deu pra carregar as categorias agora." />}
-      {phase === 'ready' && (
-        <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 32 }}>
-          <Text style={styles.label}>Título</Text>
-          <TextInput style={styles.input} placeholder="O que você quer conversar?" placeholderTextColor={colors.tx50} value={title} onChangeText={setTitle} />
+      <ScrollView style={styles.body} contentContainerStyle={{ paddingBottom: 32 }}>
+        <Text style={styles.label}>Título</Text>
+        <TextInput style={styles.input} placeholder="O que você quer conversar?" placeholderTextColor={colors.tx50} value={title} onChangeText={setTitle} />
 
-          <Text style={styles.label}>Descrição</Text>
-          <TextInput
-            style={[styles.input, styles.textarea]}
-            placeholder="Conte um pouco mais."
-            placeholderTextColor={colors.tx50}
-            value={body}
-            onChangeText={setBody}
-            multiline
-          />
+        <Text style={styles.label}>Descrição</Text>
+        <TextInput
+          style={[styles.input, styles.textarea]}
+          placeholder="Conte um pouco mais."
+          placeholderTextColor={colors.tx50}
+          value={body}
+          onChangeText={setBody}
+          multiline
+        />
 
-          {tags.length > 0 && (
-            <>
-              <Text style={styles.label}>Tags (opcional, até 5)</Text>
-              <View style={styles.chips}>
-                {tags.map((tag) => {
-                  const active = selectedTagIds.includes(tag.id);
-                  return (
-                    <Pressable key={tag.id} onPress={() => toggleTag(tag.id)} style={[styles.chip, active && styles.chipActive]}>
-                      <Text style={[styles.chipText, active && styles.chipTextActive]}>{tag.label}</Text>
-                    </Pressable>
-                  );
-                })}
+        <Text style={styles.label}>Tags (opcional, até {MAX_TAGS})</Text>
+        {tags.length > 0 && (
+          <View style={styles.chips}>
+            {tags.map((tag) => (
+              <View key={tag} style={styles.tagChip}>
+                <Text style={styles.tagChipText}>{tag}</Text>
+                <Pressable onPress={() => removeTag(tag)} hitSlop={8}>
+                  <Text style={styles.tagChipRemove}>×</Text>
+                </Pressable>
               </View>
-            </>
-          )}
+            ))}
+          </View>
+        )}
+        {tags.length < MAX_TAGS && (
+          <TextInput
+            style={styles.input}
+            placeholder="Adicione uma tag..."
+            placeholderTextColor={colors.tx50}
+            value={tagInput}
+            onChangeText={(text) => {
+              setTagInput(text);
+              if (tagError) setTagError(null);
+            }}
+            onSubmitEditing={addTag}
+            onBlur={addTag}
+            maxLength={40}
+            returnKeyType="done"
+          />
+        )}
+        {tagError && <Text style={styles.error}>{tagError}</Text>}
 
-          {error && <Text style={styles.error}>{error}</Text>}
+        {error && <Text style={styles.error}>{error}</Text>}
 
-          <Pressable style={[styles.publishBtn, submitting && styles.publishBtnDisabled]} onPress={handlePublish} disabled={submitting}>
-            <Text style={styles.publishText}>{submitting ? 'Publicando…' : 'Publicar tópico'}</Text>
-          </Pressable>
-        </ScrollView>
-      )}
+        <Pressable style={[styles.publishBtn, submitting && styles.publishBtnDisabled]} onPress={handlePublish} disabled={submitting}>
+          <Text style={styles.publishText}>{submitting ? 'Publicando…' : 'Publicar tópico'}</Text>
+        </Pressable>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -143,25 +184,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 7,
+    marginBottom: 8,
   },
-  chip: {
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderWidth: 1,
     borderColor: colors.line,
+    backgroundColor: 'rgba(255,255,255,.05)',
     borderRadius: 999,
     paddingHorizontal: 11,
     paddingVertical: 6,
   },
-  chipActive: {
-    backgroundColor: colors.red,
-    borderColor: colors.red,
-  },
-  chipText: {
+  tagChipText: {
     color: colors.tx70,
     fontFamily: fonts.subSemiBold,
     fontSize: 11,
   },
-  chipTextActive: {
-    color: colors.off,
+  tagChipRemove: {
+    color: colors.tx50,
+    fontSize: 13,
+    lineHeight: 13,
   },
   error: {
     color: '#ff8b80',

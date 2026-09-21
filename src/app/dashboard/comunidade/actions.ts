@@ -96,12 +96,41 @@ export async function toggleSaveTopicAction(topicId: string, save: boolean): Pro
 
 export type CreateTopicActionState = { error?: string };
 
+// Bug P0 "Não foi possível criar o tópico" (QA real, 16/09/2026) —
+// causa raiz rastreada e testada de verdade (Postgres local, migrations
+// 0001-0089 aplicadas, RPC chamada como authenticated): a RPC/migration
+// em si nunca falha silenciosamente — toda falha real levanta uma
+// exceção Postgres com mensagem específica (invalid_category,
+// invalid_tags, community_membership_not_active, etc.). O generic
+// fallback só aparecia quando `err instanceof Error` dava falso pro
+// erro real, escondendo a mensagem de verdade. `PostgrestError` do
+// supabase-js atual estende `Error`, mas depender de `instanceof` pra
+// decidir se um valor lançado "tem mensagem de verdade" é frágil
+// (qualquer erro que não seja literalmente essa classe — timeout de
+// rede, resposta malformada do PostgREST, etc. — cai no fallback e
+// esconde o problema real). Correção: extrai `.message` de qualquer
+// coisa que pareça um erro (duck typing, nunca `instanceof`), e loga o
+// erro completo no servidor pra qualquer ocorrência futura ser
+// diagnosticável direto pelos logs, sem precisar reproduzir às cegas.
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+    const message = (err as { message: string }).message.trim();
+    if (message) return message;
+  }
+  return fallback;
+}
+
 export async function createTopicAction(_prevState: CreateTopicActionState, formData: FormData): Promise<CreateTopicActionState> {
   const { supabase } = await requireArtista();
 
   const title = String(formData.get('title') ?? '').trim();
   const body = String(formData.get('body') ?? '').trim();
-  const tagIds = formData.getAll('tagIds').map(String).filter(Boolean).slice(0, 5);
+  // Tags livres (16/09/2026) — substitui os antigos tagIds (catálogo
+  // fechado, ver ProComunidadeNovoForm/DECISOES.md). Texto digitado
+  // pela pessoa, filtrado de vazio, limitado a 5 (mesmo limite já
+  // aplicado no client — repetido aqui porque um form nunca deve
+  // confiar só na validação do client).
+  const tagLabels = formData.getAll('tagLabels').map(String).map((t) => t.trim()).filter(Boolean).slice(0, 5);
 
   if (title.length < 3) return { error: 'O título precisa ter pelo menos 3 caracteres.' };
   if (!body) return { error: 'Escreva o que você quer perguntar ou discutir.' };
@@ -114,9 +143,10 @@ export async function createTopicAction(_prevState: CreateTopicActionState, form
     // pra publicar. categoryId sempre null aqui: nenhum campo de
     // categoria existe mais no formulário de criação (ver
     // ProComunidadeNovoForm).
-    topicId = await createCommunityTopic(supabase, { title, body, categoryId: null, tagIds });
+    topicId = await createCommunityTopic(supabase, { title, body, categoryId: null, tagLabels });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : 'Não foi possível criar o tópico.' };
+    console.error('createTopicAction: create_community_topic falhou', err);
+    return { error: extractErrorMessage(err, 'Não foi possível criar o tópico. Tente de novo em instantes.') };
   }
 
   revalidatePath('/dashboard/comunidade');

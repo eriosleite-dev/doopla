@@ -8,6 +8,94 @@ a desfazer ou recodificar algo que já foi decidido de propósito.
 
 ---
 
+## Comunidade: tags livres, reverte "vocabulário controlado" de 0059 — 16/09/2026
+
+QA real pós-busca-universal encontrou 4 problemas em Criar tópico
+(detalhe completo em PROGRESS.md). O que muda de decisão canônica:
+
+**Tags deixam de ser um catálogo fechado.** `community_tags` (migration
+0059) nasceu com o comentário explícito "vocabulário controlado do
+beta — sem criação livre de tag pelo usuário (decisão da spec)". A
+fundadora reverteu isso depois de ver os 10 chips fixos na tela real:
+"isso volta a limitar a Comunidade, só que agora com outro nome" — o
+mesmo raciocínio que já valeu pra categoria em 0088 (busca universal >
+taxonomia fechada obrigatória) agora vale pra tag também. Tag é texto
+livre digitado pela pessoa (até 5, Enter pra confirmar, removível antes
+de publicar) — nunca mais um dropdown/catálogo de sugestões.
+
+**Implementado sem quebrar nada existente** (migration 0089):
+`community_tags`/`community_topic_tags` continuam com a MESMA
+estrutura — nenhuma linha apagada, nenhuma tabela recriada. As 10 tags
+seed continuam válidas e continuam podendo ser reusadas (se alguém
+digitar "Casamentos" de novo, cai na mesma linha por slug, não duplica).
+`create_community_topic` ganhou `p_tag_labels text[]` (find-or-create
+por slug, normalização própria via `community_slugify()` — mesmo
+padrão das 10 tags seed, sem depender da extensão `unaccent`, que este
+projeto nunca instalou). `p_tag_ids` continua existindo, mesmo
+comportamento de antes (valida contra tag existente, nunca cria) — só
+deixou de ser o que o formulário manda.
+
+**Achado técnico que quase virou bug introduzido por mim**: testei a
+migration antes de aplicar (Postgres local, migrations 0001-0089 de
+verdade) e descobri que `create or replace function` com um parâmetro
+NOVO no final não troca o corpo da function existente — cria uma
+SEGUNDA function (overload), porque a identidade de uma function no
+Postgres é (nome + lista de TIPOS dos parâmetros), não só o nome.
+Reproduzi isso de verdade (erro real: "function name ... is not
+unique") antes de perceber. A versão antiga de 5 argumentos teria
+ficado viva no banco ao lado da nova de 6, e a nova nasceria SEM os
+grants corretos (grants não migram pra uma function diferente) —
+exatamente o tipo de inconsistência que pode causar uma falha de RPC
+difícil de diagnosticar no cliente (ver achado abaixo sobre o bug P0).
+Corrigido com `drop function if exists ...(assinatura antiga)` explícito
+antes do `create or replace`, + `revoke`/`grant` explícitos pra
+assinatura nova — mesmo padrão de 0059/0088, nunca assumido como
+"herdado automaticamente".
+
+## Comunidade: bug P0 "Não foi possível criar o tópico" — causa raiz + limite do que dava pra verificar — 16/09/2026
+
+A fundadora reportou receber esse erro genérico ao tentar publicar um
+tópico sem categoria, suspeitando que a migration 0088 não estivesse
+aplicada no ambiente de QA dela.
+
+**O que testei de verdade** (não assumido): subi um Postgres local,
+apliquei as 88 migrations reais em sequência (zero erro), e chamei
+`create_community_topic` como o role `authenticated` faria, com
+`p_category_id: null` — funcionou, retornou um `topic_id` real. Testei
+também o cenário OPOSTO (só até a migration 0087, sem a 0088) — nesse
+caso a RPC levanta `invalid_category`, uma mensagem real e específica,
+nunca um erro genérico/silencioso. Testei tag válida, tag inválida
+(`invalid_tags`), mais de 5 tags (`too_many_tags`), tag livre de 1
+caractere (`invalid_tag_label`), tópico com categoria (continua
+funcionando) e tag por id antiga (continua funcionando) — todos os
+caminhos levantam uma exceção Postgres com mensagem específica, nunca
+um erro mudo.
+
+**Conclusão**: a RPC/migration nunca é a origem de um erro sem
+mensagem — sempre levanta uma exceção específica (`invalid_category`,
+`invalid_tags`, `community_membership_not_active`, etc.). A string
+genérica "Não foi possível criar o tópico." só podia estar vindo do
+FALLBACK do client (`comunidade/actions.ts`/`forum/novo.tsx`):
+`err instanceof Error ? err.message : 'fallback'`. `PostgrestError` (a
+classe que o supabase-js usado aqui lança pra erro de RPC) estende
+`Error` de verdade — mas depender de `instanceof` pra decidir se um
+valor lançado "tem mensagem de confiar" é frágil: qualquer coisa que
+não seja literalmente essa classe (timeout, resposta malformada do
+PostgREST, um erro de infraestrutura) cai no fallback genérico e
+esconde a causa real. Troquei por extração por duck-typing (`'message'
+in err && typeof err.message === 'string'`) + `console.error` do erro
+completo no servidor, pros dois lados (Web e App) — nunca mais um erro
+real vira uma string genérica sem deixar rastro nos logs.
+
+**Limite honesto**: não tenho acesso ao Supabase de produção da
+fundadora nesta sessão (sandbox sem as credenciais reais) — não dá pra
+reproduzir byte a byte o que aconteceu no navegador dela. O que fica
+garantido: (1) a lógica de banco está correta e testada de verdade nos
+dois cenários mais prováveis (0088 aplicada/não aplicada); (2) qualquer
+falha real, de qualquer natureza, agora aparece com a mensagem
+verdadeira na tela e no log do servidor — se acontecer de novo, dá pra
+diagnosticar direto, sem reproduzir às cegas.
+
 ## Configurações do Professional/Artista viram acordeão; legado de matching sai da UI do beta — 14/09/2026
 
 Fecha a rodada iniciada pela pergunta da fundadora sobre o "Perfil

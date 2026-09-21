@@ -29,7 +29,21 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   const { supabase, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
-  await ensureCommunityProfileActivated(supabase);
+  // Auditoria de performance (QA real, 16/09/2026) — achado real: esta
+  // página fazia 4 round-trips SEQUENCIAIS pro Supabase antes do
+  // primeiro render (ensureCommunityProfileActivated → lote de 4 em
+  // paralelo → savedTopics por id → authors), cada um uma latência de
+  // rede cheia. `ensureCommunityProfileActivated` nunca foi checado
+  // como dependência real das leituras abaixo — auditoria de RLS/RPC
+  // (nenhuma policy de community_topics/community_saved_topics/
+  // get_community_for_you_topics/get_community_trending_topics
+  // referencia community_profiles) + teste real num Postgres local
+  // (todas as 4 leituras funcionam normalmente pra um profile que
+  // NUNCA ativou a Comunidade) confirmam que é seguro disparar em
+  // paralelo com o lote de leitura, não antes dele — só precisa ter
+  // terminado antes de qualquer ESCRITA (criar tópico/post/salvar),
+  // que já é uma chamada separada, feita nas actions, não aqui.
+  const ensureActivatedPromise = ensureCommunityProfileActivated(supabase);
 
   // "Para você"/"Em alta agora" são realces opcionais (cold start já
   // devolve vazio de propósito, ver listCommunityForYouTopics/
@@ -42,18 +56,25 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   // essenciais pra tela fazer sentido). Categorias não é mais buscada
   // aqui (busca universal, 16/09/2026) — nenhum consumidor restante
   // nesta página.
-  const [recentTopics, savedTopicIds, forYouTopics, trendingTopics] = await Promise.all([
-    listCommunityTopics(supabase, { limit: 20 }),
-    listSavedTopicIds(supabase),
-    listCommunityForYouTopics(supabase, 6).catch((err) => {
-      console.error('[comunidade] get_community_for_you_topics falhou', err);
-      return [];
-    }),
-    listCommunityTrendingTopics(supabase, 6).catch((err) => {
-      console.error('[comunidade] get_community_trending_topics falhou', err);
-      return [];
-    }),
-  ]);
+  const recentTopicsPromise = listCommunityTopics(supabase, { limit: 20 });
+  const forYouTopicsPromise = listCommunityForYouTopics(supabase, 6).catch((err) => {
+    console.error('[comunidade] get_community_for_you_topics falhou', err);
+    return [];
+  });
+  const trendingTopicsPromise = listCommunityTrendingTopics(supabase, 6).catch((err) => {
+    console.error('[comunidade] get_community_trending_topics falhou', err);
+    return [];
+  });
+
+  // savedTopics precisa saber os ids salvos primeiro (dependência real,
+  // não dá pra paralelizar essa parte) — mas assim que souber, dispara
+  // na hora: fica em voo AO MESMO TEMPO que recentTopics/forYou/
+  // trending acima, nunca depois deles. Antes, os 4 viviam no mesmo
+  // Promise.all e savedTopics só começava depois que TODOS os 4
+  // terminassem — um round-trip inteiro de espera adicional, sem
+  // necessidade real (savedTopics não depende de recentTopics/forYou/
+  // trending, só de savedTopicIds).
+  const savedTopicIds = await listSavedTopicIds(supabase);
   const savedTopicIdSet = new Set(savedTopicIds);
   // Correção do item 2A (08/09/2026) — a versão anterior cortava em 20 e
   // linkava "Ver todos" pra /dashboard/comunidade/salvos, violando a
@@ -67,7 +88,15 @@ export default async function ComunidadePage(props: { searchParams: Promise<{ q?
   // accordion — sem link de saída, sem "mostrar mais". A rota dedicada
   // /dashboard/comunidade/salvos continua existindo (compatibilidade),
   // só deixa de ser referenciada pela Home.
-  const savedTopics = await listCommunityTopicsByIds(supabase, savedTopicIds, savedTopicIds.length);
+  const savedTopicsPromise = listCommunityTopicsByIds(supabase, savedTopicIds, savedTopicIds.length);
+
+  const [recentTopics, forYouTopics, trendingTopics, savedTopics] = await Promise.all([
+    recentTopicsPromise,
+    forYouTopicsPromise,
+    trendingTopicsPromise,
+    savedTopicsPromise,
+  ]);
+  await ensureActivatedPromise;
 
   const authorsById = await getCommunityAuthors(supabase, [
     ...new Set([...recentTopics, ...savedTopics, ...forYouTopics, ...trendingTopics].map((t) => t.author_profile_id)),

@@ -142,6 +142,118 @@ o design real e intencional do login, não uma regressão.
 
 **Arquivos alterados**: `src/app/_home/home.html`.
 
+## Comunidade — QA real pós-busca-universal: 4 bugs em Criar tópico — 16/09/2026
+
+Pedido explícito: não redesenhar a Comunidade, corrigir especificamente
+os 4 pontos reportados e investigar a causa real, não mascarar. Decisão
+canônica registrada em DECISOES.md: categorias continuam opcionais
+(0088) e agora **tags também são livres/opcionais, nunca uma taxonomia
+pré-definida** (reverte 0059).
+
+- ✅ **1. Header do "Criar tópico" sobreposto**: causa raiz — os
+  botões ←/✕ do slide-over (`@modal/(.)comunidade/layout.tsx`) vêm em
+  `position: absolute`, soltos do fluxo do conteúdo; é a MESMA causa já
+  corrigida pro header do tópico em 08/09/2026 ("Restruturação do
+  header do tópico"), só que "novo" tinha ficado de fora daquela
+  correção. Resolvido do mesmo jeito: `novo-header.tsx` novo, header
+  composto de verdade (voltar / título+subtítulo / fechar na MESMA row
+  flex, via `useComunidadeChromeActions`, sem duplicar guarda de
+  rascunho/profundidade/diálogo de descarte), e `isNovo` no layout do
+  slide-over pra parar de desenhar os botões absolutos nessa rota
+  especificamente. "Salvos" continua com os botões absolutos antigos —
+  **mesmo bug estrutural provavelmente existe lá também, não
+  reproduzido/reportado desta vez, não tocado** (fora do escopo pedido:
+  "corrigir especificamente estes pontos"). Sinalizando aqui pra não
+  esquecer.
+- ✅ **2. Tags livres**: ver decisão completa em DECISOES.md. Migration
+  0089 (`community_slugify` + `create_community_topic` ganha
+  `p_tag_labels`, find-or-create por slug, sem apagar nada de 0059).
+  `ProComunidadeNovoForm`/`ForumNovoTopicoScreen` (App) trocam os 10
+  chips fixos por input livre (Enter cria chip, × remove, máx. 5,
+  validado no client E no servidor). `listCommunityTags`/
+  `fetchCommunityTags` removidas (sem nenhum outro consumidor depois
+  da troca — conferido). Testado de verdade num Postgres local: criar
+  sem tag, criar com 1 tag livre nova, reusar a mesma tag com
+  maiúscula/espaço diferente (dedupe por slug, confirmado 1 linha só),
+  6 tags rejeitadas (`too_many_tags`), tag de 1 caractere rejeitada
+  (`invalid_tag_label`), tag por id antiga continua funcionando,
+  tópico com categoria continua funcionando. `search_community_topics`
+  (0068) já fazia full-text sobre `community_tags.label` de qualquer
+  tag ligada ao tópico — testei buscar exatamente a tag livre criada
+  ("equipamento de som") e o tópico apareceu, zero mudança necessária
+  na busca.
+- ✅ **3. Bug P0 "Não foi possível criar o tópico"**: rastreado E2E de
+  verdade (não assumido) — detalhe completo do teste em DECISOES.md.
+  RPC/migration testadas num Postgres local com as 88 migrations reais
+  aplicadas: categoria null funciona, e o cenário sem a 0088 aplicada
+  produz `invalid_category` (mensagem real, nunca um erro mudo). Causa
+  raiz do sintoma relatado: `err instanceof Error ? err.message :
+  'fallback'` em `comunidade/actions.ts`/`forum/novo.tsx` — frágil
+  pra qualquer erro que não seja literalmente essa classe. Trocado por
+  extração por duck-typing (`'message' in err`) + `console.error` do
+  erro completo no servidor dos dois lados (Web/App). **Limite
+  honesto**: sem acesso ao Supabase de produção real nesta sessão, não
+  dá pra confirmar qual era exatamente a causa isolada byte a byte —
+  o que fica garantido é que a lógica de banco está correta e testada,
+  e que qualquer falha real (essa ou outra) agora aparece com a
+  mensagem verdadeira na tela e no log do servidor.
+- ✅ **4. Performance da abertura da Comunidade**: auditoria real de
+  `comunidade/page.tsx` (rota reaproveitada pelo slide-over e pela
+  página cheia). Achados: (a) `ensureCommunityProfileActivated`
+  rodava ANTES do lote de leituras, sequencial — auditoria de RLS/RPC
+  (nenhuma policy de `community_topics`/`community_saved_topics`/
+  `get_community_for_you_topics`/`get_community_trending_topics`
+  referencia `community_profiles`) + teste real num Postgres local
+  (as 4 leituras funcionam pra um profile que nunca ativou a
+  Comunidade) confirmam que é seguro rodar em paralelo com as leituras,
+  não antes; (b) `savedTopics` (busca por id) só começava depois que
+  os OUTROS 3 itens do mesmo `Promise.all` (incluindo as 2 RPCs de
+  ranking, potencialmente as mais lentas) terminassem, mesmo só
+  dependendo de `savedTopicIds` — desacoplado pra disparar assim que
+  `savedTopicIds` resolve, sobrepondo com recentTopics/forYou/trending
+  em vez de esperar todos os 4. Resultado: de 4 round-trips
+  sequenciais pro Supabase antes do primeiro render pra 2 (lote
+  paralelo de 4 + authors, que genuinamente precisa dos ids de autor
+  de todos os 4 primeiro — dependência real, não dava pra paralelizar
+  sem reestruturar as RPCs, fora de escopo). Categorias não são mais
+  buscadas aqui desde 0088 (já não pesava). Não toquei em
+  `getSessionProfile` (2 queries sequenciais de auth/profile) nem no
+  prefetch do ícone de Comunidade no header (`prefetch={false}` até
+  hover/touch) — os dois são coisas que já existiam antes deste pedido
+  por motivos próprios documentados (dedupe por request; correção do
+  bug de página em branco em 08/09/2026), mudar qualquer um dos dois
+  seria escopo maior que "otimizar a causa real da demora de abrir
+  Comunidade" e arrisca reabrir um bug já fechado. Sem benchmark
+  numérico antes/depois (sem browser/ambiente real neste sandbox) —
+  a mudança é estrutural (menos round-trips seriais, garantido por
+  leitura do código + teste de dependência real), não uma medição de
+  ms.
+
+### Arquivos alterados
+- `supabase/migrations/0089_community_free_tags.sql` (nova).
+- `src/app/dashboard/comunidade/novo/novo-header.tsx` (novo).
+- `src/app/dashboard/comunidade/novo/page.tsx`,
+  `pro-comunidade-novo-form.tsx`.
+- `src/app/dashboard/@modal/(.)comunidade/layout.tsx`.
+- `src/app/dashboard/comunidade/actions.ts`, `page.tsx`.
+- `src/lib/community/data.ts`.
+- `mobile/app/forum/novo.tsx`, `mobile/src/lib/data/community.ts`.
+
+### QA obrigatório rodado nesta sessão
+`tsc --noEmit` (Web e App), `eslint` (Web, arquivos tocados), `npm run
+build` (Web) — todos limpos, sem erro novo. Migration 0089 testada de
+verdade num Postgres local com as 88 migrations reais aplicadas em
+sequência (zero erro), incluindo os cenários específicos pedidos no QA
+obrigatório: criar sem tag, criar com tag livre nova, criar com tag
+repetida (dedupe), limite de 5, remover tag antes de publicar (client,
+coberto pela própria UI), busca encontrando a tag livre criada,
+compatibilidade com tópicos antigos (categoria + tag por id). **Não
+testado**: fluxo real no navegador/app (sem ambiente com browser nem
+credenciais do Supabase de produção neste sandbox) — a Comunidade não
+deve ser marcada como DELIVERED de novo até alguém confirmar o E2E de
+verdade (criar → persistir → aparecer → buscar) num ambiente real, como
+pedido explicitamente.
+
 ## Home — alinhamento vertical do hero (coluna esquerda × celular) — 16/09/2026
 
 - ✅ **Causa raiz**: `.hero-grid{ align-items:center }` centralizava a
