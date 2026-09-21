@@ -9,7 +9,94 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-09-16.
+Última atualização: 2026-09-21.
+
+## Olhos/mascote — consolidação em hooks compartilhados + blink faltando + tracking faltando no mascote de Contato — 21/09/2026
+
+QA real reportou: Termos/Privacidade não piscavam e pareciam só reagir
+depois de um clique; Contato tinha o mascote parado (sem tracking).
+Auditoria + correção:
+
+- ✅ **Causa real confirmada**: `EyesShowcase.tsx` nunca teve piscada
+  (só tracking) — Termos/Privacidade realmente nunca piscaram, bug de
+  verdade, não impressão. `Mascot.tsx` nunca teve tracking (só
+  piscada, que é o comportamento canônico real dos mascotes da Home —
+  ver home.css: "o logo olha, os mascotes piscam") — Contato realmente
+  nunca teve o mascote seguindo o cursor, porque essa função nunca foi
+  implementada ali.
+- 🔍 **"Só reage depois do clique" — não reproduzido**: testado
+  exaustivamente via Playwright (Chromium real, não simulação) em dev
+  E em build de produção (`next build` + `next start`), sempre com
+  `page.goto` seguido de movimento de mouse IMEDIATO, zero clique, zero
+  wait — a pupila responde no primeiro movimento em 100% dos testes,
+  nos dois ambientes. Não encontrei nenhum caminho de código que
+  dependa de click/focus/interação prévia (o listener de `mousemove`
+  já era registrado direto no mount desde a implementação anterior).
+  Hipótese mais provável: o QA foi feito contra um preview do Vercel
+  desatualizado (anterior ao commit que corrigiu o amortecimento por
+  distância, sessão passada) — vale reabrir um preview fresco depois
+  deste push e testar de novo.
+- ✅ **Consolidação pedida**: toda a lógica de tracking e de piscada
+  foi extraída pra dois hooks únicos e compartilhados —
+  `useEyeTracking.ts` e `useBlink.ts` (novos, `src/app/_home/`).
+  `EyesShowcase.tsx` e `Mascot.tsx` agora só chamam esses hooks
+  (nenhuma lógica duplicada entre os dois componentes). O tracking
+  agrupa atualizações por `requestAnimationFrame` (no máximo 1 escrita
+  de estilo por frame) — sem debounce perceptível, só evita trabalho
+  redundante em mousemove de alta frequência.
+- ✅ **Termos/Privacidade agora piscam**: `EyesShowcase` chama
+  `useBlink(rootRef, '.eyes-showcase-eye')`. CSS novo em
+  `site-chrome.css` (`.eyes-showcase-eye.blink{transform:scaleY(.08)}`,
+  mesmo squash de `.mascot-eye.blink` de home.css, só que escopado pra
+  essa classe própria). Confirmado piscando sozinho, sem nenhuma
+  interação, ~2.8s depois do load numa das rodadas de teste.
+- ✅ **Mascote de Contato agora segue o cursor**: `Mascot` ganhou prop
+  `tracking?: boolean` (default `false` — não muda o comportamento
+  canônico do mascote em nenhum outro lugar). `contato/page.tsx` liga
+  com `<Mascot size="cta" tracking />`. maxRatio calibrado mais
+  conservador (0.2) que o das EyesShowcase (0.28) porque a pupila do
+  mascote é proporcionalmente maior (~45% da largura do olho vs 34%) —
+  nunca atravessa a borda do globo em nenhum dos 2 tamanhos.
+- ✅ **Sincronização entre as duas pupilas**: medido via Playwright —
+  as duas pupilas de cada instância são atualizadas dentro do MESMO
+  loop síncrono (`applyTrack`), mesmo frame de rAF, sempre. Não
+  encontrei desvio real entre elas nos testes (valores muito próximos,
+  convergindo coerentemente pro cursor). Se o que ficou "fora de
+  sincronia" na experiência anterior era a ausência total de piscada
+  (parecendo "morto"/inconsistente com o resto da identidade viva da
+  Home), isso já está corrigido acima.
+- ✅ Validado: `next build`, `tsc --noEmit`, ESLint limpos; QA real em
+  navegador (Playwright/Chromium) contra build de produção — tracking
+  imediato sem clique em Sobre/Termos/Contato, piscada autônoma sem
+  interação em Termos, sem erros de console, mobile/touch sem crash
+  (sem depender de mouse), Home sem regressão (alinhamento do hero
+  ainda em 0px de diff, tracking do logo do nav intacto).
+
+**Card de login "diferente" — não é bug**: auditado
+`LoginModal.tsx`/`HomeLoginModal.tsx`/`globals.css`. O título "ENTRE
+NA SUA CONTA DOOPLA." usa `.font-pro-display` (`font-family:'Anton'`),
+a mesma fonte de destaque usada em TODO o sistema Pro/login —
+inclusive a rota real `/login/page.tsx` usa exatamente a mesma marcação
+(`font-pro-display text-[28px] uppercase`). Nenhum arquivo desse modal
+foi tocado nesta sessão nem em nenhuma sessão recente (`git log`
+confirma o último commit nesses arquivos é de antes desta rodada). O
+card é idêntico esteja aberto pela Home ou pelas páginas
+institucionais (mesmo componente `LoginModal.tsx` nos dois casos) — é
+o design real e intencional do login, não uma regressão.
+
+**Arquivos alterados**: `src/app/_home/useEyeTracking.ts` (novo),
+`src/app/_home/useBlink.ts` (novo), `src/app/_home/EyesShowcase.tsx`,
+`src/app/_home/Mascot.tsx`, `src/app/_home/site-chrome.css`,
+`src/app/contato/page.tsx`.
+
+## Home — copy do lead do hero — 21/09/2026
+
+- ✅ "Sua Doopla atende, negocia e cuida de cada booking até o trabalho
+  acontecer." vira "Sua Doopla atende, prospecta, negocia e acompanha
+  seus bookings." Nenhuma outra parte do hero tocada (celular,
+  mascote, badges, alinhamento).
+
+**Arquivos alterados**: `src/app/_home/home.html`.
 
 ## Home — alinhamento vertical do hero (coluna esquerda × celular) — 16/09/2026
 
