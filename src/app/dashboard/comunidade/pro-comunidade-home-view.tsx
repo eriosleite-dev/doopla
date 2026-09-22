@@ -230,9 +230,11 @@ function TopicRail({ topics }: { topics: CommunityTopicCard[] }) {
           className="flex-none rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] px-3.5 py-3 transition-colors hover:border-[var(--pro-tx-30)]"
           style={{ maxWidth: 220 }}
         >
-          <p className="truncate font-pro-sub text-[12.5px] font-bold leading-snug">{topic.title}</p>
-          <p className="mt-1.5 text-[11px] text-[var(--pro-tx-30)]">
-            {topic.replyCount} {topic.replyCount === 1 ? 'resposta' : 'respostas'} · {topic.timeLabel}
+          <p className="truncate text-[12.5px] leading-snug">
+            <span className="font-pro-sub font-bold">{topic.title}</span>{' '}
+            <span className="text-[11px] text-[var(--pro-tx-30)]">
+              · {topic.replyCount} {topic.replyCount === 1 ? 'resposta' : 'respostas'} · {topic.timeLabel}
+            </span>
           </p>
         </Link>
       ))}

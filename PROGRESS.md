@@ -18503,6 +18503,28 @@ teste ao vivo (Preview do commit desta rodada) antes de considerar os
 
 ## Como usar isso
 
+## Confirmação final — fundo preto corrigido + linha única real em "Suas comunidades" — `[DELIVERED]` — 22/09/2026
+
+Fundadora confirmou ao vivo, num deploy mais recente: **fundo preto
+corrigido** — o `startTransition` (rodada anterior) funcionou; o teste
+anterior dela tinha pego um deploy ainda não propagado. Card de "Suas
+comunidades" ainda tinha título numa linha e "N respostas · tempo"
+numa segunda linha embaixo — ajustado pra ficar tudo numa única linha
+mesmo (título em negrito + meta na sequência, mesmo elemento `<p>`
+truncando junto), mantendo o trilho horizontal já decidido.
+`tsc`/`eslint`/`next build` limpos.
+
+**Itens 1 e 2 da rodada de regressões de UX considerados fechados**:
+"Precisa de você" em linha única (Home) e Comunidade mantendo painel
+ao criar tópico, sem fundo preto. Pendente ainda: decisão da
+fundadora sobre o comportamento do X em "Criar tópico" (hoje volta
+pra Home da Comunidade por decisão de 16/09 — perguntei se ela quer
+mudar pra fechar tudo, resposta ainda não recebida) e o item 3
+(badge "16" de Bookings), que segue **intocado**, aguardando
+autorização pra investigar mais fundo.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
