@@ -18178,6 +18178,32 @@ correções, testes em dispositivo real, build e distribuição beta.
 **Nenhuma auditoria, código ou scoping do Mobile foi feito nesta
 rodada** — só o registro da decisão de sequenciamento.
 
+## RLS de `artist_link_routing` — validado em `doopla-qa-staging` (migration 0092) — 22/09/2026
+
+Migration `0092` aplicada e testada ao vivo em `doopla-qa-staging`,
+antes de qualquer aplicação em produção. Estado real da policy
+conferido antes de aplicar (`pg_policy`): `upsert own` (INSERT) tinha
+`check_expr = (auth.uid() = artist_id)`, exatamente o gap documentado —
+sem a validação de `representations` que `update own` já tinha.
+
+**Teste funcional real (RLS), reaproveitando 3 perfis reais já
+existentes no QA — nenhum dado fictício, nenhum FK quebrado**: dentro
+de transações com `rollback` no final (nada gravado de verdade),
+`QA Categoria B — Artista 01` como o artista logado (`set role
+authenticated` + `request.jwt.claims`), `representations` real e
+temporária ligando-o a `QA Categoria B — Artista 02`.
+
+- **Teste A (booker que NÃO representa o artista — `eduarda rios
+  leite`)**: `INSERT` **bloqueado** — `ERROR: 42501: new row violates
+  row-level security policy for table "artist_link_routing"`. Gap
+  fechado, confirmado ao vivo.
+- **Teste B (booker que REALMENTE representa — Artista 02)**: `INSERT`
+  **passou sem erro**. Caminho legítimo intacto, nenhuma regressão.
+
+Migration `0092` validada em QA. Próximo passo: aplicar em produção
+(`doopla`), com a mesma validação pós-migration, antes da promoção da
+branch canônica pra Production.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
