@@ -18152,6 +18152,32 @@ promoção completo (ordem, testes mínimos, rollback) já entregue e
 aprovado, só falta o sinal verde final pra executar o passo C
 (trocar a branch na Vercel).
 
+## RLS fix de `artist_link_routing` (migration 0092) + decisão: Mobile fica reservado pro FINAL do Beta — 22/09/2026
+
+**RLS**: migration `0092_artist_link_routing_insert_rls_fix.sql` criada
+e commitada — fecha o finding de Beta Readiness `artist_link_routing`
+(RLS-3a, §104/§105, `FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE`,
+aberto desde 14/09). Gap: a policy de `INSERT` só validava
+`auth.uid() = artist_id`, sem a checagem de `representations` que a
+policy de `UPDATE` já tinha; como a escrita real é sempre `upsert()`
+(`updateLinkRoutingAction`), a primeira gravação de cada artista
+passava pelo caminho sem essa validação. Migration troca a condição do
+`INSERT` pela mesma exata condição já existente no `UPDATE` — nenhuma
+mudança de comportamento pro caminho legítimo, defesa em profundidade
+igual ao resto do schema. Ainda não aplicada em nenhum ambiente —
+próximo passo é testar em `doopla-qa-staging`, depois produção, antes
+da promoção da branch canônica pra Production.
+
+**Decisão explícita da fundadora sobre o Professional App (Mobile)**:
+fica **fora da ordem canônica atual do roadmap**, reservado como
+**bloco FINAL**, só retomado quando o restante do produto decidido pro
+Beta estiver fechado (não antes, não como `NEXT`, não antecipado por
+nenhuma sessão). Escopo já definido para quando chegar a vez:
+auditoria completa do app existente, paridade necessária com o Web,
+correções, testes em dispositivo real, build e distribuição beta.
+**Nenhuma auditoria, código ou scoping do Mobile foi feito nesta
+rodada** — só o registro da decisão de sequenciamento.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
