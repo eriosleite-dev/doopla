@@ -18240,6 +18240,42 @@ reconfirmadas. Próximo passo: guiar a troca da Production Branch de
 executada**, aguardando o sinal verde final da fundadora imediatamente
 antes do clique, por instrução explícita dela.
 
+## Branch canônica promovida a Production — `[LIVE]` — 22/09/2026
+
+**Promoção executada, com sinal verde explícito da fundadora
+imediatamente antes de cada ação, como instruído.**
+
+1. Vercel → Settings → Environments → Production → "Branch Tracking"
+   trocado de `claude/doopla-backend-login-db-fj5j3y` para
+   `claude/categoria-b-supabase-env-qsbdq9`, conferido letra por letra
+   antes de salvar. Salvo com sucesso.
+2. A troca de branch tracking sozinha não gerou deploy novo
+   automaticamente — o deployment que servia Production continuava
+   sendo um build `Stale` de 20 dias atrás (`claude/new-session-3hdkui`,
+   commit `6af4490`, nem era a branch antiga oficial). Botão "Redeploy"
+   do toast da própria Vercel não surtiu efeito visível.
+3. Publicação real feita via **"Force Promote to Production"** no
+   deployment Preview já existente do commit `5a01575` (branch
+   `claude/categoria-b-supabase-env-qsbdq9`) — mesmo build já certificado
+   `Ready` pela Vercel, promovido diretamente pra produção sem rebuild.
+4. **Aviso "bypassing TypeCheck/Lint" da Vercel, verificado antes de
+   confirmar**: rodei `tsc --noEmit` (0 erros) e `eslint` (44 erros/6
+   warnings) localmente no commit exato `5a01575` antes de aprovar o
+   bypass — resultado idêntico ao baseline pré-existente já documentado
+   várias vezes nesta sessão, 100% dos erros em `mobile/` (não faz parte
+   do app Web publicado), zero erro novo. Bypass confirmado seguro antes
+   de agir, não pulado às cegas.
+5. **Confirmado no painel**: deployment final `Status: Ready · Latest`,
+   `Environment: Production` (sem "Stale"), `Source:
+   claude/categoria-b-supabase-env-qsbdq9` / `5a01575`, domínio
+   `doopla-zr9p.vercel.app` incluído nos domains do deployment.
+
+**A branch canônica está oficialmente em Production.** Próximo passo:
+smoke test real (cadastro/login, Home, Bookings, Direct Booking,
+Comunidade, Agenda/Financeiro se houver sinal de regressão) + checar
+logs por erros 500/401 e crons — antes de considerar a promoção
+encerrada.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
