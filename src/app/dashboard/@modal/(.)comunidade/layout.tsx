@@ -202,18 +202,16 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   const performNav = useCallback(
     (kind: 'back' | 'close') => {
       if (kind === 'back') router.back();
-      // Bug real de QA (16/09/2026) — X (e Escape/clique fora) em
-      // "Criar tópico" agora levam pra Home da Comunidade, não pra fora
-      // da Comunidade inteira. Diferente do "Fechar sai da Comunidade
-      // inteira" de toda outra rota (decisão de 07/09/2026, comentário
-      // abaixo) — "novo" só é alcançada clicando "Criar tópico" a
-      // partir da Home, então é sempre exatamente 1 push de distância
-      // dela: router.back() já é "voltar pra Home", mesmo mecanismo do
-      // botão ← do próprio header de "novo" (novo-header.tsx).
-      else if (isNovo) router.back();
+      // Reversão do achado de 16/09/2026 (achado novo de QA,
+      // 22/09/2026): a fundadora confirmou que quer "Fechar" (X) sempre
+      // saindo da Comunidade INTEIRA, de qualquer profundidade —
+      // inclusive de "Criar tópico" ("novo" nunca mais é caso especial
+      // aqui). Mesmo mecanismo de sempre pra todas as outras rotas:
+      // `window.history.go(-depthRef.current)` já volta exatamente pra
+      // antes da Comunidade ter sido aberta.
       else window.history.go(-depthRef.current);
     },
-    [router, isNovo]
+    [router]
   );
 
   // useCallback aqui não é só estilo: attemptNav agora também viaja pro

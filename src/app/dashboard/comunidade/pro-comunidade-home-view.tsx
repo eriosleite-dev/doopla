@@ -178,7 +178,7 @@ export function ProComunidadeHomeView({
       ) : (
         <>
           {savedTopicsState.length > 0 && (
-            <ProAccordion title="Suas comunidades" count={savedTopicsState.length} defaultOpen>
+            <ProAccordion title="Suas comunidades" count={savedTopicsState.length} defaultOpen fitContent>
               <TopicRail topics={savedTopicsState} />
             </ProAccordion>
           )}

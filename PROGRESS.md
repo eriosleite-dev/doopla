@@ -18551,6 +18551,38 @@ já existente (não recém-criado) continua exatamente igual, não afetado.
 
 ## Como usar isso
 
+## X do painel confirmado funcionando + 2 ajustes finais de UX na Comunidade — `[DELIVERED]` — 22/09/2026
+
+Fundadora confirmou ao vivo: **o botão Fechar (X) já funciona** depois
+da correção `router.push` da rodada anterior. Mais 2 ajustes pedidos
+na mesma leva:
+
+**1. "Suas comunidades" com box grande vazio** — `ProAccordion` (
+`pro-ui.tsx`) sempre ocupava 100% da largura do pai, correto pra
+conteúdo vertical empilhado (todo uso existente), mas deixava vazio
+visível quando o conteúdo é o trilho horizontal compacto
+(`TopicRail`) com poucos itens. Ganhou prop nova opcional
+`fitContent` (`false` por padrão — zero mudança em qualquer uso
+existente do componente): quando `true`, o box vira `w-fit
+max-w-full` (encolhe pro tamanho do conteúdo, nunca estoura o pai —
+`overflow-x-auto` do trilho continua garantindo scroll se um dia
+tiver muitos itens). Aplicado só em "Suas comunidades"
+(`pro-comunidade-home-view.tsx`).
+
+**2. X em "Criar tópico" fechava só até a Home da Comunidade, não a
+Comunidade inteira** — decisão de 16/09/2026 revertida por pedido
+explícito da fundadora nesta rodada: `performNav`
+(`@modal/(.)comunidade/layout.tsx`) tinha um caso especial pra `isNovo`
+fazendo `router.back()` em vez do `window.history.go(-depthRef.current)`
+usado por toda outra rota. Caso especial removido — "Fechar" agora
+sempre sai da Comunidade inteira, de qualquer profundidade, "Criar
+tópico" incluído.
+
+`tsc`/`eslint`/`next build` limpos nos 3 arquivos. Aguardando
+confirmação ao vivo.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde

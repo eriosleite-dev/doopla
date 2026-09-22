@@ -15,6 +15,7 @@ export function ProAccordion({
   children,
   id,
   defaultOpen = false,
+  fitContent = false,
 }: {
   title: string;
   count?: number;
@@ -27,6 +28,17 @@ export function ProAccordion({
   children: ReactNode;
   id?: string;
   defaultOpen?: boolean;
+  // Achado real de QA (22/09/2026, "Suas comunidades") — o box padrão
+  // sempre ocupa 100% da largura do pai, o que faz sentido pra
+  // conteúdo vertical empilhado (todo uso existente), mas deixa um
+  // vazio visível quando o conteúdo é um trilho horizontal compacto
+  // com poucos itens (TopicRail, 1-2 cards pequenos). `fitContent`
+  // encolhe o box pro tamanho do conteúdo (`w-fit`), com `max-w-full`
+  // pra nunca estourar o pai — o próprio `overflow-x-auto` do trilho
+  // continua garantindo o scroll quando tiver muitos itens (o box só
+  // não cresce além do espaço disponível). `false` por padrão preserva
+  // 100% do layout de todo uso existente.
+  fitContent?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const bodyId = useId();
@@ -34,7 +46,7 @@ export function ProAccordion({
   return (
     <div
       id={id}
-      className="mb-3.5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] backdrop-blur-xl"
+      className={`mb-3.5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] backdrop-blur-xl ${fitContent ? 'w-fit max-w-full' : ''}`}
     >
       <button
         type="button"
