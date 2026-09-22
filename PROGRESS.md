@@ -18276,6 +18276,54 @@ Comunidade, Agenda/Financeiro se houver sinal de regressão) + checar
 logs por erros 500/401 e crons — antes de considerar a promoção
 encerrada.
 
+## Smoke test real — bug de login em produção encontrado e corrigido (cache de JWT do Supabase) — 22/09/2026
+
+**Achado real, não causado pela promoção de hoje** (confirmado via
+`Logs` do próprio Supabase: as falhas já existiam desde 21/09 23:50,
+horas antes de qualquer ação de promoção desta sessão): login em
+produção (`doopla-zr9p.vercel.app`) travava — `signInWithPassword`
+criava a sessão normalmente (cookie `sb-*-auth-token` real, `auth/v1/user`
+retornava 200), mas a query seguinte de `getSessionProfile`
+(`.from('profiles').select('*').eq('id', user.id)`) retornava **401**
+do PostgREST, fazendo `/dashboard` sempre bounce de volta pro
+`/login?next=/dashboard` — sem nenhuma mensagem de erro visível (nem
+"credenciais inválidas", porque a autenticação em si nunca falhava).
+
+**Diagnóstico, na ordem**: Network do navegador (200 em tudo, sem erro
+JS) → Application/Cookies (sessão sendo criada de verdade) → Vercel
+Logs (confirmou a branch/deployment corretos servindo a requisição,
+descartando problema de promoção; achou `auth/v1/user` 200 +
+`rest/v1/profiles` 401 no mesmo request) → Supabase Logs (mesmo erro
+`rest/v1/profiles` 401 reproduzido em TODAS as tentativas de login
+desde 21/09 23:50, com contas diferentes — não era problema de uma
+conta específica) → comparação de `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+Vercel × Supabase (`sb_publishable_...`, bateram 100%, descartado) →
+`Settings > JWT Keys` do Supabase revelou rotação de chave de
+assinatura de `Legacy HS256` pra `ECC (P-256)` há ~1 mês — hipótese:
+cache de verificação de JWT do serviço Data API (PostgREST)
+dessincronizado do serviço Auth (GoTrue), fazendo o Auth aceitar um
+token que a API de dados rejeitava.
+
+**Correção**: `Settings > General > Project availability > Restart
+project` no Supabase (não-destrutivo — reinicia os serviços internos,
+não apaga nem altera nenhum dado). **Login voltou a funcionar
+imediatamente após o restart**, confirmado ao vivo (`/dashboard`
+carregou normalmente). Efeito colateral positivo confirmado nos
+mesmos Logs: os erros 500 do cron `reconcile-pending-replies` ("JWT
+is...") que também apareciam há horas pararam de ocorrer depois da
+promoção/restart.
+
+**Não era um bug de código nem de migration** — confirmado antes de
+mexer no Supabase: nenhuma das migrations aplicadas hoje (0069-0072,
+0089-0092) toca grants/RLS de `profiles`; permissões conferidas ao
+vivo em produção (`rls_enabled=true`, `policy_count=3`,
+`authenticated`/`anon` com `SELECT` liberado) — o bloqueio acontecia
+na camada de autenticação da API, antes de chegar no Postgres.
+
+**Status**: login confirmado funcionando em produção após o restart.
+Seguindo com o restante do smoke test (Home, Bookings, Direct
+Booking, Comunidade, Agenda/Financeiro, checagem de logs).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
