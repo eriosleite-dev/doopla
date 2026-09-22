@@ -205,13 +205,18 @@ export async function ProfessionalHomeView({
               </p>
             ) : (
               <>
-                {(pedidosRecebidosAbertos.length > 0 || bookingsNeedingResponse.length > 0) && (
+                {(pedidosRecebidosAbertos.length > 0 || bookingsNeedingResponse.length > 0 || needsYouDecisions.length > 0) && (
                   // Simplificação de UI (14/09/2026, achado da fundadora
                   // no QA): "card dentro de card" ocupava espaço demais —
                   // vira 1 linha clicável por pendência (nome/cliente —
                   // descrição curta, badge de status), nunca mais um
                   // grid de caixas. Mesma contagem/estado/lógica de
-                  // antes, só a apresentação mudou.
+                  // antes, só a apresentação mudou. `needsYouDecisions`
+                  // (conversas/decisões) completado nesta rodada (22/09/2026)
+                  // pra seguir o MESMO padrão — a simplificação de 14/09
+                  // só tinha sido aplicada a pedidos/bookings, deixando
+                  // esta 3ª fonte (a mais comum) ainda como grid de
+                  // caixas grandes. Mesmos dados/lógica, só apresentação.
                   <div className="mb-3 divide-y divide-[var(--pro-line)] border-b border-[var(--pro-line)]">
                     {pedidosRecebidosAbertos.map(({ opportunity: o, intervention }) => (
                       <Link
@@ -240,40 +245,29 @@ export async function ProfessionalHomeView({
                         </span>
                       </Link>
                     ))}
+                    {needsYouDecisions.map((d) => {
+                      const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
+                      const href = conversationHref(d.relatedBookingId, d.conversationId);
+                      return (
+                        <Link
+                          key={d.id}
+                          href={href}
+                          className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
+                        >
+                          <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
+                            <span className="font-pro-sub font-bold">{booking?.otherPartyName ?? 'Conversa em andamento'}</span> —{' '}
+                            {d.kind === 'prepared_draft'
+                              ? 'A Doopla preparou uma resposta. Revise antes de enviar.'
+                              : decisionBlockReasonLabel(d.blockReason)}
+                          </p>
+                          <span className="font-doopla-mono flex-none text-[10.5px] font-bold text-[var(--pro-tx-30)]">
+                            {formatRelativeTime(d.createdAt)}
+                          </span>
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {needsYouDecisions.map((d) => {
-                    const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
-                    const href = conversationHref(d.relatedBookingId, d.conversationId);
-                    return (
-                      <div key={d.id} className="rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4">
-                        <p className="font-pro-sub text-[14.5px] font-bold">
-                          {booking?.otherPartyName ?? 'Conversa em andamento'}
-                        </p>
-                        <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">
-                          {d.kind === 'prepared_draft'
-                            ? 'A Doopla preparou uma resposta. Revise antes de enviar.'
-                            : decisionBlockReasonLabel(d.blockReason)}
-                        </p>
-                        {d.kind === 'prepared_draft' && d.preparedContent && (
-                          <p className="mt-2 line-clamp-2 text-[12.5px] italic text-[var(--pro-tx-70)]">
-                            &ldquo;{d.preparedContent}&rdquo;
-                          </p>
-                        )}
-                        <p className="font-doopla-mono mt-3 text-[10.5px] font-bold text-[var(--pro-tx-30)]">
-                          {formatRelativeTime(d.createdAt)}
-                        </p>
-                        <Link
-                          href={href}
-                          className="font-pro-sub mt-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--pro-red)] px-4 py-2 text-[12px] font-bold text-[var(--pro-off)] shadow-[0_0_20px_rgba(226,41,28,.35)]"
-                        >
-                          Ver conversa
-                        </Link>
-                      </div>
-                    );
-                  })}
-                </div>
                 <div className="mt-4 flex flex-wrap gap-4">
                   {needsYouDecisions.length > 0 && (
                     <Link

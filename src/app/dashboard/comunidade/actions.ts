@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { redirect, RedirectType } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
 import {
   communityContentVisibility,
@@ -94,7 +94,19 @@ export async function toggleSaveTopicAction(topicId: string, save: boolean): Pro
   }
 }
 
-export type CreateTopicActionState = { error?: string };
+// `topicId` (22/09/2026, correção de regressão de UX): antes a própria
+// action fazia `redirect()` pro tópico recém-criado. Isso funcionava
+// pra navegação, mas um `redirect()` de Server Action é sempre uma
+// navegação de SERVIDOR — nunca consegue ativar a "intercepting route"
+// que mantém a Comunidade como painel/drawer
+// (`@modal/(.)comunidade/[topicId]/page.tsx`), então o resultado
+// sempre "escapava" pra página cheia, mesmo o mecanismo de painel
+// existindo e funcionando pra abrir um tópico já existente (clique
+// client-side). Devolver `topicId` aqui e deixar o CLIENT
+// (`ProComunidadeNovoForm`) chamar `router.push()` resolve isso: é uma
+// navegação de client, então ativa a intercepting route normalmente,
+// exatamente como abrir um tópico existente já fazia.
+export type CreateTopicActionState = { error?: string; topicId?: string };
 
 // Bug P0 "Não foi possível criar o tópico" (QA real, 16/09/2026) —
 // causa raiz rastreada e testada de verdade (Postgres local, migrations
@@ -150,16 +162,14 @@ export async function createTopicAction(_prevState: CreateTopicActionState, form
   }
 
   revalidatePath('/dashboard/comunidade');
-  // Bug real de QA (16/09/2026) — `redirect()` dentro de uma Server
-  // Action usa `push` por padrão (documentado em
-  // node_modules/next/dist/docs/01-app/03-api-reference/04-functions/
-  // redirect.md: "push (default in Server Actions)"), então o histórico
-  // ficava Comunidade → Criar tópico → Detalhe (3 entradas) — "←" no
-  // detalhe voltava pro formulário de criação em vez de pular direto
-  // pra Home. `RedirectType.replace` faz a entrada de "Criar tópico"
-  // ser SUBSTITUÍDA pela do Detalhe (2 entradas), então "←" já cai
-  // direto na Home da Comunidade.
-  redirect(`/dashboard/comunidade/${topicId}`, RedirectType.replace);
+  // Navegação pro tópico recém-criado é responsabilidade do CLIENT
+  // agora (ver comentário de `CreateTopicActionState` acima) —
+  // `ProComunidadeNovoForm` chama `router.replace()` ao ver `topicId`
+  // aqui, preservando o mesmo comportamento de histórico que o
+  // `RedirectType.replace` garantia antes (substitui a entrada de
+  // "Criar tópico" em vez de empilhar, então "←" no detalhe cai direto
+  // na Home da Comunidade, nunca de volta pro formulário).
+  return { topicId };
 }
 
 export type ReplyActionState = { error?: string; post?: ChatTimelineMessage };

@@ -18382,6 +18382,84 @@ ver achado registrado abaixo).
    booking formal), não um bug. **Não confirmado com certeza se essa
    conta específica tinha bookings reais que deveriam aparecer.**
 
+## Correção dos 2 achados do smoke test, tratados como regressão real (não backlog) — investigação + correção mínima — 22/09/2026
+
+A fundadora corrigiu o enquadramento dos 2 achados do smoke test
+anterior: **não são melhorias futuras, são regressões reais** de
+decisões já tomadas — pediu investigação de histórico antes de
+qualquer correção, sem redesign. Auditoria feita, confirmada por ela,
+correção mínima aplicada nos 2 primeiros; o 3º (badge de Bookings)
+ela mesma confirmou via F5 que não é cache — **investigação continua,
+nenhuma mudança feita nele ainda**, por instrução explícita.
+
+### 1. Home — "Precisa de você" — `[DELIVERED]`
+
+**Causa raiz confirmada**: commit `6822627` (15/09/2026, *"fix:
+simplifica 'Precisa de você' pra linhas únicas, sem card dentro de
+card"*) aplicou a simplificação (1 linha clicável, sem box) só em 2
+das 3 fontes de item (`pedidosRecebidosAbertos`/`bookingsNeedingResponse`)
+— `needsYouDecisions` (conversas/decisões, a fonte mais comum) ficou
+esquecida, continuando com o padrão antigo (`grid grid-cols-1
+sm:grid-cols-2`, cada item um box `rounded-[14px] border p-4`). Não
+foi uma reversão — foi a decisão de 15/09 nunca ter sido completada
+nos 3 lugares.
+
+**Correção aplicada** (`professional-home-view.tsx`): `needsYouDecisions`
+movido pro mesmo container `divide-y` das outras 2 fontes, mesmo
+padrão de linha única (`flex items-center justify-between gap-3
+py-2.5`, sem box próprio). Zero mudança de dados/lógica — mesmas
+props (`booking`, `href`, `decisionBlockReasonLabel`,
+`formatRelativeTime`), só a apresentação. `tsc`/`eslint`/`next build`
+limpos.
+
+### 2. Comunidade — detalhe do tópico vira página cheia ao criar — `[DELIVERED]`
+
+**Causa raiz confirmada**: existe de fato uma "intercepting route"
+(`src/app/dashboard/@modal/(.)comunidade/[topicId]/page.tsx`) que
+mantém a Comunidade como painel/drawer — funciona normalmente ao abrir
+um tópico **já existente** via clique (navegação client-side). O fluxo
+de **criar** um tópico novo, porém, terminava com `redirect()` **dentro
+da Server Action** (`createTopicAction`, `comunidade/actions.ts`) —
+limitação real e documentada do Next.js: um `redirect()` de Server
+Action é sempre uma navegação de servidor, nunca consegue ativar uma
+intercepting route, então sempre "escapava" pra página cheia mesmo
+com o mecanismo de painel existindo e funcionando pra todo o resto.
+
+**Correção estrutural mínima aplicada** (confirmada com a fundadora
+antes de implementar): a Server Action para de fazer `redirect()` —
+devolve `{ topicId }` no estado (`CreateTopicActionState` ganha o
+campo). O client (`ProComunidadeNovoForm`) reage a esse `topicId` via
+`useEffect` chamando `router.replace(...)` — navegação de CLIENT, que
+ativa a intercepting route normalmente. `RedirectType.replace` (que
+evitava empilhar "Criar tópico" no histórico) virou `router.replace`
+no client, preservando o mesmo comportamento de histórico
+(`import { RedirectType }` removido do arquivo por ficar sem uso).
+Validações, tratamento de erro, lógica de tags e a proteção contra
+auto-submit (guardas de Enter já existentes) — **intocados**, zero
+linha alterada nesses trechos. `tsc`/`eslint`/`next build` limpos.
+
+**Teste E2E pendente**: preciso de uma sessão em `doopla-qa-staging`
+(ou Preview desta branch) pra validar ao vivo: criar → publicar →
+detalhe abre em painel/drawer (não página cheia) → voltar → cai na
+Home da Comunidade (não no formulário) — ainda não executado nesta
+rodada, só validado por leitura de código + build limpo.
+
+### 3. Bookings — badge "16" ≠ lista vazia — `[EM INVESTIGAÇÃO, NÃO CORRIGIDO]`
+
+Fundadora confirmou via F5/recarga completa: **não é cache** — badge
+continua "16", lista continua vazia mesmo depois do reload. Comparei
+a query da RPC que alimenta a badge
+(`get_professional_home_facts()`, migration `0074`:
+`bookings where artist_profile_id = auth.uid() and
+status='proposta_enviada' and proposed_by <> 'artista'`) com a query
+da lista (`getUserBookings`, `data.ts`: `bookings where
+artist_profile_id = userId`) — **estruturalmente idênticas em
+filtro**, mesma tabela, mesmo RLS. Não achei ainda, só lendo código,
+por que uma retorna 16 e a outra 0. **Nenhuma mudança feita** —
+aguardando autorização explícita pra continuar essa investigação
+(próximo passo provável: comparar as duas queries rodando de verdade
+contra produção, não só por leitura de código).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

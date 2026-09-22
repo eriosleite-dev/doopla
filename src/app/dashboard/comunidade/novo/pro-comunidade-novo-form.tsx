@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState, useState, type KeyboardEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { useActionState, useEffect, useState, type KeyboardEvent } from 'react';
 
 import { proInputClass, proLabelClass, proPrimaryButtonClass } from '../../pro-format';
 import { ProCard } from '../../pro-ui';
@@ -23,12 +24,26 @@ function normalizeTagForCompare(tag: string): string {
 // verdade (limite, tamanho, dedupe) sempre server-side também, esta
 // validação no client é só feedback imediato, nunca a única barreira.
 export function ProComunidadeNovoForm() {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(createTopicAction, {});
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [tagError, setTagError] = useState<string | null>(null);
+
+  // Navegação pro tópico recém-criado (22/09/2026, correção de
+  // regressão de UX) — a action devolve `topicId` em vez de fazer
+  // `redirect()` ela mesma (ver comentário de `CreateTopicActionState`
+  // em actions.ts): só uma navegação de CLIENT ativa a intercepting
+  // route que mantém a Comunidade como painel (mesma que já funciona
+  // ao abrir um tópico existente). `router.replace` (não `push`)
+  // preserva o comportamento de histórico que já existia antes (a
+  // entrada de "Criar tópico" é substituída, nunca empilhada — "←" no
+  // detalhe cai direto na Home da Comunidade).
+  useEffect(() => {
+    if (state.topicId) router.replace(`/dashboard/comunidade/${state.topicId}`);
+  }, [state.topicId, router]);
 
   // Proteção de rascunho (07/09/2026) — o layout do slide-over consulta
   // isto antes de deixar Voltar/Fechar/Escape/clique-fora acontecerem.
