@@ -18071,6 +18071,33 @@ validado de ponta a ponta, migrations aplicadas em QA e produção,
 comportamento de bookings com Booker 100% preservado (nunca alterado
 neste bloco).
 
+## "Anexar contrato próprio" — upload real de arquivo — `[DELIVERED]` — 21/09/2026
+
+Achado de UX real (fundadora, durante o teste E2E do Direct Booking):
+"Anexar contrato próprio" só aceitava colar uma URL, sem forma de
+enviar um arquivo do computador. Autorizado explicitamente pela
+fundadora como item à parte a resolver na mesma sessão.
+
+**Solução**: novo bucket `contracts` no Supabase Storage, mesmo
+padrão já usado pra foto de perfil (`avatars`, migration 0015) —
+arquivo por usuário em `{user_id}/{bookingId}.{ext}`, leitura
+pública (mesmo modelo de confiança que colar uma URL pública já
+tinha, não é um downgrade de segurança), escrita só do dono. Aceita
+PDF/Word/JPG/PNG até 10MB (`uploadContractFileAction`,
+`src/app/dashboard/actions.ts`), salva no mesmo `bookings.contract_url`
+que a opção de colar link já usa — nenhuma coluna nova, nenhuma
+duplicação de lógica de posse. As duas opções (upload de arquivo e
+colar link) ficam lado a lado em `pro-contract-section.tsx`.
+
+Migration `0091_contract_upload_bucket.sql` aplicada em
+`doopla-qa-staging` **e** `doopla` (produção) — testada ao vivo no
+QA (upload real de arquivo, "Ver contrato" funcionando). Só o lado
+Pro (artista) foi tocado — `contract-section.tsx` (legado, Booker)
+intocado por decisão de escopo, mesmo padrão de todo o resto desta
+sessão.
+
+`tsc`, `eslint` e `next build` limpos.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
