@@ -18324,6 +18324,64 @@ na camada de autenticação da API, antes de chegar no Postgres.
 Seguindo com o restante do smoke test (Home, Bookings, Direct
 Booking, Comunidade, Agenda/Financeiro, checagem de logs).
 
+## Smoke test real — fechamento — bug real da Comunidade encontrado e corrigido (migration 0093) + achados registrados para depois — 22/09/2026
+
+**2º bug real encontrado no smoke test** (independente do bug de
+login/JWT acima): criar um tópico na Comunidade sem categoria falhava
+com `null value in column "category_id" of relation
+"community_topics" violates not-null constraint`. Causa raiz:
+migration `0088` ("busca universal, categoria opcional") tinha 2
+partes — (1) `alter table community_topics alter column category_id
+drop not null` e (2) `create or replace function
+create_community_topic` com a validação de categoria condicional. A
+regularização de produção desta sessão aplicou `0089` (que já recria
+a function com a lógica de categoria opcional embutida), mas **nunca
+aplicou a 0088 em si** — a parte (1), a `alter table`, ficou de fora,
+então a function permitia categoria nula mas a tabela continuava
+rejeitando. Gap real da auditoria de drift, não pego antes porque
+0089 "parecia" cobrir 0088 sem cobrir de fato.
+
+**Confirmado antes de corrigir**: `doopla-qa-staging` já tinha a
+coluna nullable (`is_nullable = YES`); só `doopla` (produção) estava
+com `NO`. Corrigido em produção com só o `alter table`/`comment`
+(não a function inteira — reaplicar a versão de 5 parâmetros da 0088
+criaria uma segunda `create_community_topic` ao lado da de 6
+parâmetros já viva via 0089, mesmo risco de overload já documentado
+nesta sessão). Migration `0093_community_topics_category_not_null_fix.sql`
+criada registrando isso formalmente. **Testado ao vivo**: criação de
+tópico sem categoria funcionando em produção depois do fix.
+
+**Resto do smoke test — PASS**: login (após restart), Home (dados
+reais carregando: "17 Precisa de você", atividade real de uma conta
+com uso de verdade), Comunidade (feed, criar tópico — após o fix
+acima), Bookings (lista vazia é o estado real dessa conta, não bug —
+ver achado registrado abaixo).
+
+### Achados registrados para decisão futura (não bloqueiam a promoção)
+
+1. **Painel da Comunidade vira página cheia ao abrir um tópico
+   específico**, em vez de continuar como painel lateral (como no
+   fluxo de navegação/criação). Confirmado pela fundadora que no QA
+   isso NÃO acontecia — ela lembra de um comportamento diferente.
+   Auditoria de código: não existe rota interceptada
+   (`(.)`/`@modal`) em `src/app/dashboard/comunidade/` — a página de
+   tópico (`[topicId]/page.tsx`) é uma rota cheia normal. Não achada
+   nenhuma branch remota com esse comportamento implementado e não
+   mergeada (`qa-comunidade-criar-topico`/`qa-bookings-financeiro`
+   comparadas via `git log` contra a canônica — zero commits de
+   diferença). Ou nunca foi implementado como comportamento
+   persistente, ou é uma lembrança de protótipo/discussão de design
+   que não virou código. **Não investigado a fundo — registrado pra
+   decisão futura.**
+2. **Badge "16" na nav de Bookings não bate com a lista de Bookings
+   (vazia)** para a conta testada. Hipótese levantada, não confirmada
+   a fundo: a badge conta decisões/conversas pendentes
+   (`getCachedActionableDecisions`), que podem existir sem ainda
+   terem virado um `booking`/`pedido` formal — nesse caso o número
+   não bater é esperado pela arquitetura (Runtime/conversas antes de
+   booking formal), não um bug. **Não confirmado com certeza se essa
+   conta específica tinha bookings reais que deveriam aparecer.**
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
