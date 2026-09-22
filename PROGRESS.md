@@ -18222,6 +18222,24 @@ aberto. Próximo passo: reconfirmar env vars de Production na Vercel
 (projeto `doopla`, não `doopla-qa-staging`) antes de guiar a troca da
 Production Branch.
 
+## Env vars de Production reconfirmadas — pronto para trocar Production Branch — 22/09/2026
+
+`NEXT_PUBLIC_SUPABASE_URL` (Production, Vercel) =
+`https://ysjzhirlhuujxoysbava.supabase.co` — conferido contra a URL do
+próprio dashboard Supabase do projeto `doopla` aberto pela fundadora
+(`https://supabase.com/dashboard/project/ysjzhirlhuujxoysbava`), **ref
+idêntico**. Confirmado: a Vercel de Production aponta pro banco de
+produção certo, não pro `doopla-qa-staging`.
+
+**Todos os pré-requisitos da promoção estão fechados**: banco de
+produção regularizado (12 migrations aplicadas, incluindo `0092`
+agora), único `MUST FIX` de Beta Readiness fechado, env vars
+reconfirmadas. Próximo passo: guiar a troca da Production Branch de
+`claude/doopla-backend-login-db-fj5j3y` para
+`claude/categoria-b-supabase-env-qsbdq9` — **ação ainda não
+executada**, aguardando o sinal verde final da fundadora imediatamente
+antes do clique, por instrução explícita dela.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
