@@ -18525,6 +18525,32 @@ autorização pra investigar mais fundo.
 
 ## Como usar isso
 
+## Correção do botão Fechar (X) quebrado no painel da Comunidade — `[DELIVERED]` — 22/09/2026
+
+3º achado real da mesma rodada de QA: com o fundo preto já corrigido,
+a fundadora reportou o botão **Fechar (X)** do painel não fazendo
+nada ao entrar num tópico recém-criado. Causa raiz confirmada:
+`depthRef` (`@modal/(.)comunidade/layout.tsx`) conta 1 passo de
+histórico por navegação de pathname, mas `router.replace` (usado na
+correção anterior) **nunca cria uma entrada nova** no histórico — só
+troca a atual. O contador ficava 1 passo maior que o histórico real
+do navegador, e `Fechar` (`window.history.go(-depthRef.current)`)
+tentava voltar mais passos do que existiam, travando sem efeito.
+
+**Correção**: `router.replace` → `router.push`
+(`pro-comunidade-novo-form.tsx`). Cada navegação passa a criar uma
+entrada real, o contador sempre bate com o histórico de verdade.
+**Trade-off aceito conscientemente**: o botão **←** (voltar, diferente
+do X) no detalhe do tópico recém-criado passa por "Criar tópico"
+antes de chegar na Home da Comunidade (1 passo a mais), em vez de
+pular direto como a decisão de 16/09 previa — nunca quebra, só um
+passo extra nesse caminho específico (criar → ver). Abrir um tópico
+já existente (não recém-criado) continua exatamente igual, não afetado.
+
+`tsc`/`eslint`/`next build` limpos. Aguardando confirmação ao vivo.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde

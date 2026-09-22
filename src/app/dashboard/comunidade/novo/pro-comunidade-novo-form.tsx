@@ -38,27 +38,29 @@ export function ProComunidadeNovoForm() {
   // `redirect()` ela mesma (ver comentário de `CreateTopicActionState`
   // em actions.ts): só uma navegação de CLIENT ativa a intercepting
   // route que mantém a Comunidade como painel (mesma que já funciona
-  // ao abrir um tópico existente). `router.replace` (não `push`)
-  // preserva o comportamento de histórico que já existia antes (a
-  // entrada de "Criar tópico" é substituída, nunca empilhada — "←" no
-  // detalhe cai direto na Home da Comunidade).
+  // ao abrir um tópico existente).
   //
   // Achado real de QA (22/09/2026) — primeira versão desta correção
   // (router.replace fora de transição) causava fundo preto atrás do
   // painel: mesma classe de corrida documentada em next.config.ts/
   // commit c4675ad ("children" perdendo o BFCache numa navegação
-  // client-side), só que dessa vez pra uma navegação disparada de
-  // dentro de um efeito (nunca de um clique real em <Link>, o único
-  // caminho testado quando staleTimes.dynamic foi ajustado). Envolver
-  // em startTransition (recomendação oficial do Next pra navegação
-  // programática fora de um handler de evento — doc:
-  // "wrap router.push/replace calls that are not triggered inside an
-  // event handler in startTransition") faz o roteador tratar isso como
-  // a mesma classe de navegação que um clique real gera, reaproveitando
-  // o BFCache de `children` do jeito que staleTimes.dynamic=30 já
-  // previa.
+  // client-side), corrigida envolvendo em startTransition (recomendação
+  // oficial do Next pra navegação programática fora de um handler de
+  // evento).
+  //
+  // 2º achado real de QA (22/09/2026, mesma rodada) — com o fundo preto
+  // corrigido, `router.replace` ainda quebrava o botão Fechar (X) do
+  // painel: `depthRef` (@modal/(.)comunidade/layout.tsx) conta 1 passo
+  // de histórico por navegação, mas um `replace` NUNCA cria uma entrada
+  // nova (só troca a atual) — o contador ficava 1 passo maior que o
+  // histórico real, e "Fechar" (`history.go(-depthRef)`) tentava voltar
+  // passos que não existem, travando sem fazer nada. `router.push`
+  // resolve isso (cada navegação vira 1 entrada de verdade, contador
+  // sempre bate com a realidade) — troca aceita: "←" no detalhe passa
+  // por "Criar tópico" antes de chegar na Home da Comunidade (1 passo a
+  // mais), em vez de pular direto — nunca quebra, só um passo extra.
   useEffect(() => {
-    if (state.topicId) startNavTransition(() => router.replace(`/dashboard/comunidade/${state.topicId}`));
+    if (state.topicId) startNavTransition(() => router.push(`/dashboard/comunidade/${state.topicId}`));
   }, [state.topicId, router]);
 
   // Proteção de rascunho (07/09/2026) — o layout do slide-over consulta
