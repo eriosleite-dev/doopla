@@ -18098,6 +18098,60 @@ sessão.
 
 `tsc`, `eslint` e `next build` limpos.
 
+## Desalinhamento Production Branch × banco de produção — descoberto e regularizado — 21-22/09/2026
+
+**Achado crítico**: a Vercel publica **Production** a partir de
+`claude/doopla-backend-login-db-fj5j3y` — uma branch bem mais antiga
+(era do fundadora não saber). Nada construído desde então (Comunidade,
+Decisões, Direct Booking, Runtime/Intelligence Core inteiro) está no
+ar pra usuário real. Confirmado via `git merge-base --is-ancestor`:
+**`claude/doopla-backend-login-db-fj5j3y` é 100% ancestral de
+`claude/categoria-b-supabase-env-qsbdq9`** — zero commits exclusivos
+da branch antiga, nenhum código seria perdido numa troca. Os 8
+arquivos que existem só na branch antiga (gsap vendorizado,
+descoberta de bookers legada, `payout-form.tsx`, `artist-profile-
+form.tsx`, `/precos` stub) são todos remoções/substituições já
+documentadas em `PROGRESS.md`/`DECISOES.md` — nenhuma perda
+acidental.
+
+Branch canônica atual do produto, formalizada: **`claude/categoria-b-
+supabase-env-qsbdq9`**.
+
+**Auditoria de drift de migrations em produção** (pedida antes de
+qualquer promoção): `doopla` estava sem `0069` (hotfix real da
+regressão de vínculo de convite — bug ATIVO, confirmado: a branch
+antiga já manda `pendingInviteToken` no cadastro, então a correção
+teve efeito imediato), `0070` (paginação de Decisões), `0071` (lookup
+por ID público), `0072` (multi-role foundation, depende de `0069`) e
+`0089` (tags livres da Comunidade). Preflight específico de `0069`/
+`0072` (as duas que reescrevem `handle_new_user()`) feito antes de
+aplicar: comparação linha a linha do corpo atual vs. final, checagem
+de zero `invites` órfãos (`inviter_profile_id` sem `profiles`
+correspondente — 0 encontrados), confirmação de que nenhuma mudança
+afeta usuário já cadastrado (trigger só dispara em `INSERT`).
+Assinatura real de `create_community_topic` em produção conferida
+antes de aplicar `0089` (bateria exata com o `drop function` da
+migration — sem risco de overload duplicado).
+
+**Todas as 5 aplicadas em produção, uma de cada vez, cada uma
+validada antes da próxima**: `0069` → `0072` → `0070` → `0071` →
+`0089`. Confirmação final consolidada: todas presentes,
+`create_community_topic` com a assinatura de 6 parâmetros correta.
+
+**Env vars de Production confirmadas** (Vercel): `CRON_SECRET` e
+`OUTBOUND_SENDER_CRON_SECRET` já existem com escopo Production (achado
+inicial de que só existiriam em Preview era engano de lista cortada,
+corrigido ao ver a lista completa).
+
+**Status: banco de produção (`doopla`) 100% pronto pra receber o
+código da branch canônica. Vercel intocada — Production Branch
+continua `claude/doopla-backend-login-db-fj5j3y`, nenhum deploy de
+Production disparado.** Promoção de fato (troca de Production Branch)
+é decisão explícita da fundadora, ainda pendente — plano de
+promoção completo (ordem, testes mínimos, rollback) já entregue e
+aprovado, só falta o sinal verde final pra executar o passo C
+(trocar a branch na Vercel).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
