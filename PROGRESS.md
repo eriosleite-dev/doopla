@@ -18462,6 +18462,47 @@ contra produção, não só por leitura de código).
 
 ## Como usar isso
 
+## Teste ao vivo do fix da Comunidade + 2 achados novos, corrigidos — 22/09/2026
+
+Fundadora testou o fix do item 2 (Preview deploy do commit anterior):
+**criar tópico realmente abre em painel agora** (confirmado ao vivo,
+print da tela mostrando o tópico "Cachê" dentro do drawer, não página
+cheia — o mecanismo de intercepting route funcionou). Mas achou 2
+problemas novos no processo:
+
+**a) Fundo preto atrás do painel ao criar um tópico** — mesma classe
+de bug já documentada em `next.config.ts`/commit `c4675ad`
+(08/09/2026: corrida no Segment Cache do Next 16, `children` perdendo
+o BFCache numa navegação client-side, `staleTimes.dynamic=30`
+configurado pra evitar isso) — mas naquela correção o único caminho
+testado era clique real em `<Link>`; a navegação nova que acabei de
+criar (`router.replace` dentro de um `useEffect`, reagindo ao retorno
+da Server Action) é um caminho diferente que não estava coberto.
+**Correção aplicada** (`pro-comunidade-novo-form.tsx`): a chamada de
+`router.replace` agora é envolvida em `startTransition` — recomendação
+oficial do Next pra navegação programática disparada fora de um
+handler de evento real, faz o roteador tratar essa navegação como a
+mesma classe que um clique gera, reaproveitando o BFCache do jeito que
+`staleTimes.dynamic` já previa. **Não pude confirmar 100% a causa só
+lendo código** (depende de mecânica interna do roteador que só se
+prova ao vivo) — pedido novo teste real antes de considerar fechado.
+
+**b) "Suas comunidades" (painel) com o mesmo problema visual de antes**
+— card com título em 2 linhas (`line-clamp-2`) fazendo o card
+"esticar pra baixo". Diferente de "Precisa de você": aqui o padrão é,
+por decisão documentada no próprio código
+(`pro-comunidade-home-view.tsx`, comentário de 08/09), um **trilho
+horizontal compacto** (`TopicRail`) — decisão intencional, não
+regressão, então não virou lista vertical. Correção mínima: título
+truncado em 1 linha só (`truncate` em vez de `line-clamp-2`), card
+continua no trilho horizontal exatamente como já era.
+
+`tsc`/`eslint`/`next build` limpos nos 2 arquivos. Aguardando novo
+teste ao vivo (Preview do commit desta rodada) antes de considerar os
+3 achados de UX totalmente fechados.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde

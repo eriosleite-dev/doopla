@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useState, type KeyboardEvent } from 'react';
+import { useActionState, useEffect, useState, useTransition, type KeyboardEvent } from 'react';
 
 import { proInputClass, proLabelClass, proPrimaryButtonClass } from '../../pro-format';
 import { ProCard } from '../../pro-ui';
@@ -25,6 +25,7 @@ function normalizeTagForCompare(tag: string): string {
 // validação no client é só feedback imediato, nunca a única barreira.
 export function ProComunidadeNovoForm() {
   const router = useRouter();
+  const [, startNavTransition] = useTransition();
   const [state, formAction, pending] = useActionState(createTopicAction, {});
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -41,8 +42,23 @@ export function ProComunidadeNovoForm() {
   // preserva o comportamento de histórico que já existia antes (a
   // entrada de "Criar tópico" é substituída, nunca empilhada — "←" no
   // detalhe cai direto na Home da Comunidade).
+  //
+  // Achado real de QA (22/09/2026) — primeira versão desta correção
+  // (router.replace fora de transição) causava fundo preto atrás do
+  // painel: mesma classe de corrida documentada em next.config.ts/
+  // commit c4675ad ("children" perdendo o BFCache numa navegação
+  // client-side), só que dessa vez pra uma navegação disparada de
+  // dentro de um efeito (nunca de um clique real em <Link>, o único
+  // caminho testado quando staleTimes.dynamic foi ajustado). Envolver
+  // em startTransition (recomendação oficial do Next pra navegação
+  // programática fora de um handler de evento — doc:
+  // "wrap router.push/replace calls that are not triggered inside an
+  // event handler in startTransition") faz o roteador tratar isso como
+  // a mesma classe de navegação que um clique real gera, reaproveitando
+  // o BFCache de `children` do jeito que staleTimes.dynamic=30 já
+  // previa.
   useEffect(() => {
-    if (state.topicId) router.replace(`/dashboard/comunidade/${state.topicId}`);
+    if (state.topicId) startNavTransition(() => router.replace(`/dashboard/comunidade/${state.topicId}`));
   }, [state.topicId, router]);
 
   // Proteção de rascunho (07/09/2026) — o layout do slide-over consulta
