@@ -18204,6 +18204,24 @@ Migration `0092` validada em QA. Próximo passo: aplicar em produção
 (`doopla`), com a mesma validação pós-migration, antes da promoção da
 branch canônica pra Production.
 
+## `artist_link_routing` RLS — `[DELIVERED]` — aplicada e validada em produção — 22/09/2026
+
+Migration `0092` aplicada em `doopla` (produção). Validação
+pós-migration: `pg_policy` conferido antes e depois — `check_expr` de
+`artist_link_routing: upsert own` (INSERT) hoje é **idêntico,
+caractere por caractere**, ao de `update own` (mesma condição de
+`representations`). Teste funcional ao vivo não repetido em produção
+de propósito (evitar tocar dados reais de usuário) — a expressão é
+exatamente a mesma já testada e validada em `doopla-qa-staging`
+(bloqueio de booker sem `representations` + caminho legítimo intacto).
+
+**Finding de Beta Readiness `artist_link_routing` (RLS-3a, §104/§105,
+`FAIL NON-BLOCKER → MUST FIX BEFORE BETA CLOSE`, aberto desde
+14/09/2026) está `CLOSED`.** Nenhum outro `MUST FIX` conhecido segue
+aberto. Próximo passo: reconfirmar env vars de Production na Vercel
+(projeto `doopla`, não `doopla-qa-staging`) antes de guiar a troca da
+Production Branch.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
