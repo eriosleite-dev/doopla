@@ -178,8 +178,19 @@ export function ProComunidadeHomeView({
       ) : (
         <>
           {savedTopicsState.length > 0 && (
-            <ProAccordion title="Suas comunidades" count={savedTopicsState.length} defaultOpen fitContent>
-              <TopicRail topics={savedTopicsState} />
+            // Achado real de QA (23/09/2026) — fundadora pediu explicitamente
+            // pra reverter o "trilho horizontal compacto" (card pequeno
+            // isolado, tentativas anteriores só encolheram o box vazio ao
+            // redor dele): quer o mesmo padrão de linha cheia já usado por
+            // "Para você"/"Em alta agora"/"Recentes" abaixo — reaproveita
+            // TopicRowList diretamente, nunca um componente novo.
+            <ProAccordion title="Suas comunidades" count={savedTopicsState.length} defaultOpen>
+              <TopicRowList
+                topics={savedTopicsState}
+                savedTopicIds={savedTopicIds}
+                currentProfileId={currentProfileId}
+                onDeleted={handleTopicDeleted}
+              />
             </ProAccordion>
           )}
 
@@ -217,30 +228,6 @@ export function ProComunidadeHomeView({
   );
 }
 
-// Trilho horizontal compacto — "Suas comunidades" é acesso rápido ao
-// que a pessoa decidiu acompanhar, nunca um grid de cards grandes
-// competindo com o resto da Home (regra 6 da rodada).
-function TopicRail({ topics }: { topics: CommunityTopicCard[] }) {
-  return (
-    <div className="-mx-1 flex gap-2.5 overflow-x-auto px-1 pb-1">
-      {topics.map((topic) => (
-        <Link
-          key={topic.id}
-          href={topic.href}
-          className="flex-none rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] px-3.5 py-3 transition-colors hover:border-[var(--pro-tx-30)]"
-          style={{ maxWidth: 220 }}
-        >
-          <p className="truncate text-[12.5px] leading-snug">
-            <span className="font-pro-sub font-bold">{topic.title}</span>{' '}
-            <span className="text-[11px] text-[var(--pro-tx-30)]">
-              · {topic.replyCount} {topic.replyCount === 1 ? 'resposta' : 'respostas'} · {topic.timeLabel}
-            </span>
-          </p>
-        </Link>
-      ))}
-    </div>
-  );
-}
 
 function TopicListSection({
   title,

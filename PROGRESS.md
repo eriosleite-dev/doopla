@@ -18583,6 +18583,30 @@ confirmação ao vivo.
 
 ## Como usar isso
 
+## "Suas comunidades" volta a usar linha cheia (reverte trilho horizontal) — `[DELIVERED]` — 23/09/2026
+
+Fundadora rejeitou a correção anterior (`fitContent`, box encolhido
+ao redor do card pequeno) — pediu explicitamente que "Suas
+comunidades" ocupe a largura inteira do painel, mesma linha cheia já
+usada por "Para você"/"Em alta agora"/"Recentes". Implementado
+reaproveitando `TopicRowList` (o mesmo componente que as outras 3
+seções já usam) em vez do `TopicRail` (trilho horizontal compacto,
+decisão de 08/09 agora revertida por pedido direto). `TopicRail`
+removido (função órfã); `fitContent` removido de `ProAccordion`
+(`pro-ui.tsx`) por ter ficado sem nenhum uso depois da reversão.
+`tsc`/`eslint`/`next build` limpos.
+
+**Status do botão Fechar (X) da Comunidade — em investigação**: a
+fundadora reportou X não funcionando em nenhum ponto da Comunidade,
+mesmo depois do fix anterior (remoção do caso especial de `isNovo`
+em `performNav`, commit `3717630`). Ainda não confirmado se é cache
+de bundle JS antigo na aba (pedido refresh completo) ou uma
+regressão real ainda não identificada — próximo passo é isolar com um
+teste controlado (Home → ícone Comunidade → X, sem nenhuma navegação
+extra) antes de mexer em mais código.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
