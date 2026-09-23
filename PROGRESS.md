@@ -18641,6 +18641,33 @@ regressão real de código. Nenhuma mudança adicional necessária.
 
 ## Como usar isso
 
+## Fundo preto reaberto (seta ← depois de "Criar tópico") + debug temporário — `[EM INVESTIGAÇÃO]` — 23/09/2026
+
+Achado novo real da fundadora, caminho nunca tocado pelas correções
+anteriores: `Comunidade → Criar tópico → ←` (seta voltar, não X) dá
+fundo preto. Também reportou que abrir a Comunidade pelo ícone demora
+— **esse segundo ponto é comportamento conhecido e intencional**
+(`pro-sidebar-nav.tsx`: prefetch desligado de propósito nesse link
+específico pra evitar a mesma classe de corrida do fundo preto,
+achado documentado em rodada anterior) — não é bug.
+
+Já errei o diagnóstico do fundo preto 2x adivinhando por leitura de
+código (startTransition não resolveu sozinho da forma que eu esperava
+inicialmente). Em vez de tentar uma 3ª correção às cegas, adicionei
+um **`console.log` temporário** em
+`@modal/(.)comunidade/layout.tsx` (roda em todo render, reporta
+pathname/depth/quantos filhos `<main>` tem por trás do painel) —
+mesma metodologia que resolveu esse tipo de bug da primeira vez
+(commit `c4675ad`, `DebugMainProbe`/`DebugFetchLog`). Zero mudança de
+comportamento, só observação. `tsc`/`eslint`/`next build` limpos.
+
+**Próximo passo**: fundadora reproduz o caminho exato (Criar tópico →
+←) com o Console do navegador aberto, cola aqui a sequência de logs
+`[DEBUG comunidade]` — só depois disso decido a correção real, com
+evidência em vez de suposição.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde

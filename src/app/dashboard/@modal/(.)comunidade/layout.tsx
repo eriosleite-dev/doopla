@@ -141,6 +141,21 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
     stampComunidadeDepth(depthRef.current);
   }, [pathname]);
 
+  // DEBUG TEMPORÁRIO (23/09/2026) — investigando fundo preto real depois
+  // de "Criar tópico" → ← (achado de QA, ainda não reproduzido/entendido
+  // via leitura de código). Só console.log, nenhuma mudança de
+  // comportamento. Remover depois do diagnóstico.
+  useEffect(() => {
+    const main = document.querySelector('main');
+    console.log('[DEBUG comunidade]', {
+      pathname,
+      depth: depthRef.current,
+      mainChildren: main?.children.length ?? 'NO_MAIN_FOUND',
+      mainHTML: main?.innerHTML.length ?? 0,
+      t: performance.now().toFixed(0),
+    });
+  });
+
   // Reafirma o carimbo depois de qualquer replace (busca ?q=) — ver
   // comentário acima: replace faz o Next reescrever history.state sem
   // preservar campos customizados, mesmo sem trocar de pathname. Nunca
