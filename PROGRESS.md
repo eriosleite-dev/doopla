@@ -18619,6 +18619,28 @@ mesmo padrão já usado nas linhas de "Precisa de você" (Home). `tsc`/
 
 ## Como usar isso
 
+## Fechamento da investigação do fundo preto/X — falso alarme, JS antigo em aba já aberta — 23/09/2026
+
+Fundadora testou numa aba 100% nova (fechou a antiga, abriu do zero,
+logou de novo): **tudo funcionando** — fundo preto não reaparece,
+botão Fechar funciona. Confirma a hipótese levantada: os 2 relatos
+recorrentes de "fundo preto"/"X não fecha" depois dos commits
+`3717630`/`bd9de77`/`7ea134c` eram bundle de JavaScript antigo ainda
+rodando numa aba aberta desde antes dessas correções — nunca uma
+regressão real de código. Nenhuma mudança adicional necessária.
+
+**Estado final da rodada de regressões de UX da Comunidade/Home**:
+1. Home "Precisa de você" — linha única, `[DELIVERED]`.
+2. Comunidade mantém painel ao criar/ver tópico, sem fundo preto, X
+   fecha tudo — `[DELIVERED]`, confirmado em aba limpa.
+3. "Suas comunidades" — linha cheia (não trilho horizontal), com
+   destaque no hover — `[DELIVERED]`.
+4. Badge "16" de Bookings ≠ lista vazia — **segue intocado**,
+   aguardando autorização explícita pra investigar mais fundo (fora
+   do escopo desta rodada, por instrução da fundadora).
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
