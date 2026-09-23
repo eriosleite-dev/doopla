@@ -18607,6 +18607,18 @@ extra) antes de mexer em mais código.
 
 ## Como usar isso
 
+## Destaque no hover das linhas da Comunidade (Suas comunidades + Para você/Em alta/Recentes) — `[DELIVERED]` — 23/09/2026
+
+Fundadora confirmou que a linha cheia melhorou, mas pediu destaque
+visual ao passar o mouse (sem isso a leitura fica confusa quando
+tiver várias comunidades salvas). `TopicRowList` (mesmo componente
+usado pelas 4 seções — "Suas comunidades", "Para você", "Em alta
+agora", "Recentes") ganhou `hover:bg-white/[0.02]` na linha inteira,
+mesmo padrão já usado nas linhas de "Precisa de você" (Home). `tsc`/
+`eslint`/`next build` limpos.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde

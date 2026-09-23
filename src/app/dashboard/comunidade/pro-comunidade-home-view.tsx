@@ -285,7 +285,10 @@ function TopicRowList({
   return (
     <div className="divide-y divide-[var(--pro-line)]">
       {topics.map((topic) => (
-        <div key={topic.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+        <div
+          key={topic.id}
+          className="flex items-start justify-between gap-3 rounded-[10px] px-2 py-3 transition-colors first:pt-0 last:pb-0 hover:bg-white/[0.02]"
+        >
           <Link href={topic.href} className="min-w-0 flex-1">
             <p className="font-pro-sub text-[13.5px] font-bold leading-snug">{topic.title}</p>
             <p className="mt-1.5 flex flex-wrap items-center gap-2 text-[11.5px] text-[var(--pro-tx-30)]">
