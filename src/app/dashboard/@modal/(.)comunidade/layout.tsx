@@ -152,6 +152,7 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       depth: depthRef.current,
       mainChildren: main?.children.length ?? 'NO_MAIN_FOUND',
       mainHTML: main?.innerHTML.length ?? 0,
+      mainText: main?.innerText.slice(0, 160) ?? 'NO_MAIN_FOUND',
       t: performance.now().toFixed(0),
     });
   });
