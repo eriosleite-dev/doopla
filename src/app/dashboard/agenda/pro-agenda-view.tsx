@@ -1,9 +1,14 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
 
 import { removeAgendaEntryAction } from '../actions';
+import type { AgendaEntry } from '@/lib/supabase/types';
 import type { AgendaEventKind } from '../ui';
 import { ProCard, ProPageHeader } from '../pro-ui';
 import { groupMonthEvents, type CalendarMonth } from './calendar';
+import { ProAgendaEntryEditForm } from './pro-agenda-entry-edit-form';
 import { ProAgendaEntryForm } from './pro-agenda-entry-form';
 
 // Re-skin de Agenda (item 8 da revisão Professional Web Dashboard,
@@ -41,17 +46,25 @@ export function ProAgendaView({
   monthEvents,
   artistProfileId,
   agendaEntryLabel,
+  entries,
 }: {
   calendar: CalendarMonth;
   monthEvents: (import('../data').AgendaEvent & { day: number })[];
   artistProfileId: string;
   agendaEntryLabel: Record<string, string>;
+  // Registros crus (start_date/end_date/note reais, nunca truncados pelo
+  // mês em exibição) — só pra pré-preencher o formulário de edição, ver
+  // comentário em page.tsx sobre por que monthEvents não serve pra isso.
+  entries: AgendaEntry[];
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const entryById = new Map(entries.map((e) => [e.id, e]));
+
   return (
     <main>
       <ProPageHeader
         title="Agenda"
-        subtitle="Sua disponibilidade real — marcar aqui não confirma nem cancela nenhum booking."
+        subtitle="Sua disponibilidade real. Alterações aqui não afetam bookings já confirmados."
         action={
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-[var(--pro-tx-50)]">
             {AGENDA_LEGEND.map((l) => (
@@ -118,6 +131,21 @@ export function ProAgendaView({
           ) : (
             <ul className="mt-4 flex flex-col gap-2">
               {groupMonthEvents(monthEvents).map((row) => {
+                const entry = row.entryId ? entryById.get(row.entryId) : undefined;
+                if (row.entryId && entry && editingId === row.entryId) {
+                  return (
+                    <li key={row.key} className="rounded-[14px] border border-[var(--pro-line)] p-3">
+                      <ProAgendaEntryEditForm
+                        entryId={entry.id}
+                        initialType={entry.entry_type}
+                        initialStartDate={entry.start_date}
+                        initialEndDate={entry.end_date}
+                        initialNote={entry.note ?? ''}
+                        onCancel={() => setEditingId(null)}
+                      />
+                    </li>
+                  );
+                }
                 const info = (
                   <>
                     <span className="font-doopla-mono w-14 flex-none text-center text-[16px] font-semibold text-[var(--pro-off)]">{row.dayLabel}</span>
@@ -142,13 +170,23 @@ export function ProAgendaView({
                     <span className={`font-doopla-mono inline-block rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${AGENDA_TAG_COLOR[row.kind]}`}>
                       {row.kind === 'confirmado' ? 'Confirmado' : agendaEntryLabel[row.kind]}
                     </span>
-                    {row.entryId && (
-                      <form action={removeAgendaEntryAction}>
-                        <input type="hidden" name="id" value={row.entryId} />
-                        <button type="submit" aria-label="Remover marcação" className="text-[13px] text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]">
-                          ×
+                    {row.entryId && entry && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(row.entryId ?? null)}
+                          aria-label="Editar marcação"
+                          className="text-[13px] text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+                        >
+                          Editar
                         </button>
-                      </form>
+                        <form action={removeAgendaEntryAction}>
+                          <input type="hidden" name="id" value={row.entryId} />
+                          <button type="submit" aria-label="Remover marcação" className="text-[13px] text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]">
+                            ×
+                          </button>
+                        </form>
+                      </>
                     )}
                   </li>
                 );

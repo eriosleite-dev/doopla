@@ -46,7 +46,7 @@ export function AgendaEntryForm({ artistProfileId }: { artistProfileId: string }
         <input
           type="text"
           name="note"
-          placeholder="Ex: Viagem pra Salvador"
+          placeholder="Ex: Férias"
           className={inputClass}
         />
       </label>

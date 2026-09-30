@@ -1177,6 +1177,46 @@ export async function addAgendaEntryAction(
   return {};
 }
 
+// Editar uma marcação existente (30/09/2026, achado real de QA: a
+// fundadora marcou uma viagem de vários dias e quis encurtar o período
+// depois — antes só dava excluir tudo e recriar). Mesma validação de
+// addAgendaEntryAction; muda `entry_type`/`start_date`/`end_date`/`note`
+// por id, nunca `artist_profile_id`/`created_by_profile_id` (dono do
+// registro é imutável por esta action — RLS, migration 0094, também
+// impede na camada de banco, defesa em profundidade).
+export async function updateAgendaEntryAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const id = String(formData.get('id') ?? '').trim();
+  const entryType = String(formData.get('entryType') ?? '').trim();
+  const startDate = String(formData.get('startDate') ?? '').trim();
+  const endDate = String(formData.get('endDate') ?? '').trim() || startDate;
+  const note = String(formData.get('note') ?? '').trim();
+
+  if (!id || !startDate) return { error: 'Preencha ao menos o tipo e a data.' };
+  if (!(AGENDA_ENTRY_TYPES as string[]).includes(entryType)) return { error: 'Tipo inválido.' };
+  if (endDate < startDate) return { error: 'A data final não pode ser antes da inicial.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase } = ctx;
+
+  const { error } = await supabase
+    .from('agenda_entries')
+    .update({
+      entry_type: entryType as AgendaEntryType,
+      start_date: startDate,
+      end_date: endDate,
+      note: note || null,
+    })
+    .eq('id', id);
+  if (error) return { error: 'Não foi possível salvar — confira se você tem acesso a essa agenda.' };
+
+  revalidatePath('/dashboard/agenda');
+  return {};
+}
+
 export async function removeAgendaEntryAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   if (!id) return;

@@ -59,7 +59,7 @@ export function ProAgendaEntryForm({ artistProfileId }: { artistProfileId: strin
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex min-w-[160px] flex-1 flex-col gap-1.5">
           <span className={proLabelClass}>Nota (opcional)</span>
-          <input type="text" name="note" placeholder="Ex: Viagem pra Salvador" className={proInputClass} />
+          <input type="text" name="note" placeholder="Ex: Férias" className={proInputClass} />
         </label>
         <button type="submit" disabled={pending} className={proPrimaryButtonClass}>
           {pending ? 'Salvando…' : '+ Marcar'}

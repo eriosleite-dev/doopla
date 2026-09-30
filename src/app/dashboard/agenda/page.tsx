@@ -65,7 +65,22 @@ export default async function AgendaPage(props: {
   // Dashboard, 06/09/2026), mesma lógica de dados (buildCalendarMonth/
   // getAgendaEvents/CRUD de agenda_entries).
   if (profile.role !== 'booker') {
-    return <ProAgendaView calendar={calendar} monthEvents={monthEvents} artistProfileId={user.id} agendaEntryLabel={AGENDA_ENTRY_LABEL} />;
+    // Editar marcação (30/09/2026, achado real de QA) — monthEvents já
+    // vem expandido por dia (ver expandAgendaEntry, data.ts), então não
+    // carrega o start_date/end_date/note reais do registro (só o
+    // recorte visível NESTE mês, que seria errado pra pré-preencher um
+    // formulário de edição se a marcação atravessar virada de mês).
+    // Busca os registros crus separadamente, só pra esse propósito.
+    const ownEntries = await getArtistAgendaEntries(user.id, supabase);
+    return (
+      <ProAgendaView
+        calendar={calendar}
+        monthEvents={monthEvents}
+        artistProfileId={user.id}
+        agendaEntryLabel={AGENDA_ENTRY_LABEL}
+        entries={ownEntries}
+      />
+    );
   }
 
   return (
