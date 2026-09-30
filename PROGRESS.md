@@ -18833,6 +18833,27 @@ Commit `19fef52`, push feito. Aguardando confirmação da fundadora —
 Home deve carregar bem mais rápido, e abrir/fechar Comunidade deve
 melhorar como efeito colateral (menos disputa por conexão de rede).
 
+## Comunidade ainda lenta pra abrir (~4s medidos) — prefetch adiado do ícone do header — `[EM VALIDAÇÃO]` — 30/09/2026
+
+Depois das correções de prefetch da Home (commits `19fef52`/`c99fb40`,
+que cortaram o carregamento geral de 35s pra 8s), fundadora mediu
+abrir a Comunidade em ~4s isoladamente. Reli `comunidade/page.tsx`: o
+próprio código já documenta 3 idas sequenciais ao banco (lote de
+tópicos em paralelo, depois `getCommunityAuthors` só pode começar
+depois que os tópicos voltam — dependência real, não bug). Sem
+prefetch, essas 3 idas só começam DEPOIS do clique no ícone.
+
+Correção: `ProHeaderCommunityLink` (`pro-header-community-link.tsx`)
+agora dispara `router.prefetch('/dashboard/comunidade')` 1.5s depois
+de montar, além do hover já existente. Diferente da rajada de 7 links
+da sidebar (causa raiz do fundo preto original, 08/09/2026) — aqui é
+1 link só, timing controlado, risco bem menor de recriar aquele bug.
+`tsc`/`eslint`/`next build` limpos. Commit `5760689`, push feito.
+
+Se isso não bastar, o próximo passo seria embutir o autor direto na
+RPC de tópicos (eliminando a 3ª ida ao banco por completo) — mudança
+de schema/RPC, mais arriscada, só se o prefetch sozinho não resolver.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
