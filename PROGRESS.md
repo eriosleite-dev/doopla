@@ -18774,6 +18774,14 @@ links, causa original do fundo preto) — trade-off deliberado, não
 bug. Fundadora optou por não mexer nisso agora e retomar o badge de
 Bookings primeiro.
 
+**Atualização (mesmo dia)**: prefetch de `/dashboard` no mount do
+painel (commit `28ed0be`) não trouxe melhora perceptível pra fundadora
+("continua igual"). Fechar da Comunidade está `[DELIVERED]` na parte
+que importa (fecha certo, sem duplicar, sem tela preta, caminho rápido
+ativo — confirmado sem flash de reload); a lentidão residual fica
+`[EM ABERTO]`, pausada por instrução explícita da fundadora
+("depois vemos isso, avance") pra retomar o badge de Bookings.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
