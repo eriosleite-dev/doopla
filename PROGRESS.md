@@ -18752,6 +18752,28 @@ de `pathname`, pela mesma razão.
 `tsc`/`eslint`/`next build` limpos. Commit `7e55fa3`, push feito.
 Aguardando confirmação da fundadora em produção.
 
+**Atualização (mesmo dia)**: com a duplicação corrigida, "Fechar"
+ainda não fazia nada (`router.push('/dashboard')` virou um no-op —
+mesma causa: o router do Next já considerava `/dashboard` a URL
+atual). Commit `c5069fe` trocou pra `window.location.assign`
+(navegação completa, garantida) — resolveu o fechar, mas a fundadora
+reportou lentidão perceptível em TODO fechamento ("parece internet
+discada"), efeito colateral esperado de um reload completo. Commit
+`f421ae9` corrigiu isso: tenta `router.push` rápido primeiro (o
+caminho normal, instantâneo quando funciona) e só cai pro reload
+completo como plano B, verificando de fato se o painel saiu da tela
+depois de 200ms — nunca confiando em `location.pathname` sozinho.
+`tsc`/`eslint`/`next build` limpos em cada passo. Aguardando
+confirmação final da fundadora (fechar deve voltar a ser rápido no
+caminho normal, e ainda garantido no caso raro em que não é).
+
+Investigação separada, ainda não iniciada: a demora ao ABRIR a
+Comunidade (clicar no ícone) é o prefetch da sidebar desligado por
+decisão de 08/09 (rajada de 15+ requisições simultâneas de todos os
+links, causa original do fundo preto) — trade-off deliberado, não
+bug. Fundadora optou por não mexer nisso agora e retomar o badge de
+Bookings primeiro.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
