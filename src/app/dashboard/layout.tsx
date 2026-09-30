@@ -32,9 +32,25 @@ import { getSessionProfile } from './session';
 // detalhe do pedido e da lista de Bookings — doopla-intervention.ts).
 // Sem conversation ainda (o caso comum hoje), um pedido nunca entra
 // aqui.
-async function getPedidosNeedingYouCount(supabase: AnySupabaseClient): Promise<number> {
-  const facts = await getCachedConversationOperationalFacts(supabase);
-  return facts.filter((f) => f.relatedOpportunityId != null && deriveConversationState(f) === 'needs_you').length;
+//
+// Correção 30/09/2026 (achado real de QA, badge "16" vs. lista vazia
+// de Bookings) — `relatedOpportunityId != null` sozinho conta
+// conversas de QUALQUER oportunidade, inclusive `source = 'mural'` (o
+// modelo antigo de matching/marketplace). work-items.ts EXCLUI de
+// propósito oportunidades `mural` da lista de Bookings ("aquilo nunca
+// deveria virar um trabalho da Doopla nesta lista") — então o badge
+// contava itens que a lista nunca ia mostrar. "Pedido", neste
+// vocabulário, sempre significa `source = 'artist_link'` (ver
+// work-items.ts); o filtro que faltava aqui é esse, não um novo
+// conceito.
+async function getPedidosNeedingYouCount(supabase: AnySupabaseClient, artistId: string): Promise<number> {
+  const [facts, { data: pedidoLinkRows }] = await Promise.all([
+    getCachedConversationOperationalFacts(supabase),
+    supabase.from('opportunities').select('id').eq('artist_profile_id', artistId).eq('source', 'artist_link'),
+  ]);
+  const pedidoLinkIds = new Set((pedidoLinkRows ?? []).map((r: { id: string }) => r.id));
+  return facts.filter((f) => f.relatedOpportunityId != null && pedidoLinkIds.has(f.relatedOpportunityId) && deriveConversationState(f) === 'needs_you')
+    .length;
 }
 
 async function getOpportunitiesBadgeCount(
@@ -107,6 +123,7 @@ export default async function DashboardLayout({
         {profile.role !== 'booker' ? (
           <ProfessionalShellGate
             supabase={supabase}
+            userId={user.id}
             fullName={profile.full_name}
             email={user.email ?? ''}
             avatarUrl={profile.avatar_url}
@@ -146,6 +163,7 @@ export default async function DashboardLayout({
 
 async function ProfessionalShellGate({
   supabase,
+  userId,
   fullName,
   email,
   avatarUrl,
@@ -154,6 +172,7 @@ async function ProfessionalShellGate({
   modal,
 }: {
   supabase: AnySupabaseClient;
+  userId: string;
   fullName: string;
   email: string;
   avatarUrl: string | null;
@@ -163,7 +182,7 @@ async function ProfessionalShellGate({
 }) {
   const [homeFacts, pedidosNeedingYouCount] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
-    getPedidosNeedingYouCount(supabase),
+    getPedidosNeedingYouCount(supabase, userId),
   ]);
   return (
     // NotificationsProvider aqui (não em DashboardLayout) — Booker não
