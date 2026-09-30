@@ -18666,6 +18666,52 @@ comportamento, só observação. `tsc`/`eslint`/`next build` limpos.
 `[DEBUG comunidade]` — só depois disso decido a correção real, com
 evidência em vez de suposição.
 
+## Fundo preto + X travado — causa raiz real encontrada e corrigida — `[DELIVERED]` — 30/09/2026
+
+Duas reproduções reais (com o log temporário, do zero, Console
+aberto) deram a evidência que faltava:
+
+1. Comunidade abre, fundo atrás do painel carrega certo (~15.400
+   caracteres de HTML real).
+2. Navega dentro do painel (Criar tópico, depois ← de volta pra
+   lista) — o fundo continua ok por um instante.
+3. **~560ms depois, sozinho, sem nenhuma ação da fundadora**, o fundo
+   desmorona (cai pra ~1.800 caracteres, 2 filhos) e nunca se
+   recupera — é exatamente aí que a tela fica preta.
+4. No mesmo log, um `router.back()` de verdade (clique em ←) por
+   vezes voltava pra uma entrada de histórico SEM o carimbo de
+   profundidade esperado — a contagem subia em vez de restaurar o
+   valor anterior.
+
+Causa raiz: o mecanismo que contava "profundidade" pra saber quantos
+passos o botão Fechar (X) precisa voltar
+(`stampComunidadeDepth`/`readComunidadeDepth`, carimbando
+`history.state.__comunidadeDepth` via `history.replaceState` manual)
+competia com a reconstrução interna que o App Router do Next faz no
+mesmo objeto de histórico a cada navegação. Essa competição explica
+os dois sintomas: a contagem ficava errada (X travava/overshoot) e,
+mais grave, coincidia com o conteúdo atrás do painel sendo
+re-resolvido pra um estado vazio pouco depois de uma navegação boa
+(fundo preto).
+
+Correção aplicada (`@modal/(.)comunidade/layout.tsx`,
+`comunidade/novo/pro-comunidade-novo-form.tsx`): removida a contagem
+de profundidade inteira — nenhum código mais escreve em
+`history.state` manualmente. Fechar (X) agora navega direto pra
+`/dashboard` via `router.push` (dentro de `startTransition`, mesma
+recomendação oficial do Next já usada em outros pontos da Comunidade)
+em vez de calcular `history.go(-N)`. Voltar (←) continua em
+`router.back()`, sem mudança — nunca dependeu da contagem. Log de
+debug temporário removido. Trade-off aceito e comunicado: o
+`Voltar` do navegador nativo, depois de usar o X, leva de volta pra
+dentro da Comunidade (empilha uma entrada nova em vez de descartar as
+antigas) — nunca quebra, só esse detalhe de navegação.
+
+`tsc`/`eslint`/`next build` limpos. Commit `bee39ad`, push feito.
+Aguardando confirmação da fundadora em produção (reproduzir o mesmo
+caminho: Comunidade → Criar tópico → ←, esperar alguns segundos, e
+também testar o X isolado).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
