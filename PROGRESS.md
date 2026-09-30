@@ -18880,6 +18880,41 @@ seria embutir o autor direto na RPC de tópicos (eliminando a 3ª ida
 ao banco), mudança de schema/RPC mais arriscada — só investigar se
 for pedido explicitamente.
 
+## QA manual do Beta Readiness — Financeiro `[PASS]`, Agenda bug real encontrado e corrigido — `[DELIVERED]` — 30/09/2026
+
+Retomando o plano de QA manual (Agenda → Financeiro → Settings V2 →
+WhatsApp Identity → Minha equipe → encerramento de conta → Decisões
+isolado), agora executado pela fundadora direto em produção.
+
+**Financeiro**: `PASS`. 3 cards de valor corretos (R$0, consistente
+com a conta de teste sem bookings reais), Dados de recebimento
+(Pix·CPF) exibindo certo, nenhum botão de saque/carteira (removido de
+propósito, confirmado ausente).
+
+**Agenda — bug real encontrado**: fundadora marcou uma viagem de 10
+dias e, ao tentar excluir "uma data", todos os outros 9 dias
+desapareceram junto. Causa raiz: `agenda_entries` guarda um intervalo
+("De"/"Até") como UM registro só, mas `expandAgendaEntry` (data.ts) o
+expande em 1 evento por dia pros pontinhos do calendário — todos com
+o mesmo `entryId`. A lista "Eventos do mês" mostrava N linhas
+separadas (uma por dia), cada uma com seu próprio botão "×", mas
+todas apontando pro mesmo registro — excluir qualquer uma apagava o
+período inteiro, sem aviso.
+
+Corrigido reaproveitando o padrão que já existia certo no mesmo
+arquivo (seção "Agenda dos seus artistas" do Booker): 1 linha por
+registro, com o intervalo de datas, 1 botão de excluir. Extraída a
+lógica (`groupMonthEvents`, `calendar.ts`) pra reagrupar os dias
+consecutivos do mesmo `entryId` de volta numa linha só — sem precisar
+reconsultar o banco (dias do mesmo registro são sempre contíguos por
+construção). Aplicado nas duas listas com o mesmo bug (artista em
+`pro-agenda-view.tsx`, Booker em `page.tsx`). Eventos de booking
+continuam 1 por dia, como sempre.
+
+`tsc`/`eslint`/`next build` limpos. Commit `e0084aa`, push feito.
+Aguardando fundadora reproduzir o mesmo caminho (viagem de vários
+dias → excluir) pra confirmar em produção.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
