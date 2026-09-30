@@ -18854,6 +18854,32 @@ Se isso não bastar, o próximo passo seria embutir o autor direto na
 RPC de tópicos (eliminando a 3ª ida ao banco por completo) — mudança
 de schema/RPC, mais arriscada, só se o prefetch sozinho não resolver.
 
+## Comunidade — abertura instantânea via loading boundary — `[DELIVERED]` — 30/09/2026
+
+Fechamento da rodada de performance da Comunidade. Fundadora deixou
+claro o padrão esperado: "quero que seja instantâneo como abrir um
+modal... essa comunidade parece site ruim". O prefetch adiado
+(commit `5760689`) ajuda, mas não resolve a raiz: sem `loading.tsx`,
+o Next só mostra o painel DEPOIS que `comunidade/page.tsx` inteiro
+resolve (3 round-trips sequenciais já documentados no próprio
+arquivo). Adicionado `@modal/(.)comunidade/loading.tsx`, mesmo padrão
+visual já validado em produção pro loading boundary do `/dashboard`
+(spinner simples, transparente, `currentColor`) — cobre lista/Criar
+tópico/tópico/Salvos de uma vez (Suspense boundary do Next se aplica
+a toda a subárvore da rota). O `<aside>`/backdrop/botões (layout.tsx)
+aparecem na hora do clique; só o conteúdo interno mostra o spinner
+enquanto os 3 round-trips acontecem.
+
+`tsc`/`eslint`/`next build` limpos em cada commit desta rodada
+(`28ed0be`, `19fef52`, `c99fb40`, `5760689`, `210f5cd`). Fundadora
+pediu pra parar de testar cada passo isoladamente ("deixe o melhor
+que conseguir... vamos prosseguir") — encerrando esta rodada aqui,
+sem mais round-trips de validação síncrona. Se a sensação de
+lentidão persistir mesmo com o loading boundary, o próximo passo
+seria embutir o autor direto na RPC de tópicos (eliminando a 3ª ida
+ao banco), mudança de schema/RPC mais arriscada — só investigar se
+for pedido explicitamente.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
