@@ -169,13 +169,22 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       }
       // Fechar (X) sempre sai da Comunidade INTEIRA, de qualquer
       // profundidade — inclusive de "Criar tópico" ("novo" nunca é
-      // caso especial aqui). Vai direto pro Início em vez de calcular
-      // quantos passos de history voltar (ver comentário no topo do
-      // arquivo sobre por que a contagem de profundidade foi
-      // removida). Clique real, não precisa de startTransition (isso
-      // foi tentado e não bastou — ver comentário no topo do arquivo
-      // sobre a causa raiz real dos botões duplicados).
-      router.push('/dashboard');
+      // caso especial aqui).
+      //
+      // Achado real de QA (30/09/2026) — router.push('/dashboard')
+      // não fazia NADA ao clicar em Fechar. Evidência (mesmo comando
+      // de Console que achou a causa dos botões duplicados):
+      // location.pathname já estava em "/dashboard" mesmo com o
+      // painel mostrando "Criar tópico" — ou seja, o router do Next
+      // considera que "navegar pra /dashboard" é um no-op, porque pra
+      // ele já ESTAMOS lá (só o slot @modal, por baixo, continuava
+      // preso no segmento antigo). router.push/back não resolve um
+      // estado de rota já dessincronizado; só uma navegação de
+      // verdade (fora do router client-side do Next) reseta os dois
+      // lados ao mesmo tempo, garantido, sem depender de nenhum
+      // estado interno.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- proposital: ver comentário acima, router.push/back provado não confiável aqui
+      window.location.assign('/dashboard');
     },
     [router]
   );
