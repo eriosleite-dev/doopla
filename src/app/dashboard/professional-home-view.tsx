@@ -163,7 +163,7 @@ export async function ProfessionalHomeView({
                 <p className="font-pro-sub truncate text-[13.5px] font-bold">{b.otherPartyName}</p>
                 <p className="truncate text-[11px] text-[var(--pro-tx-50)]">{b.event_location || 'Local a definir'}</p>
               </div>
-              <Link href={`/dashboard/bookings/${b.id}`} className={proStatusPillClass(bookingStatusTone(b, userId))}>
+              <Link href={`/dashboard/bookings/${b.id}`} prefetch={false} className={proStatusPillClass(bookingStatusTone(b, userId))}>
                 {STATUS_LABELS[b.status] ?? b.status}
               </Link>
             </div>
@@ -289,6 +289,7 @@ export async function ProfessionalHomeView({
                   {needsYouDecisions.length > 0 && (
                     <Link
                       href="/dashboard/decisoes"
+                      prefetch={false}
                       className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
                     >
                       Ver todas as decisões →
@@ -297,6 +298,7 @@ export async function ProfessionalHomeView({
                   {bookingsNeedingResponse.length > 0 && (
                     <Link
                       href="/dashboard/trabalhos"
+                      prefetch={false}
                       className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
                     >
                       Ver bookings aguardando resposta →
@@ -305,6 +307,7 @@ export async function ProfessionalHomeView({
                   {pedidosRecebidosAbertos.length > 0 && (
                     <Link
                       href="/dashboard/trabalhos"
+                      prefetch={false}
                       className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
                     >
                       Ver pedidos recebidos →
@@ -520,7 +523,7 @@ function ReadinessCard({
             <p className="text-[10.5px] text-[var(--pro-tx-50)]">Dados de recebimento</p>
             <p className="text-[12px] text-[var(--pro-tx-70)]">Sem isso, a Doopla não consegue fechar pagamento com o cliente.</p>
           </div>
-          <Link href="/dashboard/perfil/recebimento" className="flex-none text-[11.5px] font-bold text-[var(--pro-red)] hover:underline">
+          <Link href="/dashboard/perfil/recebimento" prefetch={false} className="flex-none text-[11.5px] font-bold text-[var(--pro-red)] hover:underline">
             Completar →
           </Link>
         </div>
@@ -535,6 +538,7 @@ function ReadinessCard({
           </div>
           <Link
             href="/dashboard/perfil/dados"
+            prefetch={false}
             className="flex-none text-[11.5px] font-bold text-[var(--pro-red)] hover:underline"
           >
             Completar →
@@ -568,7 +572,7 @@ function BookingChannelsCard({
       ) : (
         <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)] first:border-t-0">
           Seu link de orçamento ainda não está ativo.{' '}
-          <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
+          <Link href="/dashboard/perfil" prefetch={false} className="text-[var(--pro-red)] hover:underline">
             Ativar
           </Link>
         </p>
@@ -661,7 +665,7 @@ function TalkToDooplaCard({ whatsappNumber, whatsappIdentityStatus }: { whatsapp
       {talkUrl && !isWhatsappVerified && (
         <p className="mb-3 text-[11px] leading-snug text-[var(--pro-tx-50)]">
           Seu WhatsApp ainda não está verificado — a Doopla pode não te reconhecer automaticamente nessa conversa.{' '}
-          <Link href="/dashboard/perfil" className="text-[var(--pro-red)] hover:underline">
+          <Link href="/dashboard/perfil" prefetch={false} className="text-[var(--pro-red)] hover:underline">
             Verificar meu WhatsApp →
           </Link>
         </p>
