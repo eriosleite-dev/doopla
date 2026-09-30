@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { removeAgendaEntryAction } from '../actions';
 import { AgendaEntryForm } from './agenda-entry-form';
 import { ProAgendaView } from './pro-agenda-view';
-import { buildCalendarMonth, parseMonthParam } from './calendar';
+import { buildCalendarMonth, groupMonthEvents, parseMonthParam } from './calendar';
 import {
   AGENDA_ENTRY_LABEL,
   getAgendaEvents,
@@ -147,28 +147,28 @@ export default async function AgendaPage(props: {
             <p className="mt-4 text-sm text-[var(--ink)]/55">Nada marcado neste mês.</p>
           ) : (
             <ul className="mt-4 flex flex-col gap-2">
-              {monthEvents.map((e, i) => {
+              {groupMonthEvents(monthEvents).map((row) => {
                 const info = (
                   <>
-                    <span className="font-doopla-mono w-10 flex-none text-center text-lg font-semibold">
-                      {e.day}
+                    <span className="font-doopla-mono w-14 flex-none text-center text-lg font-semibold">
+                      {row.dayLabel}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{e.title}</span>
+                      <span className="block truncate text-sm font-medium">{row.title}</span>
                       <span className="block truncate text-[12px] text-[var(--ink)]/55">
-                        {e.sub}
+                        {row.sub}
                       </span>
                     </span>
                   </>
                 );
                 return (
                   <li
-                    key={i}
+                    key={row.key}
                     className="flex items-center gap-4 rounded-[14px] border border-[var(--line-light)] p-3"
                   >
-                    {e.bookingId ? (
+                    {row.bookingId ? (
                       <Link
-                        href={`/dashboard/bookings/${e.bookingId}`}
+                        href={`/dashboard/bookings/${row.bookingId}`}
                         className="flex min-w-0 flex-1 items-center gap-4 hover:opacity-70"
                       >
                         {info}
@@ -182,12 +182,12 @@ export default async function AgendaPage(props: {
                     ) : (
                       <div className="flex min-w-0 flex-1 items-center gap-4">{info}</div>
                     )}
-                    <span className={agendaTagClass(e.kind)}>
-                      {e.kind === 'confirmado' ? 'Confirmado' : AGENDA_ENTRY_LABEL[e.kind]}
+                    <span className={agendaTagClass(row.kind)}>
+                      {row.kind === 'confirmado' ? 'Confirmado' : AGENDA_ENTRY_LABEL[row.kind]}
                     </span>
-                    {e.entryId && (
+                    {row.entryId && (
                       <form action={removeAgendaEntryAction}>
-                        <input type="hidden" name="id" value={e.entryId} />
+                        <input type="hidden" name="id" value={row.entryId} />
                         <button
                           type="submit"
                           aria-label="Remover marcação"

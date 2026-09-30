@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { removeAgendaEntryAction } from '../actions';
 import type { AgendaEventKind } from '../ui';
 import { ProCard, ProPageHeader } from '../pro-ui';
-import type { CalendarMonth } from './calendar';
+import { groupMonthEvents, type CalendarMonth } from './calendar';
 import { ProAgendaEntryForm } from './pro-agenda-entry-form';
 
 // Re-skin de Agenda (item 8 da revisão Professional Web Dashboard,
@@ -117,20 +117,20 @@ export function ProAgendaView({
             <p className="mt-4 text-[13px] text-[var(--pro-tx-50)]">Nada marcado neste mês.</p>
           ) : (
             <ul className="mt-4 flex flex-col gap-2">
-              {monthEvents.map((e, i) => {
+              {groupMonthEvents(monthEvents).map((row) => {
                 const info = (
                   <>
-                    <span className="font-doopla-mono w-10 flex-none text-center text-[16px] font-semibold text-[var(--pro-off)]">{e.day}</span>
+                    <span className="font-doopla-mono w-14 flex-none text-center text-[16px] font-semibold text-[var(--pro-off)]">{row.dayLabel}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium text-[var(--pro-off)]">{e.title}</span>
-                      <span className="block truncate text-[12px] text-[var(--pro-tx-50)]">{e.sub}</span>
+                      <span className="block truncate text-[13px] font-medium text-[var(--pro-off)]">{row.title}</span>
+                      <span className="block truncate text-[12px] text-[var(--pro-tx-50)]">{row.sub}</span>
                     </span>
                   </>
                 );
                 return (
-                  <li key={i} className="flex items-center gap-4 rounded-[14px] border border-[var(--pro-line)] p-3">
-                    {e.bookingId ? (
-                      <Link href={`/dashboard/bookings/${e.bookingId}`} className="flex min-w-0 flex-1 items-center gap-4 hover:opacity-80">
+                  <li key={row.key} className="flex items-center gap-4 rounded-[14px] border border-[var(--pro-line)] p-3">
+                    {row.bookingId ? (
+                      <Link href={`/dashboard/bookings/${row.bookingId}`} className="flex min-w-0 flex-1 items-center gap-4 hover:opacity-80">
                         {info}
                         <span aria-hidden className="flex-none font-doopla-mono text-[13px] text-[var(--pro-tx-30)]">
                           ›
@@ -139,12 +139,12 @@ export function ProAgendaView({
                     ) : (
                       <div className="flex min-w-0 flex-1 items-center gap-4">{info}</div>
                     )}
-                    <span className={`font-doopla-mono inline-block rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${AGENDA_TAG_COLOR[e.kind]}`}>
-                      {e.kind === 'confirmado' ? 'Confirmado' : agendaEntryLabel[e.kind]}
+                    <span className={`font-doopla-mono inline-block rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[.03em] ${AGENDA_TAG_COLOR[row.kind]}`}>
+                      {row.kind === 'confirmado' ? 'Confirmado' : agendaEntryLabel[row.kind]}
                     </span>
-                    {e.entryId && (
+                    {row.entryId && (
                       <form action={removeAgendaEntryAction}>
-                        <input type="hidden" name="id" value={e.entryId} />
+                        <input type="hidden" name="id" value={row.entryId} />
                         <button type="submit" aria-label="Remover marcação" className="text-[13px] text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]">
                           ×
                         </button>
