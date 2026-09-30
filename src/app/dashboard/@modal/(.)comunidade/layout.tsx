@@ -218,6 +218,19 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
     return () => clearTimeout(timer);
   }, []);
 
+  // Pré-carrega o destino do Fechar (30/09/2026, achado real de QA:
+  // "melhorou um pouco só, deveria ser mais rápido" depois da correção
+  // anterior) — o caminho rápido (router.push) já está funcionando
+  // (confirmado: sem flash de reload), mas ainda espera a Home buscar
+  // seus dados do zero no momento do clique. Prefetch aqui, enquanto a
+  // pessoa ainda está usando o painel, deixa esses dados prontos antes
+  // do clique — só 1 destino fixo, não a rajada de todos os links da
+  // sidebar de uma vez (causa raiz documentada do fundo preto
+  // original, ver pro-sidebar-nav.tsx); risco bem menor.
+  useEffect(() => {
+    router.prefetch('/dashboard');
+  }, [router]);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return;
