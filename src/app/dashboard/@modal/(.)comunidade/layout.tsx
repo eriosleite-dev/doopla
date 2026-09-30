@@ -172,19 +172,26 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       // caso especial aqui).
       //
       // Achado real de QA (30/09/2026) — router.push('/dashboard')
-      // não fazia NADA ao clicar em Fechar. Evidência (mesmo comando
-      // de Console que achou a causa dos botões duplicados):
-      // location.pathname já estava em "/dashboard" mesmo com o
-      // painel mostrando "Criar tópico" — ou seja, o router do Next
-      // considera que "navegar pra /dashboard" é um no-op, porque pra
-      // ele já ESTAMOS lá (só o slot @modal, por baixo, continuava
-      // preso no segmento antigo). router.push/back não resolve um
-      // estado de rota já dessincronizado; só uma navegação de
-      // verdade (fora do router client-side do Next) reseta os dois
-      // lados ao mesmo tempo, garantido, sem depender de nenhum
-      // estado interno.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- proposital: ver comentário acima, router.push/back provado não confiável aqui
-      window.location.assign('/dashboard');
+      // por vezes não fazia NADA ao clicar em Fechar (location.pathname
+      // já em "/dashboard" mesmo com o painel mostrando "Criar
+      // tópico" — o slot @modal ficava preso no segmento antigo,
+      // dessincronizado da URL). Trocar direto pra
+      // `window.location.assign` (navegação completa, sempre
+      // confiável) corrigiu, mas ficou visivelmente lento em TODO
+      // fechamento, inclusive nos casos em que router.push já
+      // funcionava normalmente — trade-off ruim pro caminho feliz.
+      //
+      // Correção: tenta o caminho rápido primeiro (router.push, o
+      // normal do Next, instantâneo quando funciona) e só cai pro
+      // reload completo como plano B, verificando de fato se o painel
+      // saiu da tela — nunca confiando em location.pathname sozinho
+      // (é exatamente o valor que provamos ficar preso/enganoso).
+      router.push('/dashboard');
+      window.setTimeout(() => {
+        if (!document.querySelector('[aria-label="Comunidade"][role="dialog"]')) return;
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- plano B proposital: só roda quando router.push comprovadamente não fechou o painel a tempo
+        window.location.assign('/dashboard');
+      }, 200);
     },
     [router]
   );
