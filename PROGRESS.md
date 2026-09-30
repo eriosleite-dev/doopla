@@ -18712,6 +18712,46 @@ Aguardando confirmação da fundadora em produção (reproduzir o mesmo
 caminho: Comunidade → Criar tópico → ←, esperar alguns segundos, e
 também testar o X isolado).
 
+**Atualização (mesmo dia)**: a correção acima não bastou. A fundadora
+reportou "X não funciona e ainda duplicou quando apertei" — print e
+inspeção de DOM confirmaram DOIS botões "Fechar"/"Voltar" reais
+sobrepostos na tela ao mesmo tempo (um deste `layout.tsx`, outro de
+`novo-header.tsx`). Tentativa intermediária (remover o
+`startTransition` do push de Fechar, por suspeita de mismatch
+transitório de render) **não resolveu** — confirmado por ela
+("continua igual"), então essa hipótese foi descartada.
+
+## Botões duplicados na Comunidade — causa raiz real: `usePathname()` dessincroniza da URL dentro do slot do modal — `[DELIVERED]` — 30/09/2026
+
+Evidência definitiva, sem chute: pedi pra fundadora colar um comando
+no Console do navegador (não o "Console" do macOS — confusão real
+dela no meio do processo, corrigida) enquanto a tela de "Criar
+tópico" estava com os botões duplicados. O resultado:
+`location.pathname` retornava **`/dashboard`** — nunca chegou a
+`/dashboard/comunidade/novo`, mesmo com o painel mostrando "Criar
+tópico" corretamente na tela. A URL real do navegador ficou
+dessincronizada do conteúdo do painel modal.
+
+Como a lógica que decide "estou em Criar tópico, esconda os botões
+soltos deste layout" (`isNovo`) comparava `usePathname()` com a URL
+esperada, ela avaliava `false` mesmo estando genuinamente em "Criar
+tópico" — e os botões ←/✕ deste `layout.tsx` desenhavam JUNTO com os
+de `novo-header.tsx`, dois pares reais sobrepostos (confirmado antes
+via inspeção de DOM, com os dois `<button aria-label="Fechar">`
+tendo classes e posições ligeiramente diferentes).
+
+Correção: trocado `usePathname()` por `useSelectedLayoutSegments()`
+(sem `parallelRoutesKey`, chamado de dentro do próprio `layout.tsx`
+do slot `@modal`) — hook oficial do Next pra ler o segmento ativo
+DENTRO DE UM SLOT DE PARALLEL ROUTE especificamente, direto da árvore
+de rotas interna, nunca da URL global do navegador. Não pode mais
+dessincronizar do que está de fato montado no painel. A chave de
+cache de posição de scroll também passou a usar esse segmento em vez
+de `pathname`, pela mesma razão.
+
+`tsc`/`eslint`/`next build` limpos. Commit `7e55fa3`, push feito.
+Aguardando confirmação da fundadora em produção.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
