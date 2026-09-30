@@ -217,11 +217,26 @@ export async function ProfessionalHomeView({
                   // só tinha sido aplicada a pedidos/bookings, deixando
                   // esta 3ª fonte (a mais comum) ainda como grid de
                   // caixas grandes. Mesmos dados/lógica, só apresentação.
+                  //
+                  // prefetch={false} nos 3 <Link> abaixo (30/09/2026,
+                  // achado real de QA) — Network tab mostrou a Home
+                  // levando 14-35s pra terminar de carregar: cada linha
+                  // desta lista é um <Link>, e por padrão o Next
+                  // pré-carrega TODOS que aparecem na tela ao mesmo
+                  // tempo assim que entram no viewport — com 17 itens
+                  // (comum aqui) isso é uma rajada de ~17 requisições
+                  // simultâneas. Mesma causa raiz, mesma correção já
+                  // aplicada à sidebar em 08/09/2026 (ver
+                  // pro-sidebar-nav.tsx) — só nunca tinha chegado até
+                  // aqui. Nenhuma mudança de comportamento de clique,
+                  // só para de adiantar dado que a pessoa pode nunca
+                  // abrir.
                   <div className="mb-3 divide-y divide-[var(--pro-line)] border-b border-[var(--pro-line)]">
                     {pedidosRecebidosAbertos.map(({ opportunity: o, intervention }) => (
                       <Link
                         key={o.id}
                         href={`/dashboard/oportunidades/${o.id}`}
+                        prefetch={false}
                         className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
                       >
                         <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
@@ -234,6 +249,7 @@ export async function ProfessionalHomeView({
                       <Link
                         key={b.id}
                         href={`/dashboard/bookings/${b.id}`}
+                        prefetch={false}
                         className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
                       >
                         <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
@@ -252,6 +268,7 @@ export async function ProfessionalHomeView({
                         <Link
                           key={d.id}
                           href={href}
+                          prefetch={false}
                           className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
                         >
                           <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
