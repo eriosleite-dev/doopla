@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter, useSelectedLayoutSegments } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { proGhostButtonClass, proPrimaryButtonClass } from '../../pro-format';
@@ -22,9 +22,9 @@ import { ComunidadeGuardProvider, type ComunidadeScrollBehavior } from '../../co
 // layout.tsx é compartilhado por todas as rotas internas da Comunidade
 // (`page`, `[topicId]`, `novo`, `salvos`), ele nunca desmonta entre
 // essas navegações — só a largura (`transition-[width]`) anima, sem
-// pulo de layout. A decisão de largura é por pathname (não por prop
-// dedicada) porque um único layout.tsx compartilhado não recebe o
-// parâmetro dinâmico das rotas irmãs.
+// pulo de layout. A decisão de largura é pelo segmento ativo do slot
+// (não por prop dedicada) porque um único layout.tsx compartilhado
+// não recebe o parâmetro dinâmico das rotas irmãs.
 //
 // Navegação (07/09/2026, correção item 1) — ← Voltar e X Fechar deixam
 // de compartilhar a mesma ação. Voltar sempre usa router.back() (um
@@ -78,7 +78,24 @@ import { ComunidadeGuardProvider, type ComunidadeScrollBehavior } from '../../co
 // um mount novo reproduz sozinho.
 export default function ComunidadeModalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
+  // Segmento ativo do PRÓPRIO slot do modal (30/09/2026, causa raiz
+  // real encontrada por evidência) — antes isso vinha de usePathname(),
+  // que lê a URL geral do navegador. Evidência real de QA (comando
+  // colado no Console, com a tela mostrando "Criar tópico" já aberto):
+  // `location.pathname` retornava `/dashboard`, nunca chegando a
+  // `/dashboard/comunidade/novo` — a URL ficou "atrasada" em relação ao
+  // conteúdo do painel. Isso fazia `isNovo` avaliar `false` mesmo
+  // estando em "Criar tópico", e os botões ←/✕ deste layout (que
+  // deveriam ficar escondidos nessa rota) desenhavam junto com os de
+  // novo-header.tsx — daí os botões duplicados na tela.
+  // `useSelectedLayoutSegments()` (sem parallelRoutesKey, chamado de
+  // dentro do próprio layout.tsx do slot @modal) lê o segmento ativo
+  // direto da árvore de rotas do Next PRA ESSE SLOT especificamente,
+  // nunca da URL global — não pode dessincronizar do que está
+  // realmente montado aqui.
+  const segments = useSelectedLayoutSegments();
+  const activeSegment = segments[0] ?? null;
+  const routeKey = segments.join('/');
   const [entered, setEntered] = useState(false);
   const [pendingNav, setPendingNav] = useState<'back' | 'close' | null>(null);
   const asideRef = useRef<HTMLElement | null>(null);
@@ -86,14 +103,14 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   const guardFnRef = useRef<(() => boolean) | null>(null);
   const scrollBehaviorRef = useRef<ComunidadeScrollBehavior | null>(null);
 
-  const isTopicDetail = /^\/dashboard\/comunidade\/(?!novo$|salvos$)[^/]+$/.test(pathname);
-  const isList = pathname === '/dashboard/comunidade';
-  // QA visual (16/09/2026) — mesma correção do tópico (comentário
-  // abaixo, 08/09/2026): "Criar tópico" ganhou seu próprio header
-  // composto (novo-header.tsx), então os botões ←/✕ soltos em
+  const isList = activeSegment === null;
+  const isNovo = activeSegment === 'novo';
+  // QA visual (16/09/2026) — "Criar tópico" e "Salvos" ganharam headers
+  // próprios (novo-header.tsx; salvos não tem botões próprios ainda,
+  // mas segue a mesma regra), então os botões ←/✕ soltos em
   // `position: absolute` abaixo precisam parar de se desenhar aqui
-  // também pra essa rota, senão os dois pares ficariam duplicados.
-  const isNovo = pathname === '/dashboard/comunidade/novo';
+  // pra essas rotas, senão os pares ficariam duplicados.
+  const isTopicDetail = activeSegment !== null && activeSegment !== 'novo' && activeSegment !== 'salvos';
 
   // Preserva a posição de scroll do painel por rota interna (ex.: lista
   // de resultados rolada, depois abre um tópico, depois volta — reabre
@@ -117,7 +134,7 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
   useLayoutEffect(() => {
     const el = asideRef.current;
     if (!el) return;
-    const cached = scrollPositionsRef.current.get(pathname);
+    const cached = scrollPositionsRef.current.get(routeKey);
     if (cached && cached.pristine) {
       el.scrollTop = cached.top;
       return;
@@ -135,13 +152,13 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       }
     }
     el.scrollTop = anchor === 'end' ? el.scrollHeight : 0;
-  }, [pathname]);
+  }, [routeKey]);
 
   function handleScroll() {
     const el = asideRef.current;
     if (!el) return;
     const pristine = scrollBehaviorRef.current?.isContentPristine() ?? true;
-    scrollPositionsRef.current.set(pathname, { top: el.scrollTop, pristine });
+    scrollPositionsRef.current.set(routeKey, { top: el.scrollTop, pristine });
   }
 
   const performNav = useCallback(
@@ -155,21 +172,9 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       // caso especial aqui). Vai direto pro Início em vez de calcular
       // quantos passos de history voltar (ver comentário no topo do
       // arquivo sobre por que a contagem de profundidade foi
-      // removida).
-      //
-      // Achado real de QA (30/09/2026) — a primeira versão disto
-      // envolvia o push num startTransition (por analogia com
-      // pro-comunidade-novo-form.tsx). Resultado real: botões ←/✕
-      // duplicados na tela (confirmado inspecionando o DOM) — o
-      // startTransition permite o React continuar mostrando a árvore
-      // ANTIGA (ainda em "Criar tópico") enquanto pathname já reflete
-      // o destino NOVO, e os dois conjuntos de botões (deste arquivo,
-      // gated por isNovo computado do pathname novo, e os de
-      // novo-header.tsx, ainda no conteúdo antigo) renderizam juntos.
-      // Esse artifício só fazia sentido no form (resolvendo uma
-      // navegação disparada de dentro de um useEffect); aqui o clique
-      // já É um clique real, não precisa dele — router.push direto
-      // troca a árvore inteira de uma vez, sem esse meio-termo.
+      // removida). Clique real, não precisa de startTransition (isso
+      // foi tentado e não bastou — ver comentário no topo do arquivo
+      // sobre a causa raiz real dos botões duplicados).
       router.push('/dashboard');
     },
     [router]
