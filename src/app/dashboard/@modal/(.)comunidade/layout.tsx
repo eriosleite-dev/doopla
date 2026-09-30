@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { proGhostButtonClass, proPrimaryButtonClass } from '../../pro-format';
 import { ComunidadeGuardProvider, type ComunidadeScrollBehavior } from '../../comunidade/navigation-guard';
@@ -155,10 +155,22 @@ export default function ComunidadeModalLayout({ children }: { children: React.Re
       // caso especial aqui). Vai direto pro Início em vez de calcular
       // quantos passos de history voltar (ver comentário no topo do
       // arquivo sobre por que a contagem de profundidade foi
-      // removida) — startTransition evita a mesma race de cache já
-      // documentada em next.config.ts (commit c4675ad) pra navegação
-      // programática disparada fora de um clique real.
-      startTransition(() => router.push('/dashboard'));
+      // removida).
+      //
+      // Achado real de QA (30/09/2026) — a primeira versão disto
+      // envolvia o push num startTransition (por analogia com
+      // pro-comunidade-novo-form.tsx). Resultado real: botões ←/✕
+      // duplicados na tela (confirmado inspecionando o DOM) — o
+      // startTransition permite o React continuar mostrando a árvore
+      // ANTIGA (ainda em "Criar tópico") enquanto pathname já reflete
+      // o destino NOVO, e os dois conjuntos de botões (deste arquivo,
+      // gated por isNovo computado do pathname novo, e os de
+      // novo-header.tsx, ainda no conteúdo antigo) renderizam juntos.
+      // Esse artifício só fazia sentido no form (resolvendo uma
+      // navegação disparada de dentro de um useEffect); aqui o clique
+      // já É um clique real, não precisa dele — router.push direto
+      // troca a árvore inteira de uma vez, sem esse meio-termo.
+      router.push('/dashboard');
     },
     [router]
   );
