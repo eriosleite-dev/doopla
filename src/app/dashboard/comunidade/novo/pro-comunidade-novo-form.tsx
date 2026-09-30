@@ -49,16 +49,15 @@ export function ProComunidadeNovoForm() {
   // evento).
   //
   // 2º achado real de QA (22/09/2026, mesma rodada) — com o fundo preto
-  // corrigido, `router.replace` ainda quebrava o botão Fechar (X) do
-  // painel: `depthRef` (@modal/(.)comunidade/layout.tsx) conta 1 passo
-  // de histórico por navegação, mas um `replace` NUNCA cria uma entrada
-  // nova (só troca a atual) — o contador ficava 1 passo maior que o
-  // histórico real, e "Fechar" (`history.go(-depthRef)`) tentava voltar
-  // passos que não existem, travando sem fazer nada. `router.push`
-  // resolve isso (cada navegação vira 1 entrada de verdade, contador
-  // sempre bate com a realidade) — troca aceita: "←" no detalhe passa
-  // por "Criar tópico" antes de chegar na Home da Comunidade (1 passo a
-  // mais), em vez de pular direto — nunca quebra, só um passo extra.
+  // corrigido, `router.replace` ainda quebrava a navegação de "←" no
+  // painel: um `replace` NUNCA cria uma entrada de history nova (só
+  // troca a atual), então `router.back()` a partir do tópico recém-
+  // aberto pulava direto pra Home da Comunidade, sem passar por
+  // "Criar tópico". `router.push` resolve isso (cada navegação vira 1
+  // entrada de verdade) — troca aceita: "←" no detalhe passa por
+  // "Criar tópico" antes de chegar na Home (1 passo a mais), em vez de
+  // pular direto. (30/09/2026 — Fechar deixou de depender de contagem
+  // de profundidade de history; ver @modal/(.)comunidade/layout.tsx.)
   useEffect(() => {
     if (state.topicId) startNavTransition(() => router.push(`/dashboard/comunidade/${state.topicId}`));
   }, [state.topicId, router]);
