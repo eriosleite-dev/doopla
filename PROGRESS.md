@@ -18810,6 +18810,29 @@ Nenhuma mudança de UI, nenhum redesign — só o filtro que faltava.
 `tsc`/`eslint`/`next build` limpos. Commit `81bfe36`, push feito.
 Aguardando confirmação da fundadora em produção.
 
+## Lentidão geral da Home (não só Comunidade) — causa raiz real encontrada — `[EM VALIDAÇÃO]` — 30/09/2026
+
+Fundadora insistiu que Comunidade continuava lenta pra abrir/fechar
+mesmo depois do prefetch de `/dashboard` (commit `28ed0be`). Em vez de
+mais um chute, pedi print do DevTools → Network ao carregar a Home.
+Evidência real: **35.24s pra terminar todas as requisições, 13.97s até
+DOMContentLoaded** — muito mais que só a Comunidade, um problema geral
+da Home.
+
+Causa: a lista "Precisa de você" (17 itens no caso testado) renderiza
+1 `<Link>` por item, sem `prefetch={false}` — o Next pré-carrega TODOS
+que aparecem no viewport ao mesmo tempo por padrão. 17 requisições
+simultâneas competem com qualquer navegação real (inclusive abrir a
+Comunidade), explicando a lentidão que parecia ser "só" da Comunidade.
+Mesma causa raiz e mesma correção já documentada pra sidebar em
+08/09/2026 (`pro-sidebar-nav.tsx`) — nunca tinha sido aplicada aqui.
+
+Correção: `prefetch={false}` nos 3 `<Link>` da lista (pedidos,
+bookings, decisões/conversas). `tsc`/`eslint`/`next build` limpos.
+Commit `19fef52`, push feito. Aguardando confirmação da fundadora —
+Home deve carregar bem mais rápido, e abrir/fechar Comunidade deve
+melhorar como efeito colateral (menos disputa por conexão de rede).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
