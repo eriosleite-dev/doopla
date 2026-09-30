@@ -18782,6 +18782,34 @@ ativo — confirmado sem flash de reload); a lentidão residual fica
 `[EM ABERTO]`, pausada por instrução explícita da fundadora
 ("depois vemos isso, avance") pra retomar o badge de Bookings.
 
+## Badge "16" de Bookings vs. lista vazia — causa raiz encontrada e corrigida — `[DELIVERED]` — 30/09/2026
+
+Retomado depois de pausa explícita (fundadora pediu pra fechar
+Comunidade primeiro). Diagnóstico anterior tinha usado a conta errada
+(`hello@milkystudios.com`, sem "l" no domínio) — corrigido pro e-mail
+certo (`hello@milkystudios.cool`) via `auth.users`, evitando a
+ambiguidade das 17 contas "eduarda" duplicadas (todas com 0 atividade,
+criadas em rodadas de QA anteriores).
+
+Evidência real (SQL direto no perfil `696d4b6b-e0e2-4dd4-a8cc-1af629252ba1`):
+0 bookings, 21 oportunidades (nenhuma `source='artist_link'`), 17
+conversas em estado `needs_you` ligadas a essas oportunidades. Causa:
+`getPedidosNeedingYouCount` (`src/app/dashboard/layout.tsx`) contava
+qualquer conversa com `relatedOpportunityId != null` em `needs_you`,
+sem filtrar pelo `source` da oportunidade. `work-items.ts` exclui de
+propósito oportunidades `source='mural'` (modelo antigo de
+matching/marketplace) da lista de Bookings — só `artist_link` conta
+como "pedido" nesse vocabulário (documentado no próprio comentário da
+função, que já dizia a intenção certa sem implementá-la). Resultado:
+o badge contava itens que a lista nunca ia mostrar.
+
+Correção mínima: a função agora busca os ids de `opportunities` com
+`source='artist_link'` do próprio artista e só conta conversas ligadas
+a esses ids — mesmo filtro que `work-items.ts` já aplica pra lista.
+Nenhuma mudança de UI, nenhum redesign — só o filtro que faltava.
+`tsc`/`eslint`/`next build` limpos. Commit `81bfe36`, push feito.
+Aguardando confirmação da fundadora em produção.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
