@@ -32,7 +32,7 @@ function notificationHref(entry: NotificationEntry): string {
 }
 
 export function CommunityNotificationsBell() {
-  const { phase, items, unreadCount, refresh, markRead } = useNotifications();
+  const { phase, communityItems, unreadCount, refresh, markRead } = useNotifications();
   const [open, setOpen] = useState(false);
 
   // Preserva o comportamento de sempre desta tela (dado fresco a cada
@@ -80,10 +80,10 @@ export function CommunityNotificationsBell() {
             aria-label="Notificações"
             className="absolute right-0 top-full z-20 mt-2 max-h-[320px] w-[300px] overflow-y-auto rounded-[12px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] p-1.5 shadow-[0_10px_30px_rgba(0,0,0,.35)]"
           >
-            {phase === 'loading' && items.length === 0 && (
+            {phase === 'loading' && communityItems.length === 0 && (
               <p className="px-2.5 py-3 text-[12px] text-[var(--pro-tx-30)]">Carregando…</p>
             )}
-            {phase === 'error' && items.length === 0 && (
+            {phase === 'error' && communityItems.length === 0 && (
               <div className="px-2.5 py-3 text-center">
                 <p className="mb-1.5 text-[12px] text-[var(--pro-tx-30)]">Não deu pra carregar agora.</p>
                 <button type="button" onClick={refresh} className="text-[12px] font-bold text-[var(--pro-off)] underline">
@@ -91,11 +91,11 @@ export function CommunityNotificationsBell() {
                 </button>
               </div>
             )}
-            {phase === 'ready' && items.length === 0 && (
+            {phase === 'ready' && communityItems.length === 0 && (
               <p className="px-2.5 py-3 text-[12px] text-[var(--pro-tx-30)]">Nenhuma notificação por aqui ainda.</p>
             )}
-            {items.length > 0 &&
-              items.map((n) => (
+            {communityItems.length > 0 &&
+              communityItems.map((n) => (
                 <Link
                   key={n.id}
                   href={notificationHref(n)}
