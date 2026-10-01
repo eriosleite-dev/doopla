@@ -188,7 +188,12 @@ export function groupDecisionsByConversation(decisions: DecisionItem[]): Decisio
 // depois pending_reply bloqueado por dado operacional faltando (exige
 // mais fricção — ir preencher algo antes de continuar). Dentro de cada
 // prioridade, o mais antigo vem primeiro.
-const DECISION_PRIORITY = (d: DecisionItem): number => {
+//
+// Exportada (01/10/2026) pra professional-home-view.tsx reusar o MESMO
+// critério ao unificar decisions/pedidos/bookings numa lista só de
+// "Precisa de você" — nunca uma segunda noção de prioridade inventada
+// ali.
+export const decisionPriority = (d: DecisionItem): number => {
   if (d.kind === 'prepared_draft') return 0;
   if (d.blockReason === 'professional_not_operationally_ready') return 2;
   return 1;
@@ -196,7 +201,7 @@ const DECISION_PRIORITY = (d: DecisionItem): number => {
 
 export function sortDecisionsByPriority(decisions: DecisionItem[]): DecisionItem[] {
   return [...decisions].sort((a, b) => {
-    const priorityDiff = DECISION_PRIORITY(a) - DECISION_PRIORITY(b);
+    const priorityDiff = decisionPriority(a) - decisionPriority(b);
     if (priorityDiff !== 0) return priorityDiff;
     return a.createdAt.localeCompare(b.createdAt);
   });
