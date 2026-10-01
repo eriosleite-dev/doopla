@@ -19168,6 +19168,38 @@ fundadora em produção.
 
 ## Como usar isso
 
+## Conversa — hierarquia de revisão pra rascunho pronto (prepared_draft), commit `22293f9` — 01/10/2026
+
+Pedido da fundadora: a tela de conversa, quando existe um rascunho da
+Doopla pronto (`draft != null` em `getPendingDraftForConversation` —
+mesmo sinal que já classifica `'prepared_draft'` em
+`lib/decisions/data.ts`), não deve mais parecer uma janela de conversa
+genérica — deve virar uma ação de revisão/aprovação. Só
+hierarquia/copy/apresentação, explicitamente sem mudar backend nem o
+fluxo de envio (`sendProfessionalReplyAction` intocado).
+
+`conversa-view.tsx` ganhou um branch novo pra esse caso: título "Revise
+esta resposta antes de enviar" + subtítulo "A Doopla precisa da sua
+aprovação antes de responder ao cliente.", conversa anterior reduzida
+a um bloco compacto de contexto (últimas 2 mensagens, texto truncado,
+`max-h-[150px]`) em vez do painel de chat cheio de sempre
+(`max-h-[440px]`). Sem rascunho, layout 100% igual ao de antes.
+
+Novo `draft-review-panel.tsx`: o rascunho vira o elemento principal
+(textarea maior, rótulo discreto "pode editar antes de enviar"), ação
+primária "Enviar resposta" + secundária explícita "Agora não" (mesma
+ação do X — `router.back()` — nunca mais só o X como jeito de não
+enviar). Depois de enviar, confirmação clara ("Resposta enviada — a
+Doopla continua a conversa") em vez de resetar o formulário em
+silêncio; "Voltar à conversa" só então recarrega. Paddings gerais
+reduzidos nesse branch (menos espaço vazio pra uma decisão mais
+direta). Validado (`tsc`/`eslint`/`next build` limpos), enviado pra
+revisão da fundadora em produção — ainda não testado em prod por ela
+(a sessão foi interrompida por um pedido de QA interativo em
+`painel-ux-ajustes`/`doopla-qa-staging`, registrado à parte).
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
