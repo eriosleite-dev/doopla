@@ -14,6 +14,7 @@ const initialState: AccountClosureFormState = {};
 // destrutivo).
 export function DeleteAccountForm() {
   const [state, formAction, pending] = useActionState(requestAccountClosureAction, initialState);
+  const [password, setPassword] = useState('');
   const [confirmed, setConfirmed] = useState(false);
 
   return (
@@ -22,7 +23,14 @@ export function DeleteAccountForm() {
 
       <label className="flex flex-col gap-1.5">
         <span className={proLabelClass}>Digite sua senha pra confirmar</span>
-        <input type="password" name="password" autoComplete="current-password" className={proInputClass} />
+        <input
+          type="password"
+          name="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={proInputClass}
+        />
       </label>
 
       <label className="flex items-start gap-2.5 text-[12.5px] text-[var(--pro-tx-50)]">
@@ -40,8 +48,8 @@ export function DeleteAccountForm() {
 
       <button
         type="submit"
-        disabled={pending || !confirmed}
-        className="self-start rounded-full bg-[var(--pro-red)] px-5 py-2.5 text-[12.5px] font-semibold text-white transition-opacity disabled:opacity-40"
+        disabled={pending || !confirmed || !password.trim()}
+        className="self-start rounded-full bg-[var(--pro-red)] px-5 py-2.5 text-[12.5px] font-semibold text-white transition-opacity disabled:opacity-55"
       >
         {pending ? 'Excluindo…' : 'Excluir minha conta'}
       </button>
