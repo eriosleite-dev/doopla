@@ -88,9 +88,15 @@ export default async function AdminComunidadePage({
     <div className="flex flex-col gap-6">
       <h1 className="text-lg font-semibold">Comunidade</h1>
 
-      {status === 'ok' && <p className="rounded-lg bg-emerald-950 px-3 py-2 text-[13px] text-emerald-300">Ação aplicada.</p>}
+      {status === 'ok' && (
+        <p className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-emerald-950 px-4 py-2 text-[13px] text-emerald-300 shadow-lg">
+          Ação aplicada.
+        </p>
+      )}
       {status === 'error' && (
-        <p className="rounded-lg bg-red-950 px-3 py-2 text-[13px] text-red-300">Não foi possível aplicar a ação: {message}</p>
+        <p className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-red-950 px-4 py-2 text-[13px] text-red-300 shadow-lg">
+          Não foi possível aplicar a ação: {message}
+        </p>
       )}
 
       <form className="flex gap-2">
