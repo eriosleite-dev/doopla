@@ -1,6 +1,12 @@
 import { cache } from 'react';
 import { redirect } from 'next/navigation';
 
+// Commit vazio de propósito (QA, 01/10/2026): esta branch existe só pra
+// disparar um Preview deployment na Vercel (ambiente Preview →
+// doopla-qa-staging) pra validar o Admin V1 — a branch canônica virou
+// Production Branch e não gera Preview em push direto. Sem mudança de
+// comportamento aqui.
+
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/lib/supabase/types';
 
