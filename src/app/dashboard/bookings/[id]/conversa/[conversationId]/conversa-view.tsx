@@ -12,6 +12,7 @@ import {
 import { getSessionProfile } from '../../../../session';
 import { PRO_CONVERSATION_STATE_TONE, proStatusPillClass } from '../../../../pro-format';
 import { CONVERSATION_STATE_LABELS } from '../../../../ui';
+import { DraftReviewPanel } from './draft-review-panel';
 import { ReplyForm } from './reply-form';
 
 function conversationStatePill(state: string): string {
@@ -58,6 +59,46 @@ export async function ConversaView({ conversationId }: { conversationId: string 
   const title = facts.conversationType === 'professional_self' ? 'Você e a Doopla' : (externalParticipant?.name ?? 'Cliente');
   const conversationClosed = facts.status === 'closed' || facts.status === 'archived';
 
+  // Hierarquia de revisão de rascunho (01/10/2026, pedido da
+  // fundadora) — quando existe um rascunho pronto pra revisar
+  // (draft != null, mesmo sinal que já classificava 'prepared_draft'
+  // em lib/decisions/data.ts), a tela deixa de parecer uma janela de
+  // conversa genérica e vira uma AÇÃO: título/subtítulo de revisão, o
+  // rascunho como elemento principal (editável), a conversa anterior
+  // só como contexto compacto. Sem rascunho (conversa comum ou
+  // pending_reply sem draft), layout de sempre, intocado.
+  if (draft && !conversationClosed) {
+    const recentMessages = messages.slice(-2);
+    return (
+      <div className="flex flex-col gap-5 rounded-[24px] bg-[var(--pro-panel-solid)] p-6 sm:p-7">
+        <header>
+          <p className="font-doopla-mono text-[10.5px] font-bold uppercase tracking-[.08em] text-[var(--pro-red)]">
+            Revisão pendente
+          </p>
+          <h2 className="font-pro-sub mt-1 text-[18px] font-bold text-[var(--pro-off)] sm:text-[19px]">
+            Revise esta resposta antes de enviar
+          </h2>
+          <p className="mt-1 text-[12.5px] text-[var(--pro-tx-50)]">A Doopla precisa da sua aprovação antes de responder ao cliente.</p>
+        </header>
+
+        {recentMessages.length > 0 && (
+          <section>
+            <p className="font-doopla-mono mb-1.5 text-[9.5px] uppercase tracking-[.06em] text-[var(--pro-tx-30)]">
+              Conversa recente — {title}
+            </p>
+            <div className="flex max-h-[150px] flex-col gap-2 overflow-y-auto rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-3">
+              {recentMessages.map((message) => (
+                <CompactMessage key={message.id} message={message} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <DraftReviewPanel conversationId={conversationId} draft={draft} clientName={title} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 rounded-[24px] bg-[var(--pro-panel-solid)] p-7 sm:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -82,6 +123,27 @@ export async function ConversaView({ conversationId }: { conversationId: string 
       </section>
 
       {!conversationClosed && <ReplyForm conversationId={conversationId} draft={draft} />}
+    </div>
+  );
+}
+
+// Versão compacta de MessageBubble, só pro contexto "Conversa recente"
+// da revisão de rascunho — mesmos dados, texto truncado em 2 linhas,
+// sem o selo "Você respondeu/editou" (não cabe nem faz sentido aqui:
+// esse selo é sobre uma mensagem JÁ enviada, e o rascunho em revisão
+// ainda não foi).
+function CompactMessage({ message }: { message: ConversationMessage }) {
+  const isFromProfessional = message.authorType === 'professional';
+  const isFromClient = message.authorType === 'external_participant';
+  const align = isFromProfessional ? 'items-end text-right' : 'items-start text-left';
+  const label = isFromClient ? 'Cliente' : isFromProfessional ? 'Você' : 'Doopla';
+
+  return (
+    <div className={`flex flex-col gap-0.5 ${align}`}>
+      <p className="font-doopla-mono text-[9px] uppercase tracking-[.05em] text-[var(--pro-tx-45)]">{label}</p>
+      <p className="line-clamp-2 max-w-[90%] text-[12px] leading-snug text-[var(--pro-tx-70)]">
+        {message.contentType === 'text' ? (message.body ?? '') : (message.transcript ?? `[${message.contentType}]`)}
+      </p>
     </div>
   );
 }
