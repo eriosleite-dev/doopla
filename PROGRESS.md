@@ -19124,6 +19124,50 @@ Validado (`tsc`/`eslint`/`next build` limpos).
 
 ## Como usar isso
 
+## Home — "Precisa de você": contador (17) e lista (1 item) unificados + expansível no card, commit `f7d284a` — 01/10/2026
+
+Fundadora recusou a correção anterior (remover o CTA) e pediu
+investigação da causa raiz antes de qualquer mudança nova — feita
+100% por leitura de código (sem acesso a DB nesta sessão), com alto
+grau de confiança por cruzar 3 fontes: a RPC `get_conversation_operational_facts`
+(migration 0081), `deriveConversationState` (`lib/conversations/state.ts`)
+e os filtros de `professional-home-view.tsx`.
+
+**Causa raiz confirmada**: o badge "Precisa de você" vinha de
+`conversationSummary.needsYouCount` — conta TODA conversa em estado
+`needs_you` sob RLS, sem filtrar por `opportunity.source`. Já a lista
+renderizada sempre excluiu decisões ligadas a um pedido com
+`source != 'artist_link'` (pedidos de `mural`/`conversation` — decisão
+deliberada de 15/09/2026 de nunca dar visibilidade nova a
+marketplace legado) e ainda cortava em `.slice(0, 5)` mesmo quando
+havia mais itens elegíveis. Resultado: pendências reais contadas no
+badge mas invisíveis em todas as 3 fontes renderizadas (pedidos/
+bookings/decisões) — exatamente o "17 vs. 1" reportado.
+
+**Fix estrutural** (não cosmético, não "esconder o problema"): as 3
+fontes viram UM array só (`allPendencyRows`), ordenado por prioridade
+(reaproveita `decisionPriority`, agora exportado de
+`lib/decisions/data.ts`: rascunho pronto → pendência comum/pedido/
+booking → bloqueada por dado faltando) e, dentro da mesma prioridade,
+mais recente primeiro. `attentionCount` (badge do accordion, ProHero,
+StatsRow) é literalmente `allPendencyRows.length` — nunca mais um
+número à parte que pode divergir do que a tela mostra. Pedidos de
+source não-artist_link continuam fora da LISTA (decisão de produto
+preservada) e por isso também saem da CONTAGEM agora — o número vai
+cair pra refletir só pendências reais e visíveis, não é regressão.
+
+**UX nova**: novo client component `pro-needs-you-list.tsx`
+(`ProNeedsYouList`) substitui os 3 CTAs antigos (um deles pra rota
+morta) por 1 CTA só, "Ver todas as pendências →", que expande a lista
+DENTRO do próprio card (useState local, nunca navega pra outra
+página) — mostra 3 linhas por padrão, "Mostrar menos" quando
+expandido. Cada pendência continua 1 linha única clicável (nenhum card
+dentro de card), mesmo padrão já aprovado em 14/09 e 22/09/2026.
+Validado (`tsc`/`eslint`/`next build` limpos), enviado pra revisão da
+fundadora em produção.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
