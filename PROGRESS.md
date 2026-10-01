@@ -18947,6 +18947,12 @@ isso pro beta ou não).
 Aguardando fundadora testar o botão "Editar" de verdade em produção
 antes de fechar Agenda como PASS definitivo.
 
+**Atualização (01/10/2026)**: fundadora confirmou "tudo certo" em
+produção. **Agenda fechada como `PASS` definitivo** — bug de exclusão
+em cascata corrigido, edição funcionando, copy revisada, perguntas de
+regra de negócio respondidas. Próximo item do plano de QA manual:
+Settings V2 (`/dados`, `/trabalho`, `/publico`, `/canais`).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
