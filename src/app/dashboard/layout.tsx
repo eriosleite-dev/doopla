@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
-import { deriveConversationState } from '@/lib/conversations/state';
 import { siteOrigin } from '@/lib/site-url';
 import type { Profile } from '@/lib/supabase/types';
 
@@ -13,45 +12,11 @@ import { ProModalProvider } from './booker-pro/pro-modal-context';
 import { getAttentionItems, getReferralSummary, getSubscription, getUserBookings } from './data';
 import { LegacyDashboardShell } from './legacy-shell';
 import { NotificationsProvider } from './notifications-context';
-import { getCachedConversationOperationalFacts, getCachedProfessionalHomeFacts } from './pro-home-cache';
+import { getCachedPendencyRows, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProfessionalShell } from './pro-shell';
 import { ReferralModal } from './referral-modal';
 import { ReferralModalProvider } from './referral-modal-context';
 import { getSessionProfile } from './session';
-
-// Contagem de pedidos que REALMENTE precisam de você agora — somada ao
-// badge de Bookings desde a reestruturação Bookings unificado
-// (15/09/2026, achado da fundadora): "Pedidos" não é mais um item de
-// navegação próprio, então este número compõe o mesmo badge de
-// "Bookings" (ver ProfessionalShellGate abaixo).
-//
-// Correção 15/09/2026, 2ª rodada (achado da fundadora): antes contava
-// todo pedido `status='aberta'` — errado, "precisa de você" nunca pode
-// vir de onde o trabalho veio. Agora conta só pedidos cuja conversation
-// vinculada está em estado `needs_you` de verdade (mesma fonte do
-// detalhe do pedido e da lista de Bookings — doopla-intervention.ts).
-// Sem conversation ainda (o caso comum hoje), um pedido nunca entra
-// aqui.
-//
-// Correção 30/09/2026 (achado real de QA, badge "16" vs. lista vazia
-// de Bookings) — `relatedOpportunityId != null` sozinho conta
-// conversas de QUALQUER oportunidade, inclusive `source = 'mural'` (o
-// modelo antigo de matching/marketplace). work-items.ts EXCLUI de
-// propósito oportunidades `mural` da lista de Bookings ("aquilo nunca
-// deveria virar um trabalho da Doopla nesta lista") — então o badge
-// contava itens que a lista nunca ia mostrar. "Pedido", neste
-// vocabulário, sempre significa `source = 'artist_link'` (ver
-// work-items.ts); o filtro que faltava aqui é esse, não um novo
-// conceito.
-async function getPedidosNeedingYouCount(supabase: AnySupabaseClient, artistId: string): Promise<number> {
-  const [facts, { data: pedidoLinkRows }] = await Promise.all([
-    getCachedConversationOperationalFacts(supabase),
-    supabase.from('opportunities').select('id').eq('artist_profile_id', artistId).eq('source', 'artist_link'),
-  ]);
-  const pedidoLinkIds = new Set((pedidoLinkRows ?? []).map((r: { id: string }) => r.id));
-  return facts.filter((f) => f.relatedOpportunityId != null && pedidoLinkIds.has(f.relatedOpportunityId) && deriveConversationState(f) === 'needs_you')
-    .length;
-}
 
 async function getOpportunitiesBadgeCount(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -124,6 +89,7 @@ export default async function DashboardLayout({
           <ProfessionalShellGate
             supabase={supabase}
             userId={user.id}
+            profile={profile}
             fullName={profile.full_name}
             email={user.email ?? ''}
             avatarUrl={profile.avatar_url}
@@ -164,6 +130,7 @@ export default async function DashboardLayout({
 async function ProfessionalShellGate({
   supabase,
   userId,
+  profile,
   fullName,
   email,
   avatarUrl,
@@ -173,6 +140,7 @@ async function ProfessionalShellGate({
 }: {
   supabase: AnySupabaseClient;
   userId: string;
+  profile: Profile;
   fullName: string;
   email: string;
   avatarUrl: string | null;
@@ -180,9 +148,19 @@ async function ProfessionalShellGate({
   children: React.ReactNode;
   modal: React.ReactNode;
 }) {
-  const [homeFacts, pedidosNeedingYouCount] = await Promise.all([
+  // Badge da sidebar ("Bookings") = MESMA fonte de "Precisa de você"
+  // da Home (Notification Center, 01/10/2026) — antes somava
+  // homeFacts.bookingsAwaitingResponseCount (fórmula antiga,
+  // RPC get_professional_home_facts) + getPedidosNeedingYouCount
+  // (filtro próprio, já divergente de pedidosRecebidosAbertos da
+  // Home). Drift real confirmado por auditoria: a sidebar podia
+  // mostrar um número diferente do que a Home/Notification Center
+  // mostravam pra exatamente a mesma pendência. Corrigido: os três
+  // (Home, sidebar, Notification Center) chamam SEMPRE
+  // getCachedPendencyRows — nunca mais uma 2ª/3ª fórmula própria.
+  const [homeFacts, pendencyRows] = await Promise.all([
     getCachedProfessionalHomeFacts(supabase),
-    getPedidosNeedingYouCount(supabase, userId),
+    getCachedPendencyRows(userId, profile, supabase),
   ]);
   return (
     // NotificationsProvider aqui (não em DashboardLayout) — Booker não
@@ -208,7 +186,7 @@ async function ProfessionalShellGate({
         email={email}
         avatarUrl={avatarUrl}
         hasDooplaPro={homeFacts?.hasDooplaPro ?? false}
-        bookingsAwaitingCount={(homeFacts?.bookingsAwaitingResponseCount ?? 0) + pedidosNeedingYouCount}
+        bookingsAwaitingCount={pendencyRows.length}
         referralEligible={referralEligible}
       >
         {children}
