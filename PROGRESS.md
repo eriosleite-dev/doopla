@@ -19654,6 +19654,55 @@ anterior), promovida a `is_admin=true` só em `doopla-qa-staging`.
 `doopla-qa-staging`, nunca em produção.** Próximo passo, por combinado
 prévio: promover as duas pra produção e fazer smoke test do Admin lá.
 
+## Painel Admin V1 — migrations `0096`+`0097` aplicadas em produção, smoke test pendente — 01/10/2026
+
+Promoção pra produção, ordem pedida pela fundadora. Status real:
+
+1. **Confirmado seguro aplicar**: nenhum objeto de `0096` existia em
+   produção (100% novo desta sessão); todas as tabelas/colunas que
+   `0096`/`0097` leem já estão lá (`profiles`/`auth.users`/
+   `subscriptions`, `community_profiles`/`community_topics`/
+   `community_posts` — Comunidade já é feature live em produção —,
+   `ai_usage_events`, `product_events`/`intervention_moments`).
+   `0096` não é idempotente por desenho (sem `if not exists`), `0097`
+   é (`create or replace`) mas depende de `0096` já aplicada — ordem
+   importa. Achado à parte, sem relação com o Admin: migration `0095`
+   (fecha gap de conta encerrada em busca de contato/ID) segue **sem
+   aplicar em nenhum banco** desde uma rodada anterior — registrado de
+   novo pra não se perder.
+2-3. **`0096` e `0097` aplicadas em produção** (`doopla`), confirmado
+   pela fundadora.
+
+**Decisão da fundadora sobre a conta de admin** (passo 4, ainda
+pendente): não quer usar nenhuma conta de QA/staging em produção, nem
+transformar a conta profissional do dia a dia dela em admin
+definitivo. Quer uma conta interna dedicada (ex. `admin@doopla...`),
+criada pelo cadastro normal do produto (não por admin API/backdoor) —
+procedimento confirmado e entregue (signup normal em produção, depois
+`update profiles set is_admin=true` só nela). Antes de montar esse
+procedimento, confirmei no código (gate de `/admin` em `session.ts` +
+`_assert_is_admin()` nas 12 functions da `0096`) que o Admin V1
+depende **só** de `profiles.is_admin`, nunca de `role` — a conta
+dedicada pode ter qualquer `role` (coluna not null, irrelevante aqui),
+nunca vai usar o `/dashboard` normal.
+
+**Decisão explícita da fundadora**: criar essa conta fica **pra
+depois**, não nesta rodada. Smoke test (passo 5), confirmação de zero
+regressão no dashboard normal (passo 7) e fechamento como `DELIVERED`
+(passo 8) ficam **pendentes**, sem data — dependem só dela decidir
+criar a conta de admin de produção quando quiser. `requires_
+professional_review` e qualquer outro bloco do roadmap **não foram
+iniciados**, como pedido explicitamente.
+
+**Estado real, sem ambiguidade**: código do Admin V1 já está no ar em
+produção (mesma branch canônica = Production Branch) e as migrations
+`0096`/`0097` também — mas **ninguém tem `is_admin=true` em produção
+ainda**, então `/admin` é inacessível por qualquer conta até a
+fundadora criar e marcar a conta dedicada. Risco de regressão pro
+resto do produto: nenhum conhecido — Admin V1 nunca tocou nenhum
+arquivo de `/dashboard`, só adicionou rotas novas isoladas em `/admin`
+e exportações aditivas em `types.ts`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
