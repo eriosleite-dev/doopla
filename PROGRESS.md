@@ -18955,6 +18955,26 @@ Settings V2 (`/dados`, `/trabalho`, `/publico`, `/canais`).
 
 ## Como usar isso
 
+## QA manual — Settings V2 (`PASS`), rota `/canais` esclarecida como morta — 01/10/2026
+
+Fundadora questionou se `/dashboard/perfil/canais` ainda fazia sentido
+testar — confirmado no código que é rota morta desde 15/09/2026 (só um
+`redirect('/dashboard/perfil')`, conteúdo real de "Canais da sua
+Doopla" vive inline em `pro-configuracoes-view.tsx`, renderizado em
+`/dashboard/perfil`). `/dashboard/perfil/publico` confirmado como
+Settings V2 atual (não legado), usa `ProSettingsDetailHeader`.
+
+Pendência de QA registrada desde §100 (as 4 superfícies de Settings
+V2: editar→salvar→recarregar→confirmar persistência) **fechada como
+`PASS`**: `/dados` (dados profissionais/como trabalha, unificados),
+`/publico` (perfil público), e "Canais" dentro de Configurações
+(`/dashboard/perfil` — WhatsApp Identity, link de booking) — todos
+confirmados pela fundadora. Próximo item do plano de QA manual:
+WhatsApp Identity (fluxo de verificação em si, não só a tela), Minha
+equipe, encerramento de conta, Decisões isolado.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
