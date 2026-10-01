@@ -19200,6 +19200,53 @@ revisão da fundadora em produção — ainda não testado em prod por ela
 
 ## Como usar isso
 
+## QA manual — Encerramento de conta — auditoria de código, 1 gap achado e corrigido (migration `0095`, aguardando aplicação) — 01/10/2026
+
+Auditoria de código (não implementação) do fluxo "Excluir minha conta"
+(Settings V2, migration 0078), a pedido da fundadora, em paralelo ao
+reteste dela de Minha equipe. Arquitetura confirmada sólida: nunca
+hard delete, `close_own_account()` (SECURITY DEFINER, transação única)
+encerra representações (reaproveita `terminate_representation`),
+cancela assinatura, desativa descoberta pública
+(`artist_profiles.public_enabled=false`,
+`community_profiles.available_for_referrals=false`), marca
+`profiles.status='closed'`; Server Action completa com Admin API
+(e-mail sintético libera o original, `ban_duration`, signOut). Defesa
+em profundidade real verificada: `getSessionProfile()` (session.ts)
+barra qualquer sessão ainda com token válido em QUALQUER rota do
+painel, não só a atual — é isso que sustenta "desconectado de todos os
+dispositivos", não só o ban.
+
+Verifiquei a promessa mais arriscada da copy do modal ("ninguém
+consegue criar um booking novo com você depois") em vez de confiar
+nela: **PASS real** — `proposeBookingAction` exige uma `representations`
+existente (exatamente o que é encerrado primeiro) e `/orcamento/[slug]`
+já para de resolver (`notFound()`) assim que `public_enabled=false`.
+
+**Gap real encontrado**: `find_representation_target_by_contact`
+(migration 0033) e `find_representation_target_by_public_id`
+(migration 0071) — as RPCs por trás de "Adicionar alguém da equipe" —
+são anteriores ao account closure (0078) e nunca filtraram
+`profiles.status`. Uma conta encerrada continuava aparecendo na busca
+por contato/código ID, nome real exposto (sem a anonimização
+"Usuário removido" que `community_profiles_public` já aplica desde
+0078) — dava pra mandar solicitação de conexão pra uma conta que nunca
+mais vai logar pra responder.
+
+**Corrigido**: migration `0095_representation_lookup_excludes_closed.sql`
+(`create or replace`, mesma assinatura/retorno) adiciona
+`p.status = 'active'` ao alvo nas duas RPCs. Commit `4a58f79` — SQL
+ainda não aplicado no banco, entregue à fundadora pra rodar em
+`doopla-qa-staging` e depois produção (mesmo padrão de sempre).
+
+Checklist de teste manual entregue (8 itens, com aviso explícito de
+usar conta descartável — ação irreversível, sem fluxo de restauração).
+Rota `/dashboard/perfil/privacidade/excluir` confirmada como redirect
+morto intencional (já documentado desde 14/09/2026, não é achado
+novo).
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
