@@ -5,6 +5,10 @@ import { getProfessionalHomeFacts } from '@/lib/professional-home/data';
 import { listActionableDecisions } from '@/lib/decisions/data';
 import { listConversationOperationalFacts } from '@/lib/conversations/data';
 import { summarizeConversationStates, type ConversationStateSummary } from '@/lib/conversations/summary';
+import type { Profile } from '@/lib/supabase/types';
+
+import { getPendencyRows } from './pendencies';
+import type { PendencyRow } from './pro-needs-you-list';
 
 // Shell + Home bloco. Wrapper local (nunca dentro dos arquivos da
 // Foundation) só pra dedupe de request: layout.tsx (Shell, pro badge
@@ -47,4 +51,14 @@ export const getCachedConversationStateSummary = cache(
     const facts = await getCachedConversationOperationalFacts(supabase);
     return summarizeConversationStates(facts);
   }
+);
+
+// Fonte canônica de "Precisa de você" (Notification Center,
+// 01/10/2026) — Home, badge da sidebar (layout.tsx) e Notification
+// Center chamam SEMPRE esta função, nunca uma reimplementação própria.
+// cache() garante uma chamada só por request, mesmo padrão das demais
+// funções deste arquivo.
+export const getCachedPendencyRows = cache(
+  async (userId: string, profile: Profile, supabase: AnySupabaseClient): Promise<PendencyRow[]> =>
+    getPendencyRows(userId, profile, supabase)
 );
