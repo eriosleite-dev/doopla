@@ -19276,6 +19276,44 @@ desabilitado levemente melhorado (opacity-40 → opacity-55). Validado
 
 ## Como usar isso
 
+## QA manual — Decisões isolado — 1 gap real achado e corrigido, commit `45471f9` — 01/10/2026
+
+Último item do plano de QA manual combinado (Agenda → Financeiro →
+Settings V2 → WhatsApp Identity → Minha equipe → encerramento de conta
+→ Decisões isolado). Em vez de testar via Home/Bookings (já cobertos),
+testei o mecanismo de decisão isoladamente: abrir a conversa direto,
+como quem clica em "Precisa de você" realmente faz.
+
+**Achado**: quando a conversa tem um `pending_reply` (Approval Engine
+pausado esperando decisão) SEM rascunho pronto, a tela de conversa
+mostrava só um "Responder" genérico — o motivo real
+(`policy_gate_decisions.primary_block_reason`, ex.: "Precisa confirmar
+alguns dados antes da Doopla continuar por você.") só existia em
+Home/Bookings (`listActionableDecisions`), nunca na própria tela onde
+a decisão de fato acontece. Quem chegasse direto na conversa não tinha
+como saber o que estava sendo pedido.
+
+**Corrigido**: `getPendingReplyBlockReason()` novo em
+`lib/decisions/data.ts` (mesma leitura de `listActionableDecisions`,
+escopada a 1 conversa); `conversa-view.tsx` busca isso só quando faz
+sentido (sem draft, conversa aberta, `hasPendingRuntimeReply=true`) e
+mostra um bloco "O que a Doopla precisa" acima do formulário de
+resposta. De quebra, consolidei uma duplicata de
+`decisionBlockReasonLabel` que eu mesmo introduzi hoje cedo em
+`professional-home-view.tsx` sem notar que já existia exportada em
+`decisoes/format-cards.ts`. Validado (`tsc`/`eslint`/`next build`
+limpos).
+
+**Com isso, o plano de QA/E2E/Beta Readiness combinado está completo**
+(Agenda PASS, Financeiro PASS, Settings V2 PASS, WhatsApp Identity
+BLOCKED por configuração de produção — fora do meu alcance, Minha
+equipe copy entregue, encerramento de conta PASS + 1 gap corrigido,
+Decisões isolado — 1 gap corrigido). Próximo item do roadmap, por
+ordem já combinada: Painel Admin (auditoria já entregue antes desta
+rodada, implementação explicitamente não iniciada).
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
