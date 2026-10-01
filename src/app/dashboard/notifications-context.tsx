@@ -3,13 +3,16 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { listNotificationsAction, markNotificationReadAction, type NotificationEntry } from './notifications-actions';
+import type { PendencyRow } from './pro-needs-you-list';
 
 type Phase = 'loading' | 'ready' | 'error';
 
 type NotificationsContextValue = {
   phase: Phase;
-  items: NotificationEntry[];
+  communityItems: NotificationEntry[];
   unreadCount: number;
+  needsYouRows: PendencyRow[];
+  needsYouCount: number;
   refresh: () => void;
   markRead: (id: string) => void;
 };
@@ -31,15 +34,19 @@ const NotificationsContext = createContext<NotificationsContextValue | null>(nul
 // busca/estado/mutação são compartilhados, nunca a apresentação.
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<Phase>('loading');
-  const [items, setItems] = useState<NotificationEntry[]>([]);
+  const [communityItems, setCommunityItems] = useState<NotificationEntry[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [needsYouRows, setNeedsYouRows] = useState<PendencyRow[]>([]);
+  const [needsYouCount, setNeedsYouCount] = useState(0);
 
   const refresh = useCallback(() => {
     setPhase('loading');
     listNotificationsAction()
-      .then(({ items: data, unreadCount: count }) => {
-        setItems(data);
+      .then(({ communityItems: data, unreadCount: count, needsYouRows: rows, needsYouCount: rowsCount }) => {
+        setCommunityItems(data);
         setUnreadCount(count);
+        setNeedsYouRows(rows);
+        setNeedsYouCount(rowsCount);
         setPhase('ready');
       })
       .catch(() => setPhase('error'));
@@ -54,7 +61,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   function markRead(id: string) {
-    setItems((prev) => {
+    setCommunityItems((prev) => {
       const clicked = prev.find((i) => i.id === id);
       if (clicked?.unread) setUnreadCount((c) => Math.max(0, c - 1));
       return prev.map((i) => (i.id === id ? { ...i, unread: false } : i));
@@ -68,7 +75,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <NotificationsContext.Provider value={{ phase, items, unreadCount, refresh, markRead }}>
+    <NotificationsContext.Provider value={{ phase, communityItems, unreadCount, needsYouRows, needsYouCount, refresh, markRead }}>
       {children}
     </NotificationsContext.Provider>
   );

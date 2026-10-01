@@ -3,34 +3,39 @@
 import { countUnreadCommunityNotifications, getCommunityAuthors, listCommunityNotifications, listCommunityTopicsByIds, markCommunityNotificationRead } from '@/lib/community/data';
 import type { CommunityNotificationType } from '@/lib/supabase/types';
 
+import { getCachedPendencyRows } from './pro-home-cache';
 import { formatRelativeTime } from './pro-format';
+import type { PendencyRow } from './pro-needs-you-list';
 import { getSessionProfile } from './session';
 
-// Correção de UX do sino (07/09/2026), depois da inspeção pedida
-// explicitamente antes de codar: o único sinal hoje com formato real de
-// notificação (evento discreto, com autor, lido/não lido) é
-// community_notifications (migration 0059) — já produzido de verdade
-// por create_community_post (menção/resposta a post/resposta a tópico),
-// mas nunca lido por nenhuma tela até agora. "Precisa de você" (Decisões)
-// é um sinal operacional diferente (acionável -> resolvido, sem
-// lido/não lido por item) e continua só nas suas superfícies já
-// corretas (badge de Decisões, página Decisões, accordion da Home) —
-// aprovado explicitamente pelo usuário não misturar os dois no V1 do
-// sino, nem inventar notificação sintética pra Decisões só pra unificar.
+// Notification Center (01/10/2026, composição aprovada pela
+// fundadora) — duas fontes, nunca uma fundida na outra:
+//
+// 1. `communityItems`/`unreadCount` — community_notifications
+// (migration 0059), evento persistido de verdade, com lido/não lido.
+// Continua a ÚNICA leitura de notificações persistidas do Web
+// (NotificationBell/CommunityNotificationsBell consomem via
+// NotificationsProvider, nunca buscando por conta própria — correção
+// 09/09/2026, P1 "2 sinos"). `unreadCount` SEMPRE vem de
+// countUnreadCommunityNotifications — nunca derivado de
+// communityItems.filter(), nem restrito aos últimos 7 dias (o badge do
+// sino continua contando TODA notificação não lida, não só a janela
+// recente do popover).
+//
+// 2. `needsYouRows`/`needsYouCount` — getCachedPendencyRows (mesma
+// fonte canônica agora compartilhada com Home e o badge da sidebar,
+// ver pendencies.ts). Estado derivado em tempo real, SEM read_at — ler
+// um item de "Precisa de você" aqui não resolve a pendência (decisão
+// explícita da fundadora: unread/needs_you/resolved continuam
+// conceitos separados). Nunca inventa uma regra própria de needs_you —
+// só reaproveita a mesma função que Home/sidebar já chamam.
 //
 // Comunidade é exclusiva de artista (mesmo gate de src/app/dashboard/
 // comunidade/actions.ts) — booker nunca tem community_notifications
-// (nunca ativa community_profiles), então o sino aqui devolve lista
-// vazia pra booker em vez de estourar erro.
-//
-// Correção 09/09/2026 (P1 "2 sinos", item h): esta é a ÚNICA leitura
-// de notificações do Web — NotificationBell e CommunityNotificationsBell
-// consomem via NotificationsProvider (notifications-context.tsx), nunca
-// cada um buscando por conta própria. Devolve dados CRUS (actorName/
-// topicTitle já resolvidos, mas sem mensagem/link formatados) — cada
-// sino formata sua própria apresentação (ver notification-bell.tsx/
-// community-notifications-bell.tsx), só a busca/estado são
-// compartilhados.
+// (nunca ativa community_profiles) nem entra no cálculo de
+// needs_you deste módulo (getCachedPendencyRows já é artista/agência
+// only), então o sino aqui devolve tudo vazio pra booker em vez de
+// estourar erro.
 export type NotificationEntry = {
   id: string;
   type: CommunityNotificationType;
@@ -40,26 +45,35 @@ export type NotificationEntry = {
   topicTitle: string;
   unread: boolean;
   timeLabel: string;
+  createdAt: string;
 };
 
-// unreadCount SEMPRE vem de countUnreadCommunityNotifications — nunca
-// derivado de items.filter() aqui nem no client. items é só um preview
-// (últimas 20, ver COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT em
-// src/lib/community/data.ts); uma não lida mais antiga que as 20 mais
-// recentes existir sem aparecer no preview NÃO pode fazer o badge
-// subcontar (correção 09/09/2026, P1 "paginação/limite real na query
-// de notificações").
-export type NotificationsResult = { items: NotificationEntry[]; unreadCount: number };
+// Janela do popover (spec aprovada: "últimos 7 dias") — só restringe
+// o preview de Comunidade; needsYouRows nunca tem janela de tempo (é
+// estado "agora", não um log de eventos).
+const RECENT_WINDOW_DAYS = 7;
+
+export type NotificationsResult = {
+  communityItems: NotificationEntry[];
+  unreadCount: number;
+  needsYouRows: PendencyRow[];
+  needsYouCount: number;
+};
 
 export async function listNotificationsAction(): Promise<NotificationsResult> {
-  const { supabase, profile } = await getSessionProfile();
-  if (profile.role === 'booker') return { items: [], unreadCount: 0 };
+  const { supabase, profile, user } = await getSessionProfile();
+  if (profile.role === 'booker') return { communityItems: [], unreadCount: 0, needsYouRows: [], needsYouCount: 0 };
 
-  const [notifications, unreadCount] = await Promise.all([
-    listCommunityNotifications(supabase),
+  const since = new Date(Date.now() - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const [notifications, unreadCount, needsYouRows] = await Promise.all([
+    listCommunityNotifications(supabase, { since }),
     countUnreadCommunityNotifications(supabase),
+    getCachedPendencyRows(user.id, profile, supabase),
   ]);
-  if (notifications.length === 0) return { items: [], unreadCount };
+  const needsYouCount = needsYouRows.length;
+
+  if (notifications.length === 0) return { communityItems: [], unreadCount, needsYouRows, needsYouCount };
 
   const [authorsById, topics] = await Promise.all([
     getCommunityAuthors(supabase, [...new Set(notifications.map((n) => n.actorProfileId))]),
@@ -67,7 +81,7 @@ export async function listNotificationsAction(): Promise<NotificationsResult> {
   ]);
   const topicById = new Map(topics.map((t) => [t.id, t]));
 
-  const items = notifications.map((n) => ({
+  const communityItems = notifications.map((n) => ({
     id: n.id,
     type: n.type,
     topicId: n.topicId,
@@ -76,8 +90,9 @@ export async function listNotificationsAction(): Promise<NotificationsResult> {
     topicTitle: topicById.get(n.topicId)?.title ?? 'um tópico',
     unread: n.readAt === null,
     timeLabel: formatRelativeTime(n.createdAt),
+    createdAt: n.createdAt,
   }));
-  return { items, unreadCount };
+  return { communityItems, unreadCount, needsYouRows, needsYouCount };
 }
 
 export async function markNotificationReadAction(notificationId: string): Promise<{ ok: boolean }> {
