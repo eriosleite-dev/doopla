@@ -19247,6 +19247,35 @@ novo).
 
 ## Como usar isso
 
+## Encerramento de conta — fluxo testado em produção pela fundadora (PASS) + ajuste fino de copy/densidade do modal, commit `4b9257f` — 01/10/2026
+
+Fundadora testou o fluxo real em produção: excluiu uma conta de teste,
+tentou logar de novo com o e-mail/senha antigos → "e-mail inválido"
+(esperado — e-mail trocado por valor sintético + conta banida). Itens
+1-4 do checklist de teste manual fechados como `PASS`.
+
+Em seguida, pediu um ajuste fino só de copy/hierarquia/densidade do
+modal (passo 2, "Excluir sua conta é uma ação permanente"), explícito:
+nenhuma mudança de lógica/validação/backend. Antes de aceitar a frase
+nova sobre "Bookings e contratos: permanecem no histórico, mas novos
+bookings não poderão ser criados", reconferido no código (mesma
+verificação da auditoria anterior — `proposeBookingAction` exige
+`representations` ativa, que `close_own_account()` encerra primeiro;
+`/orcamento/[slug]` para de resolver com `public_enabled=false`) — sem
+divergência, aprovado usar a frase como está.
+
+Implementado: texto do passo 2 revisado (título/subtítulo/6 itens,
+mais curtos); densidade reduzida (padding do modal, gaps da lista,
+margens); botão "Cancelar" com altura reduzida só localmente (nunca
+mexeu em `proGhostButtonClass`, classe compartilhada); botão
+destrutivo do `DeleteAccountForm` agora também exige senha preenchida
+pra habilitar (antes só o checkbox — digitar senha era opcional pra
+habilitar, só falhava no servidor depois); contraste do estado
+desabilitado levemente melhorado (opacity-40 → opacity-55). Validado
+(`tsc`/`eslint`/`next build` limpos).
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
