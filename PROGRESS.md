@@ -19312,6 +19312,103 @@ Decisões isolado — 1 gap corrigido). Próximo item do roadmap, por
 ordem já combinada: Painel Admin (auditoria já entregue antes desta
 rodada, implementação explicitamente não iniciada).
 
+## Painel Admin V1 — implementado, migration `0096` pendente de aplicação — 01/10/2026
+
+Escopo fechado em rodada dedicada de scoping com a fundadora (nunca
+reaproveitei a auditoria genérica antiga do roadmap como se fosse um
+escopo detalhado — corrigi isso explicitamente quando ela perguntou,
+já que aquela nota só dizia "schema pronto, zero UI"). Três rodadas de
+ajuste antes de implementar, cada uma com uma correção real:
+
+**Correção 1 (minha, auto-reportada)**: eu tinha afirmado que
+`ai_usage_events` era uma tabela morta — errado. Busquei só pela
+string literal da tabela e não vi o insert, que acontece via
+`log_ai_usage_event()` (RPC), chamada de verdade em
+`src/lib/intelligence/observability.ts` (`pipeline.ts`/`resumption.ts`
+reais). `orchestrator_runs` tem metadado de execução
+(status/latência/tools), não tokens. Fonte certa de uso/custo de IA é
+`ai_usage_events`.
+
+**Correção 2 (pedido da fundadora)**: custo é sempre "estimado", nunca
+"real" — `cost_cents_estimate` nunca é preenchida. Calculado em
+`src/lib/admin/ai-pricing.ts` (tabela de preço por modelo, versionada
+por data efetiva) a partir de `model`+`input_tokens`+`output_tokens`+
+`created_at` vindos de `admin_get_ai_cost_summary`. Tabela de preço
+nasce **vazia** de propósito: o preço do único modelo em uso
+(`gpt-5-mini`) nunca foi conferido contra a página oficial do provider
+(comentário já existente em `intelligence/config.ts`) — mostrar um
+número ali seria inventar custo. Até a fundadora preencher um preço
+confirmado, toda linha aparece como "preço não configurado" (tokens
+continuam contados normalmente).
+
+**Correção 3 (auditoria de efeito real, pedida antes de escrever
+qualquer function de moderação)**: confirmei no código, não presumi,
+que os 3 estados de moderação já existentes no schema (`community_
+profiles.visibility_status` `active`/`restricted`/`blocked`, CHECK
+inalterado desde 0059; `community_topics`/`community_posts.status`
+`removed_by_moderator`) têm efeito real sobre "usuários comuns":
+`create_community_topic`/`create_community_post` já exigem
+`visibility_status='active'`; toda listagem pública
+(`listCommunityTopics`, busca, trending, "para você") já filtra
+`status='published'`; a RLS "select visible" (`published OR
+author_profile_id=auth.uid()`) já bloqueia qualquer um que não seja o
+autor de ler um tópico/post removido por moderador direto. Única
+nuance reportada (não é bloqueio, é comportamento pré-existente, igual
+pra remoção pelo próprio autor): o AUTOR de um tópico/post continua
+vendo o próprio conteúdo mesmo depois de removido por moderador — só
+não aparece mais pra mais ninguém, e não recebe mais resposta nova.
+
+**Implementado**:
+- Migration `0096_admin_v1.sql` (NÃO aplicada em nenhum banco ainda —
+  copy-pasteável, fica pra `doopla-qa-staging` depois produção, como
+  sempre): tabela `admin_audit_events` (trilha mínima e genérica —
+  admin/ação/tabela/id/estado anterior/estado novo/motivo/quando,
+  nunca `moderated_by` espalhado em várias tabelas); guard interna
+  `_assert_is_admin()` (nunca grantada a `authenticated`/`anon`, só
+  chamável função-a-função, mesmo padrão de `_create_conversation_core`
+  da migration 0082); 5 RPCs de moderação (`admin_set_community_
+  visibility`, `admin_remove/restore_community_topic`, `admin_remove/
+  restore_community_post` — restore entra desde o V1, reversibilidade
+  de propósito; idempotentes, nunca gravam evento de auditoria quando
+  não há mudança real de estado; `for update` pra evitar corrida
+  leitura/escrita; update+insert de auditoria sempre atômicos, uma
+  function plpgsql é uma transação só); 6 RPCs de leitura
+  (`admin_search_profiles`, `admin_get_profile_detail`,
+  `admin_search_community_content`, `admin_get_ai_cost_summary`,
+  `admin_get_beta_pulse`, `admin_list_audit_events` — todas devolvem só
+  a projeção mínima, nunca `select *`, `auth.users` só alcançável por
+  aqui dentro, mesmo padrão de `find_representation_target_by_contact`
+  0033/0095).
+- `src/app/admin/` (rota nova, fora de `/dashboard`, shell próprio —
+  nunca herda `--pro-*`): `session.ts` (gate; redireciona pra
+  `/dashboard` se `!is_admin`, nunca pra `/login` — sessão existe, só
+  não tem autoridade), `layout.tsx`, `page.tsx` (visão geral: usuários
+  ativos, cadastros 7d/30d, pulso do beta, custo estimado de IA),
+  `usuarios/page.tsx` + `usuarios/[id]/page.tsx` (busca + detalhe
+  read-only), `comunidade/page.tsx` + `comunidade/actions.ts` (busca
+  cross-entidade + as 5 ações de moderação via Server Actions),
+  `ia-custo/page.tsx`.
+- `src/lib/admin/data.ts` (wrappers tipados sobre as RPCs — nenhuma
+  lógica de autoridade aqui, só tipagem/propagação de erro) e
+  `src/lib/admin/ai-pricing.ts` (tabela de preço versionada, vazia por
+  enquanto).
+- `src/lib/supabase/types.ts`: tipos de retorno das RPCs novas + registro
+  delas em `Database['public']['Functions']`, mesmo padrão manual já
+  usado no arquivo inteiro.
+
+**Segurança, como combinado**: nenhum `createServiceRoleClient()` em
+nenhum arquivo novo — toda autoridade vive dentro das RPCs
+(`_assert_is_admin` relê `auth.uid()`+`profiles.is_admin` a cada
+chamada, nunca confia em nada vindo do client); o gate de `/admin` no
+boundary é só UX/defesa adicional. `tsc --noEmit`, `eslint`, `next
+build` limpos (as 4 rotas novas aparecem no build como `ƒ`
+server-rendered).
+
+**Pendente**: aplicar migration `0096` em `doopla-qa-staging` e depois
+produção (texto já entregue); preencher `MODEL_PRICE_TABLE` com um
+preço confirmado pra `gpt-5-mini` quando a fundadora validar o valor
+oficial; QA manual das 4 telas com a conta real dela (`is_admin=true`).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
