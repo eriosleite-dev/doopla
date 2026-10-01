@@ -479,14 +479,45 @@ function mapNotification(row: CommunityNotification): CommunityNotificationItem 
 // (implementar uma agora seria funcionalidade nova, fora deste item).
 const COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT = 20;
 
-export async function listCommunityNotifications(supabase: AnySupabaseClient): Promise<CommunityNotificationItem[]> {
-  const { data, error } = await supabase
+// `since` opcional (Notification Center, 01/10/2026) — o popover
+// global passa a restringir este preview aos últimos 7 dias (spec
+// aprovada: "últimos 7 dias"). Aditivo, não muda o comportamento
+// default: sem `since`, continua idêntico a antes (últimas 20, sem
+// corte de data) — é o que CommunityNotificationsBell continua usando
+// hoje, sem precisar saber da janela de 7 dias do sino global.
+export async function listCommunityNotifications(
+  supabase: AnySupabaseClient,
+  opts?: { since?: string }
+): Promise<CommunityNotificationItem[]> {
+  let query = supabase
     .from('community_notifications')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(COMMUNITY_NOTIFICATIONS_PREVIEW_LIMIT);
+  if (opts?.since) query = query.gte('created_at', opts.since);
+  const { data, error } = await query;
   if (error) throw error;
   return ((data ?? []) as CommunityNotification[]).map(mapNotification);
+}
+
+// Histórico real (Notification Center, 01/10/2026) — `/dashboard/
+// notificacoes` é a primeira superfície Web a prometer histórico
+// completo (preview nunca prometeu isso, ver nota acima). Mesmo padrão
+// já usado por mobile/app/forum/notificacoes.tsx: `.range()` real +
+// heurística de "acabou" (página menor que o tamanho pedido), sem
+// RPC/contagem total nova — nunca mostramos "N total" aqui.
+export async function listCommunityNotificationsPage(
+  supabase: AnySupabaseClient,
+  { limit, offset }: { limit: number; offset: number }
+): Promise<{ items: CommunityNotificationItem[]; hasMore: boolean }> {
+  const { data, error } = await supabase
+    .from('community_notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+  if (error) throw error;
+  const items = ((data ?? []) as CommunityNotification[]).map(mapNotification);
+  return { items, hasMore: items.length === limit };
 }
 
 // Contagem separada da lista (nunca derivada do preview limitado
