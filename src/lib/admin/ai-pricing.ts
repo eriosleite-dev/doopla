@@ -10,14 +10,25 @@
 // uma mudança futura de preço nunca reescreve a estimativa histórica
 // de uso já ocorrido antes dela.
 //
-// Vazia de propósito: o preço real do único modelo em uso hoje
-// (gpt-5-mini, ver src/lib/intelligence/config.ts) nunca foi conferido
-// contra a página oficial do provider (comentário explícito naquele
-// arquivo) — mostrar um número aqui seria inventar um custo. Enquanto
-// a tabela não tiver uma linha pro modelo, admin_get_ai_cost_summary
-// continua contando tokens normalmente e a UI marca a parcela como
-// "preço não configurado", nunca estimando em cima de um preço não
-// confirmado.
+// Preço do único modelo em uso hoje (gpt-5-mini) confirmado pela
+// fundadora em 01/10/2026 contra o tier padrão (síncrono, sem Batch
+// API/service_tier — confirmado em código: getOpenAIClient() nunca
+// passa service_tier, nenhum client.batches.* existe no projeto) da
+// API oficial da OpenAI: input US$0,25/1M tokens, output US$2,00/1M
+// tokens. effectiveFrom em 2025-01-01 (antes de qualquer uso real
+// registrado) porque não houve mudança de preço conhecida durante
+// este beta — uma mudança futura confirmada vira uma LINHA NOVA com
+// effectiveFrom na data real da mudança, nunca uma edição da linha
+// existente (isso reescreveria a estimativa de uso já ocorrido).
+//
+// Sem desconto de cached input: a resposta da OpenAI (Responses API)
+// expõe `usage.input_tokens_details.cached_tokens`, mas o projeto
+// nunca lê nem grava esse campo (confirmado: zero ocorrência de
+// "cached_tokens"/"input_tokens_details" em todo o código) —
+// `ai_usage_events.input_tokens` é sempre o total (cache + não-cache
+// misturados, sem separação). Aplicar o preço de cache aqui seria
+// inventar um desconto sobre um dado que não temos; por isso o cálculo
+// usa sempre o preço de input cheio sobre o total.
 export type ModelPriceRule = {
   model: string;
   // Data efetiva (YYYY-MM-DD), inclusive — usa o usage_date (dia real
@@ -27,7 +38,9 @@ export type ModelPriceRule = {
   outputCentsPerMillionTokens: number;
 };
 
-export const MODEL_PRICE_TABLE: ModelPriceRule[] = [];
+export const MODEL_PRICE_TABLE: ModelPriceRule[] = [
+  { model: 'gpt-5-mini', effectiveFrom: '2025-01-01', inputCentsPerMillionTokens: 25, outputCentsPerMillionTokens: 200 },
+];
 
 export type AiCostEstimate = { configured: true; costCents: number } | { configured: false };
 

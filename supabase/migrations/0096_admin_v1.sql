@@ -138,6 +138,19 @@ begin
     raise exception 'reason_required' using errcode = '22023';
   end if;
 
+  -- Achado da revisão de segurança (01/10/2026): sem este guard, um
+  -- admin chamando isto com p_profile_id = o próprio id passaria pelo
+  -- UPDATE normalmente, mas o trigger BEFORE UPDATE já existente
+  -- (prevent_self_community_moderation_change, 0059) reverteria
+  -- visibility_status pro valor antigo EM SILÊNCIO — e esta function,
+  -- sem saber disso, gravaria um admin_audit_events dizendo que a
+  -- mudança aconteceu quando na verdade não aconteceu. Falha explícita
+  -- aqui é melhor que um log de auditoria que mente sobre o estado
+  -- real do banco.
+  if p_profile_id = v_admin then
+    raise exception 'cannot_moderate_own_profile' using errcode = '42501';
+  end if;
+
   select visibility_status into v_old
     from public.community_profiles
     where profile_id = p_profile_id

@@ -19466,6 +19466,92 @@ produção (texto já entregue); preencher `MODEL_PRICE_TABLE` com um
 preço confirmado pra `gpt-5-mini` quando a fundadora validar o valor
 oficial; QA manual das 4 telas com a conta real dela (`is_admin=true`).
 
+## Painel Admin V1 — revisão de segurança da migration `0096` + preço de IA confirmado — 01/10/2026
+
+Revisão estática pedida pela fundadora antes de aplicar `0096` em
+qualquer banco, nos 6 eixos que ela pediu: `SECURITY DEFINER`,
+grants/`search_path`, guard de admin, atomicidade da moderação+audit,
+validação de `reason`. 5 dos 6 eixos vieram OK na primeira leitura; o
+6º (atomicidade/guard) escondia um achado real, que corrigi antes de
+liberar a migration pra aplicação.
+
+**Achado e corrigido**: `admin_set_community_visibility` não tinha
+guard contra o admin tentar moderar o PRÓPRIO perfil de Comunidade.
+Sem isso, a chamada passaria pelo `UPDATE` normalmente, mas o trigger
+`BEFORE UPDATE` já existente (`prevent_self_community_moderation_change`,
+migration 0059) reverteria `visibility_status` pro valor antigo EM
+SILÊNCIO — e a function, sem saber disso, gravaria um
+`admin_audit_events` dizendo que a mudança aconteceu quando na
+verdade não aconteceu (o banco ficaria inalterado, mas o log de
+auditoria mentiria sobre isso). Corrigido com um guard explícito
+(`if p_profile_id = v_admin then raise exception
+'cannot_moderate_own_profile'`) — falha visível na hora, nunca um log
+que não bate com o estado real do banco. As outras 4 functions de
+moderação (tópico/post, remover/restaurar) não têm trigger equivalente
+nas tabelas correspondentes, então não têm esse risco.
+
+**Demais eixos, confirmados OK sem alteração**: as 12 functions (guard
++ 5 de moderação + 6 de leitura) têm `SECURITY DEFINER` e `set
+search_path = public` explícitos; `_assert_is_admin()` nunca é
+grantada a `anon`/`authenticated` (só chamável função-a-função), as 11
+functions de admin são grantadas só a `authenticated` com `anon`
+revogado explicitamente (acha do documentado na 0041 sobre default
+privileges); o guard roda sempre antes de qualquer lógica de negócio
+(na seção `declare`, que executa antes do `begin`, nas 5 de moderação;
+como primeira linha do `begin` nas 6 de leitura); toda validação de
+`reason` (`null`/vazio depois de `btrim`) acontece antes de qualquer
+`select ... for update`/`UPDATE`; update+insert de auditoria sempre na
+mesma function (atômico por construção, sem bloco de exceção que
+pudesse mascarar um rollback parcial); zero SQL dinâmico/`EXECUTE
+format` em todo o arquivo (zero risco de injeção).
+
+**Checagens pedidas sobre o modelo de IA, antes de preencher a tabela
+de preço** (lidas no código, não presumidas):
+1. **String do modelo**: `ai_usage_events.model` é sempre a constante
+   `AI_MODEL`/`CLASSIFIER_MODEL`/`PLANNER_MODEL` — hoje as 3 (e mais
+   `APPROVAL_RESOLVER_MODEL`/`POLICY_GATE_EXTRACTOR_MODEL`/
+   `INBOUND_PROPOSAL_MODEL`) são hardcoded independentemente como
+   `'gpt-5-mini'` em arquivos de config separados, sem uma fonte única
+   — hoje batem entre si por coincidência/sincronia manual, não por
+   garantia estrutural. Risco registrado, não corrigido nesta rodada
+   (fora do pedido): se uma dessas constantes mudar sem as outras, o
+   painel de custo passaria a atribuir o preço errado àquela feature,
+   em silêncio.
+2. **Tier da API**: confirmado padrão/síncrono — `getOpenAIClient()`
+   nunca passa `service_tier`, nenhum `client.batches.*` existe no
+   projeto (zero ocorrência). Preço de tier padrão da OpenAI se aplica.
+3. **Cached input**: confirmado que NÃO é capturado — zero ocorrência
+   de `cached_tokens`/`input_tokens_details` em todo o código.
+   `ai_usage_events.input_tokens` é sempre o total (cache + não-cache
+   misturados). Por isso, `ai-pricing.ts` nunca aplica desconto de
+   cache — calcula sempre com o preço cheio de input sobre o total.
+
+**Achado adicional, não pedido mas relevante pro que o painel de custo
+representa**: `logAiUsageEvent` só é chamado de `pipeline.ts`/
+`resumption.ts` (features classificação+planejamento) e de
+`test-call.ts` (teste de infraestrutura). As outras 3 features reais
+que chamam a OpenAI — `approval/resolver.ts`, `policy-gate-post/
+extractor.ts`, `inbound-proposal/detector.ts` — fazem chamadas de
+verdade (cobradas pela OpenAI) mas nunca gravam em
+`ai_usage_events`. "Custo estimado de IA" no Admin hoje **subestima**
+o gasto real — cobre só uma parte das features que chamam o model.
+Não instrumentei essas 3 agora (fora do escopo desta rodada, muda
+código de produção fora do Admin) — registrado como gap conhecido pra
+decisão futura.
+
+**`MODEL_PRICE_TABLE` preenchida**: `gpt-5-mini`, input
+US$0,25/1M tokens, output US$2,00/1M tokens (preço oficial confirmado
+pela fundadora, tier padrão), `effectiveFrom: '2025-01-01'` (cobre todo
+uso já registrado — sem mudança de preço conhecida neste beta). Uma
+mudança de preço futura vira uma linha nova com a data real, nunca uma
+edição da linha existente — a estimativa de uso passado nunca é
+reescrita.
+
+`tsc`/`eslint`/`next build` limpos. Migration `0096` segue **não
+aplicada em nenhum banco** — pronta pra `doopla-qa-staging` primeiro,
+QA manual de `/admin` com conta admin antes de produção, como
+combinado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
