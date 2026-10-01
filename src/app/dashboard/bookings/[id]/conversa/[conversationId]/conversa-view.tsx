@@ -8,7 +8,9 @@ import {
   getPendingDraftForConversation,
   type ConversationMessage,
 } from '@/lib/conversations/data';
+import { getPendingReplyBlockReason } from '@/lib/decisions/data';
 
+import { decisionBlockReasonLabel } from '../../../../decisoes/format-cards';
 import { getSessionProfile } from '../../../../session';
 import { PRO_CONVERSATION_STATE_TONE, proStatusPillClass } from '../../../../pro-format';
 import { CONVERSATION_STATE_LABELS } from '../../../../ui';
@@ -58,6 +60,17 @@ export async function ConversaView({ conversationId }: { conversationId: string 
 
   const title = facts.conversationType === 'professional_self' ? 'Você e a Doopla' : (externalParticipant?.name ?? 'Cliente');
   const conversationClosed = facts.status === 'closed' || facts.status === 'archived';
+
+  // Decisões isolado (achado de QA, 01/10/2026) — sem rascunho pronto
+  // mas com um pending_reply real (o Approval Engine pausou esperando
+  // uma decisão), busca o blockReason real (mesma fonte de
+  // Home/Bookings) pra explicar O QUE a Doopla precisa, em vez de só
+  // "Responder" genérico. Só busca quando faz sentido: nunca nos casos
+  // com draft (já tem sua própria explicação) nem conversa fechada.
+  const blockReason =
+    !draft && !conversationClosed && facts.hasPendingRuntimeReply
+      ? await getPendingReplyBlockReason(supabase, conversationId)
+      : null;
 
   // Hierarquia de revisão de rascunho (01/10/2026, pedido da
   // fundadora) — quando existe um rascunho pronto pra revisar
@@ -121,6 +134,13 @@ export async function ConversaView({ conversationId }: { conversationId: string 
           messages.map((message) => <MessageBubble key={message.id} message={message} />)
         )}
       </section>
+
+      {!conversationClosed && facts.hasPendingRuntimeReply && (
+        <div className="rounded-[14px] border border-[var(--pro-line)] bg-white/[0.02] p-4">
+          <p className="font-doopla-mono text-[10px] uppercase tracking-[.06em] text-[var(--pro-tx-30)]">O que a Doopla precisa</p>
+          <p className="mt-1 text-[13px] text-[var(--pro-tx-70)]">{decisionBlockReasonLabel(blockReason)}</p>
+        </div>
+      )}
 
       {!conversationClosed && <ReplyForm conversationId={conversationId} draft={draft} />}
     </div>

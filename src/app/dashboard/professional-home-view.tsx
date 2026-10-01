@@ -10,7 +10,7 @@ import { latestConversationByRelatedId } from '@/lib/conversations/data';
 import { decisionPriority, groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
 import { classifyBookingAttention } from './booking-attention';
-import { conversationHref } from './decisoes/format-cards';
+import { conversationHref, decisionBlockReasonLabel } from './decisoes/format-cards';
 import { resolveDooplaIntervention } from './doopla-intervention';
 import { getActivePaymentDetails, getArtistMatchingCompletion, getMyOpportunities, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import {
@@ -320,14 +320,6 @@ export async function ProfessionalHomeView({
       </div>
     </div>
   );
-}
-
-function decisionBlockReasonLabel(reason: string | null): string {
-  if (!reason) return 'A Doopla está esperando uma decisão sua pra continuar essa conversa.';
-  const known: Record<string, string> = {
-    professional_not_operationally_ready: 'Precisa confirmar alguns dados antes da Doopla continuar por você.',
-  };
-  return known[reason] ?? 'A Doopla pausou aqui e precisa de você pra seguir.';
 }
 
 function ProHero({
