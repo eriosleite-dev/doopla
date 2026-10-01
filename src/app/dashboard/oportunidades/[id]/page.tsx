@@ -4,6 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { formatCentsAsBRL, formatRelativeDate } from '@/lib/format';
 import { getConversationOperationalFactsForOpportunity } from '@/lib/conversations/data';
+import { isOutboundDraftAwaitingProfessionalReview } from '@/lib/conversations/state';
 import { groupDecisionsByConversation, type DecisionItem } from '@/lib/decisions/data';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
@@ -68,7 +69,11 @@ export default async function PedidoDetailPage(props: { params: Promise<{ id: st
   if (isOpen) {
     const conversation = await getConversationOperationalFactsForOpportunity(supabase, opportunity.id);
     let decision: DecisionItem | null = null;
-    if (conversation && (conversation.hasPendingRuntimeReply || conversation.lastOutboundIntentDeliveryState === 'policy_allowed')) {
+    if (
+      conversation &&
+      (conversation.hasPendingRuntimeReply ||
+        isOutboundDraftAwaitingProfessionalReview(conversation.lastOutboundIntentDeliveryState, conversation.lastOutboundIntentRequiresReview))
+    ) {
       const grouped = groupDecisionsByConversation(await getCachedActionableDecisions(supabase));
       decision = grouped.find((d) => d.conversationId === conversation.conversationId) ?? null;
     }

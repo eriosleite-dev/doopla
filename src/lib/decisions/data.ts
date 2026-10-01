@@ -17,9 +17,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 //     (runtime_pending_replies.status='pending'). policyGateBlockReason
 //     explica O PORQUÊ, lido de policy_gate_decisions (nunca
 //     reinterpretado, nunca re-decidido aqui).
-//   - 'prepared_draft': existe um outbound_intent já autorizado pelo
-//     Post-model Gate, ainda não enviado (delivery_state='policy_allowed')
-//     — mesmo sinal que já alimenta o estado 'needs_you' em
+//   - 'prepared_draft': existe um outbound_intent GENUINAMENTE retido
+//     (delivery_state='policy_allowed' AND
+//     requires_professional_review=true — regra canônica em
+//     isOutboundDraftAwaitingProfessionalReview, conversations/state.ts;
+//     nunca policy_allowed sozinho, correção 01/10/2026: antes incluía
+//     qualquer draft nesse estado, inclusive os que o cron ia mandar
+//     sozinho em segundos). Mesmo sinal que alimenta 'needs_you' em
 //     src/lib/conversations/state.ts. preparedContent é o rascunho.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,8 +86,9 @@ type RawConversationRow = {
 };
 
 // Lista tudo que hoje "precisa de decisão" do profissional autenticado
-// — pending_replies com status='pending' + outbound_intents com
-// delivery_state='policy_allowed'. Cada leitura já é filtrada por RLS
+// — pending_replies com status='pending' + outbound_intents
+// genuinamente retidos (delivery_state='policy_allowed' AND
+// requires_professional_review=true). Cada leitura já é filtrada por RLS
 // (runtime_pending_replies: select own via conversations, migration
 // 0056; outbound_intents/policy_gate_decisions: select own direto,
 // professional_id=auth.uid()) — sem .eq() de posse adicional aqui, de
@@ -99,6 +104,7 @@ export async function listActionableDecisions(supabase: AnySupabaseClient): Prom
       .from('outbound_intents')
       .select('id, conversation_id, professional_id, content, delivery_state, created_at')
       .eq('delivery_state', 'policy_allowed')
+      .eq('requires_professional_review', true)
       .returns<RawOutboundIntentRow[]>(),
   ]);
 
