@@ -19703,6 +19703,43 @@ resto do produto: nenhum conhecido — Admin V1 nunca tocou nenhum
 arquivo de `/dashboard`, só adicionou rotas novas isoladas em `/admin`
 e exportações aditivas em `types.ts`.
 
+## Migration `0095` — `[DELIVERED]` — gap de conta encerrada em busca de contato/ID, fechado em staging e produção — 01/10/2026
+
+Pendência aberta numa auditoria anterior (encontrar gap, não aplicar
+ainda), fechada antes de abrir `requires_professional_review`, por
+pedido explícito da fundadora.
+
+**Revisão antes de aplicar** (sem reescrever a migration, só comparar
+com o estado atual): `find_representation_target_by_contact` (0033) e
+`find_representation_target_by_public_id` (0071) nunca filtravam
+`profiles.status` — uma conta encerrada continuava aparecendo em
+"Adicionar alguém da equipe", com nome real exposto, podendo receber
+solicitação de conexão sem nunca poder responder. `0095` adiciona só
+`and p.status = 'active'` nas duas — confirmado linha a linha contra
+as versões originais, zero outra mudança (assinatura, grants, lógica
+de match intactos). Nenhuma migration posterior toca essas functions
+(só uma citação em comentário na 0096). Idempotente (`create or
+replace`). Depende só de `profiles.status` (0078, já em produção há
+semanas) — nenhuma tabela/coluna nova.
+
+**Aplicada e testada em `doopla-qa-staging` primeiro**: script E2E
+rodado em blocos separados (impersonando `auth.uid()` via `set local
+role authenticated` + `request.jwt.claims`, mesmo método já usado pra
+validar o RLS do `artist_link_routing`) — conta ativa encontrada
+normalmente, conta fechada (temporariamente, revertida depois)
+deixando de aparecer, depois confirmado que voltou a aparecer após o
+revert. Nenhum dado de teste ficou alterado ao final.
+
+**Aplicada em produção** (`doopla`) em seguida. Smoke test
+deliberadamente mínimo e 100% leitura (a lógica já estava provada
+idêntica em staging): as duas functions chamadas com um alvo
+inexistente, confirmando que rodam sem erro contra o schema real de
+produção (mesma classe de bug que pegou o `42804` do Admin, se
+existisse aqui) — zero conta real tocada, zero escrita.
+
+**Status final: `0095` = `DELIVERED`, em staging e produção.** Nenhum
+outro `MUST FIX`/gap conhecido de encerramento de conta segue aberto.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
