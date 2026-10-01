@@ -19083,6 +19083,22 @@ fundadora em produção.
 
 ## Como usar isso
 
+## Minha equipe — segunda rodada do empty state (copy + padding), commit `3a4952a` — 01/10/2026
+
+Fundadora pediu um ajuste fino em cima do commit anterior: padding do
+card volta a ser o padrão de `ProCard` (antes era `!p-8` fixo) pra
+ficar "consistente com o resto do painel" e garantir
+~160-180px de altura total; copy trocada de um texto de "estado vazio"
+("Nenhuma pessoa conectada ainda"/"Adicione alguém de confiança...")
+pra um convite direto: "Traga sua equipe para a Doopla" / "Convide
+quem já trabalha com você para acompanhar seus bookings.". Ícone em
+círculo continua removido (já tinha saído no commit anterior). Botão
+"+ Adicionar pessoa" mantido via `triggerLabel`. Validado (`tsc`/
+`eslint`/`next build` limpos) e enviado pra revisão da fundadora em
+produção.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
