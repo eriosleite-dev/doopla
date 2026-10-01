@@ -286,15 +286,15 @@ export async function ProfessionalHomeView({
                   </div>
                 )}
                 <div className="mt-4 flex flex-wrap gap-4">
-                  {needsYouDecisions.length > 0 && (
-                    <Link
-                      href="/dashboard/decisoes"
-                      prefetch={false}
-                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
-                    >
-                      Ver todas as decisões →
-                    </Link>
-                  )}
+                  {/* "Ver todas as decisões" removido (01/10/2026,
+                     achado de QA da fundadora: clicar recarregava a
+                     própria Home) — apontava pra /dashboard/decisoes,
+                     rota morta desde 15/09/2026 (redirect('/dashboard'),
+                     ver decisoes/page.tsx). needsYouDecisions já
+                     renderiza TODOS os itens aqui em cima (sem
+                     slice/paginação), então não havia "mais" pra ver —
+                     o link nunca deveria ter sobrevivido à depreciação
+                     da rota. */}
                   {bookingsNeedingResponse.length > 0 && (
                     <Link
                       href="/dashboard/trabalhos"
