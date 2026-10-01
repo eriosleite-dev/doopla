@@ -50,10 +50,31 @@ export async function requestWhatsappVerification(
     return { kind: 'error', error: `Não foi possível gerar o código: ${error?.message ?? 'sem dado'}` };
   }
 
-  const send = await sendWhatsappTextMessage(
-    { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
-    { to: normalized, body: `Seu código Doopla de verificação: ${data.code}. Válido por 10 minutos.` }
-  );
+  // Achado real de QA (01/10/2026) — whatsappAccessToken()/
+  // whatsappPhoneNumberId() (requireEnv, env.ts) JOGAM uma exceção
+  // (não retornam undefined) quando WHATSAPP_ACCESS_TOKEN/
+  // WHATSAPP_PHONE_NUMBER_ID não estão configuradas no ambiente —
+  // sem este try/catch, essa exceção escapava de dentro da Server
+  // Action sem nenhum catch, e o Next renderizava a tela genérica de
+  // erro ("This page couldn't load"), travando toda a página de
+  // Configurações. Causa de fundo (credenciais reais do WhatsApp
+  // Business/Meta ausentes em produção) é infraestrutura, não bug de
+  // código — fora do escopo corrigir aqui —, mas uma falha de
+  // configuração nunca deveria quebrar a página inteira: degrada pro
+  // mesmo retorno de erro limpo que qualquer outra falha de envio já
+  // usava.
+  let send;
+  try {
+    send = await sendWhatsappTextMessage(
+      { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
+      { to: normalized, body: `Seu código Doopla de verificação: ${data.code}. Válido por 10 minutos.` }
+    );
+  } catch (err) {
+    // Erro real só no log do servidor — nunca exposto ao client (sem
+    // vazar nome de env var/detalhe interno na mensagem de erro).
+    console.error('[whatsapp-identity] falha ao enviar código de verificação', err);
+    return { kind: 'error', error: 'Não foi possível enviar o código agora. Tente novamente em instantes.' };
+  }
   if (send.kind === 'failed_permanent') {
     return { kind: 'error', error: 'Não foi possível enviar o código pra este número pelo WhatsApp.' };
   }
