@@ -18915,6 +18915,38 @@ continuam 1 por dia, como sempre.
 Aguardando fundadora reproduzir o mesmo caminho (viagem de vários
 dias → excluir) pra confirmar em produção.
 
+## Agenda — edição de marcações + copy revisada — `[DELIVERED]` — 01/10/2026
+
+Continuação do QA manual da Agenda (bug de exclusão em cascata já
+corrigido, commit `e0084aa`). Fundadora pediu edição de marcações
+existentes (ex.: encurtar uma viagem de 10 dias em vez de apagar e
+recriar) — implementada (commit `57daf55`): `updateAgendaEntryAction`
++ botão "Editar" inline na lista "Eventos do mês", pré-preenchido com
+os valores reais do registro (nunca o recorte truncado do mês em
+exibição). Copy do subtítulo revisada ("Alterações aqui não afetam
+bookings já confirmados") e placeholder da Nota trocado pra "Ex:
+Férias", nos dois forms de criação (artista e Booker legado).
+
+Migration `0094_agenda_entries_update_policy.sql` (policy de UPDATE em
+`agenda_entries` — só existia select/insert/delete desde a criação da
+tabela, migration 0030) aplicada e validada pela fundadora em
+`doopla-qa-staging` e em produção (`doopla`), mesmo processo de
+sempre. `tsc`/`eslint`/`next build` limpos.
+
+Confirmado por leitura de código, respondendo perguntas da fundadora
+antes de fechar Agenda como PASS: (1) bookings confirmados (status
+aceita/aguardando_pagamento/concluída) aparecem automaticamente na
+Agenda como "Confirmado", sem ação manual — `getAgendaEvents`,
+`data.ts`. (2) marcar "Indisponível" numa data com booking confirmado
+PRESERVA o booking (tabelas inteiramente separadas, nenhuma escrita
+cruzada) mas NÃO sinaliza o conflito — só aparecem 2 pontinhos de cor
+no mesmo dia, sem aviso textual. Gap de produto registrado, não
+implementado (feature nova, aguardando decisão da fundadora se quer
+isso pro beta ou não).
+
+Aguardando fundadora testar o botão "Editar" de verdade em produção
+antes de fechar Agenda como PASS definitivo.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
