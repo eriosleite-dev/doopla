@@ -19037,6 +19037,52 @@ derrubar o worker silenciosamente). Não implementado nesta rodada.
 
 ## Como usar isso
 
+## Minha equipe — "Booker" deixa de ser termo primário de apresentação, commit `0ecef65` — 01/10/2026
+
+Achado de produto da fundadora: "Booker" não deveria ser reforçado como
+conceito de UX pro vínculo artista↔equipe (vira linguagem de
+equipe/pessoa), e "Artista" não deveria ser usado como termo genérico
+pro lado que o booker conecta (a Doopla atende outras profissões,
+virou "profissional"). Verificado antes de implementar, como a
+fundadora pediu: lido `supabase/migrations/0005_invites.sql` — a
+tabela `representations` é só um vínculo confirmado entre as partes,
+sem nenhuma permissão/cláusula especial amarrada à palavra "Booker",
+então a copy nova não amplia nem reduz a capacidade real do vínculo.
+
+Implementado só apresentação, nada de nomes internos/enum/banco/regras
+de permissão: `bookers/page.tsx` (empty state), `pro-upgrade-modal.tsx`
+(descrição do contexto "equipe"), e `add-connection-modal.tsx`
+(refatorado de `TARGET_LABEL` pra `ROLE_COPY: Record<Role, RoleCopy>`
+com frase completa por campo — título dos passos, explicação,
+labels, texto de "encontramos X", textos do painel esquerdo). `myRole`
+continua exatamente os mesmos 2 valores (`artista`/`booker`) de
+sempre. Validado (`tsc`/`eslint`/`next build` limpos) e confirmado.
+
+## Como usar isso
+
+## Minha equipe — empty state redesenhado + "Booker" remanescente no catálogo de planos, commit `4ae74fa` — 01/10/2026
+
+Dois achados depois do commit acima: (1) a fundadora encontrou, numa
+captura de tela do modal de upgrade, que a lista de features do plano
+Pro ainda mostrava "Booker / Minha equipe" — vinha de
+`src/lib/plans.ts` (catálogo compartilhado por `ProUpgradeModal` e
+`PlanPicker` do onboarding), fora dos 3 arquivos já corrigidos no
+commit anterior. Corrigido pra "Minha equipe". (2) pedido explícito de
+redesign do empty state de Minha equipe (aparência de placeholder,
+card alto demais): removido o ícone em círculo, padding reduzido pra
+~32px (`!p-8` sobre `ProCard`, card ~160-180px de altura em vez de uma
+área vazia grande), conteúdo alinhado à esquerda, texto novo ("Nenhuma
+pessoa conectada ainda" / "Adicione alguém de confiança para ajudar a
+operar seus bookings com você."), frase sobre "marketplace" removida.
+Botão do CTA ganhou um prop novo opcional em `AddConnectionModal`
+(`triggerLabel`) pra mostrar um rótulo mais curto ("+ Adicionar
+pessoa") só nesse ponto, sem mexer no botão do header da página (mesmo
+componente, outro contexto) nem em nenhuma Server Action/lógica.
+Validado (`tsc`/`eslint`/`next build` limpos) e enviado pra revisão da
+fundadora em produção.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
