@@ -408,7 +408,7 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
           message={
             items.length === 0
               ? 'Nenhum trabalho ainda.'
-              : `Nenhum trabalho em "${WORK_STAGE_LABEL[tab === 'todos' ? 'negociacao' : tab] ?? 'Todos'}" com esses filtros.`
+              : `Nenhum trabalho em "${tab === 'todos' ? 'Todos' : WORK_STAGE_LABEL[tab]}" com esses filtros.`
           }
         />
       ) : (
@@ -433,9 +433,17 @@ export function ProWorkListView({ items }: { items: WorkItem[] }) {
 // (ver @modal/(.)bookings/[id]); pra pedido, a página de detalhe de
 // sempre, onde a decisão pendente já é tratada dentro da Doopla.
 function BookingRowCompact({ item }: { item: WorkItem }) {
+  // Bookings abrem no drawer lateral (aprovado pela fundadora,
+  // 30/09/2026) via um alias dedicado (/ver) interceptado só a partir
+  // daqui — ver booking-drawer-shell.tsx e @modal/(.)bookings/[id]/ver
+  // pro motivo de não interceptar a URL canônica do booking
+  // diretamente (usada hoje por TrabalhosList do Booker em página
+  // cheia, fora do escopo desta sessão). Pedido (kind='pedido') não
+  // tem rota de drawer — segue pra página de detalhe de sempre.
+  const href = item.kind === 'booking' ? `${item.href}/ver` : item.href;
   return (
     <Link
-      href={item.href}
+      href={href}
       className="flex items-center gap-3 rounded-[12px] border border-[var(--pro-line)] bg-[var(--pro-panel)] px-4 py-3 transition-colors hover:border-[var(--pro-off)]/30"
     >
       <div className="min-w-0 flex-1">
