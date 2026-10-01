@@ -19103,3 +19103,28 @@ Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
 paramos.
+
+## Home — link "Ver todas as decisões" removido (levava a rota morta), commit `7a72639` — 01/10/2026
+
+Fundadora reportou, via QA manual: clicar em "Ver todas as decisões"
+na Home recarregava a própria Home em vez de navegar pra algum lugar.
+Causa raiz confirmada em código: o link (`professional-home-view.tsx`)
+apontava pra `/dashboard/decisoes`, que é só um
+`redirect('/dashboard')` desde 15/09/2026 — a tela própria de Decisões
+foi deprecada nessa data (decisão já registrada em `decisoes/page.tsx`:
+nunca teve capacidade de resolução própria, todo CTA de lá já navegava
+pra dentro de uma conversa). A lista "Precisa de você" na Home já
+renderiza TODOS os itens de `needsYouDecisions` inline, sem
+slice/paginação — então o link não levava a lugar nenhum que já não
+estivesse na própria tela. Removido (não redirecionado pra outro
+lugar, porque não havia "mais" pra ver). Os outros dois links do mesmo
+bloco ("Ver bookings aguardando resposta"/"Ver pedidos recebidos",
+apontando pra `/dashboard/trabalhos`, rota viva) não foram tocados.
+Validado (`tsc`/`eslint`/`next build` limpos).
+
+## Como usar isso
+
+Toda vez que eu terminar um item, atualizo o status aqui e commito
+junto com o código. Se quiser saber "o que falta", é só pedir pra eu
+reler este arquivo — não preciso da conversa inteira pra saber onde
+paramos.
