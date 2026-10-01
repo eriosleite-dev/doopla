@@ -16,9 +16,9 @@ import type { PlanId } from './market';
 // já tinha aprovado (e-mail de representação, analytics avançados,
 // materiais, automações avançadas — nenhuma dessas tem gate real nem
 // UI construída). Corrigido aqui: só entra em `features`/`moreFeatures`
-// o que tem gate/implementação real hoje. "Booker / Minha equipe"
-// entra porque o gate real (hasDooplaPro() + enforcement backend) foi
-// implementado nesta mesma rodada — não é mais promessa.
+// o que tem gate/implementação real hoje. "Minha equipe" entra porque
+// o gate real (hasDooplaPro() + enforcement backend) foi implementado
+// nesta mesma rodada — não é mais promessa.
 export const PLAN_CARDS: {
   id: PlanId;
   name: string;
@@ -47,7 +47,7 @@ export const PLAN_CARDS: {
     id: 'pro',
     name: 'Doopla Pro',
     description: 'Mais estrutura para fazer sua carreira crescer.',
-    features: ['Bookings ilimitados', 'Booker / Minha equipe'],
+    features: ['Bookings ilimitados', 'Minha equipe'],
     moreFeatures: [
       'Tudo o que vem no plano Básico',
       'Negociação respeitando suas regras e aprovações',

@@ -98,6 +98,7 @@ export function AddConnectionModal({
   myRole,
   variant = 'legacy',
   hasProPlan,
+  triggerLabel,
 }: {
   myRole: Role;
   variant?: Variant;
@@ -109,6 +110,11 @@ export function AddConnectionModal({
   // aqui embaixo, que é só a PELE visual (variant === 'pro'), sem
   // nenhuma relação com plano/assinatura.
   hasProPlan?: boolean;
+  // Override só do texto do botão-gatilho (fechado), pra telas que
+  // precisam de um rótulo mais curto no mesmo lugar (ex.: empty state
+  // compacto de Minha equipe, 01/10/2026). `undefined` preserva
+  // copy.openButton de sempre — o modal aberto nunca muda.
+  triggerLabel?: string;
 }) {
   const isPro = variant === 'pro';
   const [open, setOpen] = useState(false);
@@ -123,6 +129,7 @@ export function AddConnectionModal({
   const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const copy = ROLE_COPY[myRole];
+  const openLabel = triggerLabel ?? copy.openButton;
 
   const primaryBtn = isPro ? proPrimaryButtonClass : accentButtonClass;
   const secondaryBtn = isPro ? proGhostButtonClass : ghostButtonClass;
@@ -231,7 +238,7 @@ export function AddConnectionModal({
       return (
         <>
           <button type="button" onClick={() => setUpgradeModalOpen(true)} className={primaryBtn}>
-            {copy.openButton}
+            {openLabel}
           </button>
           <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="equipe" />
         </>
@@ -239,7 +246,7 @@ export function AddConnectionModal({
     }
     return (
       <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>
-        {copy.openButton}
+        {openLabel}
       </button>
     );
   }
