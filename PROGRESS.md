@@ -19552,6 +19552,38 @@ aplicada em nenhum banco** — pronta pra `doopla-qa-staging` primeiro,
 QA manual de `/admin` com conta admin antes de produção, como
 combinado.
 
+## Painel Admin V1 — revisão estática aprovada, copy de custo de IA ajustada — 01/10/2026
+
+Fundadora aprovou a revisão de segurança da `0096` (achado do guard de
+auto-moderação, corrigido na rodada anterior) e vai aplicar a migration
+em `doopla-qa-staging` agora — ainda **não aplicada em nenhum banco**,
+produção fica pra depois do QA manual do Admin passar em staging.
+
+**Ajuste de copy antes do QA** (ela pediu, dado o achado de que nem
+toda chamada real de IA grava em `ai_usage_events`): título/label de
+"Custo estimado de IA" → **"Custo estimado das chamadas monitoradas"**
+em `/admin` (overview) e `/admin/ia-custo`, com nota discreta sempre
+visível "Algumas chamadas de IA ainda não estão incluídas neste
+cálculo." (em `/admin/ia-custo`, a nota já nomeia quais features são
+monitoradas hoje — classificação/planejamento/teste — e quais não são —
+aprovação/policy-gate/detecção de proposta). Decisão explícita, não
+implementação: `approval/resolver`, `policy-gate-post` e
+`inbound-proposal` **não** ganham instrumentação nesta rodada —
+registrado como gap de observabilidade pra decisão futura, não
+resolvido aqui. `tsc`/`eslint`/`build` limpos.
+
+**Checklist de QA manual em staging** (ela vai rodar com conta real
+`is_admin=true` depois de aplicar a `0096`, eu não tenho acesso direto
+ao staging): 1) usuário comum não acessa `/admin`; 2) conta admin
+acessa; 3) overview carrega sem erro; 4) busca+detalhe de usuários;
+5) Comunidade encontra perfil/tópico/post; 6) restringir/bloquear
+perfil de teste; 7) remover/restaurar tópico e post; 8) cada ação gera
+exatamente um audit event correto; 9) automoderação retorna erro
+explícito e NÃO gera audit event (valida o fix da rodada anterior);
+10) IA/custo mostra tokens+custo estimado corretamente, inclusive
+"preço não configurado" quando aplicável. Produção só depois de tudo
+isso passar.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

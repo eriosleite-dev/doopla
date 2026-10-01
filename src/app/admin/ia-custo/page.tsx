@@ -9,10 +9,14 @@ export default async function AdminIaCustoPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-lg font-semibold">Custo estimado de IA</h1>
+      <h1 className="text-lg font-semibold">Custo estimado das chamadas monitoradas</h1>
       <p className="text-[12px] text-zinc-500">
         Últimos 30 dias, por dia/modelo/feature/status — dados reais de <code className="text-zinc-400">ai_usage_events</code>. Custo é
         sempre uma ESTIMATIVA calculada em código (tokens × preço por modelo), nunca um valor real cobrado pelo provider.
+      </p>
+      <p className="text-[12px] text-zinc-600">
+        Algumas chamadas de IA ainda não estão incluídas neste cálculo (classificação, planejamento e o teste de infraestrutura são
+        monitorados hoje; aprovação, policy-gate e detecção de proposta ainda não gravam uso).
       </p>
 
       <div className="overflow-hidden rounded-xl border border-zinc-800">

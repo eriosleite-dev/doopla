@@ -43,10 +43,12 @@ export default async function AdminOverviewPage() {
         <StatTile label="Cadastros (7d)" value={pulse?.signups_last_7d ?? '—'} />
         <StatTile label="Cadastros (30d)" value={pulse?.signups_last_30d ?? '—'} />
         <StatTile
-          label="Custo estimado de IA (30d)"
+          label="Custo estimado das chamadas monitoradas (30d)"
           value={`R$ ${(configuredCostCents / 100).toFixed(2)}${hasUnconfiguredModel ? '*' : ''}`}
         />
       </div>
+
+      <p className="text-[12px] text-zinc-600">Algumas chamadas de IA ainda não estão incluídas neste cálculo.</p>
 
       {hasUnconfiguredModel && (
         <p className="text-[12px] text-zinc-500">
