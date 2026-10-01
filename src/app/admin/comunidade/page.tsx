@@ -9,6 +9,7 @@ import {
   moderateRestoreTopicAction,
   moderateSetVisibilityAction,
 } from './actions';
+import { SubmitButton } from './submit-button';
 
 const ENTITY_LABEL: Record<AdminCommunityContentRow['entity_type'], string> = {
   community_profile: 'Perfil',
@@ -34,9 +35,7 @@ function ModerationControls({ row, query }: { row: AdminCommunityContentRow; que
           placeholder="Motivo (obrigatório)"
           className="w-48 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[12px] placeholder:text-zinc-600"
         />
-        <button type="submit" className="rounded bg-zinc-100 px-3 py-1 text-[12px] font-semibold text-zinc-900">
-          Aplicar
-        </button>
+        <SubmitButton pendingLabel="Aplicando...">Aplicar</SubmitButton>
       </form>
     );
   }
@@ -69,9 +68,9 @@ function ModerationControls({ row, query }: { row: AdminCommunityContentRow; que
         placeholder="Motivo (obrigatório)"
         className="w-48 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[12px] placeholder:text-zinc-600"
       />
-      <button type="submit" className="rounded bg-zinc-100 px-3 py-1 text-[12px] font-semibold text-zinc-900">
+      <SubmitButton pendingLabel={isRemovedByModerator ? 'Restaurando...' : 'Removendo...'}>
         {isRemovedByModerator ? 'Restaurar' : 'Remover'}
-      </button>
+      </SubmitButton>
     </form>
   );
 }
