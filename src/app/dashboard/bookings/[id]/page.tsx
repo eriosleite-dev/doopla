@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
-import { getBookingCheckpoints, getBookingDetail, getBookingReviews } from '../../data';
 import { getSessionProfile } from '../../session';
+import { loadBookingDetailViewProps } from './booking-detail-loader';
 import { LegacyBookingDetailView } from './legacy-booking-detail-view';
 import { ProBookingDetailView } from './pro-booking-detail-view';
 
@@ -32,38 +32,18 @@ export const metadata: Metadata = {
 // mudança — comportamento idêntico preservado abaixo, só sem a
 // consulta desperdiçada. Helpers preservados intactos em
 // src/lib/conversations/data.ts pra reconciliação futura.
+//
+// Busca extraída pra booking-detail-loader.ts (BookingDrawer,
+// 30/09/2026) — o drawer lateral (@modal/(.)bookings/[id]/ver) usa a
+// mesma função, pra nunca duplicar esta lógica.
 export default async function BookingDetailPage(
   props: PageProps<'/dashboard/bookings/[id]'>
 ) {
   const { id } = await props.params;
   const { supabase, user, profile } = await getSessionProfile();
 
-  const detail = await getBookingDetail(id, user.id, profile.role, supabase);
-  if (!detail) notFound();
-
-  const { booking, events, isProposer } = detail;
-  const checkpoints = getBookingCheckpoints(booking);
-  const hasActiveCheckpoints = !['proposta_enviada', 'recusada', 'cancelada'].includes(booking.status);
-  const reviews =
-    booking.status === 'concluida'
-      ? await getBookingReviews(booking.id, user.id, supabase)
-      : null;
-
-  const conversationId = null;
-  const conversationFacts = null;
-
-  const viewProps = {
-    booking,
-    events,
-    isProposer,
-    checkpoints,
-    hasActiveCheckpoints,
-    reviews,
-    conversationId,
-    conversationFacts,
-    role: profile.role,
-    userId: user.id,
-  };
+  const viewProps = await loadBookingDetailViewProps(id, user.id, profile.role, supabase);
+  if (!viewProps) notFound();
 
   if (profile.role === 'booker') {
     return <LegacyBookingDetailView {...viewProps} />;
