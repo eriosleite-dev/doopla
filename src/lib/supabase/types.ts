@@ -1052,6 +1052,76 @@ export type CommunityTopic = {
 export type CommunityTrendingTopic = CommunityTopic & { trending_score: number };
 export type CommunityForYouTopic = CommunityTopic & { for_you_score: number };
 
+// Painel Admin V1 (migration 0096) — formas de retorno das RPCs
+// admin_*, cada uma já a projeção mínima que a function devolve
+// (nunca select * por baixo).
+export type AdminProfileSearchRow = {
+  profile_id: string;
+  full_name: string;
+  role: UserRole;
+  email: string;
+  phone: string | null;
+  slug: string | null;
+  status: ProfileStatus;
+  is_admin: boolean;
+  plan_status: string | null;
+  created_at: string;
+};
+
+export type AdminProfileDetail = AdminProfileSearchRow & {
+  city: string | null;
+  state: string | null;
+  status_changed_at: string | null;
+  plan_role: UserRole | null;
+  trial_ends_at: string | null;
+  community_visibility_status: string | null;
+};
+
+export type AdminCommunityContentRow = {
+  entity_type: 'community_profile' | 'community_topic' | 'community_post';
+  entity_id: string;
+  author_profile_id: string;
+  author_name: string;
+  excerpt: string | null;
+  status: string;
+  created_at: string;
+};
+
+// usage_date/model/feature/status já agregados pela function — o
+// custo estimado (nunca "real": cost_cents_estimate não é preenchido
+// hoje) é calculado em src/lib/admin/ai-pricing.ts a partir destes
+// campos, nunca lido pronto do banco.
+export type AdminAiCostUsageRow = {
+  usage_date: string;
+  model: string;
+  feature: string;
+  status: string;
+  call_count: number;
+  input_tokens: number;
+  output_tokens: number;
+};
+
+export type AdminBetaPulse = {
+  active_profiles_count: number;
+  signups_last_7d: number;
+  signups_last_30d: number;
+  product_events_last_7d: number;
+  intervention_moments_last_7d: number;
+};
+
+export type AdminAuditEventRow = {
+  id: string;
+  admin_profile_id: string;
+  admin_name: string;
+  action: string;
+  target_table: string;
+  target_id: string;
+  previous_state: Record<string, unknown> | null;
+  new_state: Record<string, unknown> | null;
+  reason: string;
+  created_at: string;
+};
+
 export type CommunityTopicTag = {
   topic_id: string;
   tag_id: string;
@@ -1829,6 +1899,54 @@ export type Database = {
       mark_contact_message_notification: {
         Args: { p_id: string; p_status: 'sent' | 'failed'; p_error?: string | null };
         Returns: undefined;
+      };
+      // Painel Admin V1 (migration 0096) — toda function abaixo
+      // verifica auth.uid()+profiles.is_admin internamente
+      // (_assert_is_admin, nunca grantada a authenticated/anon),
+      // nunca confia em is_admin vindo do client.
+      admin_set_community_visibility: {
+        Args: { p_profile_id: string; p_status: CommunityVisibilityStatus; p_reason: string };
+        Returns: undefined;
+      };
+      admin_remove_community_topic: {
+        Args: { p_topic_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      admin_restore_community_topic: {
+        Args: { p_topic_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      admin_remove_community_post: {
+        Args: { p_post_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      admin_restore_community_post: {
+        Args: { p_post_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      admin_search_profiles: {
+        Args: { p_query?: string | null; p_limit?: number };
+        Returns: AdminProfileSearchRow[];
+      };
+      admin_get_profile_detail: {
+        Args: { p_profile_id: string };
+        Returns: AdminProfileDetail[];
+      };
+      admin_search_community_content: {
+        Args: { p_query?: string | null; p_limit?: number };
+        Returns: AdminCommunityContentRow[];
+      };
+      admin_get_ai_cost_summary: {
+        Args: { p_since?: string };
+        Returns: AdminAiCostUsageRow[];
+      };
+      admin_get_beta_pulse: {
+        Args: Record<string, never>;
+        Returns: AdminBetaPulse[];
+      };
+      admin_list_audit_events: {
+        Args: { p_limit?: number };
+        Returns: AdminAuditEventRow[];
       };
     };
   };

@@ -7,10 +7,10 @@ import { whatsappPublicNumber } from '@/lib/supabase/env';
 import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 import { latestConversationByRelatedId } from '@/lib/conversations/data';
-import { groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
+import { decisionPriority, groupDecisionsByConversation, sortDecisionsByPriority } from '@/lib/decisions/data';
 
 import { classifyBookingAttention } from './booking-attention';
-import { conversationHref } from './decisoes/format-cards';
+import { conversationHref, decisionBlockReasonLabel } from './decisoes/format-cards';
 import { resolveDooplaIntervention } from './doopla-intervention';
 import { getActivePaymentDetails, getArtistMatchingCompletion, getMyOpportunities, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import {
@@ -21,6 +21,7 @@ import {
 } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
 import { bookingStatusTone, capitalizeName, formatRelativeTime, proPlanBadgeClass, proStatusPillClass } from './pro-format';
+import { ProNeedsYouList, type PendencyRow } from './pro-needs-you-list';
 import { ProReferralGainsButton } from './pro-referral-gains-button';
 import { ProAccordion, ProCopyButton } from './pro-ui';
 import { STATUS_LABELS } from './ui';
@@ -71,44 +72,40 @@ export async function ProfessionalHomeView({
     })
     .filter((item) => item.intervention.needsYou);
 
-  // Item 3/15 da revisão Professional Web Dashboard (06/09/2026): a
-  // contagem exibida (card, accordion, badge do sidebar) é SEMPRE
-  // conversationSummary.needsYouCount (getCachedConversationStateSummary
-  // — fonte única). A lista abaixo é filtrada a um subconjunto
-  // GARANTIDO desse mesmo conjunto (needsYouConversationIds), agrupada
-  // por conversa (nunca 2 cards pra 1 conversa) — nunca mais diverge do
-  // número mostrado. Exclui decisões já ligadas a um pedido
-  // (relatedOpportunityId) — essas são mostradas em pedidosRecebidosAbertos
-  // acima, com nome do cliente real, nunca duplicadas aqui como
-  // "Conversa em andamento" genérico.
+  // Correção 01/10/2026 (achado de QA da fundadora: badge mostrava 17,
+  // só 1 linha renderizada) — causa raiz: conversationSummary.needsYouCount
+  // (getCachedConversationStateSummary) conta TODA conversa em estado
+  // needs_you sob RLS, sem nenhum filtro de opportunity.source — mas a
+  // lista sempre excluiu decisões ligadas a um pedido com source
+  // diferente de 'artist_link' (mural/legado, decisão deliberada de
+  // 15/09/2026 de nunca dar visibilidade nova a marketplace) E cortava
+  // em 5 (.slice(0, 5)) mesmo quando havia mais. Resultado: pendências
+  // reais contadas no badge, mas invisíveis nas 3 fontes renderizadas.
+  // Fix: o badge NUNCA mais soma um número à parte — ele é literalmente
+  // `allPendencyRows.length` (ver abaixo), e a lista nunca corta no
+  // servidor (ProNeedsYouList decide quanto mostrar/expandir no
+  // client). Contador e lista sempre compatíveis por construção, nunca
+  // mais podem divergir. needsYouDecisions continua excluindo decisões
+  // já ligadas a um pedido (relatedOpportunityId) — essas entram via
+  // pedidosRecebidosAbertos acima, com nome do cliente real, nunca
+  // duplicadas aqui como "Conversa em andamento" genérico; pedidos de
+  // source não-artist_link continuam de fora da LISTA (decisão de
+  // produto preservada), e por isso também saem da CONTAGEM agora —
+  // nunca mais um número que promete uma pendência que a tela não
+  // mostra.
   const needsYouDecisions = sortDecisionsByPriority(
     groupDecisionsByConversation(decisions).filter(
       (d) => conversationSummary.needsYouConversationIds.includes(d.conversationId) && d.relatedOpportunityId == null
     )
-  ).slice(0, 5);
+  );
 
-  // "Precisa de você" unificado (D3/D5, auditoria de divergência
-  // Web×App, 09/09/2026): antes a Home só contava conversas
-  // (conversationSummary.needsYouCount) — uma proposta de booking
-  // aguardando resposta do profissional (classifyBookingAttention ===
-  // 'precisa_de_voce') ficava invisível aqui, só aparecendo como badge
-  // no menu lateral. Investigação confirmou que os dois nunca se
-  // sobrepõem hoje: conversations.related_booking_id (FK que ligaria
-  // uma conversa à SUA própria proposta) nunca é escrito em nenhum
-  // caminho de código atual (proposeBookingAction/
-  // selectBookerForOpportunityAction criam bookings sem tocar
-  // conversations; ensure_opportunity_for_conversation, migration
-  // 0051, só grava related_opportunity_id) — os dois conjuntos são
-  // estruturalmente disjuntos, então a soma abaixo nunca conta a mesma
-  // pendência real duas vezes. Se algum dia related_booking_id passar
-  // a ser escrito ligando uma conversa à proposta que ela mesma gerou,
-  // esta soma precisa ser revisada antes de continuar ingênua.
+  // Booking com proposta aguardando resposta do profissional
+  // (classifyBookingAttention === 'precisa_de_voce') — estruturalmente
+  // disjunto de needsYouDecisions/pedidosRecebidosAbertos (ver 09/09/2026:
+  // conversations.related_booking_id nunca é escrito ligando uma
+  // conversa à proposta que ela mesma gerou), então nunca duplica a
+  // mesma pendência ao entrar na lista unificada abaixo.
   const bookingsNeedingResponse = bookings.filter((b) => classifyBookingAttention(b, userId) === 'precisa_de_voce');
-  // pedidosRecebidosAbertos NÃO entra nesta soma: por construção, todo
-  // item ali já tem uma conversation em estado needs_you, então já está
-  // contado dentro de conversationSummary.needsYouCount — somar de novo
-  // duplicaria a mesma pendência (correção 15/09/2026, 2ª rodada).
-  const attentionCount = bookingsNeedingResponse.length + conversationSummary.needsYouCount;
 
   const [recentActivity, orcamentoInfo, referralSummary, activePaymentDetails, matchingCompletion] = await Promise.all([
     getRecentActivity(userId, profile.role, bookings, supabase),
@@ -135,6 +132,63 @@ export async function ProfessionalHomeView({
   const origin = orcamentoInfo?.publicEnabled ? await siteOrigin() : null;
   const orcamentoUrl = orcamentoInfo?.publicEnabled && profile.slug ? `${origin}/orcamento/${profile.slug}` : null;
   const whatsappNumber = whatsappPublicNumber();
+
+  // Lista unificada de "Precisa de você" (correção 01/10/2026) — as 3
+  // fontes (pedidos recebidos pelo link, bookings aguardando resposta,
+  // decisões de conversa) viram UM array só de linhas no mesmo
+  // formato, ordenado por prioridade (igual a sortDecisionsByPriority:
+  // rascunho pronto primeiro, depois pendência comum, depois bloqueada
+  // por dado operacional faltando — pedidos/bookings entram na
+  // prioridade do meio, mesmo nível de "ação direta precisa de você"
+  // que um pending_reply comum) e, dentro da mesma prioridade, mais
+  // recente primeiro. Única fonte pra `attentionCount` (badge/hero/
+  // stats) E pro card expansível (ProNeedsYouList) — os dois nunca mais
+  // podem mostrar números diferentes, porque o card É este array.
+  const pedidoRows: PendencyRow[] = pedidosRecebidosAbertos.map(({ opportunity: o, intervention }) => ({
+    id: `pedido-${o.id}`,
+    href: `/dashboard/oportunidades/${o.id}`,
+    name: o.client_name || 'Novo pedido',
+    detail: intervention.detail,
+    right: { kind: 'pill', label: intervention.headline, className: proStatusPillClass(intervention.tone) },
+  }));
+  const pedidoSortAt = new Map(pedidosRecebidosAbertos.map(({ opportunity: o }) => [`pedido-${o.id}`, o.created_at]));
+
+  const bookingRows: PendencyRow[] = bookingsNeedingResponse.map((b) => ({
+    id: `booking-${b.id}`,
+    href: `/dashboard/bookings/${b.id}`,
+    name: b.otherPartyName,
+    detail: 'Proposta de booking aguardando sua resposta.',
+    right: { kind: 'pill', label: STATUS_LABELS[b.status], className: proStatusPillClass(bookingStatusTone(b, userId)) },
+  }));
+  const bookingSortAt = new Map(bookingsNeedingResponse.map((b) => [`booking-${b.id}`, b.updated_at]));
+
+  const decisionRows: PendencyRow[] = needsYouDecisions.map((d) => {
+    const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
+    return {
+      id: `decision-${d.id}`,
+      href: conversationHref(d.relatedBookingId, d.conversationId),
+      name: booking?.otherPartyName ?? 'Conversa em andamento',
+      detail: d.kind === 'prepared_draft' ? 'A Doopla preparou uma resposta. Revise antes de enviar.' : decisionBlockReasonLabel(d.blockReason),
+      right: { kind: 'time', label: formatRelativeTime(d.createdAt) },
+    };
+  });
+  const decisionPriorityAndSortAt = new Map(
+    needsYouDecisions.map((d) => [`decision-${d.id}`, { priority: decisionPriority(d), sortAt: d.createdAt }])
+  );
+
+  const allPendencyRows: PendencyRow[] = [...pedidoRows, ...bookingRows, ...decisionRows].sort((a, b) => {
+    // Pedidos/bookings são ação direta (aceitar/recusar/responder) —
+    // mesma prioridade (1) de um pending_reply comum, nunca mais
+    // urgentes que um rascunho já pronto (0) nem "furando a fila" de
+    // uma decisão bloqueada (2).
+    const priorityOf = (row: PendencyRow) => decisionPriorityAndSortAt.get(row.id)?.priority ?? 1;
+    const sortAtOf = (row: PendencyRow) => decisionPriorityAndSortAt.get(row.id)?.sortAt ?? pedidoSortAt.get(row.id) ?? bookingSortAt.get(row.id) ?? '';
+    const priorityDiff = priorityOf(a) - priorityOf(b);
+    if (priorityDiff !== 0) return priorityDiff;
+    return sortAtOf(b).localeCompare(sortAtOf(a));
+  });
+
+  const attentionCount = allPendencyRows.length;
 
   if (!homeFacts) {
     return (
@@ -198,124 +252,18 @@ export async function ProfessionalHomeView({
          de lá não têm margin próprio. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
         <div className="min-w-0">
+          {/* Expansível dentro do próprio card (01/10/2026, pedido da
+             fundadora) — "Ver todas as decisões"/"Ver bookings
+             aguardando resposta"/"Ver pedidos recebidos" (3 CTAs
+             separados, um deles pra rota morta) viram 1 CTA só ("Ver
+             todas as pendências") que expande a lista aqui dentro,
+             nunca navega pra outra página. Mesma linha única clicável
+             já aprovada (14/09 e 22/09/2026), nenhum card dentro de
+             card — só quem decide mostrar 3 ou todas é o client
+             component (ProNeedsYouList), porque isso é estado de UI
+             (expandido/colapsado), nunca dado de servidor. */}
           <ProAccordion id="precisa-de-voce" title="Precisa de você" count={attentionCount} defaultOpen={false}>
-            {attentionCount === 0 ? (
-              <p className="font-pro-sub py-2 text-[14px] font-semibold text-[var(--pro-off)]">
-                Tudo certo por aqui.
-              </p>
-            ) : (
-              <>
-                {(pedidosRecebidosAbertos.length > 0 || bookingsNeedingResponse.length > 0 || needsYouDecisions.length > 0) && (
-                  // Simplificação de UI (14/09/2026, achado da fundadora
-                  // no QA): "card dentro de card" ocupava espaço demais —
-                  // vira 1 linha clicável por pendência (nome/cliente —
-                  // descrição curta, badge de status), nunca mais um
-                  // grid de caixas. Mesma contagem/estado/lógica de
-                  // antes, só a apresentação mudou. `needsYouDecisions`
-                  // (conversas/decisões) completado nesta rodada (22/09/2026)
-                  // pra seguir o MESMO padrão — a simplificação de 14/09
-                  // só tinha sido aplicada a pedidos/bookings, deixando
-                  // esta 3ª fonte (a mais comum) ainda como grid de
-                  // caixas grandes. Mesmos dados/lógica, só apresentação.
-                  //
-                  // prefetch={false} nos 3 <Link> abaixo (30/09/2026,
-                  // achado real de QA) — Network tab mostrou a Home
-                  // levando 14-35s pra terminar de carregar: cada linha
-                  // desta lista é um <Link>, e por padrão o Next
-                  // pré-carrega TODOS que aparecem na tela ao mesmo
-                  // tempo assim que entram no viewport — com 17 itens
-                  // (comum aqui) isso é uma rajada de ~17 requisições
-                  // simultâneas. Mesma causa raiz, mesma correção já
-                  // aplicada à sidebar em 08/09/2026 (ver
-                  // pro-sidebar-nav.tsx) — só nunca tinha chegado até
-                  // aqui. Nenhuma mudança de comportamento de clique,
-                  // só para de adiantar dado que a pessoa pode nunca
-                  // abrir.
-                  <div className="mb-3 divide-y divide-[var(--pro-line)] border-b border-[var(--pro-line)]">
-                    {pedidosRecebidosAbertos.map(({ opportunity: o, intervention }) => (
-                      <Link
-                        key={o.id}
-                        href={`/dashboard/oportunidades/${o.id}`}
-                        prefetch={false}
-                        className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
-                      >
-                        <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
-                          <span className="font-pro-sub font-bold">{o.client_name || 'Novo pedido'}</span> — {intervention.detail}
-                        </p>
-                        <span className={`flex-none ${proStatusPillClass(intervention.tone)}`}>{intervention.headline}</span>
-                      </Link>
-                    ))}
-                    {bookingsNeedingResponse.map((b) => (
-                      <Link
-                        key={b.id}
-                        href={`/dashboard/bookings/${b.id}`}
-                        prefetch={false}
-                        className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
-                      >
-                        <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
-                          <span className="font-pro-sub font-bold">{b.otherPartyName}</span> — Proposta de booking
-                          aguardando sua resposta.
-                        </p>
-                        <span className={`flex-none ${proStatusPillClass(bookingStatusTone(b, userId))}`}>
-                          {STATUS_LABELS[b.status]}
-                        </span>
-                      </Link>
-                    ))}
-                    {needsYouDecisions.map((d) => {
-                      const booking = d.relatedBookingId ? bookingById.get(d.relatedBookingId) : undefined;
-                      const href = conversationHref(d.relatedBookingId, d.conversationId);
-                      return (
-                        <Link
-                          key={d.id}
-                          href={href}
-                          prefetch={false}
-                          className="flex items-center justify-between gap-3 py-2.5 hover:bg-white/[0.02]"
-                        >
-                          <p className="min-w-0 truncate text-[13px] text-[var(--pro-off)]">
-                            <span className="font-pro-sub font-bold">{booking?.otherPartyName ?? 'Conversa em andamento'}</span> —{' '}
-                            {d.kind === 'prepared_draft'
-                              ? 'A Doopla preparou uma resposta. Revise antes de enviar.'
-                              : decisionBlockReasonLabel(d.blockReason)}
-                          </p>
-                          <span className="font-doopla-mono flex-none text-[10.5px] font-bold text-[var(--pro-tx-30)]">
-                            {formatRelativeTime(d.createdAt)}
-                          </span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-                <div className="mt-4 flex flex-wrap gap-4">
-                  {needsYouDecisions.length > 0 && (
-                    <Link
-                      href="/dashboard/decisoes"
-                      prefetch={false}
-                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
-                    >
-                      Ver todas as decisões →
-                    </Link>
-                  )}
-                  {bookingsNeedingResponse.length > 0 && (
-                    <Link
-                      href="/dashboard/trabalhos"
-                      prefetch={false}
-                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
-                    >
-                      Ver bookings aguardando resposta →
-                    </Link>
-                  )}
-                  {pedidosRecebidosAbertos.length > 0 && (
-                    <Link
-                      href="/dashboard/trabalhos"
-                      prefetch={false}
-                      className="font-pro-sub inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--pro-red)] hover:underline"
-                    >
-                      Ver pedidos recebidos →
-                    </Link>
-                  )}
-                </div>
-              </>
-            )}
+            <ProNeedsYouList rows={allPendencyRows} />
           </ProAccordion>
 
           {upcomingBookingsAccordion}
@@ -372,14 +320,6 @@ export async function ProfessionalHomeView({
       </div>
     </div>
   );
-}
-
-function decisionBlockReasonLabel(reason: string | null): string {
-  if (!reason) return 'A Doopla está esperando uma decisão sua pra continuar essa conversa.';
-  const known: Record<string, string> = {
-    professional_not_operationally_ready: 'Precisa confirmar alguns dados antes da Doopla continuar por você.',
-  };
-  return known[reason] ?? 'A Doopla pausou aqui e precisa de você pra seguir.';
 }
 
 function ProHero({

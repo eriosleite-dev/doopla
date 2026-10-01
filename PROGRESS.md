@@ -18915,6 +18915,831 @@ continuam 1 por dia, como sempre.
 Aguardando fundadora reproduzir o mesmo caminho (viagem de vários
 dias → excluir) pra confirmar em produção.
 
+## Agenda — edição de marcações + copy revisada — `[DELIVERED]` — 01/10/2026
+
+Continuação do QA manual da Agenda (bug de exclusão em cascata já
+corrigido, commit `e0084aa`). Fundadora pediu edição de marcações
+existentes (ex.: encurtar uma viagem de 10 dias em vez de apagar e
+recriar) — implementada (commit `57daf55`): `updateAgendaEntryAction`
++ botão "Editar" inline na lista "Eventos do mês", pré-preenchido com
+os valores reais do registro (nunca o recorte truncado do mês em
+exibição). Copy do subtítulo revisada ("Alterações aqui não afetam
+bookings já confirmados") e placeholder da Nota trocado pra "Ex:
+Férias", nos dois forms de criação (artista e Booker legado).
+
+Migration `0094_agenda_entries_update_policy.sql` (policy de UPDATE em
+`agenda_entries` — só existia select/insert/delete desde a criação da
+tabela, migration 0030) aplicada e validada pela fundadora em
+`doopla-qa-staging` e em produção (`doopla`), mesmo processo de
+sempre. `tsc`/`eslint`/`next build` limpos.
+
+Confirmado por leitura de código, respondendo perguntas da fundadora
+antes de fechar Agenda como PASS: (1) bookings confirmados (status
+aceita/aguardando_pagamento/concluída) aparecem automaticamente na
+Agenda como "Confirmado", sem ação manual — `getAgendaEvents`,
+`data.ts`. (2) marcar "Indisponível" numa data com booking confirmado
+PRESERVA o booking (tabelas inteiramente separadas, nenhuma escrita
+cruzada) mas NÃO sinaliza o conflito — só aparecem 2 pontinhos de cor
+no mesmo dia, sem aviso textual. Gap de produto registrado, não
+implementado (feature nova, aguardando decisão da fundadora se quer
+isso pro beta ou não).
+
+Aguardando fundadora testar o botão "Editar" de verdade em produção
+antes de fechar Agenda como PASS definitivo.
+
+**Atualização (01/10/2026)**: fundadora confirmou "tudo certo" em
+produção. **Agenda fechada como `PASS` definitivo** — bug de exclusão
+em cascata corrigido, edição funcionando, copy revisada, perguntas de
+regra de negócio respondidas. Próximo item do plano de QA manual:
+Settings V2 (`/dados`, `/trabalho`, `/publico`, `/canais`).
+
+## Como usar isso
+
+## QA manual — Settings V2 (`PASS`), rota `/canais` esclarecida como morta — 01/10/2026
+
+Fundadora questionou se `/dashboard/perfil/canais` ainda fazia sentido
+testar — confirmado no código que é rota morta desde 15/09/2026 (só um
+`redirect('/dashboard/perfil')`, conteúdo real de "Canais da sua
+Doopla" vive inline em `pro-configuracoes-view.tsx`, renderizado em
+`/dashboard/perfil`). `/dashboard/perfil/publico` confirmado como
+Settings V2 atual (não legado), usa `ProSettingsDetailHeader`.
+
+Pendência de QA registrada desde §100 (as 4 superfícies de Settings
+V2: editar→salvar→recarregar→confirmar persistência) **fechada como
+`PASS`**: `/dados` (dados profissionais/como trabalha, unificados),
+`/publico` (perfil público), e "Canais" dentro de Configurações
+(`/dashboard/perfil` — WhatsApp Identity, link de booking) — todos
+confirmados pela fundadora. Próximo item do plano de QA manual:
+WhatsApp Identity (fluxo de verificação em si, não só a tela), Minha
+equipe, encerramento de conta, Decisões isolado.
+
+## Como usar isso
+
+## QA manual — WhatsApp Identity — `[FAIL/BLOCKED POR CONFIGURAÇÃO DE PRODUÇÃO]` — 01/10/2026
+
+Fundadora testou "Verificar WhatsApp" em produção: clicar em "Enviar
+código" derrubava a página inteira ("This page couldn't load",
+erro genérico do Next). Causa raiz real: `whatsappAccessToken()`/
+`whatsappPhoneNumberId()` (`requireEnv`, `src/lib/supabase/env.ts`)
+jogam exceção quando `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`
+não estão configuradas — sem nenhum try/catch, a exceção escapava da
+Server Action sem tratamento, derrubando toda a página.
+
+**Item 1 (tratamento de erro) — `[DELIVERED]`, commit `d6986a4`**:
+envolvido só a chamada de envio num try/catch em
+`src/lib/whatsapp-identity/request-verification.ts`. Erro real vai só
+pro log do servidor (`console.error`, nunca exposto ao client); UI
+recebe mensagem tratada ("Não foi possível enviar o código agora.
+Tente novamente em instantes."). Menor alteração possível, fluxo
+preservado, `tsc`/`eslint`/`next build` limpos.
+
+**Item 2 (auditoria de infraestrutura) — entregue, não implementado**:
+confirmado por leitura de código (não tenho acesso ao painel da
+Vercel/Meta): 4 variáveis secretas (`WHATSAPP_ACCESS_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
+`WHATSAPP_WEBHOOK_VERIFY_TOKEN`) + 1 pública opcional
+(`NEXT_PUBLIC_WHATSAPP_NUMBER`, nunca quebra se ausente); nenhuma
+credencial Meta adicional escondida (confirmado em
+`src/lib/channels/whatsapp/client.ts` — só accessToken+phoneNumberId
+pra enviar). Rotas/actions dependentes mapeadas: pedido de OTP (já
+corrigido), `send-outbound-intents` (worker de envio real — **MESMO
+problema de try/catch ausente, não corrigido, fora do escopo pedido
+desta rodada**), `intake-orchestration.ts` (resposta automática),
+webhook de entrada (`appSecret`+`webhookVerifyToken`). Repassado à
+fundadora exatamente o que falta configurar na Vercel/Meta, e o
+risco de staging/produção compartilharem o mesmo
+`WHATSAPP_PHONE_NUMBER_ID` sem decisão consciente.
+
+**Critério de PASS definido pela fundadora, ainda não atingido**: E2E
+real — pedir código → WhatsApp real recebe → inserir OTP → confirmar
+→ reload → estado continua verificado. Até lá, **WhatsApp Identity =
+`FAIL/BLOCKED POR CONFIGURAÇÃO DE PRODUÇÃO`**, nunca `PASS`, nunca
+tratado como cosmético. Bloqueado por credenciais reais do WhatsApp
+Business (Meta) que só a fundadora/administrador da conta Meta pode
+obter e configurar — não é um bug de código, é infraestrutura.
+
+## Como usar isso
+
+## Débito técnico registrado — `send-outbound-intents` sem tratamento de erro de credencial WhatsApp — `[BACKLOG]` — 01/10/2026
+
+Achado da auditoria de WhatsApp Identity (ver seção acima): o worker
+real de envio (`src/app/api/runtime/send-outbound-intents/route.ts`)
+chama `whatsappAccessToken()`/`whatsappPhoneNumberId()` sem try/catch,
+nos mesmos pontos que já causaram o crash corrigido no fluxo de
+Identity. Se essas credenciais faltarem/falharem em produção, esse
+worker pode quebrar silenciosamente (ou pelo menos sem log claro da
+causa) em vez de falhar de forma segura e registrada.
+
+Decisão explícita da fundadora: não misturar com o fluxo de Identity
+nem mudar arquitetura agora — registrado como débito técnico pra
+correção futura (tratamento de erro seguro + log da causa real, nunca
+derrubar o worker silenciosamente). Não implementado nesta rodada.
+
+## Como usar isso
+
+## Minha equipe — "Booker" deixa de ser termo primário de apresentação, commit `0ecef65` — 01/10/2026
+
+Achado de produto da fundadora: "Booker" não deveria ser reforçado como
+conceito de UX pro vínculo artista↔equipe (vira linguagem de
+equipe/pessoa), e "Artista" não deveria ser usado como termo genérico
+pro lado que o booker conecta (a Doopla atende outras profissões,
+virou "profissional"). Verificado antes de implementar, como a
+fundadora pediu: lido `supabase/migrations/0005_invites.sql` — a
+tabela `representations` é só um vínculo confirmado entre as partes,
+sem nenhuma permissão/cláusula especial amarrada à palavra "Booker",
+então a copy nova não amplia nem reduz a capacidade real do vínculo.
+
+Implementado só apresentação, nada de nomes internos/enum/banco/regras
+de permissão: `bookers/page.tsx` (empty state), `pro-upgrade-modal.tsx`
+(descrição do contexto "equipe"), e `add-connection-modal.tsx`
+(refatorado de `TARGET_LABEL` pra `ROLE_COPY: Record<Role, RoleCopy>`
+com frase completa por campo — título dos passos, explicação,
+labels, texto de "encontramos X", textos do painel esquerdo). `myRole`
+continua exatamente os mesmos 2 valores (`artista`/`booker`) de
+sempre. Validado (`tsc`/`eslint`/`next build` limpos) e confirmado.
+
+## Como usar isso
+
+## Minha equipe — empty state redesenhado + "Booker" remanescente no catálogo de planos, commit `4ae74fa` — 01/10/2026
+
+Dois achados depois do commit acima: (1) a fundadora encontrou, numa
+captura de tela do modal de upgrade, que a lista de features do plano
+Pro ainda mostrava "Booker / Minha equipe" — vinha de
+`src/lib/plans.ts` (catálogo compartilhado por `ProUpgradeModal` e
+`PlanPicker` do onboarding), fora dos 3 arquivos já corrigidos no
+commit anterior. Corrigido pra "Minha equipe". (2) pedido explícito de
+redesign do empty state de Minha equipe (aparência de placeholder,
+card alto demais): removido o ícone em círculo, padding reduzido pra
+~32px (`!p-8` sobre `ProCard`, card ~160-180px de altura em vez de uma
+área vazia grande), conteúdo alinhado à esquerda, texto novo ("Nenhuma
+pessoa conectada ainda" / "Adicione alguém de confiança para ajudar a
+operar seus bookings com você."), frase sobre "marketplace" removida.
+Botão do CTA ganhou um prop novo opcional em `AddConnectionModal`
+(`triggerLabel`) pra mostrar um rótulo mais curto ("+ Adicionar
+pessoa") só nesse ponto, sem mexer no botão do header da página (mesmo
+componente, outro contexto) nem em nenhuma Server Action/lógica.
+Validado (`tsc`/`eslint`/`next build` limpos) e enviado pra revisão da
+fundadora em produção.
+
+## Como usar isso
+
+## Minha equipe — segunda rodada do empty state (copy + padding), commit `3a4952a` — 01/10/2026
+
+Fundadora pediu um ajuste fino em cima do commit anterior: padding do
+card volta a ser o padrão de `ProCard` (antes era `!p-8` fixo) pra
+ficar "consistente com o resto do painel" e garantir
+~160-180px de altura total; copy trocada de um texto de "estado vazio"
+("Nenhuma pessoa conectada ainda"/"Adicione alguém de confiança...")
+pra um convite direto: "Traga sua equipe para a Doopla" / "Convide
+quem já trabalha com você para acompanhar seus bookings.". Ícone em
+círculo continua removido (já tinha saído no commit anterior). Botão
+"+ Adicionar pessoa" mantido via `triggerLabel`. Validado (`tsc`/
+`eslint`/`next build` limpos) e enviado pra revisão da fundadora em
+produção.
+
+## Como usar isso
+
+Toda vez que eu terminar um item, atualizo o status aqui e commito
+junto com o código. Se quiser saber "o que falta", é só pedir pra eu
+reler este arquivo — não preciso da conversa inteira pra saber onde
+paramos.
+
+## Home — link "Ver todas as decisões" removido (levava a rota morta), commit `7a72639` — 01/10/2026
+
+Fundadora reportou, via QA manual: clicar em "Ver todas as decisões"
+na Home recarregava a própria Home em vez de navegar pra algum lugar.
+Causa raiz confirmada em código: o link (`professional-home-view.tsx`)
+apontava pra `/dashboard/decisoes`, que é só um
+`redirect('/dashboard')` desde 15/09/2026 — a tela própria de Decisões
+foi deprecada nessa data (decisão já registrada em `decisoes/page.tsx`:
+nunca teve capacidade de resolução própria, todo CTA de lá já navegava
+pra dentro de uma conversa). A lista "Precisa de você" na Home já
+renderiza TODOS os itens de `needsYouDecisions` inline, sem
+slice/paginação — então o link não levava a lugar nenhum que já não
+estivesse na própria tela. Removido (não redirecionado pra outro
+lugar, porque não havia "mais" pra ver). Os outros dois links do mesmo
+bloco ("Ver bookings aguardando resposta"/"Ver pedidos recebidos",
+apontando pra `/dashboard/trabalhos`, rota viva) não foram tocados.
+Validado (`tsc`/`eslint`/`next build` limpos).
+
+## Como usar isso
+
+## Home — "Precisa de você": contador (17) e lista (1 item) unificados + expansível no card, commit `f7d284a` — 01/10/2026
+
+Fundadora recusou a correção anterior (remover o CTA) e pediu
+investigação da causa raiz antes de qualquer mudança nova — feita
+100% por leitura de código (sem acesso a DB nesta sessão), com alto
+grau de confiança por cruzar 3 fontes: a RPC `get_conversation_operational_facts`
+(migration 0081), `deriveConversationState` (`lib/conversations/state.ts`)
+e os filtros de `professional-home-view.tsx`.
+
+**Causa raiz confirmada**: o badge "Precisa de você" vinha de
+`conversationSummary.needsYouCount` — conta TODA conversa em estado
+`needs_you` sob RLS, sem filtrar por `opportunity.source`. Já a lista
+renderizada sempre excluiu decisões ligadas a um pedido com
+`source != 'artist_link'` (pedidos de `mural`/`conversation` — decisão
+deliberada de 15/09/2026 de nunca dar visibilidade nova a
+marketplace legado) e ainda cortava em `.slice(0, 5)` mesmo quando
+havia mais itens elegíveis. Resultado: pendências reais contadas no
+badge mas invisíveis em todas as 3 fontes renderizadas (pedidos/
+bookings/decisões) — exatamente o "17 vs. 1" reportado.
+
+**Fix estrutural** (não cosmético, não "esconder o problema"): as 3
+fontes viram UM array só (`allPendencyRows`), ordenado por prioridade
+(reaproveita `decisionPriority`, agora exportado de
+`lib/decisions/data.ts`: rascunho pronto → pendência comum/pedido/
+booking → bloqueada por dado faltando) e, dentro da mesma prioridade,
+mais recente primeiro. `attentionCount` (badge do accordion, ProHero,
+StatsRow) é literalmente `allPendencyRows.length` — nunca mais um
+número à parte que pode divergir do que a tela mostra. Pedidos de
+source não-artist_link continuam fora da LISTA (decisão de produto
+preservada) e por isso também saem da CONTAGEM agora — o número vai
+cair pra refletir só pendências reais e visíveis, não é regressão.
+
+**UX nova**: novo client component `pro-needs-you-list.tsx`
+(`ProNeedsYouList`) substitui os 3 CTAs antigos (um deles pra rota
+morta) por 1 CTA só, "Ver todas as pendências →", que expande a lista
+DENTRO do próprio card (useState local, nunca navega pra outra
+página) — mostra 3 linhas por padrão, "Mostrar menos" quando
+expandido. Cada pendência continua 1 linha única clicável (nenhum card
+dentro de card), mesmo padrão já aprovado em 14/09 e 22/09/2026.
+Validado (`tsc`/`eslint`/`next build` limpos), enviado pra revisão da
+fundadora em produção.
+
+## Como usar isso
+
+## Conversa — hierarquia de revisão pra rascunho pronto (prepared_draft), commit `22293f9` — 01/10/2026
+
+Pedido da fundadora: a tela de conversa, quando existe um rascunho da
+Doopla pronto (`draft != null` em `getPendingDraftForConversation` —
+mesmo sinal que já classifica `'prepared_draft'` em
+`lib/decisions/data.ts`), não deve mais parecer uma janela de conversa
+genérica — deve virar uma ação de revisão/aprovação. Só
+hierarquia/copy/apresentação, explicitamente sem mudar backend nem o
+fluxo de envio (`sendProfessionalReplyAction` intocado).
+
+`conversa-view.tsx` ganhou um branch novo pra esse caso: título "Revise
+esta resposta antes de enviar" + subtítulo "A Doopla precisa da sua
+aprovação antes de responder ao cliente.", conversa anterior reduzida
+a um bloco compacto de contexto (últimas 2 mensagens, texto truncado,
+`max-h-[150px]`) em vez do painel de chat cheio de sempre
+(`max-h-[440px]`). Sem rascunho, layout 100% igual ao de antes.
+
+Novo `draft-review-panel.tsx`: o rascunho vira o elemento principal
+(textarea maior, rótulo discreto "pode editar antes de enviar"), ação
+primária "Enviar resposta" + secundária explícita "Agora não" (mesma
+ação do X — `router.back()` — nunca mais só o X como jeito de não
+enviar). Depois de enviar, confirmação clara ("Resposta enviada — a
+Doopla continua a conversa") em vez de resetar o formulário em
+silêncio; "Voltar à conversa" só então recarrega. Paddings gerais
+reduzidos nesse branch (menos espaço vazio pra uma decisão mais
+direta). Validado (`tsc`/`eslint`/`next build` limpos), enviado pra
+revisão da fundadora em produção — ainda não testado em prod por ela
+(a sessão foi interrompida por um pedido de QA interativo em
+`painel-ux-ajustes`/`doopla-qa-staging`, registrado à parte).
+
+## Como usar isso
+
+## QA manual — Encerramento de conta — auditoria de código, 1 gap achado e corrigido (migration `0095`, aguardando aplicação) — 01/10/2026
+
+Auditoria de código (não implementação) do fluxo "Excluir minha conta"
+(Settings V2, migration 0078), a pedido da fundadora, em paralelo ao
+reteste dela de Minha equipe. Arquitetura confirmada sólida: nunca
+hard delete, `close_own_account()` (SECURITY DEFINER, transação única)
+encerra representações (reaproveita `terminate_representation`),
+cancela assinatura, desativa descoberta pública
+(`artist_profiles.public_enabled=false`,
+`community_profiles.available_for_referrals=false`), marca
+`profiles.status='closed'`; Server Action completa com Admin API
+(e-mail sintético libera o original, `ban_duration`, signOut). Defesa
+em profundidade real verificada: `getSessionProfile()` (session.ts)
+barra qualquer sessão ainda com token válido em QUALQUER rota do
+painel, não só a atual — é isso que sustenta "desconectado de todos os
+dispositivos", não só o ban.
+
+Verifiquei a promessa mais arriscada da copy do modal ("ninguém
+consegue criar um booking novo com você depois") em vez de confiar
+nela: **PASS real** — `proposeBookingAction` exige uma `representations`
+existente (exatamente o que é encerrado primeiro) e `/orcamento/[slug]`
+já para de resolver (`notFound()`) assim que `public_enabled=false`.
+
+**Gap real encontrado**: `find_representation_target_by_contact`
+(migration 0033) e `find_representation_target_by_public_id`
+(migration 0071) — as RPCs por trás de "Adicionar alguém da equipe" —
+são anteriores ao account closure (0078) e nunca filtraram
+`profiles.status`. Uma conta encerrada continuava aparecendo na busca
+por contato/código ID, nome real exposto (sem a anonimização
+"Usuário removido" que `community_profiles_public` já aplica desde
+0078) — dava pra mandar solicitação de conexão pra uma conta que nunca
+mais vai logar pra responder.
+
+**Corrigido**: migration `0095_representation_lookup_excludes_closed.sql`
+(`create or replace`, mesma assinatura/retorno) adiciona
+`p.status = 'active'` ao alvo nas duas RPCs. Commit `4a58f79` — SQL
+ainda não aplicado no banco, entregue à fundadora pra rodar em
+`doopla-qa-staging` e depois produção (mesmo padrão de sempre).
+
+Checklist de teste manual entregue (8 itens, com aviso explícito de
+usar conta descartável — ação irreversível, sem fluxo de restauração).
+Rota `/dashboard/perfil/privacidade/excluir` confirmada como redirect
+morto intencional (já documentado desde 14/09/2026, não é achado
+novo).
+
+## Como usar isso
+
+## Encerramento de conta — fluxo testado em produção pela fundadora (PASS) + ajuste fino de copy/densidade do modal, commit `4b9257f` — 01/10/2026
+
+Fundadora testou o fluxo real em produção: excluiu uma conta de teste,
+tentou logar de novo com o e-mail/senha antigos → "e-mail inválido"
+(esperado — e-mail trocado por valor sintético + conta banida). Itens
+1-4 do checklist de teste manual fechados como `PASS`.
+
+Em seguida, pediu um ajuste fino só de copy/hierarquia/densidade do
+modal (passo 2, "Excluir sua conta é uma ação permanente"), explícito:
+nenhuma mudança de lógica/validação/backend. Antes de aceitar a frase
+nova sobre "Bookings e contratos: permanecem no histórico, mas novos
+bookings não poderão ser criados", reconferido no código (mesma
+verificação da auditoria anterior — `proposeBookingAction` exige
+`representations` ativa, que `close_own_account()` encerra primeiro;
+`/orcamento/[slug]` para de resolver com `public_enabled=false`) — sem
+divergência, aprovado usar a frase como está.
+
+Implementado: texto do passo 2 revisado (título/subtítulo/6 itens,
+mais curtos); densidade reduzida (padding do modal, gaps da lista,
+margens); botão "Cancelar" com altura reduzida só localmente (nunca
+mexeu em `proGhostButtonClass`, classe compartilhada); botão
+destrutivo do `DeleteAccountForm` agora também exige senha preenchida
+pra habilitar (antes só o checkbox — digitar senha era opcional pra
+habilitar, só falhava no servidor depois); contraste do estado
+desabilitado levemente melhorado (opacity-40 → opacity-55). Validado
+(`tsc`/`eslint`/`next build` limpos).
+
+## Como usar isso
+
+## QA manual — Decisões isolado — 1 gap real achado e corrigido, commit `45471f9` — 01/10/2026
+
+Último item do plano de QA manual combinado (Agenda → Financeiro →
+Settings V2 → WhatsApp Identity → Minha equipe → encerramento de conta
+→ Decisões isolado). Em vez de testar via Home/Bookings (já cobertos),
+testei o mecanismo de decisão isoladamente: abrir a conversa direto,
+como quem clica em "Precisa de você" realmente faz.
+
+**Achado**: quando a conversa tem um `pending_reply` (Approval Engine
+pausado esperando decisão) SEM rascunho pronto, a tela de conversa
+mostrava só um "Responder" genérico — o motivo real
+(`policy_gate_decisions.primary_block_reason`, ex.: "Precisa confirmar
+alguns dados antes da Doopla continuar por você.") só existia em
+Home/Bookings (`listActionableDecisions`), nunca na própria tela onde
+a decisão de fato acontece. Quem chegasse direto na conversa não tinha
+como saber o que estava sendo pedido.
+
+**Corrigido**: `getPendingReplyBlockReason()` novo em
+`lib/decisions/data.ts` (mesma leitura de `listActionableDecisions`,
+escopada a 1 conversa); `conversa-view.tsx` busca isso só quando faz
+sentido (sem draft, conversa aberta, `hasPendingRuntimeReply=true`) e
+mostra um bloco "O que a Doopla precisa" acima do formulário de
+resposta. De quebra, consolidei uma duplicata de
+`decisionBlockReasonLabel` que eu mesmo introduzi hoje cedo em
+`professional-home-view.tsx` sem notar que já existia exportada em
+`decisoes/format-cards.ts`. Validado (`tsc`/`eslint`/`next build`
+limpos).
+
+**Com isso, o plano de QA/E2E/Beta Readiness combinado está completo**
+(Agenda PASS, Financeiro PASS, Settings V2 PASS, WhatsApp Identity
+BLOCKED por configuração de produção — fora do meu alcance, Minha
+equipe copy entregue, encerramento de conta PASS + 1 gap corrigido,
+Decisões isolado — 1 gap corrigido). Próximo item do roadmap, por
+ordem já combinada: Painel Admin (auditoria já entregue antes desta
+rodada, implementação explicitamente não iniciada).
+
+## Bookings — redesign de UX pra alto volume (tabs, drawer, "Precisa de você") integrado na canônica — 01/10/2026
+
+Trabalho feito numa branch paralela (`painel-ux-ajustes`, sessão
+dedicada de ajustes de UI/UX do Painel Profissional), aprovado pela
+fundadora com arquitetura corrigida por ela antes da implementação:
+`WorkAttention` (enum único que colapsava status e atenção numa coisa
+só) deixou de existir — `WorkItem` (`work-items.ts`) agora separa
+`stage` (estágio real do booking, derivado só de `bookings.status`/
+`opportunities.status`: `proposta_enviada` → negociação;
+`aceita`/`aguardando_pagamento` → confirmado; `concluida` → concluído;
+`recusada`/`cancelada` → "outro", sem tab própria) de `needsYou`
+(atenção humana, mesmos sinais de sempre — `classifyBookingAttention`/
+`resolveDooplaIntervention`, nenhum sinal novo).
+
+`trabalhos/pro-work-list-view.tsx` ganhou tabs fixas sempre visíveis
+(Em negociação | Confirmados | Concluídos | Todos, com contagem —
+nunca dropdown), linhas compactas (`BookingRowCompact`, 2 linhas, sem
+backdrop-blur por item) com o badge "Precisa de você" ao lado do
+status (nunca substituindo ele), e um banner contando só bookings
+formalizados com `needsYou=true` (nunca `DecisionItems` de pedidos/
+conversas). Filtro "Filtrar" trocou a antiga lista de status por um
+toggle "Mostrar cancelados/recusados" — só assim eles aparecem, e só
+em "Todos".
+
+`BookingDrawer`: clique numa linha de booking abre um drawer lateral
+(reaproveita `ProBookingDetailView`/`LegacyBookingDetailView` da
+página real, sem duplicar lógica — busca extraída pra
+`booking-detail-loader.ts`, usada pelos dois). Decisão de arquitetura
+não pedida explicitamente, mas necessária: em vez de interceptar a
+URL canônica do booking (`/dashboard/bookings/[id]`), o drawer usa um
+alias dedicado (`/ver`) — a URL canônica é a mesma que a tela do
+Booker (tema legado, intocada) já usa em página cheia hoje, e
+interceptá-la mudaria esse comportamento pra todo mundo que navega
+pra lá, Booker incluído. Com o alias, só quem entra pelo painel novo é
+interceptado; Booker e acesso direto à URL do booking nunca mudam de
+comportamento (confirmado em QA real abaixo).
+
+**QA interativo real** (não só `tsc`/`eslint`/`build`) em
+`doopla-qa-staging`, com contas de teste e ~21 bookings cobrindo todos
+os estágios: 8 itens do checklist, 7 PASS direto, 1 bug real
+encontrado e corrigido antes da integração — dentro do drawer (560px),
+o grid de stats usava `lg:grid-cols-4` (breakpoint de largura da
+*janela*, não do container), forçando 4 colunas e colando "Data do
+trabalho"/"Última atualização" em tela larga. Fix: prop `compact`
+opcional em `ProBookingDetailView` (default `false`, página cheia
+inalterada), só o caller do drawer passa `compact=true`.
+
+Commits integrados (merge sem conflito, zero arquivo em comum com o
+que avançou na canônica nesse intervalo): `e530169` (stage × needsYou,
+tabs, linhas compactas, banner), `feae6c6` (BookingDrawer),
+`bccf2e6` (fix do grid). `tsc`/`eslint`/`build` limpos no merge.
+
+Fora de escopo nesta rodada (explícito, não esquecido): Approval
+Engine, Policy Gate, `requires_professional_review`, novas actions
+estruturadas, novos statuses, migrations/schema/RLS, Admin, WhatsApp,
+pagamentos, mobile.
+
+## Painel Admin V1 — implementado, migration `0096` pendente de aplicação — 01/10/2026
+
+Escopo fechado em rodada dedicada de scoping com a fundadora (nunca
+reaproveitei a auditoria genérica antiga do roadmap como se fosse um
+escopo detalhado — corrigi isso explicitamente quando ela perguntou,
+já que aquela nota só dizia "schema pronto, zero UI"). Três rodadas de
+ajuste antes de implementar, cada uma com uma correção real:
+
+**Correção 1 (minha, auto-reportada)**: eu tinha afirmado que
+`ai_usage_events` era uma tabela morta — errado. Busquei só pela
+string literal da tabela e não vi o insert, que acontece via
+`log_ai_usage_event()` (RPC), chamada de verdade em
+`src/lib/intelligence/observability.ts` (`pipeline.ts`/`resumption.ts`
+reais). `orchestrator_runs` tem metadado de execução
+(status/latência/tools), não tokens. Fonte certa de uso/custo de IA é
+`ai_usage_events`.
+
+**Correção 2 (pedido da fundadora)**: custo é sempre "estimado", nunca
+"real" — `cost_cents_estimate` nunca é preenchida. Calculado em
+`src/lib/admin/ai-pricing.ts` (tabela de preço por modelo, versionada
+por data efetiva) a partir de `model`+`input_tokens`+`output_tokens`+
+`created_at` vindos de `admin_get_ai_cost_summary`. Tabela de preço
+nasce **vazia** de propósito: o preço do único modelo em uso
+(`gpt-5-mini`) nunca foi conferido contra a página oficial do provider
+(comentário já existente em `intelligence/config.ts`) — mostrar um
+número ali seria inventar custo. Até a fundadora preencher um preço
+confirmado, toda linha aparece como "preço não configurado" (tokens
+continuam contados normalmente).
+
+**Correção 3 (auditoria de efeito real, pedida antes de escrever
+qualquer function de moderação)**: confirmei no código, não presumi,
+que os 3 estados de moderação já existentes no schema (`community_
+profiles.visibility_status` `active`/`restricted`/`blocked`, CHECK
+inalterado desde 0059; `community_topics`/`community_posts.status`
+`removed_by_moderator`) têm efeito real sobre "usuários comuns":
+`create_community_topic`/`create_community_post` já exigem
+`visibility_status='active'`; toda listagem pública
+(`listCommunityTopics`, busca, trending, "para você") já filtra
+`status='published'`; a RLS "select visible" (`published OR
+author_profile_id=auth.uid()`) já bloqueia qualquer um que não seja o
+autor de ler um tópico/post removido por moderador direto. Única
+nuance reportada (não é bloqueio, é comportamento pré-existente, igual
+pra remoção pelo próprio autor): o AUTOR de um tópico/post continua
+vendo o próprio conteúdo mesmo depois de removido por moderador — só
+não aparece mais pra mais ninguém, e não recebe mais resposta nova.
+
+**Implementado**:
+- Migration `0096_admin_v1.sql` (NÃO aplicada em nenhum banco ainda —
+  copy-pasteável, fica pra `doopla-qa-staging` depois produção, como
+  sempre): tabela `admin_audit_events` (trilha mínima e genérica —
+  admin/ação/tabela/id/estado anterior/estado novo/motivo/quando,
+  nunca `moderated_by` espalhado em várias tabelas); guard interna
+  `_assert_is_admin()` (nunca grantada a `authenticated`/`anon`, só
+  chamável função-a-função, mesmo padrão de `_create_conversation_core`
+  da migration 0082); 5 RPCs de moderação (`admin_set_community_
+  visibility`, `admin_remove/restore_community_topic`, `admin_remove/
+  restore_community_post` — restore entra desde o V1, reversibilidade
+  de propósito; idempotentes, nunca gravam evento de auditoria quando
+  não há mudança real de estado; `for update` pra evitar corrida
+  leitura/escrita; update+insert de auditoria sempre atômicos, uma
+  function plpgsql é uma transação só); 6 RPCs de leitura
+  (`admin_search_profiles`, `admin_get_profile_detail`,
+  `admin_search_community_content`, `admin_get_ai_cost_summary`,
+  `admin_get_beta_pulse`, `admin_list_audit_events` — todas devolvem só
+  a projeção mínima, nunca `select *`, `auth.users` só alcançável por
+  aqui dentro, mesmo padrão de `find_representation_target_by_contact`
+  0033/0095).
+- `src/app/admin/` (rota nova, fora de `/dashboard`, shell próprio —
+  nunca herda `--pro-*`): `session.ts` (gate; redireciona pra
+  `/dashboard` se `!is_admin`, nunca pra `/login` — sessão existe, só
+  não tem autoridade), `layout.tsx`, `page.tsx` (visão geral: usuários
+  ativos, cadastros 7d/30d, pulso do beta, custo estimado de IA),
+  `usuarios/page.tsx` + `usuarios/[id]/page.tsx` (busca + detalhe
+  read-only), `comunidade/page.tsx` + `comunidade/actions.ts` (busca
+  cross-entidade + as 5 ações de moderação via Server Actions),
+  `ia-custo/page.tsx`.
+- `src/lib/admin/data.ts` (wrappers tipados sobre as RPCs — nenhuma
+  lógica de autoridade aqui, só tipagem/propagação de erro) e
+  `src/lib/admin/ai-pricing.ts` (tabela de preço versionada, vazia por
+  enquanto).
+- `src/lib/supabase/types.ts`: tipos de retorno das RPCs novas + registro
+  delas em `Database['public']['Functions']`, mesmo padrão manual já
+  usado no arquivo inteiro.
+
+**Segurança, como combinado**: nenhum `createServiceRoleClient()` em
+nenhum arquivo novo — toda autoridade vive dentro das RPCs
+(`_assert_is_admin` relê `auth.uid()`+`profiles.is_admin` a cada
+chamada, nunca confia em nada vindo do client); o gate de `/admin` no
+boundary é só UX/defesa adicional. `tsc --noEmit`, `eslint`, `next
+build` limpos (as 4 rotas novas aparecem no build como `ƒ`
+server-rendered).
+
+**Pendente**: aplicar migration `0096` em `doopla-qa-staging` e depois
+produção (texto já entregue); preencher `MODEL_PRICE_TABLE` com um
+preço confirmado pra `gpt-5-mini` quando a fundadora validar o valor
+oficial; QA manual das 4 telas com a conta real dela (`is_admin=true`).
+
+## Painel Admin V1 — revisão de segurança da migration `0096` + preço de IA confirmado — 01/10/2026
+
+Revisão estática pedida pela fundadora antes de aplicar `0096` em
+qualquer banco, nos 6 eixos que ela pediu: `SECURITY DEFINER`,
+grants/`search_path`, guard de admin, atomicidade da moderação+audit,
+validação de `reason`. 5 dos 6 eixos vieram OK na primeira leitura; o
+6º (atomicidade/guard) escondia um achado real, que corrigi antes de
+liberar a migration pra aplicação.
+
+**Achado e corrigido**: `admin_set_community_visibility` não tinha
+guard contra o admin tentar moderar o PRÓPRIO perfil de Comunidade.
+Sem isso, a chamada passaria pelo `UPDATE` normalmente, mas o trigger
+`BEFORE UPDATE` já existente (`prevent_self_community_moderation_change`,
+migration 0059) reverteria `visibility_status` pro valor antigo EM
+SILÊNCIO — e a function, sem saber disso, gravaria um
+`admin_audit_events` dizendo que a mudança aconteceu quando na
+verdade não aconteceu (o banco ficaria inalterado, mas o log de
+auditoria mentiria sobre isso). Corrigido com um guard explícito
+(`if p_profile_id = v_admin then raise exception
+'cannot_moderate_own_profile'`) — falha visível na hora, nunca um log
+que não bate com o estado real do banco. As outras 4 functions de
+moderação (tópico/post, remover/restaurar) não têm trigger equivalente
+nas tabelas correspondentes, então não têm esse risco.
+
+**Demais eixos, confirmados OK sem alteração**: as 12 functions (guard
++ 5 de moderação + 6 de leitura) têm `SECURITY DEFINER` e `set
+search_path = public` explícitos; `_assert_is_admin()` nunca é
+grantada a `anon`/`authenticated` (só chamável função-a-função), as 11
+functions de admin são grantadas só a `authenticated` com `anon`
+revogado explicitamente (acha do documentado na 0041 sobre default
+privileges); o guard roda sempre antes de qualquer lógica de negócio
+(na seção `declare`, que executa antes do `begin`, nas 5 de moderação;
+como primeira linha do `begin` nas 6 de leitura); toda validação de
+`reason` (`null`/vazio depois de `btrim`) acontece antes de qualquer
+`select ... for update`/`UPDATE`; update+insert de auditoria sempre na
+mesma function (atômico por construção, sem bloco de exceção que
+pudesse mascarar um rollback parcial); zero SQL dinâmico/`EXECUTE
+format` em todo o arquivo (zero risco de injeção).
+
+**Checagens pedidas sobre o modelo de IA, antes de preencher a tabela
+de preço** (lidas no código, não presumidas):
+1. **String do modelo**: `ai_usage_events.model` é sempre a constante
+   `AI_MODEL`/`CLASSIFIER_MODEL`/`PLANNER_MODEL` — hoje as 3 (e mais
+   `APPROVAL_RESOLVER_MODEL`/`POLICY_GATE_EXTRACTOR_MODEL`/
+   `INBOUND_PROPOSAL_MODEL`) são hardcoded independentemente como
+   `'gpt-5-mini'` em arquivos de config separados, sem uma fonte única
+   — hoje batem entre si por coincidência/sincronia manual, não por
+   garantia estrutural. Risco registrado, não corrigido nesta rodada
+   (fora do pedido): se uma dessas constantes mudar sem as outras, o
+   painel de custo passaria a atribuir o preço errado àquela feature,
+   em silêncio.
+2. **Tier da API**: confirmado padrão/síncrono — `getOpenAIClient()`
+   nunca passa `service_tier`, nenhum `client.batches.*` existe no
+   projeto (zero ocorrência). Preço de tier padrão da OpenAI se aplica.
+3. **Cached input**: confirmado que NÃO é capturado — zero ocorrência
+   de `cached_tokens`/`input_tokens_details` em todo o código.
+   `ai_usage_events.input_tokens` é sempre o total (cache + não-cache
+   misturados). Por isso, `ai-pricing.ts` nunca aplica desconto de
+   cache — calcula sempre com o preço cheio de input sobre o total.
+
+**Achado adicional, não pedido mas relevante pro que o painel de custo
+representa**: `logAiUsageEvent` só é chamado de `pipeline.ts`/
+`resumption.ts` (features classificação+planejamento) e de
+`test-call.ts` (teste de infraestrutura). As outras 3 features reais
+que chamam a OpenAI — `approval/resolver.ts`, `policy-gate-post/
+extractor.ts`, `inbound-proposal/detector.ts` — fazem chamadas de
+verdade (cobradas pela OpenAI) mas nunca gravam em
+`ai_usage_events`. "Custo estimado de IA" no Admin hoje **subestima**
+o gasto real — cobre só uma parte das features que chamam o model.
+Não instrumentei essas 3 agora (fora do escopo desta rodada, muda
+código de produção fora do Admin) — registrado como gap conhecido pra
+decisão futura.
+
+**`MODEL_PRICE_TABLE` preenchida**: `gpt-5-mini`, input
+US$0,25/1M tokens, output US$2,00/1M tokens (preço oficial confirmado
+pela fundadora, tier padrão), `effectiveFrom: '2025-01-01'` (cobre todo
+uso já registrado — sem mudança de preço conhecida neste beta). Uma
+mudança de preço futura vira uma linha nova com a data real, nunca uma
+edição da linha existente — a estimativa de uso passado nunca é
+reescrita.
+
+`tsc`/`eslint`/`next build` limpos. Migration `0096` segue **não
+aplicada em nenhum banco** — pronta pra `doopla-qa-staging` primeiro,
+QA manual de `/admin` com conta admin antes de produção, como
+combinado.
+
+## Painel Admin V1 — revisão estática aprovada, copy de custo de IA ajustada — 01/10/2026
+
+Fundadora aprovou a revisão de segurança da `0096` (achado do guard de
+auto-moderação, corrigido na rodada anterior) e vai aplicar a migration
+em `doopla-qa-staging` agora — ainda **não aplicada em nenhum banco**,
+produção fica pra depois do QA manual do Admin passar em staging.
+
+**Ajuste de copy antes do QA** (ela pediu, dado o achado de que nem
+toda chamada real de IA grava em `ai_usage_events`): título/label de
+"Custo estimado de IA" → **"Custo estimado das chamadas monitoradas"**
+em `/admin` (overview) e `/admin/ia-custo`, com nota discreta sempre
+visível "Algumas chamadas de IA ainda não estão incluídas neste
+cálculo." (em `/admin/ia-custo`, a nota já nomeia quais features são
+monitoradas hoje — classificação/planejamento/teste — e quais não são —
+aprovação/policy-gate/detecção de proposta). Decisão explícita, não
+implementação: `approval/resolver`, `policy-gate-post` e
+`inbound-proposal` **não** ganham instrumentação nesta rodada —
+registrado como gap de observabilidade pra decisão futura, não
+resolvido aqui. `tsc`/`eslint`/`build` limpos.
+
+**Checklist de QA manual em staging** (ela vai rodar com conta real
+`is_admin=true` depois de aplicar a `0096`, eu não tenho acesso direto
+ao staging): 1) usuário comum não acessa `/admin`; 2) conta admin
+acessa; 3) overview carrega sem erro; 4) busca+detalhe de usuários;
+5) Comunidade encontra perfil/tópico/post; 6) restringir/bloquear
+perfil de teste; 7) remover/restaurar tópico e post; 8) cada ação gera
+exatamente um audit event correto; 9) automoderação retorna erro
+explícito e NÃO gera audit event (valida o fix da rodada anterior);
+10) IA/custo mostra tokens+custo estimado corretamente, inclusive
+"preço não configurado" quando aplicável. Produção só depois de tudo
+isso passar.
+
+## Painel Admin V1 — QA manual real em `doopla-qa-staging`, 1 bug achado e corrigido (migration `0097`) — 01/10/2026
+
+QA manual começou de verdade contra `doopla-qa-staging` (não só leitura
+de código). Logística de acesso, registrada porque consumiu tempo real:
+a branch canônica virou Production Branch da Vercel numa rodada
+anterior, então não gera mais Preview em push direto — criei a branch
+`admin-v1-qa-preview` (mesmo commit da canônica) e abri um PR só pra
+disparar o build de Preview (confirmado: branch sem PR aberto não
+builda; com PR, builda). Duas contas de staging tentadas por engano
+antes da certa (uma sem senha conhecida, outra que acabou sendo de
+produção — confirmado por consulta cruzada, nenhum dado real tocado);
+a conta usada no fim foi `qa.painel.ux.ajustes.artista@gmail.com`
+(criada numa QA anterior), promovida a `is_admin=true` só em staging.
+
+**Items 1-3 do checklist**: PASS. Usuário sem `is_admin` não acessa
+`/admin`; conta admin acessa; `/admin` (Visão geral) carregou com
+números reais (6 usuários ativos, custo estimado de IA calculado
+corretamente a partir de uso real de `gpt-5-mini`, nota de "chamadas
+não incluídas" visível).
+
+**Item 4 — bug real encontrado**: `/admin/usuarios` quebrava com `500`
+("This page couldn't load"). Log da Vercel deu a causa exata: `42804 —
+Returned type character varying(255) does not match expected type text
+in column 4`. Causa: `admin_search_profiles`/`admin_get_profile_detail`
+(migration 0096) declaram a coluna `email` como `text` no
+`RETURNS TABLE`, mas `auth.users.email` é `character varying(255)` —
+`RETURN QUERY` exige tipo IDÊNTICO, não aceita o cast implícito que uma
+atribuição comum aceitaria (gap do meu próprio código, só aparece
+rodando contra Postgres real — `tsc`/`eslint`/`next build` não pegam
+isso). Corrigido com `u.email::text` explícito nas duas functions, via
+migration nova `0097_admin_v1_email_cast_fix.sql` (`create or replace`,
+nunca editei a `0096` já aplicada em staging — grants preservados).
+Aguardando a fundadora aplicar `0097` em `doopla-qa-staging` e retomar
+o checklist do item 4 em diante.
+
+## Painel Admin V1 — checklist de QA manual em `doopla-qa-staging` fechado, 10/10 — 01/10/2026
+
+Depois da `0097` aplicada, a fundadora retomou e terminou o checklist
+completo contra dados reais em staging. Resultado final, item a item:
+
+1. Usuário sem `is_admin` não acessa `/admin` — **PASS**
+2. Conta `is_admin=true` acessa — **PASS**
+3. Overview carrega sem erro, números reais — **PASS**
+4. Busca + detalhe de usuários (lista e drawer somente leitura) — **PASS**
+5. Comunidade encontra perfil/tópico/post (cross-entidade, ignora status) — **PASS**
+6. Restringir/bloquear perfil de teste — **PASS**, confirmado também no banco
+7. Remover/restaurar tópico **e** post, com motivo e auditoria — **PASS** (post testado com dado real criado na hora, não só por equivalência ao tópico)
+8. Cada ação gerou exatamente 1 `admin_audit_events` com estado antes/depois e motivo corretos — **PASS**, conferido via SQL a cada ação
+9. Automoderação (admin tentando moderar o próprio perfil de Comunidade) retorna `cannot_moderate_own_profile` e **não** grava audit event — **PASS**, validação dupla (mensagem na tela + `count(*)` antes/depois no banco)
+10. `/admin/ia-custo` mostra tokens/custo estimado reais por dia/modelo/feature, com a nota de cobertura parcial — **PASS**
+
+**2 achados reais de UX durante o teste prático** (não achados de auditoria de código — só apareceram com as mãos na massa), corrigidos na hora:
+- Botões de moderação (Aplicar/Remover/Restaurar) não davam nenhum feedback visual durante o envio — pareciam travados mesmo funcionando. `SubmitButton` novo (Client Component, `useFormStatus`) desabilita o botão e troca o texto por "Aplicando.../Removendo.../Restaurando..." enquanto pendente.
+- A mensagem de sucesso/erro só aparecia no topo da página — rolada pra baixo (perto dos botões de ação), a fundadora não via a confirmação, achou que o clique não tinha funcionado e clicou "Restaurar" de novo num post que já tinha restaurado — gerando (corretamente) o erro `post_not_restorable` na segunda tentativa. Não era bug de autorização/lógica (o log de auditoria confirmou as duas ações reais, remover e restaurar, cada uma 1x, no horário certo) — era só a mensagem invisível pra quem está no fim da página. Banner virou `fixed`, sempre visível.
+
+Logística de acesso ao ambiente de teste (registrada porque consumiu
+tempo real da sessão): a branch canônica virou Production Branch da
+Vercel numa rodada anterior, então não gera mais Preview em push
+direto — resolvido abrindo um PR (`#7`, branch `admin-v1-qa-preview`)
+só pra disparar o build de Preview. Duas contas de staging tentadas
+antes da certa por engano (uma sem senha conhecida, outra que era na
+verdade uma conta de produção, confirmada por consulta cruzada antes
+de qualquer escrita — nenhum dado de produção tocado). Conta final
+usada: `qa.painel.ux.ajustes.artista@gmail.com` (criada numa QA
+anterior), promovida a `is_admin=true` só em `doopla-qa-staging`.
+
+**Checklist 10/10. Migrations `0096`+`0097` seguem aplicadas só em
+`doopla-qa-staging`, nunca em produção.** Próximo passo, por combinado
+prévio: promover as duas pra produção e fazer smoke test do Admin lá.
+
+## Painel Admin V1 — migrations `0096`+`0097` aplicadas em produção, smoke test pendente — 01/10/2026
+
+Promoção pra produção, ordem pedida pela fundadora. Status real:
+
+1. **Confirmado seguro aplicar**: nenhum objeto de `0096` existia em
+   produção (100% novo desta sessão); todas as tabelas/colunas que
+   `0096`/`0097` leem já estão lá (`profiles`/`auth.users`/
+   `subscriptions`, `community_profiles`/`community_topics`/
+   `community_posts` — Comunidade já é feature live em produção —,
+   `ai_usage_events`, `product_events`/`intervention_moments`).
+   `0096` não é idempotente por desenho (sem `if not exists`), `0097`
+   é (`create or replace`) mas depende de `0096` já aplicada — ordem
+   importa. Achado à parte, sem relação com o Admin: migration `0095`
+   (fecha gap de conta encerrada em busca de contato/ID) segue **sem
+   aplicar em nenhum banco** desde uma rodada anterior — registrado de
+   novo pra não se perder.
+2-3. **`0096` e `0097` aplicadas em produção** (`doopla`), confirmado
+   pela fundadora.
+
+**Decisão da fundadora sobre a conta de admin** (passo 4, ainda
+pendente): não quer usar nenhuma conta de QA/staging em produção, nem
+transformar a conta profissional do dia a dia dela em admin
+definitivo. Quer uma conta interna dedicada (ex. `admin@doopla...`),
+criada pelo cadastro normal do produto (não por admin API/backdoor) —
+procedimento confirmado e entregue (signup normal em produção, depois
+`update profiles set is_admin=true` só nela). Antes de montar esse
+procedimento, confirmei no código (gate de `/admin` em `session.ts` +
+`_assert_is_admin()` nas 12 functions da `0096`) que o Admin V1
+depende **só** de `profiles.is_admin`, nunca de `role` — a conta
+dedicada pode ter qualquer `role` (coluna not null, irrelevante aqui),
+nunca vai usar o `/dashboard` normal.
+
+**Decisão explícita da fundadora**: criar essa conta fica **pra
+depois**, não nesta rodada. Smoke test (passo 5), confirmação de zero
+regressão no dashboard normal (passo 7) e fechamento como `DELIVERED`
+(passo 8) ficam **pendentes**, sem data — dependem só dela decidir
+criar a conta de admin de produção quando quiser. `requires_
+professional_review` e qualquer outro bloco do roadmap **não foram
+iniciados**, como pedido explicitamente.
+
+**Estado real, sem ambiguidade**: código do Admin V1 já está no ar em
+produção (mesma branch canônica = Production Branch) e as migrations
+`0096`/`0097` também — mas **ninguém tem `is_admin=true` em produção
+ainda**, então `/admin` é inacessível por qualquer conta até a
+fundadora criar e marcar a conta dedicada. Risco de regressão pro
+resto do produto: nenhum conhecido — Admin V1 nunca tocou nenhum
+arquivo de `/dashboard`, só adicionou rotas novas isoladas em `/admin`
+e exportações aditivas em `types.ts`.
+
+## Migration `0095` — `[DELIVERED]` — gap de conta encerrada em busca de contato/ID, fechado em staging e produção — 01/10/2026
+
+Pendência aberta numa auditoria anterior (encontrar gap, não aplicar
+ainda), fechada antes de abrir `requires_professional_review`, por
+pedido explícito da fundadora.
+
+**Revisão antes de aplicar** (sem reescrever a migration, só comparar
+com o estado atual): `find_representation_target_by_contact` (0033) e
+`find_representation_target_by_public_id` (0071) nunca filtravam
+`profiles.status` — uma conta encerrada continuava aparecendo em
+"Adicionar alguém da equipe", com nome real exposto, podendo receber
+solicitação de conexão sem nunca poder responder. `0095` adiciona só
+`and p.status = 'active'` nas duas — confirmado linha a linha contra
+as versões originais, zero outra mudança (assinatura, grants, lógica
+de match intactos). Nenhuma migration posterior toca essas functions
+(só uma citação em comentário na 0096). Idempotente (`create or
+replace`). Depende só de `profiles.status` (0078, já em produção há
+semanas) — nenhuma tabela/coluna nova.
+
+**Aplicada e testada em `doopla-qa-staging` primeiro**: script E2E
+rodado em blocos separados (impersonando `auth.uid()` via `set local
+role authenticated` + `request.jwt.claims`, mesmo método já usado pra
+validar o RLS do `artist_link_routing`) — conta ativa encontrada
+normalmente, conta fechada (temporariamente, revertida depois)
+deixando de aparecer, depois confirmado que voltou a aparecer após o
+revert. Nenhum dado de teste ficou alterado ao final.
+
+**Aplicada em produção** (`doopla`) em seguida. Smoke test
+deliberadamente mínimo e 100% leitura (a lógica já estava provada
+idêntica em staging): as duas functions chamadas com um alvo
+inexistente, confirmando que rodam sem erro contra o schema real de
+produção (mesma classe de bug que pegou o `42804` do Admin, se
+existisse aqui) — zero conta real tocada, zero escrita.
+
+**Status final: `0095` = `DELIVERED`, em staging e produção.** Nenhum
+outro `MUST FIX`/gap conhecido de encerramento de conta segue aberto.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

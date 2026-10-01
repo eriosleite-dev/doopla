@@ -66,7 +66,7 @@ export function DeleteAccountModal() {
               role="dialog"
               aria-modal="true"
               aria-label="Excluir minha conta"
-              className="relative max-h-[92vh] w-full max-w-[480px] overflow-y-auto rounded-[24px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] p-6 sm:p-7"
+              className="relative max-h-[92vh] w-full max-w-[480px] overflow-y-auto rounded-[24px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] p-5 sm:p-6"
             >
               <button
                 type="button"
@@ -99,45 +99,45 @@ export function DeleteAccountModal() {
               ) : (
                 <>
                   <p className="pr-8 text-[15px] font-bold text-[var(--pro-off)]">Excluir sua conta é uma ação permanente.</p>
-                  <p className="mt-2 text-[12.5px] text-[var(--pro-tx-50)]">
-                    Antes de continuar, veja o que acontece com sua assinatura, seus dados e seu histórico.
-                  </p>
+                  <p className="mt-1.5 text-[12.5px] text-[var(--pro-tx-50)]">Antes de continuar, veja o que acontece:</p>
 
-                  <ul className="mt-4 flex flex-col gap-2.5 text-[12.5px] text-[var(--pro-tx-50)]">
+                  <ul className="mt-3 flex flex-col gap-2 text-[12.5px] text-[var(--pro-tx-50)]">
                     <li>
-                      <strong className="text-[var(--pro-off)]">Assinatura:</strong> é cancelada — a Doopla para de
-                      representar você a partir daqui.
+                      <strong className="text-[var(--pro-off)]">Assinatura:</strong> será cancelada e a Doopla
+                      deixará de representar você.
                     </li>
                     <li>
-                      <strong className="text-[var(--pro-off)]">Bookings e contratos:</strong> continuam existindo,
-                      intactos, pra preservar o histórico de quem trabalhou com você. Ninguém consegue criar um
-                      booking novo com você depois disso.
+                      <strong className="text-[var(--pro-off)]">Bookings e contratos:</strong> permanecem no
+                      histórico, mas novos bookings não poderão ser criados.
                     </li>
                     <li>
-                      <strong className="text-[var(--pro-off)]">Booker/representação:</strong> qualquer vínculo ativo
-                      é encerrado.
+                      <strong className="text-[var(--pro-off)]">Equipe e representação:</strong> vínculos ativos
+                      serão encerrados.
                     </li>
                     <li>
-                      <strong className="text-[var(--pro-off)]">Comunidade:</strong> seu perfil passa a aparecer como
-                      &ldquo;Usuário removido&rdquo;. Tópicos e respostas que você escreveu continuam existindo — não
-                      apagamos discussões coletivas.
+                      <strong className="text-[var(--pro-off)]">Comunidade:</strong> seu perfil aparecerá como
+                      &ldquo;Usuário removido&rdquo;. Seus tópicos e respostas permanecem para preservar as
+                      conversas.
                     </li>
                     <li>
-                      <strong className="text-[var(--pro-off)]">Canais:</strong> seu link de orçamento e roteamento
-                      de WhatsApp são desativados.
+                      <strong className="text-[var(--pro-off)]">Canais:</strong> seus links e canais da Doopla serão
+                      desativados.
                     </li>
                     <li>
-                      <strong className="text-[var(--pro-off)]">Depois:</strong> você é desconectado de todos os
-                      dispositivos. Um cadastro novo com o mesmo e-mail no futuro é uma conta nova — nada é
-                      restaurado automaticamente.
+                      <strong className="text-[var(--pro-off)]">Após a exclusão:</strong> você será desconectado de
+                      todos os dispositivos. Um novo cadastro com o mesmo e-mail será tratado como uma nova conta.
                     </li>
                   </ul>
 
-                  <div className="mt-5 border-t border-[var(--pro-line)] pt-5">
+                  <div className="mt-4 border-t border-[var(--pro-line)] pt-4">
                     <DeleteAccountForm />
                   </div>
 
-                  <button type="button" onClick={() => setOpen(false)} className={`${proGhostButtonClass} mt-3 w-full justify-center`}>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className={`${proGhostButtonClass} !py-1.5 mt-2.5 w-full justify-center`}
+                  >
                     Cancelar
                   </button>
                 </>

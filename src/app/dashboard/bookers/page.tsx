@@ -16,7 +16,6 @@ import {
 import { getSessionProfile } from '../session';
 import { hasDooplaPro } from '@/lib/subscription';
 import { proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
-import { proNavIcons } from '../pro-sidebar-nav';
 import { ProCard, ProPageHeader } from '../pro-ui';
 import { initialsFromName } from '../ui';
 import { TerminateRelationshipButton } from '../terminate-relationship-button';
@@ -83,25 +82,22 @@ export default async function BookersPage() {
         action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} /> : undefined}
       />
 
-      {/* Correção 06/09/2026 — antes: ProEmptyState genérico (caixa
-         tracejada, pensada pra listas pequenas dentro de outras
-         telas) + CTA duplicado (aqui e no header). Agora: card sólido
-         no mesmo sistema visual da Home (ProCard, ícone em círculo —
-         mesmo tratamento de StatCard/canais), com uma explicação curta
-         do que é Minha equipe e UM ÚNICO CTA. */}
+      {/* Redesign 01/10/2026 (achado de produto da fundadora, 2 rodadas
+         na mesma data) — versão anterior (ícone em círculo + card
+         alto) tinha aparência de placeholder/marketplace. Agora: sem
+         ícone/ilustração, padding padrão de ProCard (consistente com
+         o resto do painel, ~160-180px de altura total), conteúdo
+         alinhado à esquerda, copy como convite direto em vez de
+         "estado vazio". */}
       {hasNothing && (
         <ProCard className="flex flex-col items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.06] text-[var(--pro-tx-70)]">
-            {proNavIcons.equipe}
-          </div>
           <div>
-            <p className="font-pro-sub text-[14px] font-bold">Nenhum Booker conectado ainda</p>
-            <p className="mt-1.5 max-w-[440px] text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
-              Minha equipe é onde você conecta um Booker de confiança pra operar seus bookings com você na Doopla —
-              nada de marketplace, só quem você já trabalha de verdade.
+            <p className="font-pro-sub text-[14px] font-bold">Traga sua equipe para a Doopla</p>
+            <p className="mt-1.5 max-w-[420px] text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
+              Convide quem já trabalha com você para acompanhar seus bookings.
             </p>
           </div>
-          <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} />
+          <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} triggerLabel="+ Adicionar pessoa" />
         </ProCard>
       )}
 

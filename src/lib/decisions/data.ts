@@ -158,6 +158,35 @@ export async function listActionableDecisions(supabase: AnySupabaseClient): Prom
   return [...fromPendingReplies, ...fromDrafts].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+// Decisões isolado (achado de QA, 01/10/2026): a tela de conversa
+// (conversa-view.tsx) nunca buscava o blockReason de um pending_reply
+// — quem chegava lá direto (ex.: clicando em "Precisa de você" na
+// Home) via só um "Responder" genérico, sem saber O QUE a Doopla está
+// esperando. O motivo só existia em Home/Bookings, nunca na própria
+// tela onde a decisão de fato acontece. Mesma leitura de
+// listActionableDecisions acima, só escopada a 1 conversation_id em
+// vez de buscar/descartar todas as decisões do profissional numa tela
+// que só precisa de uma. Mesma RLS, mesma filosofia (só LÊ, nunca
+// reinterpreta).
+export async function getPendingReplyBlockReason(supabase: AnySupabaseClient, conversationId: string): Promise<string | null> {
+  const { data: pendingReply } = await supabase
+    .from('runtime_pending_replies')
+    .select('policy_gate_decision_id')
+    .eq('conversation_id', conversationId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ policy_gate_decision_id: string }>();
+  if (!pendingReply) return null;
+
+  const { data: gateDecision } = await supabase
+    .from('policy_gate_decisions')
+    .select('primary_block_reason')
+    .eq('id', pendingReply.policy_gate_decision_id)
+    .maybeSingle<{ primary_block_reason: string | null }>();
+  return gateDecision?.primary_block_reason ?? null;
+}
+
 // Uma conversa pode gerar 2 linhas em listActionableDecisions ao mesmo
 // tempo (um pending_reply E um prepared_draft) — isso é uma divergência
 // real de contagem descoberta na revisão do Professional Web Dashboard
@@ -188,7 +217,12 @@ export function groupDecisionsByConversation(decisions: DecisionItem[]): Decisio
 // depois pending_reply bloqueado por dado operacional faltando (exige
 // mais fricção — ir preencher algo antes de continuar). Dentro de cada
 // prioridade, o mais antigo vem primeiro.
-const DECISION_PRIORITY = (d: DecisionItem): number => {
+//
+// Exportada (01/10/2026) pra professional-home-view.tsx reusar o MESMO
+// critério ao unificar decisions/pedidos/bookings numa lista só de
+// "Precisa de você" — nunca uma segunda noção de prioridade inventada
+// ali.
+export const decisionPriority = (d: DecisionItem): number => {
   if (d.kind === 'prepared_draft') return 0;
   if (d.blockReason === 'professional_not_operationally_ready') return 2;
   return 1;
@@ -196,7 +230,7 @@ const DECISION_PRIORITY = (d: DecisionItem): number => {
 
 export function sortDecisionsByPriority(decisions: DecisionItem[]): DecisionItem[] {
   return [...decisions].sort((a, b) => {
-    const priorityDiff = DECISION_PRIORITY(a) - DECISION_PRIORITY(b);
+    const priorityDiff = decisionPriority(a) - decisionPriority(b);
     if (priorityDiff !== 0) return priorityDiff;
     return a.createdAt.localeCompare(b.createdAt);
   });
