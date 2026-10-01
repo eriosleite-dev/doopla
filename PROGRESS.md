@@ -19619,6 +19619,41 @@ nunca editei a `0096` já aplicada em staging — grants preservados).
 Aguardando a fundadora aplicar `0097` em `doopla-qa-staging` e retomar
 o checklist do item 4 em diante.
 
+## Painel Admin V1 — checklist de QA manual em `doopla-qa-staging` fechado, 10/10 — 01/10/2026
+
+Depois da `0097` aplicada, a fundadora retomou e terminou o checklist
+completo contra dados reais em staging. Resultado final, item a item:
+
+1. Usuário sem `is_admin` não acessa `/admin` — **PASS**
+2. Conta `is_admin=true` acessa — **PASS**
+3. Overview carrega sem erro, números reais — **PASS**
+4. Busca + detalhe de usuários (lista e drawer somente leitura) — **PASS**
+5. Comunidade encontra perfil/tópico/post (cross-entidade, ignora status) — **PASS**
+6. Restringir/bloquear perfil de teste — **PASS**, confirmado também no banco
+7. Remover/restaurar tópico **e** post, com motivo e auditoria — **PASS** (post testado com dado real criado na hora, não só por equivalência ao tópico)
+8. Cada ação gerou exatamente 1 `admin_audit_events` com estado antes/depois e motivo corretos — **PASS**, conferido via SQL a cada ação
+9. Automoderação (admin tentando moderar o próprio perfil de Comunidade) retorna `cannot_moderate_own_profile` e **não** grava audit event — **PASS**, validação dupla (mensagem na tela + `count(*)` antes/depois no banco)
+10. `/admin/ia-custo` mostra tokens/custo estimado reais por dia/modelo/feature, com a nota de cobertura parcial — **PASS**
+
+**2 achados reais de UX durante o teste prático** (não achados de auditoria de código — só apareceram com as mãos na massa), corrigidos na hora:
+- Botões de moderação (Aplicar/Remover/Restaurar) não davam nenhum feedback visual durante o envio — pareciam travados mesmo funcionando. `SubmitButton` novo (Client Component, `useFormStatus`) desabilita o botão e troca o texto por "Aplicando.../Removendo.../Restaurando..." enquanto pendente.
+- A mensagem de sucesso/erro só aparecia no topo da página — rolada pra baixo (perto dos botões de ação), a fundadora não via a confirmação, achou que o clique não tinha funcionado e clicou "Restaurar" de novo num post que já tinha restaurado — gerando (corretamente) o erro `post_not_restorable` na segunda tentativa. Não era bug de autorização/lógica (o log de auditoria confirmou as duas ações reais, remover e restaurar, cada uma 1x, no horário certo) — era só a mensagem invisível pra quem está no fim da página. Banner virou `fixed`, sempre visível.
+
+Logística de acesso ao ambiente de teste (registrada porque consumiu
+tempo real da sessão): a branch canônica virou Production Branch da
+Vercel numa rodada anterior, então não gera mais Preview em push
+direto — resolvido abrindo um PR (`#7`, branch `admin-v1-qa-preview`)
+só pra disparar o build de Preview. Duas contas de staging tentadas
+antes da certa por engano (uma sem senha conhecida, outra que era na
+verdade uma conta de produção, confirmada por consulta cruzada antes
+de qualquer escrita — nenhum dado de produção tocado). Conta final
+usada: `qa.painel.ux.ajustes.artista@gmail.com` (criada numa QA
+anterior), promovida a `is_admin=true` só em `doopla-qa-staging`.
+
+**Checklist 10/10. Migrations `0096`+`0097` seguem aplicadas só em
+`doopla-qa-staging`, nunca em produção.** Próximo passo, por combinado
+prévio: promover as duas pra produção e fazer smoke test do Admin lá.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
