@@ -18975,6 +18975,51 @@ equipe, encerramento de conta, Decisões isolado.
 
 ## Como usar isso
 
+## QA manual — WhatsApp Identity — `[FAIL/BLOCKED POR CONFIGURAÇÃO DE PRODUÇÃO]` — 01/10/2026
+
+Fundadora testou "Verificar WhatsApp" em produção: clicar em "Enviar
+código" derrubava a página inteira ("This page couldn't load",
+erro genérico do Next). Causa raiz real: `whatsappAccessToken()`/
+`whatsappPhoneNumberId()` (`requireEnv`, `src/lib/supabase/env.ts`)
+jogam exceção quando `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`
+não estão configuradas — sem nenhum try/catch, a exceção escapava da
+Server Action sem tratamento, derrubando toda a página.
+
+**Item 1 (tratamento de erro) — `[DELIVERED]`, commit `d6986a4`**:
+envolvido só a chamada de envio num try/catch em
+`src/lib/whatsapp-identity/request-verification.ts`. Erro real vai só
+pro log do servidor (`console.error`, nunca exposto ao client); UI
+recebe mensagem tratada ("Não foi possível enviar o código agora.
+Tente novamente em instantes."). Menor alteração possível, fluxo
+preservado, `tsc`/`eslint`/`next build` limpos.
+
+**Item 2 (auditoria de infraestrutura) — entregue, não implementado**:
+confirmado por leitura de código (não tenho acesso ao painel da
+Vercel/Meta): 4 variáveis secretas (`WHATSAPP_ACCESS_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
+`WHATSAPP_WEBHOOK_VERIFY_TOKEN`) + 1 pública opcional
+(`NEXT_PUBLIC_WHATSAPP_NUMBER`, nunca quebra se ausente); nenhuma
+credencial Meta adicional escondida (confirmado em
+`src/lib/channels/whatsapp/client.ts` — só accessToken+phoneNumberId
+pra enviar). Rotas/actions dependentes mapeadas: pedido de OTP (já
+corrigido), `send-outbound-intents` (worker de envio real — **MESMO
+problema de try/catch ausente, não corrigido, fora do escopo pedido
+desta rodada**), `intake-orchestration.ts` (resposta automática),
+webhook de entrada (`appSecret`+`webhookVerifyToken`). Repassado à
+fundadora exatamente o que falta configurar na Vercel/Meta, e o
+risco de staging/produção compartilharem o mesmo
+`WHATSAPP_PHONE_NUMBER_ID` sem decisão consciente.
+
+**Critério de PASS definido pela fundadora, ainda não atingido**: E2E
+real — pedir código → WhatsApp real recebe → inserir OTP → confirmar
+→ reload → estado continua verificado. Até lá, **WhatsApp Identity =
+`FAIL/BLOCKED POR CONFIGURAÇÃO DE PRODUÇÃO`**, nunca `PASS`, nunca
+tratado como cosmético. Bloqueado por credenciais reais do WhatsApp
+Business (Meta) que só a fundadora/administrador da conta Meta pode
+obter e configurar — não é um bug de código, é infraestrutura.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
