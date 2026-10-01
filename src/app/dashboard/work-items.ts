@@ -32,15 +32,20 @@ import { STATUS_LABELS } from './ui';
 // do próprio `opportunities.source` ('Link de booking'), nunca de uma
 // conversa.
 //
-// Correção 15/09/2026, 2ª rodada (achado da fundadora): "precisa de
-// você" de um pedido NUNCA é inferido de `status === 'aberta'` — só do
-// estado operacional real da conversation/decision vinculada
-// (resolveDooplaIntervention, doopla-intervention.ts), a MESMA fonte
-// usada pelo detalhe do pedido, pela Home e pelo badge de Bookings.
-// Sem conversation ainda (o caso comum hoje), o pedido nunca aparece
-// como "precisa de você" — fica em "em andamento" com label "Recebido"
-// (honesto: a Doopla ainda não chegou a um ponto de decisão).
-export type WorkAttention = 'precisa_de_voce' | 'em_andamento' | 'confirmado' | 'concluido' | 'cancelado';
+// Arquitetura de Bookings alto-volume (achado da fundadora, 30/09/2026)
+// — correção sobre o modelo anterior: `stage` (estágio) e `needsYou`
+// (atenção humana) viram DUAS dimensões independentes, nunca um enum
+// só. `stage` é derivado SÓ do status real (bookings.status /
+// opportunities.status), nunca sabe de "quem precisa agir" — é a fonte
+// das tabs fixas (Em negociação/Confirmados/Concluídos/Todos).
+// `needsYou` é um boolean à parte, mesmos sinais de sempre
+// (classifyBookingAttention pra booking, resolveDooplaIntervention pra
+// pedido — nenhum sinal novo, nenhuma mudança de fonte), vira só o
+// badge "Precisa de você" sobre qualquer stage. Antes, `WorkAttention`
+// colapsava as duas coisas num enum só (ex.: um booking com proposta
+// pendente do cliente virava 'precisa_de_voce', nunca aparecendo como
+// "em negociação" de verdade) — removido.
+export type WorkStage = 'negociacao' | 'confirmado' | 'concluido' | 'outro';
 export type WorkChannel = 'whatsapp' | 'public_link' | 'email' | 'painel' | 'outro';
 
 export const WORK_CHANNEL_LABEL: Record<WorkChannel, string> = {
@@ -49,6 +54,13 @@ export const WORK_CHANNEL_LABEL: Record<WorkChannel, string> = {
   email: 'E-mail',
   painel: 'Painel',
   outro: 'Outro canal',
+};
+
+export const WORK_STAGE_LABEL: Record<WorkStage, string> = {
+  negociacao: 'Em negociação',
+  confirmado: 'Confirmados',
+  concluido: 'Concluídos',
+  outro: 'Outros',
 };
 
 export type WorkItem = {
@@ -61,7 +73,8 @@ export type WorkItem = {
   location: string | null;
   valueCents: number | null;
   channel: WorkChannel;
-  attention: WorkAttention;
+  stage: WorkStage;
+  needsYou: boolean;
   statusLabel: string;
   statusTone: ProPillTone;
   sortDate: string;
@@ -73,17 +86,29 @@ export type WorkItem = {
   hasContract: boolean;
 };
 
-const ATTENTION_ORDER: Record<WorkAttention, number> = {
-  precisa_de_voce: 0,
-  em_andamento: 1,
-  confirmado: 2,
-  concluido: 3,
-  cancelado: 3,
+const STAGE_ORDER: Record<WorkStage, number> = {
+  negociacao: 0,
+  confirmado: 1,
+  concluido: 2,
+  outro: 3,
 };
 
 function asWorkChannel(raw: string | undefined): WorkChannel {
   if (raw === 'whatsapp' || raw === 'public_link' || raw === 'email' || raw === 'painel' || raw === 'outro') return raw;
   return 'painel';
+}
+
+// Estágio é SÓ o status real do booking — nunca sabe quem propôs nem
+// se há pendência. `aceita`/`aguardando_pagamento` ficam juntos em
+// "Confirmados" (mesmo agrupamento que `classifyBookingAttention` já
+// usava pro filtro antigo). `recusada`/`cancelada` não ganham tab
+// própria (pedido explícito da fundadora) — caem em 'outro', visível
+// só em "Todos" + filtro.
+function bookingStage(status: BookingWithOtherParty['status']): WorkStage {
+  if (status === 'proposta_enviada') return 'negociacao';
+  if (status === 'aceita' || status === 'aguardando_pagamento') return 'confirmado';
+  if (status === 'concluida') return 'concluido';
+  return 'outro'; // recusada | cancelada
 }
 
 function bookingWorkItem(
@@ -93,17 +118,10 @@ function bookingWorkItem(
   pendingReview: boolean
 ): WorkItem {
   const bookingAttention = classifyBookingAttention(b, userId);
-  const attention: WorkAttention = pendingReview
-    ? 'precisa_de_voce'
-    : bookingAttention === 'precisa_de_voce'
-      ? 'precisa_de_voce'
-      : bookingAttention === 'em_negociacao'
-        ? 'em_andamento'
-        : bookingAttention === 'confirmados'
-          ? 'confirmado'
-          : bookingAttention === 'concluidos'
-            ? 'concluido'
-            : 'cancelado';
+  // needsYou nunca é o status — é só "existe uma proposta pendente da
+  // OUTRA parte" (mesmo sinal de sempre, classifyBookingAttention) ou
+  // uma avaliação pendente (transversal ao status, igual já era antes).
+  const needsYou = pendingReview || bookingAttention === 'precisa_de_voce';
 
   // "Doopla negociando" — relabel só de apresentação (achado da
   // fundadora, 15/09/2026): quando a proposta pendente é a do próprio
@@ -132,7 +150,8 @@ function bookingWorkItem(
     location: b.event_location,
     valueCents: b.cache_amount_cents,
     channel: conversation ? asWorkChannel(conversation.channel) : 'painel',
-    attention,
+    stage: bookingStage(b.status),
+    needsYou,
     statusLabel,
     statusTone: bookingStatusTone(b, userId),
     sortDate: b.updated_at,
@@ -140,20 +159,31 @@ function bookingWorkItem(
   };
 }
 
+// Pedido (opportunity ainda não convertida) não tem bookings.status —
+// a tabela de estágios da fundadora é sobre booking, então um pedido
+// não-terminal (ainda sendo formalizado) cai em "Em negociação", o
+// mais próximo do que ele realmente é. Terminal (`cancelada`/
+// `booker_selecionado`) cai em 'outro', mesmo tratamento de
+// recusada/cancelada — sem tab própria. Divergência sinalizada à
+// fundadora antes de implementar (30/09/2026); ajustar aqui se a
+// decisão for outra.
 function pedidoWorkItem(o: Opportunity, conversation: ConversationOperationalFacts | null, decision: DecisionItem | null): WorkItem {
   const clientName = o.client_name || 'Cliente sem nome';
   const isTerminal = o.status === 'cancelada' || o.status === 'booker_selecionado';
 
-  let attention: WorkAttention;
+  let stage: WorkStage;
+  let needsYou: boolean;
   let statusLabel: string;
   let statusTone: ProPillTone;
   if (isTerminal) {
-    attention = o.status === 'cancelada' ? 'cancelado' : 'concluido';
+    stage = 'outro';
+    needsYou = false;
     statusLabel = PEDIDO_STATUS_LABEL[o.status] ?? o.status;
     statusTone = pedidoStatusTone(o);
   } else {
+    stage = 'negociacao';
     const intervention = resolveDooplaIntervention(conversation, decision, clientName);
-    attention = intervention.needsYou ? 'precisa_de_voce' : 'em_andamento';
+    needsYou = intervention.needsYou;
     statusLabel = intervention.headline;
     statusTone = intervention.tone;
   }
@@ -168,7 +198,8 @@ function pedidoWorkItem(o: Opportunity, conversation: ConversationOperationalFac
     location: o.location,
     valueCents: o.client_offered_cents,
     channel: 'public_link',
-    attention,
+    stage,
+    needsYou,
     statusLabel,
     statusTone,
     sortDate: o.created_at,
@@ -199,16 +230,21 @@ export function buildWorkItems(params: {
     }),
   ];
 
-  // Ordenação: urgência primeiro (precisa de você > em andamento >
-  // confirmado > concluído/cancelado); dentro de precisa_de_voce/
-  // em_andamento, mais recente primeiro (item "vivo"); dentro de
-  // confirmado, data do evento mais próxima primeiro (relevância
-  // temporal, nunca created_at cru) — requisito explícito da
-  // fundadora.
+  // Ordenação por tab (requisito explícito da fundadora, 30/09/2026):
+  // "Em negociação" → precisa de você primeiro, depois mais recente;
+  // "Confirmados" → próximo evento primeiro (nunca created_at cru);
+  // "Concluídos"/"outro" → mais recente primeiro. A lista já sai
+  // ordenada assim pra "Todos" também (stage em ordem, cada bloco já
+  // na ordem certa por dentro) — os componentes de tab só filtram por
+  // `stage` em cima deste array, nunca reordenam.
   return items.sort((a, b) => {
-    const orderDiff = ATTENTION_ORDER[a.attention] - ATTENTION_ORDER[b.attention];
-    if (orderDiff !== 0) return orderDiff;
-    if (a.attention === 'confirmado') {
+    const stageDiff = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
+    if (stageDiff !== 0) return stageDiff;
+    if (a.stage === 'negociacao') {
+      if (a.needsYou !== b.needsYou) return a.needsYou ? -1 : 1;
+      return new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime();
+    }
+    if (a.stage === 'confirmado') {
       if (!a.eventDate) return 1;
       if (!b.eventDate) return -1;
       return a.eventDate.localeCompare(b.eventDate);
