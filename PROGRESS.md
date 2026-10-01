@@ -19020,6 +19020,23 @@ obter e configurar — não é um bug de código, é infraestrutura.
 
 ## Como usar isso
 
+## Débito técnico registrado — `send-outbound-intents` sem tratamento de erro de credencial WhatsApp — `[BACKLOG]` — 01/10/2026
+
+Achado da auditoria de WhatsApp Identity (ver seção acima): o worker
+real de envio (`src/app/api/runtime/send-outbound-intents/route.ts`)
+chama `whatsappAccessToken()`/`whatsappPhoneNumberId()` sem try/catch,
+nos mesmos pontos que já causaram o crash corrigido no fluxo de
+Identity. Se essas credenciais faltarem/falharem em produção, esse
+worker pode quebrar silenciosamente (ou pelo menos sem log claro da
+causa) em vez de falhar de forma segura e registrada.
+
+Decisão explícita da fundadora: não misturar com o fluxo de Identity
+nem mudar arquitetura agora — registrado como débito técnico pra
+correção futura (tratamento de erro seguro + log da causa real, nunca
+derrubar o worker silenciosamente). Não implementado nesta rodada.
+
+## Como usar isso
+
 Toda vez que eu terminar um item, atualizo o status aqui e commito
 junto com o código. Se quiser saber "o que falta", é só pedir pra eu
 reler este arquivo — não preciso da conversa inteira pra saber onde
