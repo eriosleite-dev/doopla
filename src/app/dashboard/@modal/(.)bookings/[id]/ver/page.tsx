@@ -33,7 +33,7 @@ export default async function BookingDrawerModalPage(props: { params: Promise<{ 
 
   return (
     <BookingDrawerShell>
-      <ProBookingDetailView {...viewProps} />
+      <ProBookingDetailView {...viewProps} compact />
     </BookingDrawerShell>
   );
 }
