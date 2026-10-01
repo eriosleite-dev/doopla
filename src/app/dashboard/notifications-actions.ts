@@ -137,7 +137,7 @@ export async function markNotificationReadAction(notificationId: string): Promis
 // /dashboard/notificacoes/page.tsx (primeira página, direto no
 // server) quanto pelo botão "Carregar mais" (client, como Server
 // Action) — mesma função, dois chamadores.
-export const NOTIFICATION_HISTORY_PAGE_SIZE = 20;
+const NOTIFICATION_HISTORY_PAGE_SIZE = 20;
 
 export async function loadNotificationHistoryPageAction(
   offset: number
