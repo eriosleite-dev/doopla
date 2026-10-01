@@ -19584,6 +19584,41 @@ explícito e NÃO gera audit event (valida o fix da rodada anterior);
 "preço não configurado" quando aplicável. Produção só depois de tudo
 isso passar.
 
+## Painel Admin V1 — QA manual real em `doopla-qa-staging`, 1 bug achado e corrigido (migration `0097`) — 01/10/2026
+
+QA manual começou de verdade contra `doopla-qa-staging` (não só leitura
+de código). Logística de acesso, registrada porque consumiu tempo real:
+a branch canônica virou Production Branch da Vercel numa rodada
+anterior, então não gera mais Preview em push direto — criei a branch
+`admin-v1-qa-preview` (mesmo commit da canônica) e abri um PR só pra
+disparar o build de Preview (confirmado: branch sem PR aberto não
+builda; com PR, builda). Duas contas de staging tentadas por engano
+antes da certa (uma sem senha conhecida, outra que acabou sendo de
+produção — confirmado por consulta cruzada, nenhum dado real tocado);
+a conta usada no fim foi `qa.painel.ux.ajustes.artista@gmail.com`
+(criada numa QA anterior), promovida a `is_admin=true` só em staging.
+
+**Items 1-3 do checklist**: PASS. Usuário sem `is_admin` não acessa
+`/admin`; conta admin acessa; `/admin` (Visão geral) carregou com
+números reais (6 usuários ativos, custo estimado de IA calculado
+corretamente a partir de uso real de `gpt-5-mini`, nota de "chamadas
+não incluídas" visível).
+
+**Item 4 — bug real encontrado**: `/admin/usuarios` quebrava com `500`
+("This page couldn't load"). Log da Vercel deu a causa exata: `42804 —
+Returned type character varying(255) does not match expected type text
+in column 4`. Causa: `admin_search_profiles`/`admin_get_profile_detail`
+(migration 0096) declaram a coluna `email` como `text` no
+`RETURNS TABLE`, mas `auth.users.email` é `character varying(255)` —
+`RETURN QUERY` exige tipo IDÊNTICO, não aceita o cast implícito que uma
+atribuição comum aceitaria (gap do meu próprio código, só aparece
+rodando contra Postgres real — `tsc`/`eslint`/`next build` não pegam
+isso). Corrigido com `u.email::text` explícito nas duas functions, via
+migration nova `0097_admin_v1_email_cast_fix.sql` (`create or replace`,
+nunca editei a `0096` já aplicada em staging — grants preservados).
+Aguardando a fundadora aplicar `0097` em `doopla-qa-staging` e retomar
+o checklist do item 4 em diante.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
