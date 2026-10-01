@@ -84,6 +84,16 @@ export function ProBookingDetailView({
   reviews,
   role,
   userId,
+  // Drawer lateral (BookingDrawer, 30/09/2026) renderiza este MESMO
+  // componente dentro de 560px — o grid de 4 colunas abaixo usa
+  // `lg:grid-cols-4`, um breakpoint medido pela largura da JANELA, não
+  // do container; numa tela larga ele força 4 colunas dentro dos
+  // 560px do drawer, e "Data do trabalho"/"Última atualização"
+  // colam sem espaço (ex.: "26/10/2026hoje"). `compact` (default
+  // false, só true vindo do drawer) troca pra um grid de 2 colunas
+  // fixo nesse container estreito — página cheia nunca passa essa
+  // prop, comportamento 100% inalterado lá.
+  compact = false,
 }: {
   booking: BookingWithOtherParty;
   events: { id: string; event_type: string; commission_percent: number | null; created_at: string }[];
@@ -93,6 +103,7 @@ export function ProBookingDetailView({
   reviews: { myReview: import('@/lib/supabase/types').Review | null; reviewOfMe: import('@/lib/supabase/types').Review | null } | null;
   role: 'artista' | 'booker' | 'agencia';
   userId: string;
+  compact?: boolean;
 }) {
   const EVENT_LABELS: Record<string, string> = {
     proposta_enviada: 'Proposta enviada',
@@ -139,7 +150,7 @@ export function ProBookingDetailView({
       />
 
       <ProCard>
-        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className={`grid gap-4 ${compact ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'}`}>
           {/* Direct Booking (16/09/2026): sem Booker não existe
               comissão aplicável — "0%" seria um valor técnico real mas
               sem significado nenhum pro usuário. Nunca esconde info

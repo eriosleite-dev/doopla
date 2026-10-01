@@ -19312,6 +19312,63 @@ Decisões isolado — 1 gap corrigido). Próximo item do roadmap, por
 ordem já combinada: Painel Admin (auditoria já entregue antes desta
 rodada, implementação explicitamente não iniciada).
 
+## Bookings — redesign de UX pra alto volume (tabs, drawer, "Precisa de você") integrado na canônica — 01/10/2026
+
+Trabalho feito numa branch paralela (`painel-ux-ajustes`, sessão
+dedicada de ajustes de UI/UX do Painel Profissional), aprovado pela
+fundadora com arquitetura corrigida por ela antes da implementação:
+`WorkAttention` (enum único que colapsava status e atenção numa coisa
+só) deixou de existir — `WorkItem` (`work-items.ts`) agora separa
+`stage` (estágio real do booking, derivado só de `bookings.status`/
+`opportunities.status`: `proposta_enviada` → negociação;
+`aceita`/`aguardando_pagamento` → confirmado; `concluida` → concluído;
+`recusada`/`cancelada` → "outro", sem tab própria) de `needsYou`
+(atenção humana, mesmos sinais de sempre — `classifyBookingAttention`/
+`resolveDooplaIntervention`, nenhum sinal novo).
+
+`trabalhos/pro-work-list-view.tsx` ganhou tabs fixas sempre visíveis
+(Em negociação | Confirmados | Concluídos | Todos, com contagem —
+nunca dropdown), linhas compactas (`BookingRowCompact`, 2 linhas, sem
+backdrop-blur por item) com o badge "Precisa de você" ao lado do
+status (nunca substituindo ele), e um banner contando só bookings
+formalizados com `needsYou=true` (nunca `DecisionItems` de pedidos/
+conversas). Filtro "Filtrar" trocou a antiga lista de status por um
+toggle "Mostrar cancelados/recusados" — só assim eles aparecem, e só
+em "Todos".
+
+`BookingDrawer`: clique numa linha de booking abre um drawer lateral
+(reaproveita `ProBookingDetailView`/`LegacyBookingDetailView` da
+página real, sem duplicar lógica — busca extraída pra
+`booking-detail-loader.ts`, usada pelos dois). Decisão de arquitetura
+não pedida explicitamente, mas necessária: em vez de interceptar a
+URL canônica do booking (`/dashboard/bookings/[id]`), o drawer usa um
+alias dedicado (`/ver`) — a URL canônica é a mesma que a tela do
+Booker (tema legado, intocada) já usa em página cheia hoje, e
+interceptá-la mudaria esse comportamento pra todo mundo que navega
+pra lá, Booker incluído. Com o alias, só quem entra pelo painel novo é
+interceptado; Booker e acesso direto à URL do booking nunca mudam de
+comportamento (confirmado em QA real abaixo).
+
+**QA interativo real** (não só `tsc`/`eslint`/`build`) em
+`doopla-qa-staging`, com contas de teste e ~21 bookings cobrindo todos
+os estágios: 8 itens do checklist, 7 PASS direto, 1 bug real
+encontrado e corrigido antes da integração — dentro do drawer (560px),
+o grid de stats usava `lg:grid-cols-4` (breakpoint de largura da
+*janela*, não do container), forçando 4 colunas e colando "Data do
+trabalho"/"Última atualização" em tela larga. Fix: prop `compact`
+opcional em `ProBookingDetailView` (default `false`, página cheia
+inalterada), só o caller do drawer passa `compact=true`.
+
+Commits integrados (merge sem conflito, zero arquivo em comum com o
+que avançou na canônica nesse intervalo): `e530169` (stage × needsYou,
+tabs, linhas compactas, banner), `feae6c6` (BookingDrawer),
+`bccf2e6` (fix do grid). `tsc`/`eslint`/`build` limpos no merge.
+
+Fora de escopo nesta rodada (explícito, não esquecido): Approval
+Engine, Policy Gate, `requires_professional_review`, novas actions
+estruturadas, novos statuses, migrations/schema/RLS, Admin, WhatsApp,
+pagamentos, mobile.
+
 ## Painel Admin V1 — implementado, migration `0096` pendente de aplicação — 01/10/2026
 
 Escopo fechado em rodada dedicada de scoping com a fundadora (nunca
