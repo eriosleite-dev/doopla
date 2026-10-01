@@ -1406,7 +1406,21 @@ export async function updateProfileAndWorkContextAction(
     })
     .eq('profile_id', user.id)
     .select('profile_id');
-  if (error || !updatedRows || updatedRows.length === 0) return { error: 'Não foi possível salvar agora.' };
+  if (error || !updatedRows || updatedRows.length === 0) {
+    // Diagnóstico temporário (QA real, 30/09/2026) — a falha "Não foi
+    // possível salvar agora." reportada pela fundadora não reproduz
+    // via SQL direto (update funciona normalmente simulando a mesma
+    // sessão/RLS). Sem log nenhum hoje, essa classe de falha é
+    // invisível nos Runtime Logs da Vercel. Loga o erro real do
+    // Supabase (se houver) e o user.id resolvido nesta request — só
+    // diagnóstico, não muda nenhum comportamento pro usuário.
+    console.error('updateProfileAndWorkContextAction: update sem efeito', {
+      userId: user.id,
+      error,
+      updatedRowsCount: updatedRows?.length ?? null,
+    });
+    return { error: 'Não foi possível salvar agora.' };
+  }
 
   revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
