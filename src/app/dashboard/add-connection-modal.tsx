@@ -17,7 +17,67 @@ import { accentButtonClass, cardClass, ghostButtonClass } from './ui';
 
 type Role = 'artista' | 'booker';
 
-const TARGET_LABEL: Record<Role, string> = { artista: 'Booker', booker: 'Artista' };
+// Copy revisada (01/10/2026, achado de produto da fundadora) — "Booker"
+// deixa de ser o termo principal pro lado que o artista conecta (vira
+// linguagem de equipe, sem inventar um novo nome de cargo); "Artista"
+// também sai como termo genérico pro lado que o booker conecta (a
+// Doopla atende outras profissões), virando "Profissional" — mesmo
+// termo que o resto do produto já usa pro papel `artista`
+// (ProfessionalShellGate, Professional Home etc.), não é um termo
+// novo. Só apresentação: nenhum nome interno (`booker`/`artista`),
+// enum, coluna ou regra de permissão muda — `myRole` continua
+// exatamente os mesmos 2 valores de sempre, só a copy visível por
+// valor muda. Variant `pro` (isPro) só é usada com myRole="artista"
+// (ver bookers/page.tsx) — então todo texto gated por `isPro` abaixo é
+// na prática exclusivo do lado artista; os poucos campos usados pelos
+// dois lados (nome/código ID/resultado da busca) têm as duas versões.
+type RoleCopy = {
+  openButton: string;
+  contactStepTitle: string;
+  idStepTitle: string;
+  contactExplainer: string;
+  idExplainer: string;
+  nameLabel: string;
+  idLabel: string;
+  foundAsSuffix: string;
+  leftPanelTitle: string;
+  leftPanelSubtitle: string;
+  disconnectHint: string;
+};
+
+const ROLE_COPY: Record<Role, RoleCopy> = {
+  artista: {
+    openButton: 'Adicionar alguém da equipe',
+    contactStepTitle: 'Informe os dados da pessoa',
+    idStepTitle: 'Buscar por código ID',
+    contactExplainer:
+      'Se a pessoa já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.',
+    idExplainer: 'Peça o código ID pra pessoa — ela encontra o dela em "Seu código ID", no painel dela.',
+    nameLabel: 'Nome',
+    idLabel: 'Código ID',
+    foundAsSuffix: '',
+    leftPanelTitle: 'Adicionar alguém da equipe',
+    leftPanelSubtitle: 'Conecte alguém de confiança para ajudar a operar seus bookings.',
+    disconnectHint: 'Você pode encerrar essa conexão quando quiser.',
+  },
+  booker: {
+    openButton: 'Adicionar profissional',
+    contactStepTitle: 'Informe os dados do profissional',
+    idStepTitle: 'Buscar profissional por código ID',
+    contactExplainer:
+      'Se o profissional já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.',
+    idExplainer: 'Peça o código ID pro profissional — ele encontra o dele em "Seu código ID", no painel dele.',
+    nameLabel: 'Nome do profissional',
+    idLabel: 'Código ID do profissional',
+    foundAsSuffix: ' como profissional',
+    // leftPanel* nunca renderizados pro booker hoje (isPro só é true
+    // com myRole="artista") — preenchidos por completude/segurança
+    // futura, nunca pelo caminho atual.
+    leftPanelTitle: 'Adicionar profissional',
+    leftPanelSubtitle: 'Conecte um profissional de confiança para ajudar a operar seus bookings.',
+    disconnectHint: 'Você pode encerrar essa conexão quando quiser.',
+  },
+};
 
 // Correção 06/09/2026 — este componente é compartilhado por Booker
 // (`/dashboard/artistas`, legado, `myRole="booker"`) e Artista
@@ -62,7 +122,7 @@ export function AddConnectionModal({
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
-  const targetLabel = TARGET_LABEL[myRole];
+  const copy = ROLE_COPY[myRole];
 
   const primaryBtn = isPro ? proPrimaryButtonClass : accentButtonClass;
   const secondaryBtn = isPro ? proGhostButtonClass : ghostButtonClass;
@@ -171,7 +231,7 @@ export function AddConnectionModal({
       return (
         <>
           <button type="button" onClick={() => setUpgradeModalOpen(true)} className={primaryBtn}>
-            Adicionar um {targetLabel}
+            {copy.openButton}
           </button>
           <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="equipe" />
         </>
@@ -179,7 +239,7 @@ export function AddConnectionModal({
     }
     return (
       <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>
-        Adicionar um {targetLabel}
+        {copy.openButton}
       </button>
     );
   }
@@ -193,12 +253,12 @@ export function AddConnectionModal({
       ? 'Solicitação enviada'
       : 'Convite enviado'
     : mode === 'contact'
-      ? `Informe os dados do ${targetLabel.toLowerCase()}`
-      : `Buscar ${targetLabel.toLowerCase()} por código ID`;
+      ? copy.contactStepTitle
+      : copy.idStepTitle;
 
   const formContent = (
     <>
-      {!isPro && <p className={titleClass}>Adicionar um {targetLabel}</p>}
+      {!isPro && <p className={titleClass}>{copy.openButton}</p>}
       {isPro && <p className={titleClass}>{rightHeading}</p>}
 
       {sent ? (
@@ -258,16 +318,14 @@ export function AddConnectionModal({
              nada que o produto não faz. */}
           {isPro && result === null && (
             <p className={`${mutedTextClass} rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] p-3 leading-relaxed`}>
-              {mode === 'contact'
-                ? `Se ${targetLabel.toLowerCase() === 'booker' ? 'o' : 'a'} ${targetLabel.toLowerCase()} já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.`
-                : `Peça o código ID pro ${targetLabel.toLowerCase()} — ele encontra o dele em "Seu código ID", no painel dele.`}
+              {mode === 'contact' ? copy.contactExplainer : copy.idExplainer}
             </p>
           )}
 
           {mode === 'contact' ? (
             <>
               <label className={labelWrapClass}>
-                <span className={labelTextClass}>Nome do {targetLabel.toLowerCase()}</span>
+                <span className={labelTextClass}>{copy.nameLabel}</span>
                 <input
                   value={name}
                   onChange={(e) => {
@@ -310,7 +368,7 @@ export function AddConnectionModal({
           ) : (
             <>
               <label className={labelWrapClass}>
-                <span className={labelTextClass}>Código ID do {targetLabel.toLowerCase()}</span>
+                <span className={labelTextClass}>{copy.idLabel}</span>
                 <input
                   value={publicId}
                   onChange={(e) => {
@@ -364,7 +422,7 @@ export function AddConnectionModal({
           {result?.kind === 'match' && (
             <div className={highlightBoxClass}>
               <p className={bodyTextClass}>
-                Encontramos {result.name} na Doopla como {targetLabel.toLowerCase()}.
+                Encontramos {result.name} na Doopla{copy.foundAsSuffix}.
               </p>
               <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
                 {pending ? 'Enviando…' : 'Enviar solicitação'}
@@ -397,7 +455,7 @@ export function AddConnectionModal({
   // formContent acima é o mesmo conteúdo de sempre, só realocado.
   return (
     <div className="overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] backdrop-blur-xl lg:grid lg:grid-cols-[280px_1fr]">
-      <LeftPanel targetLabel={targetLabel} />
+      <LeftPanel copy={copy} />
       <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] p-5 sm:p-6 lg:border-t-0 lg:border-l">
         {formContent}
       </div>
@@ -430,15 +488,13 @@ function UnlinkIcon() {
 // equipe"/oportunidades fazem) e o vínculo pode ser desfeito a
 // qualquer momento (TerminateRelationshipButton, já existente). Nunca
 // promete "nível de acesso"/permissão granular — isso não existe.
-function LeftPanel({ targetLabel }: { targetLabel: string }) {
+function LeftPanel({ copy }: { copy: RoleCopy }) {
   return (
     <div className="flex flex-col items-start gap-4 p-5 sm:p-6">
       <ProMascot size={64} />
       <div>
-        <p className="font-pro-sub text-[16px] font-bold text-[var(--pro-off)]">Adicionar um {targetLabel}</p>
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--pro-tx-50)]">
-          Conecte um {targetLabel.toLowerCase()} de confiança pra ajudar a operar seus bookings na Doopla.
-        </p>
+        <p className="font-pro-sub text-[16px] font-bold text-[var(--pro-off)]">{copy.leftPanelTitle}</p>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--pro-tx-50)]">{copy.leftPanelSubtitle}</p>
       </div>
 
       <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] pt-4">
@@ -460,7 +516,7 @@ function LeftPanel({ targetLabel }: { targetLabel: string }) {
           <div>
             <p className="text-[12.5px] font-bold text-[var(--pro-off)]">Você continua no controle</p>
             <p className="mt-0.5 text-[11.5px] leading-relaxed text-[var(--pro-tx-50)]">
-              Pode desconectar o {targetLabel.toLowerCase()} quando quiser, a qualquer momento.
+              {copy.disconnectHint}
             </p>
           </div>
         </div>

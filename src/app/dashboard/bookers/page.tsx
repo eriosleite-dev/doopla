@@ -95,10 +95,10 @@ export default async function BookersPage() {
             {proNavIcons.equipe}
           </div>
           <div>
-            <p className="font-pro-sub text-[14px] font-bold">Nenhum Booker conectado ainda</p>
+            <p className="font-pro-sub text-[14px] font-bold">Nenhuma pessoa da sua equipe conectada ainda</p>
             <p className="mt-1.5 max-w-[440px] text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
-              Minha equipe é onde você conecta um Booker de confiança pra operar seus bookings com você na Doopla —
-              nada de marketplace, só quem você já trabalha de verdade.
+              Conecte alguém de confiança para ajudar a operar seus bookings com você na Doopla — nada de
+              marketplace, só quem você já trabalha de verdade.
             </p>
           </div>
           <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} />

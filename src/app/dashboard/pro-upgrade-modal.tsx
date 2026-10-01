@@ -40,7 +40,7 @@ const CONTEXT_COPY: Record<ProUpgradeContext, { eyebrow: string; title: string; 
   equipe: {
     eyebrow: 'Doopla Pro',
     title: 'Desbloqueie Minha equipe com Doopla Pro',
-    description: 'Convide um Booker pra representar sua carreira e trabalhem juntos na mesma Doopla.',
+    description: 'Convide alguém da sua equipe para operar seus bookings com você na mesma Doopla.',
   },
   geral: {
     eyebrow: 'Doopla Pro',
