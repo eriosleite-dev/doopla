@@ -19740,6 +19740,190 @@ existisse aqui) — zero conta real tocada, zero escrita.
 **Status final: `0095` = `DELIVERED`, em staging e produção.** Nenhum
 outro `MUST FIX`/gap conhecido de encerramento de conta segue aberto.
 
+## `requires_professional_review` — implementado (auditoria conjunta aprovada), migration `0098` aguardando aplicação — 01/10/2026
+
+Próximo bloco formal do roadmap, depois de uma auditoria conjunta com
+Notificações (pedida pela fundadora pra não criar uma 5ª versão da
+mesma pendência). Auditoria encontrou 2 achados reais — implementados
+agora, exatamente com as regras finais que ela aprovou.
+
+**Achado 1 (já implementado em 4+1 lugares)**: `policy_allowed`
+sozinho nunca deveria significar "Precisa de você" — é o estado de
+QUALQUER draft entre criado e enviado pelo cron (1×/min), não só os
+genuinamente retidos (`requires_professional_review=true`, migration
+0083). A condição completa certa sempre foi `delivery_state=
+'policy_allowed' AND requires_professional_review=true`, mas só a
+primeira metade tinha chegado até a leitura de estado/decisões.
+Corrigido nos 4 lugares identificados na auditoria — `deriveConversationState()`,
+`listActionableDecisions()`, `list_actionable_decisions_page()`,
+`getPendingDraftForConversation()` — **mais um 5º achado na varredura
+final antes de fechar**: `oportunidades/[id]/page.tsx` (detalhe de
+Pedido) tinha a MESMA condição reimplementada inline, direto na page
+(não era bug visível — o badge final já saía correto via
+`resolveDooplaIntervention`/`deriveConversationState`, já corrigida —
+mas era uma 5ª cópia da mesma fórmula, exatamente o drift que essa
+rodada existe pra eliminar). Corrigido também.
+
+**Centralização** (pra nunca mais divergir sem ninguém perceber):
+`isOutboundDraftAwaitingProfessionalReview()` (TS, novo export em
+`conversations/state.ts`) e `outbound_intent_needs_professional_review()`
+(SQL, novo, migration `0098`) — mesma pergunta booleana, uma função só
+de cada lado (TS não chama SQL nem vice-versa, mas os comentários se
+referenciam). Todo lugar que precisava da condição agora chama uma
+das duas, nenhum reescreve inline.
+
+**`/dashboard/decisoes`**: confirmado órfão (virou redirect em
+15/09/2026, decisão já tomada antes desta rodada) — não revivido.
+`list_actionable_decisions_page` foi corrigida mesmo assim (decisão
+explícita: não deixar uma definição ERRADA esperando ser revivida por
+engano no futuro), comentário deixa claro que segue sem consumidor
+ativo.
+
+**Achado 2 (novo, não documentado antes desta auditoria)**: nada
+fechava o draft original depois do profissional responder.
+`cancel_outbound_intent()` (migration 0051) existe mas nunca é chamada
+em lugar nenhum do código — infraestrutura morta. `persist_inbound_message`
+grava proveniência (`replied_to_outbound_intent_id`,
+`prepared_response_outcome`) mas nunca tocava em `outbound_intents.
+delivery_state` — a linha original ficava `policy_allowed` pra
+sempre, podendo reaparecer como pendência mesmo já respondida.
+
+**Decisão de segurança, pedida explicitamente antes de implementar**:
+não reutilizar `cancel_outbound_intent()` pra isso — ela só checa
+`is_system_caller()`, nunca valida que o `outbound_intent` pertence à
+mesma conversation/professional de quem chama. Em vez disso, o
+fechamento virou parte do corpo de `persist_inbound_message`
+(`create or replace`, assinatura inalterada), que já carrega
+`v_outbound` validado (mesma conversation) desde a 0066 — acrescentei
+2 validações (mesmo professional — redundante por construção, mantida
+por defesa em profundidade; `requires_professional_review=true` E
+estado ainda cancelável) e um `UPDATE` condicional, tudo dentro do
+`WHERE`, nunca um `IF/RAISE`: se qualquer condição não bater, a
+atualização simplesmente não encontra linha — o envio da mensagem
+NUNCA é bloqueado por isso, e um `outboundIntentId` de outra
+conversa/profissional nunca fecha nada. Atomicidade por construção:
+fechamento e `INSERT` da mensagem na mesma function, mesma transação,
+sem segundo round-trip.
+
+**Migration `requires_professional_review` também ficou protegida
+contra fechar draft automático**: a condição `requires_professional_review=true`
+no `WHERE` garante a regra 4 da fundadora ("nunca cancelar um
+outbound_intent automático só por estar `policy_allowed`") — nenhuma
+lógica extra precisou disso, a mesma condição resolve as duas coisas.
+
+**"Agora não"**: mantido exatamente como estava, nenhum status novo
+(`dismissed`/`skipped`) — confirmado que não precisa de nenhuma
+mudança de estado, é literalmente "não decidir agora".
+
+**Revalidação (Home/sidebar/Bookings sem reload manual)**: `professional-reply-action.ts`
+chama `revalidatePath('/dashboard', 'layout')` depois de um envio
+`completed`/`duplicate_event` — invalida a árvore inteira do painel de
+uma vez, nunca uma lista de paths mantida à mão (ficaria desatualizada
+a cada nova superfície que ler o mesmo estado — o mesmo tipo de drift
+que essa rodada inteira corrigiu).
+
+**Migration `0098_requires_professional_review_lifecycle.sql`**: expõe
+`last_outbound_intent_requires_review` em `get_conversation_operational_facts`
+(drop+create, formato de retorno mudou); cria `outbound_intent_needs_professional_review()`;
+corrige `list_actionable_decisions_page` (`create or replace`); estende
+`persist_inbound_message` (`create or replace`, assinatura inalterada).
+Nenhuma tabela nova, nenhum parâmetro novo em nenhuma function exposta
+ao frontend. HEAD conferido antes de numerar (`0098`, sem colisão com
+outra sessão).
+
+`tsc`/`eslint`/`next build` limpos. **Migration ainda não aplicada em
+nenhum banco** — próximo passo é `doopla-qa-staging`, com um roteiro
+de QA pros 10 itens que a fundadora pediu (vou entregar o script de
+teste, incluindo simular um draft retido direto via SQL pra não
+depender de rodar o pipeline de IA completo). Notificações
+explicitamente não implementadas nesta rodada — só a fonte canônica
+corrigida, pronta pra ser consumida depois sem reinventar `needs_you`.
+
+## `requires_professional_review` — migration `0098` aplicada em `doopla-qa-staging`, QA real passou — 01/10/2026
+
+Roteiro de QA rodado contra staging (não leitura de código): branch
+`admin-v1-qa-preview` atualizada com o commit do bloco e reaberta como
+Preview na Vercel (mesma logística já usada pro Admin V1 — a branch
+canônica virou Production Branch, não gera Preview em push direto).
+Fixture de teste criado direto via SQL (conversation nova + um
+`outbound_intents` com `requires_professional_review=true`, sem
+precisar rodar o pipeline de IA completo) — login real como `QA
+Artista Teste`, Home mostrou "Precisa de você" pra essa conversa, e a
+tela mostrou **"Revise esta resposta antes de enviar"** com o conteúdo
+certo. **Item 2 do checklist confirmado em produto real, não só em
+leitura de código.**
+
+**Achado à parte, não relacionado a `requires_professional_review`**:
+testando essa tela, a fundadora encontrou "Comissão proposta 15%"
+aparecendo — não era a conversa de teste (sem booking nenhum
+vinculado), era um booking de QA mais antigo e genuinamente ligado a
+um Booker real. Auditoria pedida e feita (sem implementar ainda):
+`bookings.commission_percent` é `0` pra Direct Booking por desenho
+(migration 0087, documentado), e a tela principal já esconde
+"Comissão proposta" quando `booker_profile_id IS NULL` desde
+16/09/2026 — achado real, mas MENOR do que parecia. Duas outras partes
+da MESMA tela (seção de nota fiscal) não seguiam esse padrão:
+"Pagamento da comissão: Pelo artista..." e "Comissão pendente: R$
+0,00", ambas alcançáveis em Direct Booking via `requires_invoice`
+(independente de ter Booker). Contrato e telas Booker já confirmados
+seguros (contrato já bloqueia Direct Booking no backend desde
+16/09/2026, botão já nem aparece na UI).
+
+**Corrigido** (commit separado, pedido explícito): as duas partes
+agora usam o MESMO critério já existente (`booking.booker_profile_id
+!== null`) — zero schema, zero migration, zero mudança pra bookings
+com Booker real (continuam mostrando tudo normalmente), zero mudança
+em telas Booker/contrato/`requires_professional_review`. `tsc`/`eslint`/`next
+build` limpos.
+
+## `requires_professional_review` — DELIVERED (produção) — 02/10/2026
+
+Migration `0098_requires_professional_review_lifecycle.sql` aplicada em
+produção ("Success. No rows returned"). Smoke test completo rodado
+direto em produção com fixture sintética sob a conta real
+`hello@milkystudios.cool` (conversation + 2 `outbound_intents`
+sequenciais via SQL direto, sem pipeline de IA):
+
+- Draft retido aparece como "Precisa de você" + `DraftReviewPanel` com
+  o conteúdo pré-preenchido correto. **PASS.**
+- "Agora não" mantém a pendência inalterada (sem novo status, sem
+  `dismissed`/`skipped`). **PASS.**
+- Enviar **sem editar**: `outbound_intents.delivery_state='cancelled'`,
+  `failure_reason='superseded_by_professional_reply'` no draft
+  original; `conversation_messages.prepared_response_outcome='sent'`
+  com `replied_to_outbound_intent_id` corretamente vinculado. **PASS.**
+- Enviar **editando o texto**: mesmo resultado no draft original
+  (`cancelled`/`superseded_by_professional_reply`); mensagem nova com
+  `prepared_response_outcome='edited'` e `body` refletindo o texto
+  editado, não o original. **PASS.**
+- Home deixa de mostrar a pendência resolvida sem reload manual,
+  confirmando que `revalidatePath('/dashboard', 'layout')` (adicionado
+  em `professional-reply-action.ts`) cobre a árvore inteira do
+  dashboard. **PASS.** Sidebar e Bookings usam a mesma chamada de
+  revalidação — não são um caminho de código separado; Bookings não se
+  aplica a essa conversa de teste (sem `related_booking_id`).
+- "Nenhum draft automático fica preso": não testado com uma linha viva
+  em produção de propósito (o cron `send-outbound-intents`, 1×/min,
+  tentaria um envio real sem destinatário). Confirmado por revisão de
+  código: a migration `0098` não tocou
+  `list_claimable_outbound_intents` nem
+  `claim_outbound_intent_for_send`, e a cláusula
+  `requires_professional_review = false` que protege drafts
+  automáticos de serem retidos continua intacta.
+
+Fixtures de teste removidas de produção após a validação (mensagens →
+outbound_intents → conversation, nessa ordem por causa de FKs) —
+nenhum dado sintético permanece na conta real.
+
+**Estado final confirmado:**
+1. Correção mergeada na canônica (`0919e23`) — sim.
+2. Migration `0098` aplicada em produção — sim.
+3. Smoke test em produção passou (todos os itens do checklist) — sim.
+4. Commit `3919e4e` (achado de comissão) integrado — sim.
+5. Este arquivo atualizado como entregue — sim, esta entrada.
+
+Bloco fechado. Nenhum novo bloco aberto nesta sessão.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

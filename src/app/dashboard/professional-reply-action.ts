@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
 import { submitProfessionalReply } from '@/lib/beta-integration/professional-reply';
@@ -59,11 +60,27 @@ export async function sendProfessionalReplyAction(params: {
   outboundIntentId?: string | null;
 }): Promise<ProfessionalReplyActionResult> {
   const { supabase, user } = await requireProfessional();
-  return submitProfessionalReply(supabase, user.id, {
+  const result = await submitProfessionalReply(supabase, user.id, {
     conversationId: params.conversationId,
     submissionId: params.submissionId,
     body: params.body,
     outboundIntentId: params.outboundIntentId ?? null,
     sourceSurface: 'web',
   });
+
+  // Ciclo de requires_professional_review (01/10/2026) — resolver uma
+  // pendência aqui precisa desaparecer de Home/sidebar/Bookings/
+  // conversa sem reload manual. 'completed' e 'duplicate_event' (retry
+  // de uma submissão que já tinha sucedido) são os únicos casos em que
+  // algo pode ter mudado de estado; os demais (busy/not_found/
+  // author_mismatch/action_error) nunca persistem nada novo.
+  // revalidatePath('/dashboard', 'layout') invalida a árvore inteira do
+  // painel de uma vez — nunca uma lista de paths mantida à mão, que
+  // ficaria desatualizada a cada nova superfície que ler o mesmo
+  // estado (exatamente o drift que esta rodada corrigiu).
+  if (result.kind === 'completed' || result.kind === 'duplicate_event') {
+    revalidatePath('/dashboard', 'layout');
+  }
+
+  return result;
 }

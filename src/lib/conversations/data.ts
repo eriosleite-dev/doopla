@@ -39,6 +39,11 @@ export type ConversationOperationalFacts = {
   hasPendingRuntimeReply: boolean;
   pendingRuntimeReplySince: string | null;
   lastOutboundIntentDeliveryState: string | null;
+  // requires_professional_review do outbound_intent mais recente
+  // (migration 0098) — distingue draft retido de verdade (precisa de
+  // ação) de draft comum que o cron vai mandar sozinho. Ver
+  // isOutboundDraftAwaitingProfessionalReview em ./state.ts.
+  lastOutboundIntentRequiresReview: boolean | null;
   lastOutboundIntentUpdatedAt: string | null;
   state: ConversationState;
 };
@@ -60,6 +65,7 @@ type RawOperationalFactsRow = {
   has_pending_runtime_reply: boolean;
   pending_runtime_reply_since: string | null;
   last_outbound_intent_delivery_state: string | null;
+  last_outbound_intent_requires_review: boolean | null;
   last_outbound_intent_updated_at: string | null;
 };
 
@@ -81,11 +87,13 @@ function mapOperationalFactsRow(row: RawOperationalFactsRow): ConversationOperat
     hasPendingRuntimeReply: row.has_pending_runtime_reply,
     pendingRuntimeReplySince: row.pending_runtime_reply_since,
     lastOutboundIntentDeliveryState: row.last_outbound_intent_delivery_state,
+    lastOutboundIntentRequiresReview: row.last_outbound_intent_requires_review,
     lastOutboundIntentUpdatedAt: row.last_outbound_intent_updated_at,
     state: deriveConversationState({
       status: row.status,
       hasPendingRuntimeReply: row.has_pending_runtime_reply,
       lastOutboundIntentDeliveryState: row.last_outbound_intent_delivery_state,
+      lastOutboundIntentRequiresReview: row.last_outbound_intent_requires_review,
       lastMessageDirection: row.last_message_direction,
     }),
   };
@@ -263,16 +271,23 @@ export type PendingDraft = {
   updatedAt: string;
 };
 
-// O draft ATUAL (delivery_state='policy_allowed') pendente de ação do
-// profissional pra esta conversa, quando existir — nunca exposto pela
-// lista/get_conversation_operational_facts, só aqui, pela tela de
-// DETALHE (RLS "outbound_intents: select own", 0051).
+// O draft RETIDO de verdade (delivery_state='policy_allowed' AND
+// requires_professional_review=true — regra canônica em
+// isOutboundDraftAwaitingProfessionalReview, ./state.ts) pendente de
+// ação do profissional pra esta conversa, quando existir — nunca
+// exposto pela lista/get_conversation_operational_facts, só aqui, pela
+// tela de DETALHE (RLS "outbound_intents: select own", 0051).
+//
+// Correção 01/10/2026: antes só filtrava delivery_state, mostrando o
+// DraftReviewPanel pra QUALQUER draft em policy_allowed — inclusive um
+// que o cron ia mandar sozinho em segundos, sem nenhuma retenção real.
 export async function getPendingDraftForConversation(supabase: AnySupabaseClient, conversationId: string): Promise<PendingDraft | null> {
   const { data } = await supabase
     .from('outbound_intents')
     .select('id, content, delivery_state, created_at, updated_at')
     .eq('conversation_id', conversationId)
     .eq('delivery_state', 'policy_allowed')
+    .eq('requires_professional_review', true)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
