@@ -19924,6 +19924,37 @@ nenhum dado sintético permanece na conta real.
 
 Bloco fechado. Nenhum novo bloco aberto nesta sessão.
 
+## Notification Center (`painel-ux-ajustes`) — integrado com a fonte canônica corrigida de `needs_you`, aguardando QA em staging — 02/10/2026
+
+Branch `painel-ux-ajustes` (sessão PAINEL) mergeada com a canônica
+pós-`0098` (merge commit, não rebase — branch de outra sessão). Revisão
+confirmou: `getCachedPendencyRows`/`pendencies.ts` consome exclusivamente
+`listActionableDecisions()` e `deriveConversationState()` já
+corrigidas, zero lógica própria de `requires_professional_review`
+(a extração já tinha sido feita prevendo essa correção, comentário
+próprio no arquivo). `tsc`/`eslint`/`next build` limpos nos arquivos da
+branch. PR #8 aberto só pra Preview de staging (mesmo esquema do Admin
+V1), merge na canônica aguardando resultado do QA interativo (14 itens,
+founder vai rodar em staging).
+
+**MUST FIX registrado pro bloco Mobile final** (decisão da fundadora,
+02/10/2026, não corrigir agora nem misturar com Web): durante a
+varredura por `policy_allowed` tratado sozinho como pendência, achamos
+que `mobile/src/lib/conversation-state.ts` é um espelho deliberado de
+`src/lib/conversations/state.ts` (comentário no próprio arquivo: "qualquer
+mudança de critério LÁ precisa da MESMA mudança aqui") que nunca foi
+atualizado quando a correção de `requires_professional_review` entrou
+na canônica em 01/10/2026. Ainda usa
+`facts.hasPendingRuntimeReply || facts.lastOutboundIntentDeliveryState === 'policy_allowed'`
+pra decidir `needs_you` — mesmo gap já fechado no Web. **Regra
+obrigatória pro Mobile, quando aquele bloco for aberto** (ver decisão
+de 22/09/2026 acima — Mobile reservado pro final do Beta): `needs_you`
+exige `delivery_state='policy_allowed' AND requires_professional_review=true`;
+`policy_allowed` com `requires_professional_review=false` nunca é
+`needs_you`. Precisa expor `requires_professional_review` nos fatos
+operacionais que o mobile consome (hoje `ConversationOperationalFactsForState`
+no mobile não tem esse campo) antes de corrigir o predicado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
