@@ -19955,6 +19955,33 @@ exige `delivery_state='policy_allowed' AND requires_professional_review=true`;
 operacionais que o mobile consome (hoje `ConversationOperationalFactsForState`
 no mobile não tem esse campo) antes de corrigir o predicado.
 
+## Notification Center — DELIVERED (integrado na canônica) — 02/10/2026
+
+QA interativo em staging (Preview PR #8): **14/14 PASS** — sino global
+(todas as abas/filtros, badge só não-lidas, deep link com âncora,
+agrupamento Hoje/Ontem/Esta semana, fechar por clique-fora e Esc,
+estado de erro com retry), consistência entre `NotificationBell` e
+`CommunityNotificationsBell` sem reload, página `/dashboard/notificacoes`
+(seção "Precisa de você agora" sem paginação/janela, histórico paginado
+sem duplicar), regressão de contagem (Home/sidebar/sino sempre o mesmo
+número) e gate de booker (sino vazio, sem erro).
+
+Dois alinhamentos confirmados antes do merge, nenhum exigiu mudança de
+código:
+- CTA "Ver todas as notificações" já aponta fixo pra
+  `/dashboard/notificacoes`, sem query param — V1 não precisa preservar
+  o filtro ativo do popover, por decisão explícita.
+- Achado de `mobile/src/lib/conversation-state.ts` fica só registrado
+  como MUST FIX do bloco Mobile final (entrada acima) — não corrigido
+  aqui, não misturado com Web.
+
+**Integração na canônica**: HEAD da canônica confirmado em `fff0db1`
+(exatamente o merge-base com `painel-ux-ajustes`) — integração por
+**fast-forward puro** (`fff0db1..88f82ed`), sem merge commit e sem
+reescrever histórico de nenhuma das duas branches.
+`tsc`/`eslint`/`next build` limpos no resultado final. Bloco fechado,
+nenhuma outra frente aberta nesta sessão.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
