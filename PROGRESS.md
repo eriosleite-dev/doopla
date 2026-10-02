@@ -19839,6 +19839,43 @@ depender de rodar o pipeline de IA completo). Notificações
 explicitamente não implementadas nesta rodada — só a fonte canônica
 corrigida, pronta pra ser consumida depois sem reinventar `needs_you`.
 
+## `requires_professional_review` — migration `0098` aplicada em `doopla-qa-staging`, QA real passou — 01/10/2026
+
+Roteiro de QA rodado contra staging (não leitura de código): branch
+`admin-v1-qa-preview` atualizada com o commit do bloco e reaberta como
+Preview na Vercel (mesma logística já usada pro Admin V1 — a branch
+canônica virou Production Branch, não gera Preview em push direto).
+Fixture de teste criado direto via SQL (conversation nova + um
+`outbound_intents` com `requires_professional_review=true`, sem
+precisar rodar o pipeline de IA completo) — login real como `QA
+Artista Teste`, Home mostrou "Precisa de você" pra essa conversa, e a
+tela mostrou **"Revise esta resposta antes de enviar"** com o conteúdo
+certo. **Item 2 do checklist confirmado em produto real, não só em
+leitura de código.**
+
+**Achado à parte, não relacionado a `requires_professional_review`**:
+testando essa tela, a fundadora encontrou "Comissão proposta 15%"
+aparecendo — não era a conversa de teste (sem booking nenhum
+vinculado), era um booking de QA mais antigo e genuinamente ligado a
+um Booker real. Auditoria pedida e feita (sem implementar ainda):
+`bookings.commission_percent` é `0` pra Direct Booking por desenho
+(migration 0087, documentado), e a tela principal já esconde
+"Comissão proposta" quando `booker_profile_id IS NULL` desde
+16/09/2026 — achado real, mas MENOR do que parecia. Duas outras partes
+da MESMA tela (seção de nota fiscal) não seguiam esse padrão:
+"Pagamento da comissão: Pelo artista..." e "Comissão pendente: R$
+0,00", ambas alcançáveis em Direct Booking via `requires_invoice`
+(independente de ter Booker). Contrato e telas Booker já confirmados
+seguros (contrato já bloqueia Direct Booking no backend desde
+16/09/2026, botão já nem aparece na UI).
+
+**Corrigido** (commit separado, pedido explícito): as duas partes
+agora usam o MESMO critério já existente (`booking.booker_profile_id
+!== null`) — zero schema, zero migration, zero mudança pra bookings
+com Booker real (continuam mostrando tudo normalmente), zero mudança
+em telas Booker/contrato/`requires_professional_review`. `tsc`/`eslint`/`next
+build` limpos.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

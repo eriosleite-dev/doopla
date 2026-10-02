@@ -202,10 +202,16 @@ export function ProBookingDetailView({
               <dt className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Prazo de pagamento</dt>
               <dd className="mt-1 text-sm text-[var(--pro-off)]">{booking.invoice_payment_term ?? 'A confirmar'}</dd>
             </div>
-            <div>
-              <dt className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Pagamento da comissão</dt>
-              <dd className="mt-1 text-sm text-[var(--pro-off)]">Pelo artista, após o recebimento do cliente</dd>
-            </div>
+            {/* Direct Booking (01/10/2026): mesmo critério já usado pra
+                "Comissão proposta" acima — sem Booker não existe
+                comissão aplicável, o texto pressupõe um Booker
+                recebendo algo que não existe. */}
+            {booking.booker_profile_id !== null && (
+              <div>
+                <dt className="font-doopla-mono text-[11px] uppercase tracking-[.08em] text-[var(--pro-tx-50)]">Pagamento da comissão</dt>
+                <dd className="mt-1 text-sm text-[var(--pro-off)]">Pelo artista, após o recebimento do cliente</dd>
+              </div>
+            )}
           </dl>
 
           {role === 'booker' && !['recusada', 'cancelada'].includes(booking.status) && (
@@ -272,12 +278,15 @@ export function ProBookingDetailView({
                 </div>
               )}
 
-              {booking.invoice_client_paid_at && !booking.invoice_commission_paid_at && booking.cache_amount_cents != null && (
-                <p className="mt-3 text-sm text-[var(--pro-tx-70)]">
-                  Comissão pendente:{' '}
-                  {formatCentsAsBRL(Math.round((booking.cache_amount_cents * booking.commission_percent) / 100))}
-                </p>
-              )}
+              {booking.booker_profile_id !== null &&
+                booking.invoice_client_paid_at &&
+                !booking.invoice_commission_paid_at &&
+                booking.cache_amount_cents != null && (
+                  <p className="mt-3 text-sm text-[var(--pro-tx-70)]">
+                    Comissão pendente:{' '}
+                    {formatCentsAsBRL(Math.round((booking.cache_amount_cents * booking.commission_percent) / 100))}
+                  </p>
+                )}
             </div>
           )}
         </ProCard>
