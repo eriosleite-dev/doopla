@@ -19876,6 +19876,54 @@ com Booker real (continuam mostrando tudo normalmente), zero mudança
 em telas Booker/contrato/`requires_professional_review`. `tsc`/`eslint`/`next
 build` limpos.
 
+## `requires_professional_review` — DELIVERED (produção) — 02/10/2026
+
+Migration `0098_requires_professional_review_lifecycle.sql` aplicada em
+produção ("Success. No rows returned"). Smoke test completo rodado
+direto em produção com fixture sintética sob a conta real
+`hello@milkystudios.cool` (conversation + 2 `outbound_intents`
+sequenciais via SQL direto, sem pipeline de IA):
+
+- Draft retido aparece como "Precisa de você" + `DraftReviewPanel` com
+  o conteúdo pré-preenchido correto. **PASS.**
+- "Agora não" mantém a pendência inalterada (sem novo status, sem
+  `dismissed`/`skipped`). **PASS.**
+- Enviar **sem editar**: `outbound_intents.delivery_state='cancelled'`,
+  `failure_reason='superseded_by_professional_reply'` no draft
+  original; `conversation_messages.prepared_response_outcome='sent'`
+  com `replied_to_outbound_intent_id` corretamente vinculado. **PASS.**
+- Enviar **editando o texto**: mesmo resultado no draft original
+  (`cancelled`/`superseded_by_professional_reply`); mensagem nova com
+  `prepared_response_outcome='edited'` e `body` refletindo o texto
+  editado, não o original. **PASS.**
+- Home deixa de mostrar a pendência resolvida sem reload manual,
+  confirmando que `revalidatePath('/dashboard', 'layout')` (adicionado
+  em `professional-reply-action.ts`) cobre a árvore inteira do
+  dashboard. **PASS.** Sidebar e Bookings usam a mesma chamada de
+  revalidação — não são um caminho de código separado; Bookings não se
+  aplica a essa conversa de teste (sem `related_booking_id`).
+- "Nenhum draft automático fica preso": não testado com uma linha viva
+  em produção de propósito (o cron `send-outbound-intents`, 1×/min,
+  tentaria um envio real sem destinatário). Confirmado por revisão de
+  código: a migration `0098` não tocou
+  `list_claimable_outbound_intents` nem
+  `claim_outbound_intent_for_send`, e a cláusula
+  `requires_professional_review = false` que protege drafts
+  automáticos de serem retidos continua intacta.
+
+Fixtures de teste removidas de produção após a validação (mensagens →
+outbound_intents → conversation, nessa ordem por causa de FKs) —
+nenhum dado sintético permanece na conta real.
+
+**Estado final confirmado:**
+1. Correção mergeada na canônica (`0919e23`) — sim.
+2. Migration `0098` aplicada em produção — sim.
+3. Smoke test em produção passou (todos os itens do checklist) — sim.
+4. Commit `3919e4e` (achado de comissão) integrado — sim.
+5. Este arquivo atualizado como entregue — sim, esta entrada.
+
+Bloco fechado. Nenhum novo bloco aberto nesta sessão.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
