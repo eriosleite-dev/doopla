@@ -19982,6 +19982,50 @@ reescrever histórico de nenhuma das duas branches.
 `tsc`/`eslint`/`next build` limpos no resultado final. Bloco fechado,
 nenhuma outra frente aberta nesta sessão.
 
+## Housekeeping — PRs #7/#8 fechados sem merge; branches `*-qa-preview` pendentes de remoção manual — 02/10/2026
+
+PRs #7 (`admin-v1-qa-preview`) e #8 (`painel-ux-ajustes-qa`) fechados
+sem merge, com comentário explicando que eram só infraestrutura de
+Preview deployment (branch canônica é o Production Branch da Vercel,
+não gera Preview em push direto). `git push origin --delete` pras duas
+branches retornou `HTTP 403` — a credencial desta sessão parece ter
+permissão de push mas não de deletar refs, e a ferramenta GitHub MCP
+disponível aqui não expõe uma ação de deletar branch. Nenhum workaround
+destrutivo tentado. **Pendente**: fundadora remover
+`admin-v1-qa-preview` e `painel-ux-ajustes-qa` manualmente (GitHub →
+Branches). `painel-ux-ajustes` preservada de propósito como histórico
+isolado, não é mais branch ativa. Canônica intocada.
+
+## `send-outbound-intents` — débito técnico de credencial WhatsApp fechado, commit `0548e6c` — `[DELIVERED]` — 02/10/2026
+
+Fecha o débito registrado em 01/10 (seção acima). Auditoria encontrou a
+causa raiz exata: `whatsappAccessToken()`/`whatsappPhoneNumberId()`
+(`requireEnv`) só lançavam exceção **depois** de
+`claimOutboundIntentForSend` já ter reclamado o intent (lease de 60s)
+— o `try/catch` do loop em `route.ts` evitava o cron inteiro cair, mas
+cada intent ficava preso em `sending` até o lease vencer, sem log
+estruturado da causa real, repetindo a cada tick (1/min) enquanto a
+config não fosse corrigida.
+
+**Correção aplicada** (menor escopo possível, aprovado antes de
+implementar): checagem única de `WHATSAPP_ACCESS_TOKEN`/
+`WHATSAPP_PHONE_NUMBER_ID` logo **depois** da autenticação do cron
+(secret bearer, inalterada) e **antes** de `listClaimableOutboundIntents`.
+Faltando alguma: `console.error` com os nomes ausentes (nunca valor) +
+resposta `503` `{"error":"whatsapp_misconfigured"}` + retorno imediato
+— zero list/claim, zero lease, zero mudança de `delivery_state`. Nada
+em `claimOutboundIntentForSend`, leases, estados de delivery ou
+retry/idempotência foi alterado; caminho normal com credenciais
+presentes é idêntico ao de antes. Trata só configuração ausente —
+erro real da Meta (token expirado/revogado, falha HTTP de envio)
+continua fora de escopo, por decisão explícita. `tsc`/`eslint`/`next
+build` limpos, commit isolado.
+
+Com isso, **desenvolvimento Web pausado por decisão da fundadora** — o
+próximo bloqueador é infraestrutura (configuração real Meta/Vercel das
+credenciais WhatsApp Business) + o E2E de WhatsApp Identity que depende
+dela (ver seção `[FAIL/BLOCKED POR CONFIGURAÇÃO DE PRODUÇÃO]` acima).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
