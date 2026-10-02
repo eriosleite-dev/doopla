@@ -41,6 +41,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // Débito técnico fechado 02/10/2026 — mesma causa raiz do fix de
+  // WhatsApp Identity (request-verification.ts): whatsappAccessToken()/
+  // whatsappPhoneNumberId() (requireEnv, env.ts) JOGAM exceção quando
+  // as credenciais não estão configuradas. Sem este preflight, essa
+  // exceção só acontecia DEPOIS de claimOutboundIntentForSend já ter
+  // reclamado o intent (lease de 60s) — o try/catch do loop abaixo
+  // evitava o cron inteiro cair, mas deixava o intent preso em
+  // 'sending' até o lease vencer, sem nenhum log estruturado da causa
+  // real, repetindo a cada tick (1/min) enquanto a config não for
+  // corrigida. Checagem única aqui, ANTES de listClaimableOutboundIntents,
+  // pra nunca reclamar nada quando a config está ausente — zero
+  // claim/lease/mudança de delivery_state, retry fica automaticamente
+  // preservado (outbound_intents seguem intocados, reclamáveis assim
+  // que a config for corrigida). Só trata configuração ausente — erro
+  // real da Meta (token expirado/revogado, falha HTTP de envio)
+  // continua tratado pelo caminho normal abaixo, fora de escopo aqui.
+  const missingEnv = [
+    ['WHATSAPP_ACCESS_TOKEN', process.env.WHATSAPP_ACCESS_TOKEN] as const,
+    ['WHATSAPP_PHONE_NUMBER_ID', process.env.WHATSAPP_PHONE_NUMBER_ID] as const,
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (missingEnv.length > 0) {
+    console.error('[send-outbound-intents] credenciais WhatsApp ausentes, nenhum intent reclamado', { missingEnv });
+    return NextResponse.json({ error: 'whatsapp_misconfigured' }, { status: 503 });
+  }
+
   const supabase = createServiceRoleClient();
   const claimable = await listClaimableOutboundIntents(supabase, { channel: 'whatsapp', limit: 50 });
 
