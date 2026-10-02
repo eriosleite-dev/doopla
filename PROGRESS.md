@@ -19619,6 +19619,226 @@ nunca editei a `0096` já aplicada em staging — grants preservados).
 Aguardando a fundadora aplicar `0097` em `doopla-qa-staging` e retomar
 o checklist do item 4 em diante.
 
+## Painel Admin V1 — checklist de QA manual em `doopla-qa-staging` fechado, 10/10 — 01/10/2026
+
+Depois da `0097` aplicada, a fundadora retomou e terminou o checklist
+completo contra dados reais em staging. Resultado final, item a item:
+
+1. Usuário sem `is_admin` não acessa `/admin` — **PASS**
+2. Conta `is_admin=true` acessa — **PASS**
+3. Overview carrega sem erro, números reais — **PASS**
+4. Busca + detalhe de usuários (lista e drawer somente leitura) — **PASS**
+5. Comunidade encontra perfil/tópico/post (cross-entidade, ignora status) — **PASS**
+6. Restringir/bloquear perfil de teste — **PASS**, confirmado também no banco
+7. Remover/restaurar tópico **e** post, com motivo e auditoria — **PASS** (post testado com dado real criado na hora, não só por equivalência ao tópico)
+8. Cada ação gerou exatamente 1 `admin_audit_events` com estado antes/depois e motivo corretos — **PASS**, conferido via SQL a cada ação
+9. Automoderação (admin tentando moderar o próprio perfil de Comunidade) retorna `cannot_moderate_own_profile` e **não** grava audit event — **PASS**, validação dupla (mensagem na tela + `count(*)` antes/depois no banco)
+10. `/admin/ia-custo` mostra tokens/custo estimado reais por dia/modelo/feature, com a nota de cobertura parcial — **PASS**
+
+**2 achados reais de UX durante o teste prático** (não achados de auditoria de código — só apareceram com as mãos na massa), corrigidos na hora:
+- Botões de moderação (Aplicar/Remover/Restaurar) não davam nenhum feedback visual durante o envio — pareciam travados mesmo funcionando. `SubmitButton` novo (Client Component, `useFormStatus`) desabilita o botão e troca o texto por "Aplicando.../Removendo.../Restaurando..." enquanto pendente.
+- A mensagem de sucesso/erro só aparecia no topo da página — rolada pra baixo (perto dos botões de ação), a fundadora não via a confirmação, achou que o clique não tinha funcionado e clicou "Restaurar" de novo num post que já tinha restaurado — gerando (corretamente) o erro `post_not_restorable` na segunda tentativa. Não era bug de autorização/lógica (o log de auditoria confirmou as duas ações reais, remover e restaurar, cada uma 1x, no horário certo) — era só a mensagem invisível pra quem está no fim da página. Banner virou `fixed`, sempre visível.
+
+Logística de acesso ao ambiente de teste (registrada porque consumiu
+tempo real da sessão): a branch canônica virou Production Branch da
+Vercel numa rodada anterior, então não gera mais Preview em push
+direto — resolvido abrindo um PR (`#7`, branch `admin-v1-qa-preview`)
+só pra disparar o build de Preview. Duas contas de staging tentadas
+antes da certa por engano (uma sem senha conhecida, outra que era na
+verdade uma conta de produção, confirmada por consulta cruzada antes
+de qualquer escrita — nenhum dado de produção tocado). Conta final
+usada: `qa.painel.ux.ajustes.artista@gmail.com` (criada numa QA
+anterior), promovida a `is_admin=true` só em `doopla-qa-staging`.
+
+**Checklist 10/10. Migrations `0096`+`0097` seguem aplicadas só em
+`doopla-qa-staging`, nunca em produção.** Próximo passo, por combinado
+prévio: promover as duas pra produção e fazer smoke test do Admin lá.
+
+## Painel Admin V1 — migrations `0096`+`0097` aplicadas em produção, smoke test pendente — 01/10/2026
+
+Promoção pra produção, ordem pedida pela fundadora. Status real:
+
+1. **Confirmado seguro aplicar**: nenhum objeto de `0096` existia em
+   produção (100% novo desta sessão); todas as tabelas/colunas que
+   `0096`/`0097` leem já estão lá (`profiles`/`auth.users`/
+   `subscriptions`, `community_profiles`/`community_topics`/
+   `community_posts` — Comunidade já é feature live em produção —,
+   `ai_usage_events`, `product_events`/`intervention_moments`).
+   `0096` não é idempotente por desenho (sem `if not exists`), `0097`
+   é (`create or replace`) mas depende de `0096` já aplicada — ordem
+   importa. Achado à parte, sem relação com o Admin: migration `0095`
+   (fecha gap de conta encerrada em busca de contato/ID) segue **sem
+   aplicar em nenhum banco** desde uma rodada anterior — registrado de
+   novo pra não se perder.
+2-3. **`0096` e `0097` aplicadas em produção** (`doopla`), confirmado
+   pela fundadora.
+
+**Decisão da fundadora sobre a conta de admin** (passo 4, ainda
+pendente): não quer usar nenhuma conta de QA/staging em produção, nem
+transformar a conta profissional do dia a dia dela em admin
+definitivo. Quer uma conta interna dedicada (ex. `admin@doopla...`),
+criada pelo cadastro normal do produto (não por admin API/backdoor) —
+procedimento confirmado e entregue (signup normal em produção, depois
+`update profiles set is_admin=true` só nela). Antes de montar esse
+procedimento, confirmei no código (gate de `/admin` em `session.ts` +
+`_assert_is_admin()` nas 12 functions da `0096`) que o Admin V1
+depende **só** de `profiles.is_admin`, nunca de `role` — a conta
+dedicada pode ter qualquer `role` (coluna not null, irrelevante aqui),
+nunca vai usar o `/dashboard` normal.
+
+**Decisão explícita da fundadora**: criar essa conta fica **pra
+depois**, não nesta rodada. Smoke test (passo 5), confirmação de zero
+regressão no dashboard normal (passo 7) e fechamento como `DELIVERED`
+(passo 8) ficam **pendentes**, sem data — dependem só dela decidir
+criar a conta de admin de produção quando quiser. `requires_
+professional_review` e qualquer outro bloco do roadmap **não foram
+iniciados**, como pedido explicitamente.
+
+**Estado real, sem ambiguidade**: código do Admin V1 já está no ar em
+produção (mesma branch canônica = Production Branch) e as migrations
+`0096`/`0097` também — mas **ninguém tem `is_admin=true` em produção
+ainda**, então `/admin` é inacessível por qualquer conta até a
+fundadora criar e marcar a conta dedicada. Risco de regressão pro
+resto do produto: nenhum conhecido — Admin V1 nunca tocou nenhum
+arquivo de `/dashboard`, só adicionou rotas novas isoladas em `/admin`
+e exportações aditivas em `types.ts`.
+
+## Migration `0095` — `[DELIVERED]` — gap de conta encerrada em busca de contato/ID, fechado em staging e produção — 01/10/2026
+
+Pendência aberta numa auditoria anterior (encontrar gap, não aplicar
+ainda), fechada antes de abrir `requires_professional_review`, por
+pedido explícito da fundadora.
+
+**Revisão antes de aplicar** (sem reescrever a migration, só comparar
+com o estado atual): `find_representation_target_by_contact` (0033) e
+`find_representation_target_by_public_id` (0071) nunca filtravam
+`profiles.status` — uma conta encerrada continuava aparecendo em
+"Adicionar alguém da equipe", com nome real exposto, podendo receber
+solicitação de conexão sem nunca poder responder. `0095` adiciona só
+`and p.status = 'active'` nas duas — confirmado linha a linha contra
+as versões originais, zero outra mudança (assinatura, grants, lógica
+de match intactos). Nenhuma migration posterior toca essas functions
+(só uma citação em comentário na 0096). Idempotente (`create or
+replace`). Depende só de `profiles.status` (0078, já em produção há
+semanas) — nenhuma tabela/coluna nova.
+
+**Aplicada e testada em `doopla-qa-staging` primeiro**: script E2E
+rodado em blocos separados (impersonando `auth.uid()` via `set local
+role authenticated` + `request.jwt.claims`, mesmo método já usado pra
+validar o RLS do `artist_link_routing`) — conta ativa encontrada
+normalmente, conta fechada (temporariamente, revertida depois)
+deixando de aparecer, depois confirmado que voltou a aparecer após o
+revert. Nenhum dado de teste ficou alterado ao final.
+
+**Aplicada em produção** (`doopla`) em seguida. Smoke test
+deliberadamente mínimo e 100% leitura (a lógica já estava provada
+idêntica em staging): as duas functions chamadas com um alvo
+inexistente, confirmando que rodam sem erro contra o schema real de
+produção (mesma classe de bug que pegou o `42804` do Admin, se
+existisse aqui) — zero conta real tocada, zero escrita.
+
+**Status final: `0095` = `DELIVERED`, em staging e produção.** Nenhum
+outro `MUST FIX`/gap conhecido de encerramento de conta segue aberto.
+
+## `requires_professional_review` — implementado (auditoria conjunta aprovada), migration `0098` aguardando aplicação — 01/10/2026
+
+Próximo bloco formal do roadmap, depois de uma auditoria conjunta com
+Notificações (pedida pela fundadora pra não criar uma 5ª versão da
+mesma pendência). Auditoria encontrou 2 achados reais — implementados
+agora, exatamente com as regras finais que ela aprovou.
+
+**Achado 1 (já implementado em 4+1 lugares)**: `policy_allowed`
+sozinho nunca deveria significar "Precisa de você" — é o estado de
+QUALQUER draft entre criado e enviado pelo cron (1×/min), não só os
+genuinamente retidos (`requires_professional_review=true`, migration
+0083). A condição completa certa sempre foi `delivery_state=
+'policy_allowed' AND requires_professional_review=true`, mas só a
+primeira metade tinha chegado até a leitura de estado/decisões.
+Corrigido nos 4 lugares identificados na auditoria — `deriveConversationState()`,
+`listActionableDecisions()`, `list_actionable_decisions_page()`,
+`getPendingDraftForConversation()` — **mais um 5º achado na varredura
+final antes de fechar**: `oportunidades/[id]/page.tsx` (detalhe de
+Pedido) tinha a MESMA condição reimplementada inline, direto na page
+(não era bug visível — o badge final já saía correto via
+`resolveDooplaIntervention`/`deriveConversationState`, já corrigida —
+mas era uma 5ª cópia da mesma fórmula, exatamente o drift que essa
+rodada existe pra eliminar). Corrigido também.
+
+**Centralização** (pra nunca mais divergir sem ninguém perceber):
+`isOutboundDraftAwaitingProfessionalReview()` (TS, novo export em
+`conversations/state.ts`) e `outbound_intent_needs_professional_review()`
+(SQL, novo, migration `0098`) — mesma pergunta booleana, uma função só
+de cada lado (TS não chama SQL nem vice-versa, mas os comentários se
+referenciam). Todo lugar que precisava da condição agora chama uma
+das duas, nenhum reescreve inline.
+
+**`/dashboard/decisoes`**: confirmado órfão (virou redirect em
+15/09/2026, decisão já tomada antes desta rodada) — não revivido.
+`list_actionable_decisions_page` foi corrigida mesmo assim (decisão
+explícita: não deixar uma definição ERRADA esperando ser revivida por
+engano no futuro), comentário deixa claro que segue sem consumidor
+ativo.
+
+**Achado 2 (novo, não documentado antes desta auditoria)**: nada
+fechava o draft original depois do profissional responder.
+`cancel_outbound_intent()` (migration 0051) existe mas nunca é chamada
+em lugar nenhum do código — infraestrutura morta. `persist_inbound_message`
+grava proveniência (`replied_to_outbound_intent_id`,
+`prepared_response_outcome`) mas nunca tocava em `outbound_intents.
+delivery_state` — a linha original ficava `policy_allowed` pra
+sempre, podendo reaparecer como pendência mesmo já respondida.
+
+**Decisão de segurança, pedida explicitamente antes de implementar**:
+não reutilizar `cancel_outbound_intent()` pra isso — ela só checa
+`is_system_caller()`, nunca valida que o `outbound_intent` pertence à
+mesma conversation/professional de quem chama. Em vez disso, o
+fechamento virou parte do corpo de `persist_inbound_message`
+(`create or replace`, assinatura inalterada), que já carrega
+`v_outbound` validado (mesma conversation) desde a 0066 — acrescentei
+2 validações (mesmo professional — redundante por construção, mantida
+por defesa em profundidade; `requires_professional_review=true` E
+estado ainda cancelável) e um `UPDATE` condicional, tudo dentro do
+`WHERE`, nunca um `IF/RAISE`: se qualquer condição não bater, a
+atualização simplesmente não encontra linha — o envio da mensagem
+NUNCA é bloqueado por isso, e um `outboundIntentId` de outra
+conversa/profissional nunca fecha nada. Atomicidade por construção:
+fechamento e `INSERT` da mensagem na mesma function, mesma transação,
+sem segundo round-trip.
+
+**Migration `requires_professional_review` também ficou protegida
+contra fechar draft automático**: a condição `requires_professional_review=true`
+no `WHERE` garante a regra 4 da fundadora ("nunca cancelar um
+outbound_intent automático só por estar `policy_allowed`") — nenhuma
+lógica extra precisou disso, a mesma condição resolve as duas coisas.
+
+**"Agora não"**: mantido exatamente como estava, nenhum status novo
+(`dismissed`/`skipped`) — confirmado que não precisa de nenhuma
+mudança de estado, é literalmente "não decidir agora".
+
+**Revalidação (Home/sidebar/Bookings sem reload manual)**: `professional-reply-action.ts`
+chama `revalidatePath('/dashboard', 'layout')` depois de um envio
+`completed`/`duplicate_event` — invalida a árvore inteira do painel de
+uma vez, nunca uma lista de paths mantida à mão (ficaria desatualizada
+a cada nova superfície que ler o mesmo estado — o mesmo tipo de drift
+que essa rodada inteira corrigiu).
+
+**Migration `0098_requires_professional_review_lifecycle.sql`**: expõe
+`last_outbound_intent_requires_review` em `get_conversation_operational_facts`
+(drop+create, formato de retorno mudou); cria `outbound_intent_needs_professional_review()`;
+corrige `list_actionable_decisions_page` (`create or replace`); estende
+`persist_inbound_message` (`create or replace`, assinatura inalterada).
+Nenhuma tabela nova, nenhum parâmetro novo em nenhuma function exposta
+ao frontend. HEAD conferido antes de numerar (`0098`, sem colisão com
+outra sessão).
+
+`tsc`/`eslint`/`next build` limpos. **Migration ainda não aplicada em
+nenhum banco** — próximo passo é `doopla-qa-staging`, com um roteiro
+de QA pros 10 itens que a fundadora pediu (vou entregar o script de
+teste, incluindo simular um draft retido direto via SQL pra não
+depender de rodar o pipeline de IA completo). Notificações
+explicitamente não implementadas nesta rodada — só a fonte canônica
+corrigida, pronta pra ser consumida depois sem reinventar `needs_you`.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito

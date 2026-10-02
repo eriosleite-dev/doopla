@@ -25,8 +25,39 @@ export type ConversationOperationalFactsForState = {
   status: 'open' | 'closed' | 'archived';
   hasPendingRuntimeReply: boolean;
   lastOutboundIntentDeliveryState: string | null;
+  // requires_professional_review (migration 0083/0098) — ver
+  // isOutboundDraftAwaitingProfessionalReview abaixo. null só ocorre
+  // quando não existe outbound_intent nenhum (mesmo caso de
+  // lastOutboundIntentDeliveryState null).
+  lastOutboundIntentRequiresReview: boolean | null;
   lastMessageDirection: 'inbound' | 'outbound' | null;
 };
+
+// Regra canônica única de "draft retido exige ação do profissional"
+// (fechamento do bloco requires_professional_review, 01/10/2026):
+// policy_allowed sozinho NUNCA significa "precisa de você" — é o
+// estado de QUALQUER outbound_intent entre ser criado e ser enviado
+// pelo cron (send-outbound-intents, 1×/min), inclusive os que vão sair
+// sozinhos em segundos. Só quando o Planner marcou
+// requires_professional_review=true (migration 0083) é que
+// list_claimable_outbound_intents/claim_outbound_intent_for_send
+// nunca reclamam a linha — aí sim é retenção de verdade.
+//
+// Exportada de propósito: é a MESMA pergunta booleana que
+// listActionableDecisions()/getPendingDraftForConversation()
+// (decisions/data.ts, conversations/data.ts) precisam responder sobre
+// uma linha de outbound_intents — nenhuma das duas reimplementa a
+// condição, todas chamam esta function. O equivalente em SQL
+// (list_actionable_decisions_page, migration 0070, hoje órfã mas
+// corrigida) é public.outbound_intent_needs_professional_review —
+// mesma regra, SQL não pode importar TS, mas os comentários se
+// referenciam um ao outro pra nunca divergir sem ninguém perceber.
+export function isOutboundDraftAwaitingProfessionalReview(
+  deliveryState: string | null,
+  requiresReview: boolean | null
+): boolean {
+  return deliveryState === 'policy_allowed' && requiresReview === true;
+}
 
 export function deriveConversationState(facts: ConversationOperationalFactsForState): ConversationState {
   // 1) Encerrada — sempre a prioridade mais alta, independente de
@@ -39,28 +70,18 @@ export function deriveConversationState(facts: ConversationOperationalFactsForSt
   // 2) Precisa de você — ou existe uma pendência de retomada aberta
   //    (Approval Engine bloqueado esperando uma decisão do
   //    profissional, runtime_pending_replies status='pending'), ou o
-  //    último outbound_intent está em 'policy_allowed' (draft já
-  //    autorizado pelo Post-model Gate, ainda não enviado).
-  //
-  //    ACHADO DE AUDITORIA (Sessão Central, P0 de beta, 15/09/2026):
-  //    o comentário anterior aqui ("nenhum outbound_intent avança
-  //    sozinho além de policy_allowed, nenhum worker de auto-send
-  //    existe") ficou desatualizado — send-outbound-intents (cron
-  //    real, vercel.json, 1×/min) manda automaticamente qualquer
-  //    outbound_intent com requires_professional_review=false
-  //    (migration 0083) em até ~1min, sem ação do profissional. Este
-  //    ramo continua correto pra outbound_intents genuinamente
-  //    retidos (requires_professional_review=true, nenhum mecanismo
-  //    de liberação ainda), mas hoje também dispara 'needs_you' pra
-  //    drafts que serão enviados sozinhos em segundos — não
-  //    corrigido aqui de propósito: exigiria expor
-  //    requires_professional_review até esta camada, que colide com
-  //    a auditoria em andamento da Sessão Painel sobre "Decisões /
-  //    Precisa de você" e com Home (consumidor deste estado via
-  //    professional-home-view.tsx). Integração pendente, registrada
-  //    em PROGRESS.md — não decidir/alterar aqui sem reconciliar com
-  //    aquela sessão.
-  if (facts.hasPendingRuntimeReply || facts.lastOutboundIntentDeliveryState === 'policy_allowed') {
+  //    outbound_intent mais recente está genuinamente retido
+  //    (isOutboundDraftAwaitingProfessionalReview acima — nunca mais
+  //    só policy_allowed). Correção 01/10/2026 do gap documentado em
+  //    15/09 (Sessão Central): antes, qualquer policy_allowed disparava
+  //    needs_you, inclusive drafts que o cron ia mandar sozinho em
+  //    segundos. Agora só dispara quando requires_professional_review
+  //    também é true — a mesma condição que já protege o envio
+  //    automático (migration 0083), finalmente espelhada aqui.
+  if (
+    facts.hasPendingRuntimeReply ||
+    isOutboundDraftAwaitingProfessionalReview(facts.lastOutboundIntentDeliveryState, facts.lastOutboundIntentRequiresReview)
+  ) {
     return 'needs_you';
   }
 
