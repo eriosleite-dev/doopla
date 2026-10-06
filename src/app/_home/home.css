@@ -207,8 +207,21 @@
   #home-marketing .phone-back svg{ width:16px; height:16px; }
   #home-marketing .phone-avatar{
     width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #ff5a5a, #b30f16 75%); flex:none;
-    display:flex; align-items:center; justify-content:center; gap:5px;
+    display:flex; align-items:center; justify-content:center; gap:5px; position:relative;
   }
+  /* Avatar Doopla no mockup de WhatsApp (achado da fundadora): pupilas
+     levemente voltadas pro texto "Doopla", que fica sempre à direita
+     deste avatar nos 3 usos (phone-chatbar e os 2 job-demo-row) — nunca
+     tracking de cursor aqui, initMascotEyes() (home.js) só olha pra
+     .mascot/.nav-logo/.foot-logo, este avatar fica de fora por
+     desenho. Deslocamento pequeno (1px) pra nunca estourar o
+     overflow:hidden do .mascot-eye (olho de 8-9px, pupila de 3px).
+     Boca reaproveita .mascot-smile (mesma técnica dos mascotes grandes:
+     border-bottom + border-radius:50%), só com posição/escala
+     mínimas pro tamanho deste avatar — nunca cria elemento novo. */
+  #home-marketing .phone-avatar .mascot-pupil{ transform:translateX(1px); }
+  #home-marketing .phone-avatar .mascot-smile{ width:11px; height:4px; top:60%; left:50%; transform:translateX(-50%); border-bottom-width:1.4px; }
+  #home-marketing .job-demo-avatar.phone-avatar .mascot-smile{ width:9px; height:3px; top:58%; border-bottom-width:1.2px; }
   #home-marketing .phone-chatbar .who{ flex:1; }
   #home-marketing .phone-chatbar .who .name{ display:block; font-size:.78rem; font-weight:600; color:var(--off); }
   #home-marketing .phone-chatbar .who .status{ font-size:.66rem; color:#5fd97a; }
