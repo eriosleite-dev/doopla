@@ -557,13 +557,18 @@
     /* margin-top 32px -> 18px (achado da fundadora: excesso de espaço
        vazio antes do mockup) — único valor tocado aqui, resto da regra
        (empilhamento telefone/mascote/legenda) inalterado. */
-    #home-marketing .hero-visual{ order:2; margin-top:18px; min-height:0; flex-direction:column; justify-content:flex-start; }
+    /* margin-top 40px: respiro entre o fim dos textos dos benefícios e
+       o mockup (pedido 36-48px, achado da fundadora — ficou espremido
+       com 18px). */
+    #home-marketing .hero-visual{ order:2; margin-top:40px; min-height:0; flex-direction:column; justify-content:flex-start; }
     #home-marketing .hero-copy p.lead{ max-width:100%; }
     /* Benefícios em faixa horizontal de 3 colunas (achado da fundadora:
        empilhados só do lado esquerdo desperdiçava largura). Ícone em
        cima + texto embaixo, centralizado — mesmo padrão já usado em
-       .prof-item. Ícones/cores inalterados, só o arranjo. */
-    #home-marketing .hero-badges{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:18px; }
+       .prof-item. Ícones/cores inalterados, só o arranjo. margin-top
+       36px: respiro entre "Começar agora" e os benefícios (pedido
+       32-40px, ficou espremido com 18px). */
+    #home-marketing .hero-badges{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:36px; }
     #home-marketing .hero-badge{ flex-direction:column; text-align:center; gap:6px; }
     #home-marketing .hero-badge span{ max-width:none; font-size:.68rem; line-height:1.25; }
     #home-marketing .phone{ width:100%; max-width:280px; height:500px; margin:0 auto; }
@@ -623,10 +628,20 @@
        engines (não há WebKit disponível neste ambiente pra validar a
        versão animada, então a estrutura mais simples é a única
        verificável aqui). */
-    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 8px; }
-    #home-marketing .prof-item{ align-items:center; text-align:center; min-width:0; }
+    /* 06/10/2026 (refinamento, achado da fundadora): 3 categorias
+       deixava a seção "pobre" — sobe pra 5 sempre visíveis numa linha
+       só (DJs/Fotógrafos/Beauty/Músicos/Professores), sem quebrar
+       linha. Ícone/fonte reduzidos moderadamente pra caber 5 colunas
+       com conforto (22px/.78rem cabiam em 3 colunas, não em 5).
+       Expandido agora tem só as 4 restantes (Influencers/Serviços
+       gerais/Freelancers/e muito mais), uma linha de 4 colunas —
+       preenche exatamente, sem slot vazio. */
+    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px 6px; }
+    #home-marketing .prof-item{ align-items:center; text-align:center; gap:6px; min-width:0; }
+    #home-marketing .prof-item svg{ width:22px; height:22px; }
+    #home-marketing .prof-item span{ font-size:.66rem; line-height:1.2; }
     #home-marketing .prof-more{ display:none; grid-column:1/-1; }
-    #home-marketing .prof-more-inner{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 8px; }
+    #home-marketing .prof-more-inner{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px 6px; }
     #home-marketing .prof-more-toggle{
       display:block; background:none; border:none; padding:0; align-self:flex-start;
       color:var(--tx-50); font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:600;
