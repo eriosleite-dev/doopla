@@ -20026,6 +20026,100 @@ próximo bloqueador é infraestrutura (configuração real Meta/Vercel das
 credenciais WhatsApp Business) + o E2E de WhatsApp Identity que depende
 dela (ver seção `[FAIL/BLOCKED POR CONFIGURAÇÃO DE PRODUÇÃO]` acima).
 
+## Mobile: avatar do mockup de WhatsApp + correção estrutural da Home — `[DELIVERED]` — 06/10/2026
+
+Três entregas na Home pública:
+
+1. **Avatar da Doopla no mockup de WhatsApp** (commit `012b6b2`): boca
+   minimalista + pupilas direcionadas pro texto "Doopla", reaproveitando
+   a técnica já existente de `.mascot-smile`. Aplicado nos 3 usos do
+   avatar (Hero + 2x seção "Novos trabalhos").
+
+2. **Bug estrutural real em produção, achado em iPhone/Safari**
+   (commit `f582d52` + refinamento `672c3ab`): o grid de profissões
+   ("Para profissionais independentes") quebrava no Safari — itens
+   escapando do container, sobreposição com a seção seguinte. Causa:
+   faltava `minmax(0,1fr)` (mesmo bug já documentado neste arquivo pra
+   `.hero-grid`/`.two-col`/`.with-you`) + uma animação
+   `grid-template-rows:0fr→1fr` com um grid aninhado dentro dela,
+   criando dependência circular de tamanho que o Chrome (única engine
+   testável neste ambiente) resolvia diferente do Safari. Corrigido
+   trocando a animação por `display:none`/`grid` simples. Validado via
+   medição real de bounding boxes (não só visual) em 375/390/430px,
+   2 ciclos abrir/fechar sem acumular altura.
+
+3. **Refinamento de densidade**: 3→5 profissões sempre visíveis
+   (DJs/Fotógrafos/Beauty/Músicos/Professores numa linha, sem quebra),
+   4 restantes no "Ver mais" (grid de 4 colunas, preenche exato);
+   respiro aumentado CTA→benefícios (18px→36px) e benefícios→mockup
+   (18px→40px).
+
+Nos 3 casos: mobile só, desktop confirmado inalterado (flex de 9
+itens, mesmo layout de sempre). `tsc`/`eslint`/`build` limpos em cada
+commit. Achado separado, não corrigido (pré-existente, fora de
+escopo): ~87px de scroll horizontal vindo dos glows decorativos de
+"Sempre com você"/mockup, nenhum tocado hoje.
+
+## `send-outbound-intents` billing kill switch — hotfix fechado em staging e produção — `[DELIVERED]` — 06/10/2026
+
+Fecha a Entrega 1 do "Beta Fechado por Convite" (ver decisão da
+fundadora abaixo) — a prioridade zero identificada na auditoria:
+o modal "Booker Pro" (`booker-pro-modal.tsx`) mostrava "R$49/mês ·
+Cobrança mensal, recorrente" e concedia `booker_plan='pro'` real via
+RPC `confirm_booker_pro_upgrade`, sem nenhum processador de pagamento
+por trás (confirmado: zero integração Stripe/Pagar.me em todo o
+produto) — qualquer booker autenticado se autoconcedia o plano pago
+completo de graça, com interface afirmando estar cobrando.
+
+**Correção** (migration `0099_billing_kill_switch.sql`, agora
+rastreada como arquivo): tabela `app_settings` (key/value, RLS sem
+nenhuma policy — só SECURITY DEFINER lê) com `billing_enabled='false'`;
+gate adicionado dentro do corpo de `confirm_booker_pro_upgrade` (trava
+no Postgres, não só no `.env` — a RPC tem grant a `authenticated`,
+chamável direto via API do Supabase pulando o Next.js). `cancel_booker_pro`
+deliberadamente NÃO travada (só reduz/agenda remoção de entitlement,
+nunca concede — bloqueá-la seria impedir alguém de sair de um estado
+Pro indevido). Frontend (`booker-pro-modal.tsx`, commit `6cb2d7f`):
+etapa `'confirm'` parou de prometer cobrança, mostra a mesma mensagem
+honesta já usada no modal irmão do artista.
+
+**QA pelo fluxo real completo** (não só SQL direto): conta de artista
+→ "Minha equipe" → convite → booker aceita via `/convite/[token]` →
+modal Booker Pro → confirmado "Upgrade para Pro em breve" (nunca
+"Confirmar assinatura") → banco confirma `booker_plan='basic'` após o
+clique. Achados registrados à parte (não corrigidos agora, fora de
+escopo, fundadora já avisada que são achados de arquitetura/produto
+pra auditoria separada): tela `/convite/[token]` com design antigo;
+texto hardcoded "conta de artista" em `signup-form.tsx` mesmo quando o
+convite é pra booker; booker novo caindo no shell legado
+(`legacy-shell.tsx`, tema claro) em vez do painel atual.
+
+**Aplicação em staging e produção** (episódio real de confusão
+operacional, registrado por transparência): staging recebeu a
+migration completa, depois teve a function revertida sem querer
+(script de rollback rodado por engano), corrigida de novo só na
+function. Produção: a trava só foi confirmada ativa depois de mais de
+uma tentativa — verificado via `pg_get_functiondef` em cada projeto
+antes de qualquer nova ação, nunca assumido. Estado final confirmado
+nos dois bancos, lado a lado: `confirm_booker_pro_upgrade` com o gate
+de `billing_enabled`, `app_settings.billing_enabled='false'`.
+
+**Decisão da fundadora sobre o Beta Fechado por Convite** (escopo
+maior, ainda não implementado): `beta_invite_codes` ≠ `invites`
+(conceitos diferentes, nunca misturar — convite de beta é autorização
+pra entrar na Doopla, convite de equipe é vínculo entre pessoas já
+dentro). Beta recebe acesso completo equivalente a Pro, nunca inicia
+`trial_ends_at`, nunca cria assinatura/cobrança fictícia. Modelo
+`artist`/`booker` NÃO será refatorado agora (minimizar risco antes do
+beta) — registrado como decisão arquitetural futura (pós-beta):
+avaliar um modelo onde a mesma identidade possa trabalhar pra si e
+representar terceiros, sem os dois papéis serem mutuamente exclusivos.
+Segundo achado a corrigir, **separado** deste hotfix: `/cadastro?tipo=booker`
+hoje não exige `invite` válido — precisa de trava server-side (não só
+ausência de CTA). Próximos passos (não iniciados): (A) bloquear
+cadastro de booker sem convite válido, (B) implementar o beta fechado
+por código.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
