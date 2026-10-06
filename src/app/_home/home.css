@@ -591,10 +591,13 @@
        cada lado. Section com 22px (mesmo valor de section.block) +
        .wrap zerado = mesma largura de .two-col. */
     #home-marketing .strip{ padding:30px 22px; }
-    /* gap reduzido (20px -> 14px): "pouco espaço vertical entre o
-       título, os 3 itens e Ver mais" — título/3-itens/botão são os 3
-       filhos diretos de .wrap neste breakpoint (flex-direction:column). */
-    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:14px; padding:0; max-width:none; width:100%; }
+    /* gap 14px->20px (achado da fundadora 07/10/2026: "tudo sufocado
+       um em cima do outro" — rótulo/título/ícones/botão, os 4 filhos
+       diretos de .wrap neste breakpoint, column) + respiro extra entre
+       rótulo e título dentro de .strip-label-col (8px->12px, mesmo
+       motivo). */
+    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:20px; padding:0; max-width:none; width:100%; }
+    #home-marketing .strip-label-col{ gap:12px; }
     /* Profissões compactas (achado da fundadora, 06/10/2026, substitui
        o grid 2-col do commit anterior): mostra só DJs/Fotógrafos/Beauty
        numa linha de 3 colunas iguais — compacto por desenho, não uma
@@ -649,7 +652,19 @@
     }
     #home-marketing .prof-more-toggle:hover{ color:var(--off); }
     #home-marketing .prof-more-toggle .more-label{ display:none; }
-    #home-marketing .strip.expanded .prof-more{ display:grid; }
+    /* display:block (não grid): .prof-more só precisa ocupar a linha
+       inteira (grid-column:1/-1) como item de .prof-list — quem
+       organiza os 4 itens em colunas é .prof-more-inner. Deixar
+       .prof-more também como grid criava 3 níveis de grid aninhado
+       (.prof-list > .prof-more > .prof-more-inner), mesma classe do
+       bug já documentado acima (06/10/2026) um nível mais fundo:
+       reproduzido em produção (iPhone/Safari, achado da fundadora
+       07/10/2026) como o conteúdo expandido desenhando sobreposto à
+       seção seguinte, nunca reproduzido no Chromium local (sem WebKit
+       pra validar aqui). Removendo o nível de grid redundante, a
+       estrutura fica igual à de .prof-list > .prof-item: dois níveis,
+       nunca três. */
+    #home-marketing .strip.expanded .prof-more{ display:block; }
     #home-marketing .strip.expanded .prof-more-toggle .less-label{ display:none; }
     #home-marketing .strip.expanded .prof-more-toggle .more-label{ display:inline; }
     #home-marketing section.block{ padding:54px 22px; }
