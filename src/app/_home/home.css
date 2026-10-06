@@ -280,6 +280,11 @@
   #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; gap:9px; color:var(--tx-70); }
   #home-marketing .prof-item svg{ color:var(--off); opacity:.85; }
   #home-marketing .prof-item span{ font-size:.78rem; font-weight:500; }
+  /* "e muito mais" sai do grid só no mobile (abaixo de 760px) e vira
+     linha de fechamento centralizada — desktop mantém o grid atual
+     inalterado (prof-item-more permanece visível ali), este parágrafo
+     fica escondido por padrão. */
+  #home-marketing .prof-more-mobile{ display:none; }
 
   /* ===== SECTION generic ===== */
   #home-marketing section.block{ padding:88px 44px; border-bottom:1px solid var(--line); }
@@ -515,6 +520,13 @@
     #home-marketing .btn-ghost{ display:none; }
     #home-marketing .btn{ padding:11px 18px; font-size:.78rem; }
     #home-marketing .hero{ padding:32px 22px 44px; }
+    /* Bug de largura mobile (achado da fundadora): .hero-grid também
+       carrega a classe .wrap (padding:0 32px, regra base), somado ao
+       padding:22px que .hero já aplica na seção — dupla margem lateral
+       (22+32=54px), bem mais estreito que .two-col (só os 22px de
+       section.block). Cancela a contribuição do .wrap aqui: o padding
+       de .hero já basta, mesmo critério usado por .two-col/section.block. */
+    #home-marketing .hero-grid{ padding:0; max-width:none; width:100%; }
     #home-marketing .hero-copy{ order:1; }
     /* raiz do bug de colisão telefone/mascote no mobile: .hero-visual
        continuava display:flex em ROW (herdado da regra base) sem
@@ -540,9 +552,21 @@
        da correção acima, só devolve a referência certa pros filhos. */
     #home-marketing .mascot-hero{ position:relative; margin:16px auto 0; }
     #home-marketing .hero-glow{ inset:-20px; }
-    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:20px; }
-    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px 10px; }
+    /* Mesmo bug de dupla margem do .hero-grid acima: .strip não tinha
+       override de padding mobile (ficava com os 44px do desktop) e
+       .strip .wrap ainda carregava os 32px de .wrap — 44+32=76px de
+       cada lado. Section com 22px (mesmo valor de section.block) +
+       .wrap zerado = mesma largura de .two-col. */
+    #home-marketing .strip{ padding:30px 22px; }
+    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:20px; padding:0; max-width:none; width:100%; }
+    /* Grid de profissões (achado da fundadora): 3 colunas ficava
+       apertado/fragmentado no mobile. 2 colunas iguais, linhas com mais
+       respiro vertical (20px -> 28px). "e muito mais" sai do grid (vira
+       .prof-more-mobile abaixo, ver regra própria) — desktop intocado. */
+    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(2,1fr); gap:28px 10px; }
     #home-marketing .prof-item{ align-items:center; text-align:center; }
+    #home-marketing .prof-item-more{ display:none; }
+    #home-marketing .prof-more-mobile{ display:block; text-align:center; margin-top:28px; color:var(--tx-70); font-size:.78rem; font-weight:500; }
     #home-marketing section.block{ padding:54px 22px; }
     #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
     #home-marketing .with-you-visual{ padding-top:8px; }
