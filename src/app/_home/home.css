@@ -595,21 +595,38 @@
        numa linha de 3 colunas iguais — compacto por desenho, não uma
        lista longa. As outras 6 (inclusive "e muito mais", de volta a
        ser um .prof-item normal) ficam dentro de .prof-more/.prof-more-inner,
-       escondidas até "Ver mais". Mesma técnica de expand já usada em
-       .plan-more (grid-template-rows 0fr->1fr, animado, sem position
-       absolute/altura fixa/sobreposição — cresce no fluxo normal,
-       empurrando o que vem depois). .prof-list vira grid só aqui —
+       escondidas até "Ver mais". .prof-list vira grid só aqui —
        desktop continua flex (regra base, .prof-more/.prof-more-inner
-       em display:contents lá). */
-    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px 8px; }
-    #home-marketing .prof-item{ align-items:center; text-align:center; }
-    #home-marketing .prof-more{
-      grid-column:1/-1; display:grid; grid-template-rows:0fr; overflow:hidden;
-      transition:grid-template-rows 280ms ease;
-    }
-    #home-marketing .prof-more-inner{
-      display:grid; grid-template-columns:repeat(3,1fr); gap:16px 8px; overflow:hidden; min-height:0;
-    }
+       em display:contents lá).
+
+       Correção estrutural 06/10/2026 (bug real em produção, achado da
+       fundadora em iPhone/Safari — nunca reproduzido no Chromium usado
+       pra testar): dois problemas, não um patch em cima do outro.
+
+       1) minmax(0,1fr) em vez de 1fr puro — sem isso, "1fr" equivale a
+       minmax(auto,1fr): a coluna nunca encolhe abaixo do min-content do
+       conteúdo. "Serviços gerais"/"Freelancers" (texto mais longo)
+       forçavam a coluna a crescer além do espaço disponível e escapar
+       do container. MESMO bug já documentado neste arquivo pra
+       .hero-grid/.two-col/.with-you (ver `> *{ min-width:0 }` acima) —
+       só não tinha sido aplicado aqui ainda.
+
+       2) Abandonada a animação grid-template-rows 0fr->1fr usada em
+       .plan-more: lá funciona porque o filho é uma <ul> simples. Aqui
+       o filho (.prof-more-inner) era OUTRO grid — grid dentro de linha
+       0fr de outro grid cria uma dependência circular de tamanho (a
+       altura "auto" da linha externa depende do conteúdo, que depende
+       de "0fr" da linha interna) que motores diferentes resolvem de
+       formas diferentes. Troca por display:none/grid simples: sem
+       fração, sem ambiguidade, altura sempre calculada pelo conteúdo
+       real — perde a animação suave, ganha previsibilidade entre
+       engines (não há WebKit disponível neste ambiente pra validar a
+       versão animada, então a estrutura mais simples é a única
+       verificável aqui). */
+    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 8px; }
+    #home-marketing .prof-item{ align-items:center; text-align:center; min-width:0; }
+    #home-marketing .prof-more{ display:none; grid-column:1/-1; }
+    #home-marketing .prof-more-inner{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 8px; }
     #home-marketing .prof-more-toggle{
       display:block; background:none; border:none; padding:0; align-self:flex-start;
       color:var(--tx-50); font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:600;
@@ -617,7 +634,7 @@
     }
     #home-marketing .prof-more-toggle:hover{ color:var(--off); }
     #home-marketing .prof-more-toggle .more-label{ display:none; }
-    #home-marketing .strip.expanded .prof-more{ grid-template-rows:1fr; }
+    #home-marketing .strip.expanded .prof-more{ display:grid; }
     #home-marketing .strip.expanded .prof-more-toggle .less-label{ display:none; }
     #home-marketing .strip.expanded .prof-more-toggle .more-label{ display:inline; }
     #home-marketing section.block{ padding:54px 22px; }
