@@ -418,10 +418,28 @@ function initPlanCards() {
   });
 }
 
+// "Ver mais"/"Ver menos" das profissões (mobile, achado da fundadora
+// 06/10/2026) — mesmo mecanismo de initPlanCards acima, só troca o
+// ancestral controlado (.strip em vez de .plan-card). Só existe 1
+// instância desta seção na Home, mas o padrão closest()+toggle já é
+// independente por construção se um dia houver mais de uma.
+function initProfToggle() {
+  var toggles = Array.prototype.slice.call(document.querySelectorAll('#home-marketing .prof-more-toggle'));
+  toggles.forEach(function (btn) {
+    btn.onclick = function () {
+      var strip = btn.closest('.strip');
+      if (!strip) return;
+      var expanded = strip.classList.toggle('expanded');
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    };
+  });
+}
+
 window.__bootHomeMarketing = function boot() {
   initMascotEyes();
   initMascotBlink();
   initLegacyEyesMotion();
   initSectionReveal();
   initPlanCards();
+  initProfToggle();
 };
