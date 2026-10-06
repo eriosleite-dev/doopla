@@ -1,9 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 
-import { upgradeToProAction } from '../actions';
 import { accentButtonClass, eyebrowClass, ghostButtonClass } from '../ui';
 import { useProModal } from './pro-modal-context';
 
@@ -13,31 +11,28 @@ type Step = 'info' | 'confirm' | 'success';
 // card do dashboard, upsell contextual). Copy honesta: nenhum recurso
 // Pro implementado ainda, então nenhum benefício "pronto" é vendido
 // aqui — só o mecanismo (ver DECISOES.md).
+//
+// Hotfix 06/10/2026 (achado da fundadora, Entrega 1 do Beta Fechado):
+// a etapa 'confirm' chamava upgradeToProAction()/confirm_booker_pro_upgrade
+// de verdade — concedia booker_plan='pro' sem nenhum processador de
+// pagamento por trás, com copy afirmando "R$49/mês · Cobrança mensal,
+// recorrente". Migration 0099 já bloqueia a RPC no backend
+// (app_settings.billing_enabled='false', fonte de verdade real — a
+// RPC é chamável direto via API do Supabase, uma trava só aqui no
+// client nunca seria suficiente). Esta etapa deixa de chamar a RPC e
+// de prometer cobrança: mesma mensagem honesta já usada pelo modal
+// irmão do artista (pro-upgrade-modal.tsx). 'success' fica inalcançável
+// de propósito — único ponto a trocar quando Real Billing existir:
+// restaurar a chamada aqui e voltar a transicionar pra 'success'.
 export function BookerProModal() {
   const { open, closeModal } = useProModal();
-  const router = useRouter();
   const [step, setStep] = useState<Step>('info');
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
 
   function handleClose() {
     closeModal();
     window.setTimeout(() => setStep('info'), 200);
-  }
-
-  function confirmUpgrade() {
-    setError(null);
-    startTransition(async () => {
-      const result = await upgradeToProAction();
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setStep('success');
-      router.refresh();
-    });
   }
 
   return (
@@ -102,30 +97,16 @@ export function BookerProModal() {
         {step === 'confirm' && (
           <>
             <div>
-              <p className={eyebrowClass}>Confirmar assinatura</p>
-              <h2 className="font-doopla-display mt-1 text-xl font-semibold">Booker Pro</h2>
+              <p className={eyebrowClass}>Booker Pro</p>
+              <h2 className="font-doopla-display mt-1 text-xl font-semibold">Upgrade para Pro em breve</h2>
             </div>
-            <ul className="flex flex-col gap-1.5 text-sm text-[var(--ink)]/75">
-              <li>• Plano: Booker Pro</li>
-              <li>• R$49/mês</li>
-              <li>• Cobrança mensal, recorrente</li>
-              <li>• Começa a valer agora, ao confirmar</li>
-              <li>• Cancela quando quiser — continua com os benefícios até o fim do ciclo já pago</li>
-            </ul>
-            {error && <p className="text-sm text-red-700">{error}</p>}
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={confirmUpgrade}
-                disabled={pending}
-                className={accentButtonClass}
-              >
-                {pending ? 'Confirmando…' : 'Confirmar assinatura'}
-              </button>
-              <button type="button" onClick={() => setStep('info')} className={ghostButtonClass}>
-                Voltar
-              </button>
-            </div>
+            <p className="text-sm text-[var(--ink)]/70">
+              A contratação online ainda não está disponível. Assim que o pagamento estiver ativo, você poderá
+              fazer o upgrade por aqui.
+            </p>
+            <button type="button" onClick={() => setStep('info')} className={ghostButtonClass}>
+              Voltar
+            </button>
           </>
         )}
 
