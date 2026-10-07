@@ -20120,6 +20120,65 @@ ausência de CTA). Próximos passos (não iniciados): (A) bloquear
 cadastro de booker sem convite válido, (B) implementar o beta fechado
 por código.
 
+---
+
+## [DELIVERED] Trava de convite pro cadastro de Booker (migration 0100) — 07/10/2026
+
+Item (A) do segundo achado da auditoria do hotfix de billing, fechado:
+`/cadastro?tipo=booker` sem `?invite=` válido não cria mais conta.
+Commits: `8470aeb`/`748ab27` (branch QA) + merge na produção.
+
+**O que mudou:**
+- `handle_new_user()`: pra `role=booker`, reclama o convite com
+  `UPDATE ... RETURNING` atômico (token pendente/válido/não reclamado/
+  `invitee_role=booker`) ANTES de completar a conta — qualquer falha
+  (sem token, token inválido/vencido/já reclamado) aborta a transação
+  inteira via `RAISE EXCEPTION`, nenhuma linha gravada. Artista:
+  inalterado, vínculo best-effort, nunca bloqueia.
+- `add_secondary_role('booker')`: RPC dormente (zero call sites no
+  produto) que também criava Booker sem convite — `EXECUTE` revogado
+  de `authenticated` **e** de `PUBLIC` (achado real do QA: revoke só
+  de `authenticated` não bloqueava nada, Postgres libera `EXECUTE` pra
+  `PUBLIC` por padrão em functions novas, e `authenticated` herda isso
+  implicitamente — confirmado com `has_function_privilege` antes/depois).
+- `signupAction` (`actions.ts`): preflight de UX antes do `auth.signUp`
+  pra Booker, usando `get_invite_by_token` (já existia) — só evita o
+  erro genérico do Auth API, a trava real é a migration.
+
+**Limitação conhecida, documentada na migration (não ampliado escopo):**
+`invites.invitee_contact` é texto livre, nunca validado contra a
+identidade de quem aceita — qualquer autenticado pode se auto-inserir
+um convite (`invites: insert own`) e usá-lo pra "validar" um segundo
+cadastro Booker. Fecha o caso do curioso sem fricção nenhuma; não
+fecha um ataque deliberado via API direta. Fica pra quando convites
+vierem de uma fonte não auto-inserível (Beta Fechado por código,
+Entrega 2).
+
+**QA em staging (`doopla-qa-staging`), fluxo real**, com vários
+mix-ups de link/e-mail/sessão pelo caminho (navegador anônimo
+precisando de login na Vercel pra ver o Preview, convite antigo já
+reclamado sendo reaberto por engano) — todos resolvidos checando
+direto na tabela `invites` em vez de confiar só na tela. Resultado:
+sem convite → bloqueado; fluxo real (artista convida → Booker aceita)
+→ funciona; reuso do mesmo convite → bloqueado (via a checagem de
+"e-mail já tem conta" em `/convite/[token]`, antes mesmo de chegar na
+trava nova); `add_secondary_role('booker')` → bloqueado. Não
+clicado via UI (risco baixo, mesma lógica de validação): token
+vencido, regressão no signup de artista.
+
+Aplicado em produção (`doopla`) depois do staging, confirmado com
+`has_function_privilege` retornando `false`.
+
+**Achados de UX fora de escopo, registrados durante este QA** (não
+corrigidos agora, fundadora já avisada): página "Minha equipe" não
+tem opção de ver/copiar o link de um convite já pendente (só
+"Reenviar"); falta botão de cancelar/deletar convite pendente;
+overflow horizontal corta a tela quando o link do convite aparece;
+card de "enviar convite" abre em posição inconsistente (deveria ser
+sempre o mesmo card único, no mesmo lugar, que o que mostra o link).
+
+Item (B) — Beta Fechado por código — continua não iniciado.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
