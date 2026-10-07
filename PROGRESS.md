@@ -20229,6 +20229,59 @@ Roadmap do Beta Fechado (A + B) está completo agora:
 (A) trava de convite pro cadastro de Booker (0100) + (B) código de
 acesso ao Beta (0101).
 
+---
+
+## [DELIVERED] Minha equipe: 4 achados de UX (migration 0102 + copy) — 07/10/2026
+
+Fecha os 4 achados de UX registrados durante o QA do migration 0100
+(ver entrega acima) — nenhum mexe em RLS, RPC de negócio ou regra de
+convite, só na experiência em volta:
+
+1. **Overflow horizontal** — `min-w-0` no span do link revelado em
+   `resend-invite-button.tsx` (mesmo bug de `truncate` sem `min-w-0`
+   num flex item, já visto e documentado no CSS mobile da Home).
+2. **Ver/copiar link sem regenerar** — `ViewInviteLinkButton` novo,
+   separado de `ResendInviteButton` de propósito: usa o `token` já
+   trazido por `getSentInvites` (nenhuma chamada nova ao servidor),
+   enquanto "Reenviar" continua regenerando o token
+   (`resend_invite`, migration 0069) e invalidando o link antigo.
+   Redesenhado depois (achado da fundadora: "não é óbvio que aquele
+   olho é o link") pro padrão de campo de senha — ícone de olho
+   riscado/sem risco, rótulo fixo "Link do convite", nunca some,
+   clicável nos dois estados.
+3. **Modal de "Adicionar pessoa" abrindo fora do lugar** — era um
+   card que se expandia inline (posição mudava conforme o conteúdo);
+   virou overlay `fixed inset-0` de verdade, centralizado, com Escape
+   e scroll-lock.
+4. **Cancelar convite pendente** (`migration 0102`) — `cancel_invite(p_invite_id uuid)`,
+   `security definer`, deleta de `invites` só quando
+   `inviter_profile_id = auth.uid()` e `status = 'pendente'`
+   (`revoke ... from public` explícito desde o início, mesma lição da
+   0100/0101). `CancelInviteButton` com `window.confirm()` antes de
+   mandar — ação não tem desfazer. Aplicado nas duas telas simétricas:
+   `dashboard/artistas` (Booker vendo seus convites) e
+   `dashboard/bookers` (Artista/Pro vendo os seus).
+
+Também nesta leva, duas rodadas de simplificação de copy no fluxo
+"Adicionar alguém da equipe" (`add-connection-modal.tsx`), escopadas
+só pro lado Artista/Pro (`ROLE_COPY.artista`) por decisão explícita da
+fundadora — o lado Booker/legacy manteve a copy original intacta:
+Nome só é pedido quando a conta não existe ainda (antes era sempre
+pedido de cara); termo "solicitação de conexão" removido da
+experiência Pro; ID público do usuário exposto via `PublicIdChip` em
+"Minha equipe" (faltava um jeito de achar o próprio ID pra passar pra
+quem vai usar "Com ID Doopla"). Nenhuma RPC, action, tabela ou regra
+de aprovação mudou — só o que aparece na tela.
+
+**QA**: `cancel_invite` testado em preview (Vercel) com fluxo real
+antes de ir pra staging/produção; botão confirmado funcionando pela
+fundadora ("botão cancelar funciona"). Migration aplicada em
+`doopla-qa-staging` e depois em `doopla` (produção), confirmado com
+`has_function_privilege` e "Success. No rows returned" em cada bloco.
+
+Com isso, os 4 achados de UX abertos durante o QA da entrega anterior
+estão todos fechados.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
