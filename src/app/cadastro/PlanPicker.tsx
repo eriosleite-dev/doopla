@@ -33,6 +33,12 @@ export function PlanPicker({
   // (etapa 5 do funil novo) liga isso, nenhum outro uso de PlanPicker
   // ganha o campo sem pedir.
   showBetaCodeField = false,
+  // Avisa o pai quando o campo de código de beta tem texto (07/10/2026,
+  // achado da fundadora: "não quero que a pessoa ache que é um teste de
+  // 7 dias" — com código preenchido, PlanForm.tsx troca o texto do CTA
+  // pra não sugerir trial nenhum). undefined preserva comportamento de
+  // sempre pra quem não passa isso.
+  onBetaCodeChange,
   variant = 'legacy',
 }: {
   initialPlan: PlanId;
@@ -40,6 +46,7 @@ export function PlanPicker({
   onChange?: (plan: PlanId) => void;
   showVoucherField?: boolean;
   showBetaCodeField?: boolean;
+  onBetaCodeChange?: (code: string) => void;
   variant?: 'legacy' | 'onboarding';
 }) {
   const [selected, setSelected] = useState<PlanId>(initialPlan);
@@ -147,8 +154,17 @@ export function PlanPicker({
           (showBetaCode ? (
             <div className="field" style={{ marginTop: 12 }}>
               <label htmlFor="betaCode">Código de convite do Beta</label>
-              <input type="text" id="betaCode" name="betaCode" placeholder="Ex: DOOPLA-BETA" />
-              <p className="hint">Se o código for válido, sua conta já entra com acesso completo, sem cobrança.</p>
+              <input
+                type="text"
+                id="betaCode"
+                name="betaCode"
+                placeholder="Ex: DOOPLA-BETA"
+                onChange={(e) => onBetaCodeChange?.(e.target.value)}
+              />
+              <p className="hint">
+                Com um código válido, sua conta tem acesso completo e permanente durante o beta — não é um teste de
+                7 dias, e não tem cobrança.
+              </p>
             </div>
           ) : (
             <button
