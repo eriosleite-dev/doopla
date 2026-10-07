@@ -341,33 +341,29 @@ export function AddConnectionModal({
              da pessoa, elimina a classe inteira de bug de layout que só
              acontecia com o bloco aberto, e fica consistente com o
              card de convite pendente no painel. */}
-          {/* Blur no lugar, nunca um bloco que aparece/some (achado da
-             fundadora, 07/10/2026, 2ª rodada: "tem que ser mais simples
-             tipo Nubank, aperta no olho, o que estava blur só mostra,
-             não altera o card"). O link fica sempre nesta posição — o
-             olho só alterna a classe de blur na mesma `span`. */}
           {inviteLink && (
-            <div className={inviteLinkBoxClass}>
-              <div className="flex min-w-0 items-center gap-2">
-                <span
-                  className={`min-w-0 flex-1 ${inviteLinkValueClass} ${linkRevealed ? '' : 'select-none blur-[5px]'}`}
-                >
-                  {inviteLink}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setLinkRevealed((r) => !r)}
-                  aria-label={linkRevealed ? 'Esconder link do convite' : 'Mostrar link do convite'}
-                  aria-pressed={linkRevealed}
-                  className={`flex-none ${linkToggleClass}`}
-                >
-                  {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
-                </button>
-                <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
-                  {linkCopied ? 'Copiado!' : 'Copiar'}
-                </button>
-              </div>
-              <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setLinkRevealed((r) => !r)}
+                aria-label={linkRevealed ? 'Esconder link do convite' : 'Ver link do convite'}
+                aria-pressed={linkRevealed}
+                className={linkToggleClass}
+              >
+                {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
+                Link do convite
+              </button>
+              {linkRevealed && (
+                <div className={inviteLinkBoxClass}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`min-w-0 flex-1 ${inviteLinkValueClass}`}>{inviteLink}</span>
+                    <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
+                      {linkCopied ? 'Copiado!' : 'Copiar link'}
+                    </button>
+                  </div>
+                  <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+                </div>
+              )}
             </div>
           )}
           <button type="button" onClick={reset} className={`${secondaryBtn} self-start`}>

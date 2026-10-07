@@ -6,15 +6,12 @@ import { cancelInviteAction, resendInviteAction } from './actions';
 
 // Card de convite pendente (migration 0069/pendingInviteToken +
 // 0102/cancel_invite) — redesign 07/10/2026 (achado da fundadora: "o
-// atual está excessivamente horizontal, sem hierarquia"), revisado no
-// mesmo dia (2ª rodada: "não gosto que aperta mostra link e abre
-// aquele card, tem que ser mais simples tipo Nubank — aperta no olho,
-// o que estava blur só mostra, não altera o card"). Antes eram 3
-// componentes soltos (ResendInviteButton/ViewInviteLinkButton/
-// CancelInviteButton); agora é 1 componente só, dono do próprio card
-// (hierarquia vertical: nome -> status -> link com blur -> ações). O
-// link fica sempre na mesma posição/altura — o olho só alterna blur,
-// nunca monta/desmonta nada. Mesmas 3 Server Actions de sempre
+// atual está excessivamente horizontal, sem hierarquia e fica pior
+// quando o link é expandido"). Antes eram 3 componentes soltos
+// (ResendInviteButton/ViewInviteLinkButton/CancelInviteButton) numa
+// linha flex-wrap dentro do card da página; agora é 1 componente só,
+// dono do próprio card (hierarquia vertical: nome -> status -> [link
+// revelado] -> ações). Mesmas 3 Server Actions de sempre
 // (resendInviteAction/cancelInviteAction), nenhuma lógica de convite,
 // reenvio, cancelamento ou cópia mudou — só como isso é apresentado.
 type Variant = 'legacy' | 'pro';
@@ -66,13 +63,17 @@ export function PendingInviteCard({
   const nameClass = isPro ? 'font-pro-sub text-[14px] font-bold text-[var(--pro-off)]' : 'font-doopla-display text-[15px] font-semibold text-[var(--ink)]';
   const statusClass = isPro ? 'text-[var(--pro-tx-50)]' : 'text-[var(--ink)]/55';
   const statusExpiredClass = isPro ? 'text-[var(--pro-amber)]' : 'text-amber-700';
-  const linkValueClass = isPro ? 'font-doopla-mono truncate text-[12px] text-[var(--pro-tx-70)]' : 'font-doopla-mono truncate text-[12px] text-[var(--ink)]/70';
-  const eyeButtonClass = isPro
-    ? 'flex-none text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]'
-    : 'flex-none text-[var(--ink)]/40 hover:text-[var(--ink)]';
+  const linkBoxClass = isPro
+    ? 'flex flex-col gap-2 rounded-[12px] border border-[var(--pro-line)] bg-white/[0.03] p-3'
+    : 'flex flex-col gap-2 rounded-[12px] bg-[var(--paper-dim)] p-3';
+  const linkLabelClass = isPro ? 'font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--pro-tx-30)]' : 'font-doopla-mono text-[10.5px] uppercase tracking-[.05em] text-[var(--ink)]/50';
+  const linkValueClass = isPro ? 'truncate text-[12px] text-[var(--pro-tx-70)]' : 'truncate text-[12px] text-[var(--ink)]/70';
   const copyBtnClass = isPro
-    ? 'font-pro-sub flex-none text-[11px] font-bold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
-    : 'font-doopla-mono flex-none text-[10.5px] uppercase tracking-[.03em] text-[var(--ink)]/55 hover:text-[var(--ink)]';
+    ? 'font-pro-sub rounded-full border border-[var(--pro-line)] px-3 py-1.5 text-[11px] font-bold text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]'
+    : 'font-doopla-mono rounded-full border border-[var(--line-light)] px-3 py-1.5 text-[10.5px] uppercase tracking-[.03em] text-[var(--ink)]/70 hover:text-[var(--ink)]';
+  const toggleClass = isPro
+    ? 'flex items-center gap-1.5 text-[11.5px] font-bold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
+    : 'flex items-center gap-1.5 font-doopla-mono text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/60 hover:text-[var(--ink)]';
   const resendBtnClass = isPro
     ? 'font-pro-sub text-[11.5px] font-bold text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]'
     : 'font-doopla-mono text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/70 hover:text-[var(--ink)]';
@@ -136,46 +137,45 @@ export function PendingInviteCard({
         </p>
       </div>
 
-      {/* Blur no lugar, nunca um bloco que aparece/some (achado da
-         fundadora, 07/10/2026: "não gosto que aperta mostra link e
-         ocultar abre aquele card... tem que ser mais simples tipo no
-         Nubank, aperta no olho, o que estava blur só mostra, não
-         altera o card"). O link fica sempre nesta mesma posição — o
-         olho só troca a classe de blur na mesma `span`, nunca monta ou
-         desmonta nada, card nunca muda de altura. */}
-      {!expired && (
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={`min-w-0 flex-1 ${linkValueClass} ${linkRevealed ? '' : 'select-none blur-[5px]'}`}
-            title={linkRevealed ? inviteUrl : undefined}
-          >
-            {shortDisplayUrl}
-          </span>
-          <button
-            type="button"
-            onClick={() => setLinkRevealed((r) => !r)}
-            aria-label={linkRevealed ? 'Esconder link do convite' : 'Mostrar link do convite'}
-            aria-pressed={linkRevealed}
-            className={eyeButtonClass}
-          >
-            {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
-          </button>
-          <button type="button" onClick={copyLink} className={copyBtnClass}>
-            {linkCopied ? 'Copiado!' : 'Copiar'}
-          </button>
+      {!expired && linkRevealed && (
+        <div className={linkBoxClass}>
+          <span className={linkLabelClass}>Link do convite</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={`min-w-0 flex-1 ${linkValueClass}`} title={inviteUrl}>
+              {shortDisplayUrl}
+            </span>
+            <button type="button" onClick={copyLink} className={`flex-none ${copyBtnClass}`}>
+              {linkCopied ? 'Copiado!' : 'Copiar link'}
+            </button>
+          </div>
         </div>
       )}
 
       {resendError && <p className={errorTextClass}>{resendError}</p>}
       {cancelError && <p className={errorTextClass}>{cancelError}</p>}
 
-      <div className={`flex items-center justify-end gap-4 border-t pt-3 ${borderTopClass}`}>
-        <button type="button" disabled={resendPending} onClick={handleResend} className={resendBtnClass}>
-          {resendPending ? 'Reenviando…' : 'Reenviar'}
-        </button>
-        <button type="button" disabled={cancelPending} onClick={handleCancel} className={cancelBtnClass}>
-          {cancelPending ? 'Cancelando…' : 'Cancelar convite'}
-        </button>
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-t pt-3 ${borderTopClass}`}>
+        {!expired ? (
+          <button
+            type="button"
+            onClick={() => setLinkRevealed((r) => !r)}
+            aria-pressed={linkRevealed}
+            className={toggleClass}
+          >
+            {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
+            {linkRevealed ? 'Ocultar link' : 'Ver link do convite'}
+          </button>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-4">
+          <button type="button" disabled={resendPending} onClick={handleResend} className={resendBtnClass}>
+            {resendPending ? 'Reenviando…' : 'Reenviar'}
+          </button>
+          <button type="button" disabled={cancelPending} onClick={handleCancel} className={cancelBtnClass}>
+            {cancelPending ? 'Cancelando…' : 'Cancelar convite'}
+          </button>
+        </div>
       </div>
     </div>
   );
