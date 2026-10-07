@@ -293,20 +293,24 @@
   #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; gap:9px; color:var(--tx-70); }
   #home-marketing .prof-item svg{ color:var(--off); opacity:.85; }
   #home-marketing .prof-item span{ font-size:.78rem; font-weight:500; }
-  /* Influencers/Serviços gerais/"e muito mais" ficam dentro de
-     .prof-more/.prof-more-inner no HTML — no desktop os dois wrappers
-     viram display:contents: os .prof-item filhos passam a contar como
-     se fossem filhos diretos de .prof-list pro flex-wrap acima, mesma
-     ordem/gap de sempre, nenhuma caixa nova no meio (visual desktop
-     mostra as 9 profissões, igual sempre mostrou). No mobile (3ª
-     rodada, 07/10/2026) esses 3 saem de vez — ver display:none
-     específico lá, esta regra aqui é só a base/desktop. */
+  /* .prof-card (as 6 primeiras) e .prof-more/.prof-more-inner (as 3
+     últimas: Influencers/Serviços gerais/"e muito mais") ficam dentro
+     de wrappers no HTML — no desktop TODOS viram display:contents: os
+     .prof-item filhos passam a contar como se fossem filhos diretos de
+     .prof-list pro flex-wrap acima, mesma ordem/gap de sempre, nenhuma
+     caixa nova no meio (visual desktop mostra as 9 profissões, igual
+     sempre mostrou — .prof-card não existe visualmente aqui, é só um
+     agrupamento estrutural do HTML). .prof-card-divider/.prof-card-more
+     (card mobile, 4ª rodada 07/10/2026) não existem no desktop.
+     .prof-more-toggle não existe mais em lugar nenhum (toggle removido
+     07/10/2026). */
+  #home-marketing .prof-card,
+  #home-marketing .prof-card-grid,
   #home-marketing .prof-more,
   #home-marketing .prof-more-inner{ display:contents; }
+  #home-marketing .prof-card-divider,
+  #home-marketing .prof-card-more,
   #home-marketing .prof-more-toggle{ display:none; }
-  /* "e muitos outros profissionais independentes." — só mobile
-     (desktop já mostra as 9 explicitamente, não precisa de resumo). */
-  #home-marketing .prof-more-note{ display:none; font-size:.76rem; color:var(--tx-50); }
 
   /* ===== SECTION generic ===== */
   #home-marketing section.block{ padding:88px 44px; border-bottom:1px solid var(--line); }
@@ -593,12 +597,11 @@
        .strip .wrap ainda carregava os 32px de .wrap — 44+32=76px de
        cada lado. Section com 22px (mesmo valor de section.block) +
        .wrap zerado = mesma largura de .two-col. */
-    /* padding-bottom 8px (3ª rodada, 07/10/2026): "vazio vertical muito
-       grande antes de Você cuida do seu trabalho" — section.block (próxima
-       seção) já tem 54px de padding-top próprio, compartilhado com outras
-       seções, nunca tocado aqui; 8+54=62px de respiro total, dentro do
-       pedido de ~56-64px. */
-    #home-marketing .strip{ padding:30px 22px 4px; }
+    /* padding-bottom 0 (4ª rodada, 07/10/2026: alvo apertou pra ~48-56px)
+       — section.block (próxima seção) já tem 54px de padding-top
+       próprio, compartilhado com outras seções, nunca tocado aqui;
+       0+1(borda)+54=55px de respiro total, dentro do pedido. */
+    #home-marketing .strip{ padding:30px 22px 0; }
     /* Override pontual só desta transição (não mexe na regra
        compartilhada .block h2, que outras seções continuam usando
        normalmente): o h2 de "Você cuida do seu trabalho" tem
@@ -648,34 +651,31 @@
        engines (não há WebKit disponível neste ambiente pra validar a
        versão animada, então a estrutura mais simples é a única
        verificável aqui). */
-    /* 07/10/2026, 3ª rodada (achado da fundadora: "amontoado perto do
-       heading... vazio vertical muito grande antes de Você cuida do
-       seu trabalho") — simplifica de vez em vez de ajustar fração por
-       fração. Mobile mostra só 6 categorias sempre visíveis (DJs/
-       Fotógrafos/Beauty/Músicos/Professores/Freelancers, 3 colunas x 2
-       linhas — Freelancers saiu de dentro de .prof-more/.prof-more-inner
-       pra virar um .prof-item normal na lista principal, ver home.html).
-       Influencers/Serviços gerais/"e muito mais" (os 3 que sobraram
-       dentro de .prof-more-inner) saem do mobile — display:none aqui,
-       continuam display:contents no desktop (@media min-width:1081px
-       acima, regra separada, intocada). .prof-more-note ("e muitos
-       outros profissionais independentes.") substitui essas 3 no
-       mobile — ver display:none dela na regra base (desktop não
-       precisa, já mostra as 9 explicitamente).
-
-       Espaçamento todo em margin explícito em vez de gap compartilhado
-       de .wrap (removido abaixo) — cada salto pedido tem um número
-       exato (título->grid 32px, row-gap do grid 30px, fim da seção->
-       próxima seção ~62px via padding-bottom de .strip, já que
-       section.block mobile tem 54px de padding-top próprio,
-       compartilhado com outras seções, nunca tocado aqui). */
-    #home-marketing .prof-list{ display:flex; flex-wrap:wrap; gap:30px 10px; margin-top:32px; }
-    #home-marketing .prof-item{ flex:0 0 calc((100% - 20px)/3); align-items:center; text-align:center; gap:6px; min-width:0; }
+    /* 07/10/2026, 4ª rodada (achado da fundadora) — as 6 categorias
+       (DJs/Fotógrafos/Beauty/Músicos/Professores/Freelancers) agora
+       ficam dentro de um card único (.prof-card), fundo/borda/radius
+       no mesmo padrão já usado em .plan-card (background:var(--panel),
+       border:1px solid var(--line), border-radius:22px) — identidade
+       visual já estabelecida no arquivo, não um estilo novo. Grid
+       2 colunas x 3 linhas (antes era 3x2 solto, sem card). Divisor +
+       "e muito mais" centralizado substituem a "e muitos outros
+       profissionais independentes." da rodada anterior (removida).
+       Influencers/Serviços gerais/"e muito mais" (dentro de .prof-more/
+       .prof-more-inner) continuam fora do mobile — display:none,
+       inalterado, só continuam existindo no desktop. */
+    #home-marketing .prof-list{ display:block; margin-top:32px; }
+    #home-marketing .prof-card{
+      display:block; background:var(--panel); border:1px solid var(--line);
+      border-radius:22px; padding:20px 16px;
+    }
+    #home-marketing .prof-card-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 14px; }
+    #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; min-width:0; }
     #home-marketing .prof-item svg{ width:18px; height:18px; }
-    #home-marketing .prof-item span{ font-size:.6rem; line-height:1.2; }
+    #home-marketing .prof-item span{ font-size:.68rem; line-height:1.2; }
+    #home-marketing .prof-card-divider{ display:block; height:1px; background:var(--line); margin:18px 0 14px; }
+    #home-marketing .prof-card-more{ display:block; text-align:center; font-size:.72rem; color:var(--tx-50); margin:0; }
     #home-marketing .prof-more,
     #home-marketing .prof-more-inner{ display:none; }
-    #home-marketing .prof-more-note{ display:block; margin-top:14px; }
     #home-marketing .prof-more-toggle{ display:none; }
     #home-marketing section.block{ padding:54px 22px; }
     #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
