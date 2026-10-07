@@ -153,6 +153,7 @@ export function AddConnectionModal({
   const [result, setResult] = useState<ContactLookupResult | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [linkRevealed, setLinkRevealed] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
   const copy = ROLE_COPY[myRole];
@@ -180,6 +181,9 @@ export function AddConnectionModal({
     : 'rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]';
   const inviteLinkValueClass = isPro ? 'font-doopla-mono truncate text-[12px] text-[var(--pro-off)]' : 'font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]';
   const resultTextClass = isPro ? 'text-[13px] text-[var(--pro-tx-70)]' : 'text-sm text-[var(--ink)]/70';
+  const linkToggleClass = isPro
+    ? 'flex items-center gap-1.5 font-pro-sub text-[11.5px] font-bold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
+    : 'flex items-center gap-1.5 font-doopla-mono text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/60 hover:text-[var(--ink)]';
 
   // Overlay de verdade só na pele pro (07/10/2026, achado da fundadora):
   // antes esse "modal" era um card que se expandia no próprio lugar do
@@ -213,6 +217,7 @@ export function AddConnectionModal({
     setResult(null);
     setSent(null);
     setInviteLink(null);
+    setLinkRevealed(false);
     setLinkCopied(false);
   }
 
@@ -327,24 +332,38 @@ export function AddConnectionModal({
               ? 'Solicitação enviada. Você vê o status em Solicitações e Convites.'
               : 'Convite enviado. Assim que a pessoa se cadastrar, vocês podem conectar.'}
           </p>
+          {/* Link escondido por padrão (07/10/2026, achado da fundadora:
+             "apareceu o bloco com o link cortando a tela dentro do
+             modal") — antes aparecia expandido automaticamente assim
+             que o convite era enviado. Mesmo padrão de toggle
+             olho/olho-riscado já usado em ViewInviteLinkButton
+             (resend-invite-button.tsx): nunca mostra a URL sem o clique
+             da pessoa, elimina a classe inteira de bug de layout que só
+             acontecia com o bloco aberto, e fica consistente com o
+             card de convite pendente no painel. */}
           {inviteLink && (
-            <div className={inviteLinkBoxClass}>
-              <span className={`font-doopla-mono text-[11px] uppercase tracking-[.05em] ${isPro ? 'text-[var(--pro-tx-30)]' : 'text-[var(--ink)]/50'}`}>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setLinkRevealed((r) => !r)}
+                aria-label={linkRevealed ? 'Esconder link do convite' : 'Ver link do convite'}
+                aria-pressed={linkRevealed}
+                className={linkToggleClass}
+              >
+                {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
                 Link do convite
-              </span>
-              {/* min-w-0 no span: truncate exige que o flex item possa
-                 encolher abaixo do min-width:auto padrão — sem isso o
-                 texto do link (longo, sem espaços) força a linha (e o
-                 container) mais larga que a tela, cortando o painel à
-                 direita (achado da fundadora, 07/10/2026). Mesma classe
-                 de bug já vista no CSS da Home mobile. */}
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`min-w-0 flex-1 ${inviteLinkValueClass}`}>{inviteLink}</span>
-                <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
-                  {linkCopied ? 'Copiado!' : 'Copiar link'}
-                </button>
-              </div>
-              <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+              </button>
+              {linkRevealed && (
+                <div className={inviteLinkBoxClass}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`min-w-0 flex-1 ${inviteLinkValueClass}`}>{inviteLink}</span>
+                    <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
+                      {linkCopied ? 'Copiado!' : 'Copiar link'}
+                    </button>
+                  </div>
+                  <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+                </div>
+              )}
             </div>
           )}
           <button type="button" onClick={reset} className={`${secondaryBtn} self-start`}>
@@ -586,6 +605,28 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13">
       <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Mesmo desenho de EyeIcon/EyeOffIcon de resend-invite-button.tsx
+// (não exportado de lá) — toggle do link do convite logo depois do
+// envio, dentro deste modal.
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M3 3l18 18" strokeLinecap="round" />
     </svg>
   );
 }
