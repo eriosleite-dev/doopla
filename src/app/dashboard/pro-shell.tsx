@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
+import { EyeLogo } from '@/app/_home/EyeLogo';
 
 import { NotificationBell } from './notification-bell';
 import { ProHeaderCommunityLink } from './pro-header-community-link';
@@ -73,23 +74,14 @@ export function ProfessionalShell({
     <div className="pro-shell pro-glow-bg flex min-h-screen flex-col font-pro-body md:flex-row">
       <aside className="flex flex-col gap-5 border-b border-[var(--pro-line)] px-3.5 py-4 md:sticky md:top-0 md:h-screen md:w-[250px] md:flex-none md:overflow-y-auto md:border-r md:border-b-0 md:px-3.5 md:py-[18px]">
         <div className="flex items-center justify-between px-2 pb-1">
-          {/* Nenhum asset de logo oficial reutilizável existe no
-              repositório (auditado 04/09/2026: public/ e mobile/assets/
-              só têm ícones default do Expo, nunca customizados; o único
-              componente de marca, EyeLogo em src/app/_home/EyeLogo.tsx,
-              depende de CSS escopado a #home-marketing/#site-chrome e
-              renderiza sem estilo nenhum fora dali — não é um asset
-              portável). Por instrução explícita (review 04/09/2026):
-              nunca desenhar um wordmark novo pra substituir isso.
-              Tratamento honesto temporário: texto simples, sem
-              tipografia/peso de marca — só um link funcional de volta
-              pra Início, não uma tentativa de logo. Pendência de asset
-              real registrada no relatório final. */}
-          <Link href="/dashboard" aria-label="Ir para Início" className="text-[13px] text-[var(--pro-tx-50)]">
-            doopla
-            <span className="font-doopla-mono ml-1.5 text-[8.5px] uppercase tracking-[.04em] text-[var(--pro-tx-30)]">
-              (logo pendente)
-            </span>
+          {/* EyeLogo real (07/10/2026) — a pendência registrada antes
+              (CSS de .eye-logo.on-dark não existia em lugar nenhum,
+              ver globals.css) foi resolvida: mesma receita já
+              comprovada no header escuro da Home, com os tokens
+              --pro-* equivalentes. Nunca um wordmark novo — é o
+              mesmo componente de marca de sempre. */}
+          <Link href="/dashboard" aria-label="Ir para Início" className="text-[var(--pro-off)]">
+            <EyeLogo onDark className="text-[19px]" />
           </Link>
           <form action={logoutAction} className="md:hidden">
             <button

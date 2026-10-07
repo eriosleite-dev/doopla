@@ -69,6 +69,23 @@
     var(--pro-bg);
 }
 
+/* EyeLogo (d + 2 olhos + pla) no painel escuro — o componente
+   (src/app/_home/EyeLogo.tsx) já tinha a prop onDark, mas nenhuma
+   regra .eye-logo.on-dark existia em lugar nenhum (achado da
+   fundadora, 07/10/2026): renderizava sem estilo nenhum fora de
+   #site-chrome/#home-marketing, por isso pro-shell.tsx usava só texto
+   simples como placeholder. Mesma receita já comprovada no header
+   escuro da Home (.nav-logo em home.css: letra var(--off), círculo
+   var(--off), pupila var(--black)) — aqui com os tokens --pro-*
+   equivalentes. */
+.pro-shell .eye-logo{ display:inline-flex; align-items:center; font-family:'Familjen Grotesk',sans-serif; font-weight:600; }
+.pro-shell .eye-logo.on-dark{ color:var(--pro-off); }
+.pro-shell .eye-logo .dot{
+  width:.62em; height:.62em; border-radius:50%; background:var(--pro-off);
+  display:inline-flex; align-items:center; justify-content:center; margin:0 .03em; position:relative; top:-.03em;
+}
+.pro-shell .eye-logo .dot .pupil{ width:34%; height:34%; border-radius:50%; background:var(--pro-black); }
+
 .font-pro-display {
   font-family: 'Anton', sans-serif;
 }
