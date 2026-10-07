@@ -636,37 +636,33 @@
        só (DJs/Fotógrafos/Beauty/Músicos/Professores), sem quebrar
        linha. Ícone/fonte reduzidos moderadamente pra caber 5 colunas
        com conforto (22px/.78rem cabiam em 3 colunas, não em 5).
-       Expandido agora tem só as 4 restantes (Influencers/Serviços
-       gerais/Freelancers/e muito mais), uma linha de 4 colunas —
-       preenche exatamente, sem slot vazio. */
-    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px 6px; }
+
+       07/10/2026 — removido o "Ver mais"/"Ver menos" de vez (achado da
+       fundadora, bug real em produção/iPhone-Safari: conteúdo
+       expandido desenhava sobreposto à seção seguinte). Duas correções
+       anteriores no mesmo dia (abandonar a animação de altura, depois
+       tirar um nível de grid aninhado) não resolveram — confirmado
+       depois com WebKit real rodando aqui (não só Chromium) que o CSS
+       em si não tinha mais bug nenhum detectável, então o caminho mais
+       simples e confiável deixou de ser "achar o próximo ajuste fino"
+       e passou a ser remover o mecanismo de toggle inteiro. Decisão da
+       fundadora: diminuir fonte/ícone e mostrar as 9 profissões
+       sempre, todas de uma vez, sem estado nenhum pra alternar.
+
+       Mesma técnica já comprovada no desktop (ver @media min-width:1081px
+       acima): .prof-more/.prof-more-inner em display:contents fazem os
+       9 .prof-item ficarem todos como filhos diretos de .prof-list pro
+       grid — nunca existe um "ligado/desligado", então não existe
+       reflow de toggle pra dar errado. .prof-more-toggle fica
+       display:none — o botão continua no HTML (não precisou mexer lá)
+       mas não aparece nem executa a função de clique. */
+    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 10px; }
     #home-marketing .prof-item{ align-items:center; text-align:center; gap:6px; min-width:0; }
-    #home-marketing .prof-item svg{ width:22px; height:22px; }
-    #home-marketing .prof-item span{ font-size:.66rem; line-height:1.2; }
-    #home-marketing .prof-more{ display:none; grid-column:1/-1; }
-    #home-marketing .prof-more-inner{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px 6px; }
-    #home-marketing .prof-more-toggle{
-      display:block; background:none; border:none; padding:0; align-self:flex-start;
-      color:var(--tx-50); font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:600;
-      letter-spacing:.06em; text-transform:uppercase; cursor:pointer;
-    }
-    #home-marketing .prof-more-toggle:hover{ color:var(--off); }
-    #home-marketing .prof-more-toggle .more-label{ display:none; }
-    /* display:block (não grid): .prof-more só precisa ocupar a linha
-       inteira (grid-column:1/-1) como item de .prof-list — quem
-       organiza os 4 itens em colunas é .prof-more-inner. Deixar
-       .prof-more também como grid criava 3 níveis de grid aninhado
-       (.prof-list > .prof-more > .prof-more-inner), mesma classe do
-       bug já documentado acima (06/10/2026) um nível mais fundo:
-       reproduzido em produção (iPhone/Safari, achado da fundadora
-       07/10/2026) como o conteúdo expandido desenhando sobreposto à
-       seção seguinte, nunca reproduzido no Chromium local (sem WebKit
-       pra validar aqui). Removendo o nível de grid redundante, a
-       estrutura fica igual à de .prof-list > .prof-item: dois níveis,
-       nunca três. */
-    #home-marketing .strip.expanded .prof-more{ display:block; }
-    #home-marketing .strip.expanded .prof-more-toggle .less-label{ display:none; }
-    #home-marketing .strip.expanded .prof-more-toggle .more-label{ display:inline; }
+    #home-marketing .prof-item svg{ width:20px; height:20px; }
+    #home-marketing .prof-item span{ font-size:.64rem; line-height:1.2; }
+    #home-marketing .prof-more,
+    #home-marketing .prof-more-inner{ display:contents; }
+    #home-marketing .prof-more-toggle{ display:none; }
     #home-marketing section.block{ padding:54px 22px; }
     #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
     #home-marketing .with-you-visual{ padding-top:8px; }
