@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { AddConnectionModal } from '../add-connection-modal';
 import { confirmInviteAction, respondRepresentationRequestAction } from '../actions';
-import { ResendInviteButton, ViewInviteLinkButton } from '../resend-invite-button';
+import { CancelInviteButton, ResendInviteButton, ViewInviteLinkButton } from '../resend-invite-button';
 import {
   getArtistBookerRelationships,
   getIncomingRepresentationRequests,
@@ -198,6 +198,7 @@ export default async function BookersPage() {
                      mais, só "Reenviar" resolve nesse caso). */}
                   {!row.expired && <ViewInviteLinkButton token={row.token} variant="pro" />}
                   <ResendInviteButton inviteId={row.key} variant="pro" />
+                  <CancelInviteButton inviteId={row.key} variant="pro" />
                 </div>
               </div>
             </ProCard>

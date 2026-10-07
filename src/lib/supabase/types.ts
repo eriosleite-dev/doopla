@@ -1725,6 +1725,12 @@ export type Database = {
         Args: { p_invite_id: string };
         Returns: { new_token: string; new_expires_at: string }[];
       };
+      // Cancela (deleta) convite pendente, só pra quem enviou
+      // (migration 0102).
+      cancel_invite: {
+        Args: { p_invite_id: string };
+        Returns: undefined;
+      };
       // 07/09/2026, migration 0075 — escopada a auth.uid(), nunca mais
       // efeito global (antes varria todos os bookers, EXECUTE aberto a
       // qualquer authenticated).
