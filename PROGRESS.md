@@ -20282,6 +20282,72 @@ fundadora ("botão cancelar funciona"). Migration aplicada em
 Com isso, os 4 achados de UX abertos durante o QA da entrega anterior
 estão todos fechados.
 
+---
+
+## [DELIVERED] Lote de polimento + 2 bugs reais de produção descobertos e corrigidos — 07/10/2026
+
+Sequência longa de achados pontuais da fundadora, fechados direto em
+produção (sem QA preview — nenhum mudou schema além do catch-up
+abaixo, que foi auditado e aplicado manualmente):
+
+- **Sufixo de ID sequencial** (`src/lib/public-id.ts`) — colisão de
+  slug (`eduarda`, `eduarda-2`...) agora sequencial em vez de número
+  aleatório, e cada tentativa é o próprio `UPDATE` (constraint `UNIQUE`
+  decide em empate), eliminando a pequena corrida que existia antes
+  entre "checar livre" e "gravar".
+- **Mobile**: 32px de respiro entre o card de profissões e a linha
+  divisória da próxima seção (`home.css`, `.strip` padding-bottom
+  tinha ido pra 0 numa rodada anterior).
+- **CTA de "Minha equipe"**: saiu do canto superior direito (competindo
+  com os ícones globais do shell) pra baixo da descrição, à esquerda;
+  copy "Adicionar alguém à equipe" + ícone "+".
+- **Bug real**: link do convite aparecendo expandido automaticamente
+  dentro do modal "Adicionar pessoa" ao enviar, "cortando a tela" —
+  corrigido escondendo por padrão (toggle olho), mesmo padrão já usado
+  no painel.
+- **Redesign do card de convite pendente** — os 3 componentes soltos
+  (Resend/View/CancelInviteButton) viraram 1 (`PendingInviteCard`),
+  hierarquia vertical (nome → status → link sob demanda → ações),
+  aplicado nas duas páginas (Minha equipe e Artistas, que ganhou de
+  brinde o "Ver link" que só existia do lado pro).
+- **`PublicIdChip`** redesenhado — "SEU CÓDIGO ID eduarda Copiar" lia
+  como frase corrida com tipografias diferentes; valor virou badge
+  (peso medium, não bold) e "Copiar" virou botão de ícone.
+
+**Dois bugs reais de produção, achados via log da Vercel + Postgres**
+(não hipotéticos — reproduzidos e confirmados pela fundadora):
+
+1. `updateProfileAndWorkContextAction` ("Perfil e trabalho") falhava
+   sempre com "Não foi possível salvar agora." — causa raiz achada no
+   log do Postgres (`column artist_profiles.what_you_do does not
+   exist`, erro `42703`): a migration `0080` nunca tinha rodado em
+   produção, apesar do código depender dela há semanas.
+2. Isso motivou uma auditoria completa: todas as tabelas/colunas/
+   funções de todos os 102 migrations comparadas contra o schema real
+   de produção (sem rastreamento formal de migrations — confirmado que
+   `supabase_migrations.schema_migrations` não existe). Achados: só
+   mais 2 gaps, nenhum outro — `bookings.contract_url` (migration
+   `0013`, escritas ignoravam erro silenciosamente) e a trigger de
+   limite de 5 bookings/mês no plano Básico (migration `0073`/`0074` —
+   a função existia, a trigger em si nunca tinha sido criada, logo o
+   limite não estava em vigor).
+
+Os 3 fixed foram formalizados em `supabase/migrations/0103_catchup_missing_production_objects.sql`
+(idempotente — `if not exists`/`create or replace`/`drop ... if
+exists`, segura de rodar em qualquer ambiente) e aplicados tanto em
+produção quanto em `doopla-qa-staging`, mantendo os dois bancos
+sincronizados.
+
+**Pass de hierarquia visual e espaçamento global** — escala de 2
+valores centralizada em `pro-format.ts` (`proTopNavGapClass`/
+`proHeaderGapClass`, 32px nos 2 pontos fixos nav→header e
+header→conteúdo; 24px direto como `gap-6`/`mb-6`/`mt-6` entre
+seções principais de função diferente). Aplicado em `pro-shell.tsx`,
+`pro-ui.tsx` (`ProPageHeader`, herdado por Bookings/Financeiro/Agenda
+legado) e nas páginas Início/Agenda/Financeiro/Minha equipe. Nunca
+mexe no espaçamento DENTRO de um card/seção — só isso cria a
+hierarquia pedida.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
