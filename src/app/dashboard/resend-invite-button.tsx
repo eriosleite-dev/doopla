@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 
-import { resendInviteAction } from './actions';
+import { cancelInviteAction, resendInviteAction } from './actions';
 
 // Reenvio de convite (migration 0069/hotfix pendingInviteToken) —
 // mesma pele legacy/pro já usada em AddConnectionModal, reaproveitada
@@ -149,5 +149,39 @@ export function ViewInviteLinkButton({ token, variant = 'legacy' }: { token: str
         </div>
       )}
     </div>
+  );
+}
+
+// Cancelar convite pendente (migration 0102) — achado da fundadora:
+// não existia jeito nenhum de desistir de um convite já enviado.
+// Confirm() nativo antes de enviar — ação deleta de vez, sem desfazer.
+export function CancelInviteButton({ inviteId, variant = 'legacy' }: { inviteId: string; variant?: Variant }) {
+  const isPro = variant === 'pro';
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const buttonClass = isPro
+    ? 'font-pro-sub rounded-full border border-[var(--pro-line)] px-3 py-1.5 text-[11.5px] font-bold text-[var(--pro-tx-50)] hover:text-[#ff8b80]'
+    : 'font-doopla-mono rounded-full border border-[var(--line-light)] px-3 py-1.5 text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/55 hover:text-red-700';
+  const errorTextClass = isPro ? 'text-[11.5px] text-[#ff8b80]' : 'text-[11.5px] text-red-700';
+
+  function handleCancel() {
+    if (!window.confirm('Cancelar esse convite? Não dá pra desfazer — a pessoa vai precisar de um link novo.')) return;
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set('inviteId', inviteId);
+      const outcome = await cancelInviteAction({}, formData);
+      if (outcome.error) setError(outcome.error);
+    });
+  }
+
+  if (error) {
+    return <span className={errorTextClass}>{error}</span>;
+  }
+
+  return (
+    <button type="button" disabled={pending} onClick={handleCancel} className={buttonClass}>
+      {pending ? 'Cancelando…' : 'Cancelar convite'}
+    </button>
   );
 }

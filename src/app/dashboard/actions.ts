@@ -1616,6 +1616,29 @@ export async function resendInviteAction(
   return { success: true, inviteToken: data.new_token };
 }
 
+// Cancelar convite pendente (migration 0102) — achado da fundadora:
+// não existia jeito nenhum de desistir de um convite já enviado. RPC
+// decide autorização por auth.uid()=inviter_profile_id, nunca confia
+// em input do form pra isso, e só deleta se ainda estiver 'pendente'.
+export async function cancelInviteAction(
+  _prevState: { error?: string; success?: boolean },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const inviteId = String(formData.get('inviteId') ?? '');
+  if (!inviteId) return { error: 'Convite não encontrado.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase } = ctx;
+
+  const { error } = await supabase.rpc('cancel_invite', { p_invite_id: inviteId });
+  if (error) return { error: 'Não foi possível cancelar o convite agora.' };
+
+  revalidatePath('/dashboard/artistas');
+  revalidatePath('/dashboard/bookers');
+  return { success: true };
+}
+
 export async function setContractUrlAction(
   _prevState: { error?: string },
   formData: FormData

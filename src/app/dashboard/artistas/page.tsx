@@ -18,7 +18,7 @@ import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { PendingStatusList } from '../pending-status-list';
 import { PublicIdChip } from '../public-id-chip';
-import { ResendInviteButton } from '../resend-invite-button';
+import { CancelInviteButton, ResendInviteButton } from '../resend-invite-button';
 import { accentButtonClass, avatarClass, eyebrowClass, initialsFromName } from '../ui';
 import { ArtistRow } from './artist-row';
 import { DiscoverArtists } from './discover-artists';
@@ -175,6 +175,7 @@ export default async function ArtistasPage(props: {
                       {row.expired ? 'Convite expirado' : 'Convite enviado · Aguardando cadastro'}
                     </span>
                     <ResendInviteButton inviteId={row.key} />
+                    <CancelInviteButton inviteId={row.key} />
                   </div>
                 </li>
               ))}
