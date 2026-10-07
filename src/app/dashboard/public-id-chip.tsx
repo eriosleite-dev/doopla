@@ -15,15 +15,22 @@ export function PublicIdChip({ publicId, variant = 'legacy' }: { publicId: strin
   const [copied, setCopied] = useState(false);
 
   const wrapClass = isPro
-    ? 'flex items-center gap-2 rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] px-3.5 py-2'
-    : 'flex items-center gap-2 rounded-full bg-white px-3.5 py-2';
+    ? 'flex items-center gap-2.5 rounded-full border border-[var(--pro-line)] bg-[var(--pro-panel)] py-1.5 pl-3.5 pr-1.5'
+    : 'flex items-center gap-2.5 rounded-full bg-white py-1.5 pl-3.5 pr-1.5';
   const labelClass = isPro
     ? 'font-doopla-mono text-[10px] uppercase tracking-[.05em] text-[var(--pro-tx-50)]'
     : 'font-doopla-mono text-[10px] uppercase tracking-[.05em] text-[var(--ink)]/50';
-  const valueClass = isPro ? 'font-doopla-mono text-[12px] text-[var(--pro-off)]' : 'font-doopla-mono text-[12px] text-[var(--ink)]';
-  const buttonClass = isPro
-    ? 'text-[11px] font-bold text-[var(--pro-red)] hover:underline'
-    : 'text-[11px] font-bold text-[var(--accent-ink)] hover:underline';
+  // Valor com cara de "objeto" próprio (badge com fundo), não mais uma
+  // palavra solta do mesmo tamanho/peso do rótulo e do botão — era
+  // exatamente essa igualdade visual que fazia label+valor+ação lerem
+  // como uma frase corrida com fontes trocadas (achado da fundadora,
+  // 07/10/2026).
+  const valueClass = isPro
+    ? 'font-doopla-mono rounded-full bg-white/[0.06] px-2.5 py-1 text-[12.5px] font-bold text-[var(--pro-off)]'
+    : 'font-doopla-mono rounded-full bg-[var(--paper-dim)] px-2.5 py-1 text-[12.5px] font-bold text-[var(--ink)]';
+  const copyButtonClass = isPro
+    ? 'flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full border border-[var(--pro-line)] text-[11px] text-[var(--pro-tx-70)] hover:border-[var(--pro-off)]/40 hover:text-[var(--pro-off)]'
+    : 'flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full border border-[var(--line-light)] text-[11px] text-[var(--ink)]/70 hover:border-[var(--ink)]/40 hover:text-[var(--ink)]';
 
   async function copy() {
     await navigator.clipboard.writeText(publicId);
@@ -35,8 +42,12 @@ export function PublicIdChip({ publicId, variant = 'legacy' }: { publicId: strin
     <div className={wrapClass}>
       <span className={labelClass}>Seu código ID</span>
       <span className={valueClass}>{publicId}</span>
-      <button type="button" onClick={copy} className={buttonClass}>
-        {copied ? 'Copiado!' : 'Copiar'}
+      {/* Botão de ícone (mesmo padrão visual de ProCopyButton, usado
+         pro mesmo conceito de "código" em professional-home-view.tsx)
+         em vez de um "Copiar" solto em texto — some de ação lida como
+         botão, não como mais uma palavra da frase. */}
+      <button type="button" onClick={copy} aria-label="Copiar código" className={copyButtonClass}>
+        {copied ? '✓' : '⧉'}
       </button>
     </div>
   );
