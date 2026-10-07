@@ -293,17 +293,20 @@
   #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; gap:9px; color:var(--tx-70); }
   #home-marketing .prof-item svg{ color:var(--off); opacity:.85; }
   #home-marketing .prof-item span{ font-size:.78rem; font-weight:500; }
-  /* Profissões 4-9 ("Músicos" até "e muito mais") ficam dentro de
-     .prof-more/.prof-more-inner no HTML — pensado pro "Ver mais"/
-     "Ver menos" do mobile (ver mobile abaixo). No desktop os dois
-     wrappers viram display:contents: os .prof-item filhos passam a
-     contar como se fossem filhos diretos de .prof-list pro flex-wrap
-     acima — visual desktop 100% idêntico ao de antes, mesma ordem,
-     mesmo gap, nenhuma caixa nova no meio. .prof-more-toggle (o botão
-     Ver mais/menos) não existe no desktop. */
+  /* Influencers/Serviços gerais/"e muito mais" ficam dentro de
+     .prof-more/.prof-more-inner no HTML — no desktop os dois wrappers
+     viram display:contents: os .prof-item filhos passam a contar como
+     se fossem filhos diretos de .prof-list pro flex-wrap acima, mesma
+     ordem/gap de sempre, nenhuma caixa nova no meio (visual desktop
+     mostra as 9 profissões, igual sempre mostrou). No mobile (3ª
+     rodada, 07/10/2026) esses 3 saem de vez — ver display:none
+     específico lá, esta regra aqui é só a base/desktop. */
   #home-marketing .prof-more,
   #home-marketing .prof-more-inner{ display:contents; }
   #home-marketing .prof-more-toggle{ display:none; }
+  /* "e muitos outros profissionais independentes." — só mobile
+     (desktop já mostra as 9 explicitamente, não precisa de resumo). */
+  #home-marketing .prof-more-note{ display:none; font-size:.76rem; color:var(--tx-50); }
 
   /* ===== SECTION generic ===== */
   #home-marketing section.block{ padding:88px 44px; border-bottom:1px solid var(--line); }
@@ -590,13 +593,27 @@
        .strip .wrap ainda carregava os 32px de .wrap — 44+32=76px de
        cada lado. Section com 22px (mesmo valor de section.block) +
        .wrap zerado = mesma largura de .two-col. */
-    #home-marketing .strip{ padding:30px 22px; }
-    /* gap 14px->20px (achado da fundadora 07/10/2026: "tudo sufocado
-       um em cima do outro" — rótulo/título/ícones/botão, os 4 filhos
-       diretos de .wrap neste breakpoint, column) + respiro extra entre
-       rótulo e título dentro de .strip-label-col (8px->12px, mesmo
-       motivo). */
-    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:20px; padding:0; max-width:none; width:100%; }
+    /* padding-bottom 8px (3ª rodada, 07/10/2026): "vazio vertical muito
+       grande antes de Você cuida do seu trabalho" — section.block (próxima
+       seção) já tem 54px de padding-top próprio, compartilhado com outras
+       seções, nunca tocado aqui; 8+54=62px de respiro total, dentro do
+       pedido de ~56-64px. */
+    #home-marketing .strip{ padding:30px 22px 4px; }
+    /* Override pontual só desta transição (não mexe na regra
+       compartilhada .block h2, que outras seções continuam usando
+       normalmente): o h2 de "Você cuida do seu trabalho" tem
+       margin-top:16px próprio, que somado ao padding-top:54px de
+       section.block dava 70px fixos antes mesmo de .strip entrar na
+       conta — impossível chegar nos ~56-64px pedidos só ajustando o
+       padding do .strip. 4(strip)+1(borda)+54(section)+0(h2) = 59px. */
+    #home-marketing #o-que-a-doopla-faz h2{ margin-top:0; }
+    /* gap:0 (3ª rodada) — cada espaçamento agora é um margin explícito
+       nos filhos (.prof-list margin-top:32px, .prof-more-note margin-top),
+       não um gap compartilhado entre rótulo/grid/nota — valores pedidos
+       eram diferentes pra cada salto, gap único não dava conta. Respiro
+       entre rótulo e título dentro de .strip-label-col (8px->12px,
+       07/10/2026 1ª rodada) continua. */
+    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:0; padding:0; max-width:none; width:100%; }
     #home-marketing .strip-label-col{ gap:12px; }
     /* Profissões compactas (achado da fundadora, 06/10/2026, substitui
        o grid 2-col do commit anterior): mostra só DJs/Fotógrafos/Beauty
@@ -631,44 +648,34 @@
        engines (não há WebKit disponível neste ambiente pra validar a
        versão animada, então a estrutura mais simples é a única
        verificável aqui). */
-    /* 06/10/2026 (refinamento, achado da fundadora): 3 categorias
-       deixava a seção "pobre" — sobe pra 5 sempre visíveis numa linha
-       só (DJs/Fotógrafos/Beauty/Músicos/Professores), sem quebrar
-       linha. Ícone/fonte reduzidos moderadamente pra caber 5 colunas
-       com conforto (22px/.78rem cabiam em 3 colunas, não em 5).
+    /* 07/10/2026, 3ª rodada (achado da fundadora: "amontoado perto do
+       heading... vazio vertical muito grande antes de Você cuida do
+       seu trabalho") — simplifica de vez em vez de ajustar fração por
+       fração. Mobile mostra só 6 categorias sempre visíveis (DJs/
+       Fotógrafos/Beauty/Músicos/Professores/Freelancers, 3 colunas x 2
+       linhas — Freelancers saiu de dentro de .prof-more/.prof-more-inner
+       pra virar um .prof-item normal na lista principal, ver home.html).
+       Influencers/Serviços gerais/"e muito mais" (os 3 que sobraram
+       dentro de .prof-more-inner) saem do mobile — display:none aqui,
+       continuam display:contents no desktop (@media min-width:1081px
+       acima, regra separada, intocada). .prof-more-note ("e muitos
+       outros profissionais independentes.") substitui essas 3 no
+       mobile — ver display:none dela na regra base (desktop não
+       precisa, já mostra as 9 explicitamente).
 
-       07/10/2026 — removido o "Ver mais"/"Ver menos" de vez (achado da
-       fundadora, bug real em produção/iPhone-Safari: conteúdo
-       expandido desenhava sobreposto à seção seguinte). Duas correções
-       anteriores no mesmo dia (abandonar a animação de altura, depois
-       tirar um nível de grid aninhado) não resolveram — confirmado
-       depois com WebKit real rodando aqui (não só Chromium) que o CSS
-       em si não tinha mais bug nenhum detectável, então o caminho mais
-       simples e confiável deixou de ser "achar o próximo ajuste fino"
-       e passou a ser remover o mecanismo de toggle inteiro. Decisão da
-       fundadora: diminuir fonte/ícone e mostrar as 9 profissões
-       sempre, todas de uma vez, sem estado nenhum pra alternar.
-
-       07/10/2026, 2ª rodada — a versão com display:grid (3 colunas)
-       confirmada correta aqui (Chromium e WebKit real, 3 larguras,
-       inclusive o CSS batendo com o que o servidor realmente entrega
-       em produção) ainda assim renderizou quebrada no iPhone real da
-       fundadora (gaps enormes entre linhas, última linha sobreposta à
-       seção seguinte). As 3 tentativas anteriores no mesmo dia tinham
-       uma coisa em comum: CSS GRID. Troca pra flexbox — a MESMA
-       técnica que .prof-list já usa no desktop (ver @media
-       min-width:1081px acima: display:flex + flex-wrap), nunca trocada
-       por display:grid lá, e sem nenhuma reclamação em produção até
-       hoje. display:contents continua (prof-more/prof-more-inner viram
-       transparentes, os 9 .prof-item ficam direto dentro de
-       .prof-list) — essa parte nunca mudou, só o que ela promove deixa
-       de ser um grid e passa a ser um flex container. */
-    #home-marketing .prof-list{ display:flex; flex-wrap:wrap; gap:16px 10px; }
+       Espaçamento todo em margin explícito em vez de gap compartilhado
+       de .wrap (removido abaixo) — cada salto pedido tem um número
+       exato (título->grid 32px, row-gap do grid 30px, fim da seção->
+       próxima seção ~62px via padding-bottom de .strip, já que
+       section.block mobile tem 54px de padding-top próprio,
+       compartilhado com outras seções, nunca tocado aqui). */
+    #home-marketing .prof-list{ display:flex; flex-wrap:wrap; gap:30px 10px; margin-top:32px; }
     #home-marketing .prof-item{ flex:0 0 calc((100% - 20px)/3); align-items:center; text-align:center; gap:6px; min-width:0; }
-    #home-marketing .prof-item svg{ width:20px; height:20px; }
-    #home-marketing .prof-item span{ font-size:.64rem; line-height:1.2; }
+    #home-marketing .prof-item svg{ width:18px; height:18px; }
+    #home-marketing .prof-item span{ font-size:.6rem; line-height:1.2; }
     #home-marketing .prof-more,
-    #home-marketing .prof-more-inner{ display:contents; }
+    #home-marketing .prof-more-inner{ display:none; }
+    #home-marketing .prof-more-note{ display:block; margin-top:14px; }
     #home-marketing .prof-more-toggle{ display:none; }
     #home-marketing section.block{ padding:54px 22px; }
     #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
