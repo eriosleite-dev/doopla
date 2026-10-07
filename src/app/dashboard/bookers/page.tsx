@@ -13,6 +13,7 @@ import {
   getSentInvites,
   getSubscription,
 } from '../data';
+import { PublicIdChip } from '../public-id-chip';
 import { getSessionProfile } from '../session';
 import { hasDooplaPro } from '@/lib/subscription';
 import { proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
@@ -81,6 +82,19 @@ export default async function BookersPage() {
         }
         action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} /> : undefined}
       />
+
+      {/* "Seu ID Doopla" (07/10/2026, achado da fundadora) — faltava um
+         jeito de achar o próprio ID aqui, pra passar pra quem vai
+         adicionar você pelo "Com ID Doopla". Reaproveita PublicIdChip
+         tal como já existe (mesmo componente de artistas/page.tsx) —
+         nenhuma lógica nova de ID, só exposição num lugar que fazia
+         falta. Fora do ProPageHeader (componente compartilhado por
+         outras rotas) de propósito, pra não vazar pra lá. */}
+      {profile.slug && (
+        <div className="mb-4">
+          <PublicIdChip publicId={profile.slug} variant="pro" />
+        </div>
+      )}
 
       {/* Redesign 01/10/2026 (achado de produto da fundadora, 2 rodadas
          na mesma data) — versão anterior (ícone em círculo + card

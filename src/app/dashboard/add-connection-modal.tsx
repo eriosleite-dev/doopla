@@ -35,6 +35,8 @@ type RoleCopy = {
   openButton: string;
   contactStepTitle: string;
   idStepTitle: string;
+  contactIntro: string;
+  idIntro: string;
   contactExplainer: string;
   idExplainer: string;
   nameLabel: string;
@@ -46,24 +48,39 @@ type RoleCopy = {
 };
 
 const ROLE_COPY: Record<Role, RoleCopy> = {
+  // Copy revisada (07/10/2026, achado da fundadora) — progressão mais
+  // clara: contato primeiro, Nome só aparece se a conta não existir
+  // (ver mode==='contact' abaixo). "Tenho o código ID" virou "Com ID
+  // Doopla" pra bater com o nome do identificador em todo o produto
+  // (PublicIdChip já dizia "Seu código ID" antes — ambos migrados
+  // juntos pra "ID Doopla", mesmo termo em todo lugar).
   artista: {
     openButton: 'Adicionar alguém da equipe',
-    contactStepTitle: 'Informe os dados da pessoa',
-    idStepTitle: 'Buscar por código ID',
+    contactStepTitle: 'Convide alguém para sua equipe',
+    idStepTitle: 'Adicionar com ID Doopla',
+    contactIntro: 'Informe o WhatsApp ou e-mail da pessoa.',
+    idIntro: 'Peça o ID Doopla da pessoa que você quer adicionar à sua equipe.',
     contactExplainer:
-      'Se a pessoa já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.',
-    idExplainer: 'Peça o código ID pra pessoa — ela encontra o dela em "Seu código ID", no painel dela.',
+      'Se ela já estiver na Doopla, você poderá enviar uma solicitação de conexão. Se ainda não estiver, enviaremos um convite para criar a conta.',
+    idExplainer: 'O ID Doopla permite encontrar alguém que já tem conta sem precisar do telefone ou e-mail.',
     nameLabel: 'Nome',
-    idLabel: 'Código ID',
+    idLabel: 'ID Doopla',
     foundAsSuffix: '',
     leftPanelTitle: 'Adicionar alguém da equipe',
     leftPanelSubtitle: 'Conecte alguém de confiança para ajudar a operar seus bookings.',
     disconnectHint: 'Você pode encerrar essa conexão quando quiser.',
   },
+  // Copy do lado Booker (/dashboard/artistas, pele legacy) inalterada
+  // de propósito — a revisão de texto pedida foi só pro lado Artista
+  // (Minha equipe); a melhoria de PROGRESSÃO (contato -> Nome só se
+  // no_match) é estrutural e vale pros dois, só o texto fica como já
+  // estava aqui.
   booker: {
     openButton: 'Adicionar profissional',
     contactStepTitle: 'Informe os dados do profissional',
-    idStepTitle: 'Buscar profissional por código ID',
+    idStepTitle: 'Buscar por código ID',
+    contactIntro: '',
+    idIntro: '',
     contactExplainer:
       'Se o profissional já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.',
     idExplainer: 'Peça o código ID pro profissional — ele encontra o dele em "Seu código ID", no painel dele.',
@@ -202,7 +219,7 @@ export function AddConnectionModal({
   }
 
   function handleLookup() {
-    if (!name.trim() || !contact.trim()) return;
+    if (!contact.trim()) return;
     startTransition(async () => {
       const outcome = await lookupContactAction(contact);
       setResult(outcome);
@@ -344,14 +361,20 @@ export function AddConnectionModal({
               onClick={() => switchMode('id')}
               className={`${mutedTextClass} ${mode === 'id' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
             >
-              Tenho o código ID
+              Com ID Doopla
             </button>
           </div>
 
-          {/* Texto informativo (só pele pro, só antes de buscar) —
-             honesto aos dois caminhos possíveis: não presume convite
-             (só existe quando a conta ainda não existe) nem promete
-             nada que o produto não faz. */}
+          {/* Texto curto (07/10/2026) — só pele pro, some assim que um
+             resultado aparece (o resultado substitui a orientação). */}
+          {isPro && result === null && (mode === 'contact' ? copy.contactIntro : copy.idIntro) && (
+            <p className={bodyTextClass}>{mode === 'contact' ? copy.contactIntro : copy.idIntro}</p>
+          )}
+
+          {/* Texto de apoio (só pele pro, só antes de buscar) — honesto
+             aos dois caminhos possíveis: não presume convite (só existe
+             quando a conta ainda não existe) nem promete nada que o
+             produto não faz. */}
           {isPro && result === null && (
             <p className={`${mutedTextClass} rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] p-3 leading-relaxed`}>
               {mode === 'contact' ? copy.contactExplainer : copy.idExplainer}
@@ -360,20 +383,15 @@ export function AddConnectionModal({
 
           {mode === 'contact' ? (
             <>
+              {/* Nome removido daqui (07/10/2026, achado da fundadora):
+                 não é usado em nenhum momento do caminho "conta já
+                 existe" (handleSendRequest só manda profileId) — só é
+                 necessário quando a conta NÃO existe, pra invitee_name
+                 do convite. Agora só aparece revelado no bloco
+                 no_match abaixo, com o contato já preenchido, sem
+                 pedir de novo. */}
               <label className={labelWrapClass}>
-                <span className={labelTextClass}>{copy.nameLabel}</span>
-                <input
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setResult(null);
-                  }}
-                  className={inputClass}
-                  placeholder="Nome completo"
-                />
-              </label>
-              <label className={labelWrapClass}>
-                <span className={labelTextClass}>Contato</span>
+                <span className={labelTextClass}>WhatsApp ou e-mail</span>
                 <input
                   value={contact}
                   onChange={(e) => {
@@ -389,7 +407,7 @@ export function AddConnectionModal({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    disabled={!name.trim() || !contact.trim() || pending}
+                    disabled={!contact.trim() || pending}
                     onClick={handleLookup}
                     className={primaryBtn}
                   >
@@ -468,8 +486,25 @@ export function AddConnectionModal({
 
           {mode === 'contact' && result?.kind === 'no_match' && (
             <div className={highlightBoxClass}>
-              <p className={bodyTextClass}>{name} ainda não está na Doopla.</p>
-              <button type="button" disabled={pending} onClick={handleSendInvite} className={`${primaryBtn} mt-3`}>
+              <p className={bodyTextClass}>Essa pessoa ainda não está na Doopla.</p>
+              {/* Nome revelado aqui (07/10/2026) — só agora que sabemos
+                 que precisa de convite. Contato já preenchido acima,
+                 não pede de novo. */}
+              <label className={`${labelWrapClass} mt-3`}>
+                <span className={labelTextClass}>{copy.nameLabel}</span>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputClass}
+                  placeholder="Nome completo"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!name.trim() || pending}
+                onClick={handleSendInvite}
+                className={`${primaryBtn} mt-3`}
+              >
                 {pending ? 'Enviando…' : 'Enviar convite'}
               </button>
             </div>
