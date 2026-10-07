@@ -597,11 +597,15 @@
        .strip .wrap ainda carregava os 32px de .wrap — 44+32=76px de
        cada lado. Section com 22px (mesmo valor de section.block) +
        .wrap zerado = mesma largura de .two-col. */
-    /* padding-bottom 0 (4ª rodada, 07/10/2026: alvo apertou pra ~48-56px)
-       — section.block (próxima seção) já tem 54px de padding-top
-       próprio, compartilhado com outras seções, nunca tocado aqui;
-       0+1(borda)+54=55px de respiro total, dentro do pedido. */
-    #home-marketing .strip{ padding:30px 22px 0; }
+    /* padding-bottom 32px (5ª rodada, 07/10/2026, achado da fundadora:
+       a linha divisória — border-bottom deste .strip — estava encostada
+       na borda inferior do card, sem respiro visual nenhum). Antes era
+       0 (4ª rodada mirava o total card->h2 da PRÓXIMA seção, não o gap
+       card->linha isoladamente). Não mexe em section.block (padding-top
+       próprio da próxima seção, compartilhado, intocado) nem em nada
+       dentro do .prof-card — só o espaço entre o fim do card e a borda
+       deste .strip. */
+    #home-marketing .strip{ padding:30px 22px 32px; }
     /* Override pontual só desta transição (não mexe na regra
        compartilhada .block h2, que outras seções continuam usando
        normalmente): o h2 de "Você cuida do seu trabalho" tem
