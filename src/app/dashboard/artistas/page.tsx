@@ -18,7 +18,7 @@ import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { PendingStatusList } from '../pending-status-list';
 import { PublicIdChip } from '../public-id-chip';
-import { CancelInviteButton, ResendInviteButton } from '../resend-invite-button';
+import { PendingInviteCard } from '../resend-invite-button';
 import { accentButtonClass, avatarClass, eyebrowClass, initialsFromName } from '../ui';
 import { ArtistRow } from './artist-row';
 import { DiscoverArtists } from './discover-artists';
@@ -75,6 +75,7 @@ export default async function ArtistasPage(props: {
       key: i.id,
       name: i.invitee_name,
       expired: i.status === 'expirada',
+      token: i.token,
     }));
   const outgoingRequestRows = outgoingRequests.map((r) => ({
     key: r.id,
@@ -161,22 +162,8 @@ export default async function ArtistasPage(props: {
           {pendingInviteRows.length > 0 && (
             <ul className="flex flex-col gap-2">
               {pendingInviteRows.map((row) => (
-                <li
-                  key={row.key}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-white px-4 py-3 text-sm"
-                >
-                  <span className="font-medium">{row.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-doopla-mono text-[11px] uppercase tracking-[.05em] ${
-                        row.expired ? 'text-amber-700' : 'text-[var(--ink)]/50'
-                      }`}
-                    >
-                      {row.expired ? 'Convite expirado' : 'Convite enviado · Aguardando cadastro'}
-                    </span>
-                    <ResendInviteButton inviteId={row.key} />
-                    <CancelInviteButton inviteId={row.key} />
-                  </div>
+                <li key={row.key}>
+                  <PendingInviteCard inviteId={row.key} name={row.name} token={row.token} expired={row.expired} />
                 </li>
               ))}
             </ul>

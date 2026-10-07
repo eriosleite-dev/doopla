@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { AddConnectionModal } from '../add-connection-modal';
 import { confirmInviteAction, respondRepresentationRequestAction } from '../actions';
-import { CancelInviteButton, ResendInviteButton, ViewInviteLinkButton } from '../resend-invite-button';
+import { PendingInviteCard } from '../resend-invite-button';
 import {
   getArtistBookerRelationships,
   getIncomingRepresentationRequests,
@@ -203,23 +203,14 @@ export default async function BookersPage() {
             </ProCard>
           ))}
           {invitesPending.map((row) => (
-            <ProCard key={row.key} className="!p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-[13px] text-[var(--pro-off)]">
-                <span>{row.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[12px] ${row.expired ? 'text-[var(--pro-amber)]' : 'text-[var(--pro-tx-50)]'}`}>
-                    {row.expired ? 'Convite expirado' : 'Convite pendente · Aguardando cadastro'}
-                  </span>
-                  {/* Ver/copiar o link atual sem regenerar (achado da
-                     fundadora, 07/10/2026) — só faz sentido pra convite
-                     ainda válido, não pro expirado (o link não serve
-                     mais, só "Reenviar" resolve nesse caso). */}
-                  {!row.expired && <ViewInviteLinkButton token={row.token} variant="pro" />}
-                  <ResendInviteButton inviteId={row.key} variant="pro" />
-                  <CancelInviteButton inviteId={row.key} variant="pro" />
-                </div>
-              </div>
-            </ProCard>
+            <PendingInviteCard
+              key={row.key}
+              inviteId={row.key}
+              name={row.name}
+              token={row.token}
+              expired={row.expired}
+              variant="pro"
+            />
           ))}
         </div>
       )}
