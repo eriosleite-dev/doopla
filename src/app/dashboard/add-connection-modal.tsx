@@ -341,6 +341,11 @@ export function AddConnectionModal({
              da pessoa, elimina a classe inteira de bug de layout que só
              acontecia com o bloco aberto, e fica consistente com o
              card de convite pendente no painel. */}
+          {/* Caixa sempre presente, nunca monta/desmonta (07/10/2026,
+             3ª rodada: "no modelo que estava... blur seguindo o padrão
+             do card de antes, no mesmo lugar") — o botão/rótulo "Link
+             do convite" continua exatamente onde estava; só o texto do
+             link alterna blur/nítido, nunca a caixa inteira. */}
           {inviteLink && (
             <div className="flex flex-col gap-2">
               <button
@@ -353,17 +358,19 @@ export function AddConnectionModal({
                 {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
                 Link do convite
               </button>
-              {linkRevealed && (
-                <div className={inviteLinkBoxClass}>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className={`min-w-0 flex-1 ${inviteLinkValueClass}`}>{inviteLink}</span>
-                    <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
-                      {linkCopied ? 'Copiado!' : 'Copiar link'}
-                    </button>
-                  </div>
-                  <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+              <div className={inviteLinkBoxClass}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`min-w-0 flex-1 ${inviteLinkValueClass} ${linkRevealed ? '' : 'select-none blur-[5px]'}`}
+                  >
+                    {inviteLink}
+                  </span>
+                  <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
+                    {linkCopied ? 'Copiado!' : 'Copiar link'}
+                  </button>
                 </div>
-              )}
+                <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+              </div>
             </div>
           )}
           <button type="button" onClick={reset} className={`${secondaryBtn} self-start`}>

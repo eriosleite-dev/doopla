@@ -137,11 +137,20 @@ export function PendingInviteCard({
         </p>
       </div>
 
-      {!expired && linkRevealed && (
+      {/* Caixa sempre presente, nunca monta/desmonta (achado da
+         fundadora, 07/10/2026, 3ª rodada: "no modelo que estava... o
+         blur seguindo o padrão do card de antes, no mesmo lugar") — só
+         o texto do link alterna blur/nítido; a caixa, o rótulo "Link do
+         convite" e a posição são idênticos a antes, card nunca muda de
+         altura ao clicar no olho (ver bottom row abaixo). */}
+      {!expired && (
         <div className={linkBoxClass}>
           <span className={linkLabelClass}>Link do convite</span>
           <div className="flex min-w-0 items-center gap-2">
-            <span className={`min-w-0 flex-1 ${linkValueClass}`} title={inviteUrl}>
+            <span
+              className={`min-w-0 flex-1 ${linkValueClass} ${linkRevealed ? '' : 'select-none blur-[5px]'}`}
+              title={linkRevealed ? inviteUrl : undefined}
+            >
               {shortDisplayUrl}
             </span>
             <button type="button" onClick={copyLink} className={`flex-none ${copyBtnClass}`}>
