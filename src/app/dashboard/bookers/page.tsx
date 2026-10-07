@@ -17,7 +17,7 @@ import { PublicIdChip } from '../public-id-chip';
 import { getSessionProfile } from '../session';
 import { hasDooplaPro } from '@/lib/subscription';
 import { proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
-import { ProCard, ProPageHeader } from '../pro-ui';
+import { ProCard } from '../pro-ui';
 import { initialsFromName } from '../ui';
 import { TerminateRelationshipButton } from '../terminate-relationship-button';
 
@@ -66,11 +66,22 @@ export default async function BookersPage() {
 
   return (
     <main>
-      <ProPageHeader
-        title="Minha equipe"
-        subtitle="Gerencie quem pode trabalhar com seus bookings pela Doopla."
-        badge={
-          hasProPlan ? (
+      {/* Reposição do CTA (07/10/2026, achado da fundadora) — antes
+         "Adicionar alguém da equipe" ficava no canto superior direito,
+         na mesma linha dos 3 ícones globais do shell (sino/comunidade/
+         configurações, ver pro-shell.tsx), competindo visualmente com
+         eles. Hierarquia agora: título+badge -> descrição -> CTA
+         principal, tudo alinhado à esquerda, sem nenhuma relação com a
+         navegação global. Markup inline aqui (não em ProPageHeader,
+         componente compartilhado por Bookings/Agenda/Financeiro/
+         Configurações) de propósito — essa mudança foi pedida só pra
+         Minha equipe por enquanto; o pass de espaçamento/hierarquia do
+         painel inteiro é um item separado, auditado mas não
+         implementado ainda. */}
+      <div className="mb-5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">Minha equipe</h1>
+          {hasProPlan ? (
             <span className="rounded-full border border-[var(--pro-red)] px-2.5 py-0.5 font-doopla-mono text-[10px] font-bold uppercase tracking-[.08em] text-[var(--pro-red)]">
               PRO
             </span>
@@ -78,10 +89,17 @@ export default async function BookersPage() {
             <span className="rounded-full border border-[var(--pro-line)] px-2.5 py-0.5 font-doopla-mono text-[10px] font-bold uppercase tracking-[.08em] text-[var(--pro-tx-50)]">
               BÁSICO
             </span>
-          )
-        }
-        action={!hasNothing ? <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} /> : undefined}
-      />
+          )}
+        </div>
+        <p className="mt-1.5 max-w-[440px] text-[13.5px] text-[var(--pro-tx-70)]">
+          Gerencie quem pode trabalhar com seus bookings pela Doopla.
+        </p>
+        {!hasNothing && (
+          <div className="mt-4">
+            <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} />
+          </div>
+        )}
+      </div>
 
       {/* "Seu ID Doopla" (07/10/2026, achado da fundadora) — faltava um
          jeito de achar o próprio ID aqui, pra passar pra quem vai

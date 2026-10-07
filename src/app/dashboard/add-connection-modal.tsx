@@ -57,7 +57,7 @@ const ROLE_COPY: Record<Role, RoleCopy> = {
   // (PublicIdChip já dizia "Seu código ID" antes — ambos migrados
   // juntos pra "ID Doopla", mesmo termo em todo lugar).
   artista: {
-    openButton: 'Adicionar alguém da equipe',
+    openButton: 'Adicionar alguém à equipe',
     contactStepTitle: 'Adicionar alguém à sua equipe',
     idStepTitle: 'Adicionar alguém à sua equipe',
     contactModeLabel: 'WhatsApp ou e-mail',
@@ -74,7 +74,7 @@ const ROLE_COPY: Record<Role, RoleCopy> = {
     nameLabel: 'Nome',
     idLabel: 'ID Doopla',
     foundAsSuffix: '',
-    leftPanelTitle: 'Adicionar alguém da equipe',
+    leftPanelTitle: 'Adicionar alguém à equipe',
     leftPanelSubtitle: 'Conecte alguém de confiança para ajudar a operar seus bookings.',
     disconnectHint: 'Você pode encerrar essa conexão quando quiser.',
   },
@@ -288,6 +288,7 @@ export function AddConnectionModal({
       return (
         <>
           <button type="button" onClick={() => setUpgradeModalOpen(true)} className={primaryBtn}>
+            {isPro && <PlusIcon />}
             {openLabel}
           </button>
           <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="equipe" />
@@ -296,6 +297,7 @@ export function AddConnectionModal({
     }
     return (
       <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>
+        {isPro && <PlusIcon />}
         {openLabel}
       </button>
     );
@@ -574,6 +576,17 @@ export function AddConnectionModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// "+" discreto no CTA principal de Minha equipe (07/10/2026, achado da
+// fundadora) — só pele pro, pra não mudar a aparência do botão
+// "Adicionar profissional" do lado Booker/legacy.
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
   );
 }
 
