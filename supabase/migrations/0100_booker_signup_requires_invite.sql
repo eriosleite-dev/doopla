@@ -66,6 +66,14 @@
 --    auto-inserível pelo próprio usuário (território do Beta Fechado
 --    por código, Entrega 2, ainda não desenhada).
 
+-- QA em staging (07/10/2026) achou que o revoke de `authenticated`
+-- sozinho não bloqueava nada: toda function nova nasce com EXECUTE
+-- liberado pra PUBLIC por padrão no Postgres, e PUBLIC inclui
+-- authenticated implicitamente — confirmado com
+-- has_function_privilege('authenticated', ..., 'execute') ainda
+-- retornando true depois do primeiro revoke. Precisa revogar de
+-- PUBLIC também pra fechar de verdade.
+revoke execute on function public.add_secondary_role(public.user_role) from public;
 revoke execute on function public.add_secondary_role(public.user_role) from authenticated;
 
 create or replace function public.handle_new_user()
