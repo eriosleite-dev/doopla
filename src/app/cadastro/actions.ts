@@ -126,6 +126,23 @@ export async function savePlanAction(
     return { error: 'Não foi possível salvar o plano. Tente novamente.' };
   }
 
+  // Beta Fechado por código (migration 0101) — opcional, só processa se
+  // a pessoa abriu o campo e digitou algo. redeem_beta_code sobrescreve
+  // o plano/status pra pro+active+is_beta_free se o código for válido;
+  // nunca mexe em billing real. Erro aqui bloqueia a conclusão (código
+  // digitado errado merece feedback, não falha silenciosa) — o plano já
+  // selecionado acima continua salvo, a pessoa só tenta de novo.
+  const betaCode = String(formData.get('betaCode') ?? '').trim();
+  if (betaCode) {
+    const { error: betaError } = await supabase.rpc('redeem_beta_code', { p_code: betaCode });
+    if (betaError) {
+      if (betaError.message.includes('already_beta')) {
+        return { error: 'Essa conta já tem acesso de beta.' };
+      }
+      return { error: 'Esse código de beta não é válido ou já foi usado o máximo de vezes.' };
+    }
+  }
+
   // A conclusão de verdade (etapa 7) sempre sai da Home pro painel, modo
   // modal ou não — só as etapas INTERMEDIÁRIAS (1→2, 2→3) evitam
   // redirect() quando o funil começou no modal. Ver CreateAccountModal.tsx.

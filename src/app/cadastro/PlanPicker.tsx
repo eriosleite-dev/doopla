@@ -27,16 +27,24 @@ export function PlanPicker({
   fieldName = 'artistPlan',
   onChange,
   showVoucherField = true,
+  // Beta Fechado por código (07/10/2026) — separado de showVoucherField
+  // de propósito (founder voucher trava preço futuro; beta libera
+  // acesso grátis agora, nunca misturar). default false: só PlanForm.tsx
+  // (etapa 5 do funil novo) liga isso, nenhum outro uso de PlanPicker
+  // ganha o campo sem pedir.
+  showBetaCodeField = false,
   variant = 'legacy',
 }: {
   initialPlan: PlanId;
   fieldName?: string;
   onChange?: (plan: PlanId) => void;
   showVoucherField?: boolean;
+  showBetaCodeField?: boolean;
   variant?: 'legacy' | 'onboarding';
 }) {
   const [selected, setSelected] = useState<PlanId>(initialPlan);
   const [showVoucher, setShowVoucher] = useState(false);
+  const [showBetaCode, setShowBetaCode] = useState(false);
   // Quais cards têm "Ver todos os recursos" aberto — por id, não
   // exclusivo (dá pra expandir os dois planos ao mesmo tempo pra
   // comparar). Só usado pelo variant="onboarding".
@@ -132,6 +140,24 @@ export function PlanPicker({
               style={{ marginTop: 8 }}
             >
               Tenho um código de voucher Founder
+            </button>
+          ))}
+
+        {showBetaCodeField &&
+          (showBetaCode ? (
+            <div className="field" style={{ marginTop: 12 }}>
+              <label htmlFor="betaCode">Código de convite do Beta</label>
+              <input type="text" id="betaCode" name="betaCode" placeholder="Ex: DOOPLA-BETA" />
+              <p className="hint">Se o código for válido, sua conta já entra com acesso completo, sem cobrança.</p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowBetaCode(true)}
+              className="back-btn show"
+              style={{ marginTop: 8 }}
+            >
+              Tenho um código de convite do Beta
             </button>
           ))}
       </div>

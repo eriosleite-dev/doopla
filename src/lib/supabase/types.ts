@@ -662,6 +662,7 @@ export type Subscription = {
   started_at: string;
   canceled_at: string | null;
   updated_at: string;
+  is_beta_free: boolean;
 };
 
 export type FounderVoucher = {
@@ -1735,6 +1736,13 @@ export type Database = {
       // client (migration 0075) — nunca aceita status/trial/preço.
       select_artist_plan: {
         Args: { p_plan: 'doopla' | 'pro' };
+        Returns: undefined;
+      };
+      // Beta Fechado por código (migration 0101) — autenticado,
+      // role=artista, 1 resgate por conta, concede artist_plan=pro +
+      // status=active + is_beta_free=true. Nunca mexe em billing real.
+      redeem_beta_code: {
+        Args: { p_code: string };
         Returns: undefined;
       };
       confirm_booker_pro_upgrade: {

@@ -50,7 +50,7 @@ export function PlanForm({
 
           {state.error && <div className="error">{state.error}</div>}
 
-          <PlanPicker initialPlan={initialPlan} variant="onboarding" />
+          <PlanPicker initialPlan={initialPlan} variant="onboarding" showBetaCodeField />
         </div>
       </OnboardingShell>
     </form>
