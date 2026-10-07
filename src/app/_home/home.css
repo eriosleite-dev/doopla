@@ -649,15 +649,22 @@
        fundadora: diminuir fonte/ícone e mostrar as 9 profissões
        sempre, todas de uma vez, sem estado nenhum pra alternar.
 
-       Mesma técnica já comprovada no desktop (ver @media min-width:1081px
-       acima): .prof-more/.prof-more-inner em display:contents fazem os
-       9 .prof-item ficarem todos como filhos diretos de .prof-list pro
-       grid — nunca existe um "ligado/desligado", então não existe
-       reflow de toggle pra dar errado. .prof-more-toggle fica
-       display:none — o botão continua no HTML (não precisou mexer lá)
-       mas não aparece nem executa a função de clique. */
-    #home-marketing .prof-list{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 10px; }
-    #home-marketing .prof-item{ align-items:center; text-align:center; gap:6px; min-width:0; }
+       07/10/2026, 2ª rodada — a versão com display:grid (3 colunas)
+       confirmada correta aqui (Chromium e WebKit real, 3 larguras,
+       inclusive o CSS batendo com o que o servidor realmente entrega
+       em produção) ainda assim renderizou quebrada no iPhone real da
+       fundadora (gaps enormes entre linhas, última linha sobreposta à
+       seção seguinte). As 3 tentativas anteriores no mesmo dia tinham
+       uma coisa em comum: CSS GRID. Troca pra flexbox — a MESMA
+       técnica que .prof-list já usa no desktop (ver @media
+       min-width:1081px acima: display:flex + flex-wrap), nunca trocada
+       por display:grid lá, e sem nenhuma reclamação em produção até
+       hoje. display:contents continua (prof-more/prof-more-inner viram
+       transparentes, os 9 .prof-item ficam direto dentro de
+       .prof-list) — essa parte nunca mudou, só o que ela promove deixa
+       de ser um grid e passa a ser um flex container. */
+    #home-marketing .prof-list{ display:flex; flex-wrap:wrap; gap:16px 10px; }
+    #home-marketing .prof-item{ flex:0 0 calc((100% - 20px)/3); align-items:center; text-align:center; gap:6px; min-width:0; }
     #home-marketing .prof-item svg{ width:20px; height:20px; }
     #home-marketing .prof-item span{ font-size:.64rem; line-height:1.2; }
     #home-marketing .prof-more,
