@@ -63,6 +63,7 @@ export function PlanForm({
           <PlanPicker
             initialPlan={initialPlan}
             variant="onboarding"
+            showVoucherField={false}
             showBetaCodeField
             onBetaCodeChange={(code) => setHasBetaCode(code.trim().length > 0)}
           />

@@ -250,6 +250,32 @@ export function PlanPicker({
             Tenho um código de voucher Founder
           </button>
         ))}
+
+      {showBetaCodeField &&
+        (showBetaCode ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-[var(--ink)]/70">Código de convite do Beta</span>
+            <input
+              type="text"
+              name="betaCode"
+              placeholder="Ex: DOOPLA-BETA"
+              className={fieldInputClass}
+              onChange={(e) => onBetaCodeChange?.(e.target.value)}
+            />
+            <span className="text-xs text-[var(--ink)]/50">
+              Com um código válido, sua conta tem acesso completo e permanente durante o beta — não é um
+              teste de 7 dias, e não tem cobrança.
+            </span>
+          </label>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowBetaCode(true)}
+            className="w-fit text-xs text-[var(--ink)]/50 underline underline-offset-2"
+          >
+            Tenho um código de convite do Beta
+          </button>
+        ))}
     </div>
   );
 }
