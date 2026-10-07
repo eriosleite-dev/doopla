@@ -35,6 +35,8 @@ type RoleCopy = {
   openButton: string;
   contactStepTitle: string;
   idStepTitle: string;
+  contactModeLabel: string;
+  idModeLabel: string;
   contactIntro: string;
   idIntro: string;
   contactExplainer: string;
@@ -56,10 +58,16 @@ const ROLE_COPY: Record<Role, RoleCopy> = {
   // juntos pra "ID Doopla", mesmo termo em todo lugar).
   artista: {
     openButton: 'Adicionar alguém da equipe',
-    contactStepTitle: 'Convide alguém para sua equipe',
-    idStepTitle: 'Adicionar com ID Doopla',
-    contactIntro: 'Informe o WhatsApp ou e-mail da pessoa.',
-    idIntro: 'Peça o ID Doopla da pessoa que você quer adicionar à sua equipe.',
+    contactStepTitle: 'Adicionar alguém à sua equipe',
+    idStepTitle: 'Adicionar alguém à sua equipe',
+    contactModeLabel: 'WhatsApp ou e-mail',
+    idModeLabel: 'ID Doopla',
+    contactIntro: 'Digite o contato da pessoa que você quer adicionar.',
+    idIntro: 'Digite o ID Doopla que a pessoa compartilhou com você.',
+    // contactExplainer/idExplainer não são mais renderizados na pele
+    // pro (07/10/2026, 2ª rodada — achado da fundadora: "copy ainda
+    // muito orientada à lógica interna"). Mantidos só porque o tipo é
+    // compartilhado com a pele legacy (Booker), que ainda os usa.
     contactExplainer:
       'Se ela já estiver na Doopla, você poderá enviar uma solicitação de conexão. Se ainda não estiver, enviaremos um convite para criar a conta.',
     idExplainer: 'O ID Doopla permite encontrar alguém que já tem conta sem precisar do telefone ou e-mail.',
@@ -79,6 +87,8 @@ const ROLE_COPY: Record<Role, RoleCopy> = {
     openButton: 'Adicionar profissional',
     contactStepTitle: 'Informe os dados do profissional',
     idStepTitle: 'Buscar por código ID',
+    contactModeLabel: 'Por contato',
+    idModeLabel: 'Tenho o código ID',
     contactIntro: '',
     idIntro: '',
     contactExplainer:
@@ -353,7 +363,7 @@ export function AddConnectionModal({
               onClick={() => switchMode('contact')}
               className={`${mutedTextClass} ${mode === 'contact' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
             >
-              Por contato
+              {copy.contactModeLabel}
             </button>
             <span className={mutedTextClass}>·</span>
             <button
@@ -361,24 +371,18 @@ export function AddConnectionModal({
               onClick={() => switchMode('id')}
               className={`${mutedTextClass} ${mode === 'id' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
             >
-              Com ID Doopla
+              {copy.idModeLabel}
             </button>
           </div>
 
           {/* Texto curto (07/10/2026) — só pele pro, some assim que um
-             resultado aparece (o resultado substitui a orientação). */}
+             resultado aparece (o resultado substitui a orientação).
+             Caixa de explicação (contactExplainer/idExplainer) removida
+             de vez na pele pro (07/10/2026, 2ª rodada — achado da
+             fundadora: "copy ainda muito orientada à lógica interna"),
+             continua existindo no tipo só pra pele legacy (Booker). */}
           {isPro && result === null && (mode === 'contact' ? copy.contactIntro : copy.idIntro) && (
             <p className={bodyTextClass}>{mode === 'contact' ? copy.contactIntro : copy.idIntro}</p>
-          )}
-
-          {/* Texto de apoio (só pele pro, só antes de buscar) — honesto
-             aos dois caminhos possíveis: não presume convite (só existe
-             quando a conta ainda não existe) nem promete nada que o
-             produto não faz. */}
-          {isPro && result === null && (
-            <p className={`${mutedTextClass} rounded-[12px] border border-[var(--pro-line)] bg-white/[0.02] p-3 leading-relaxed`}>
-              {mode === 'contact' ? copy.contactExplainer : copy.idExplainer}
-            </p>
           )}
 
           {mode === 'contact' ? (
@@ -473,20 +477,41 @@ export function AddConnectionModal({
 
           {result?.kind === 'pending_invite' && <p className={bodyTextClass}>Convite já enviado pra {result.name} · aguardando cadastro.</p>}
 
-          {result?.kind === 'match' && (
-            <div className={highlightBoxClass}>
-              <p className={bodyTextClass}>
-                Encontramos {result.name} na Doopla{copy.foundAsSuffix}.
-              </p>
-              <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
-                {pending ? 'Enviando…' : 'Enviar solicitação'}
-              </button>
-            </div>
-          )}
+          {/* Copy simplificada na pele pro (07/10/2026, 2ª rodada —
+             achado da fundadora: "copy ainda muito orientada à lógica
+             interna"). Booker (!isPro) mantém o texto original, decisão
+             já tomada na rodada anterior de não mexer lá. */}
+          {result?.kind === 'match' &&
+            (isPro ? (
+              <div className={highlightBoxClass}>
+                <p className={`${titleClass} !text-[13px]`}>Encontramos essa pessoa</p>
+                <p className={`${bodyTextClass} mt-1`}>{result.name}</p>
+                <p className={`${bodyTextClass} mt-3`}>Quer adicionar {result.name} à sua equipe?</p>
+                <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
+                  {pending ? 'Enviando…' : 'Enviar solicitação'}
+                </button>
+              </div>
+            ) : (
+              <div className={highlightBoxClass}>
+                <p className={bodyTextClass}>
+                  Encontramos {result.name} na Doopla{copy.foundAsSuffix}.
+                </p>
+                <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
+                  {pending ? 'Enviando…' : 'Enviar solicitação'}
+                </button>
+              </div>
+            ))}
 
           {mode === 'contact' && result?.kind === 'no_match' && (
             <div className={highlightBoxClass}>
-              <p className={bodyTextClass}>Essa pessoa ainda não está na Doopla.</p>
+              <p className={bodyTextClass}>
+                {isPro ? 'Essa pessoa ainda não usa a Doopla' : 'Essa pessoa ainda não está na Doopla.'}
+              </p>
+              {isPro && (
+                <p className={`${mutedTextClass} mt-1`}>
+                  Informe o nome dela e enviaremos um convite para entrar na sua equipe.
+                </p>
+              )}
               {/* Nome revelado aqui (07/10/2026) — só agora que sabemos
                  que precisa de convite. Contato já preenchido acima,
                  não pede de novo. */}
