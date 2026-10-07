@@ -81,6 +81,22 @@ function EyeIcon() {
   );
 }
 
+// Olho riscado (achado da fundadora, 07/10/2026: "não é óbvio que
+// aquele olho é o link... tem que ser intuitivo como outras
+// plataformas fazem") — mesmo padrão de campo de senha: riscado =
+// escondido (estado inicial), sem risco = revelado. O botão
+// permanece clicável nos dois estados (ver/esconder de novo), nunca
+// substituído pela linha do link.
+function EyeOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M3 3l18 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // Ver/copiar o link ATUAL de um convite pendente, sem reenviar — item
 // separado de ResendInviteButton de propósito (achado da fundadora,
 // 07/10/2026): "Reenviar" regenera o token (resend_invite, migration
@@ -93,9 +109,9 @@ export function ViewInviteLinkButton({ token, variant = 'legacy' }: { token: str
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const iconButtonClass = isPro
-    ? 'flex h-7 w-7 flex-none items-center justify-center rounded-full border border-[var(--pro-line)] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
-    : 'flex h-7 w-7 flex-none items-center justify-center rounded-full border border-[var(--line-light)] text-[var(--ink)]/60 hover:text-[var(--ink)]';
+  const toggleButtonClass = isPro
+    ? 'flex items-center gap-1.5 font-pro-sub text-[11.5px] font-bold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
+    : 'flex items-center gap-1.5 font-doopla-mono text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/60 hover:text-[var(--ink)]';
   const buttonClass = isPro
     ? 'font-pro-sub rounded-full border border-[var(--pro-line)] px-3 py-1.5 text-[11.5px] font-bold text-[var(--pro-tx-70)] hover:text-[var(--pro-off)]'
     : 'font-doopla-mono rounded-full border border-[var(--line-light)] px-3 py-1.5 text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/70 hover:text-[var(--ink)]';
@@ -112,20 +128,26 @@ export function ViewInviteLinkButton({ token, variant = 'legacy' }: { token: str
   if (typeof window === 'undefined') return null;
   const link = `${window.location.origin}/convite/${token}`;
 
-  if (!revealed) {
-    return (
-      <button type="button" onClick={() => setRevealed(true)} aria-label="Ver link do convite" title="Ver link do convite" className={iconButtonClass}>
-        <EyeIcon />
-      </button>
-    );
-  }
-
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className={`min-w-0 flex-1 ${linkTextClass}`}>{link}</span>
-      <button type="button" onClick={copyLink} className={`flex-none ${buttonClass}`}>
-        {copied ? 'Copiado!' : 'Copiar link'}
+    <div className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={() => setRevealed((r) => !r)}
+        aria-label={revealed ? 'Esconder link do convite' : 'Ver link do convite'}
+        aria-pressed={revealed}
+        className={toggleButtonClass}
+      >
+        {revealed ? <EyeIcon /> : <EyeOffIcon />}
+        Link do convite
       </button>
+      {revealed && (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`min-w-0 flex-1 ${linkTextClass}`}>{link}</span>
+          <button type="button" onClick={copyLink} className={`flex-none ${buttonClass}`}>
+            {copied ? 'Copiado!' : 'Copiar link'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
