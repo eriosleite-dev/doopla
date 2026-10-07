@@ -210,6 +210,24 @@ export async function signupAction(
   const supabase = await createClient();
   const origin = await siteOrigin();
 
+  // Pré-checagem só de UX (06/10/2026): cadastro de Booker exige convite
+  // válido — a trava real está em handle_new_user (migration 0100, aborta
+  // a conta inteira se o token não reclamar um convite pendente/válido).
+  // Aqui só evitamos o erro genérico do Auth API ("Database error saving
+  // new user") quando dá pra saber de antemão que vai falhar.
+  if (role === 'booker') {
+    const inviteToken = metadata.pendingInviteToken;
+    if (!inviteToken) {
+      return { error: 'Criar uma conta de Booker exige um convite válido.' };
+    }
+    const { data: invite } = await supabase
+      .rpc('get_invite_by_token', { p_token: inviteToken })
+      .maybeSingle();
+    if (!invite || invite.invitee_role !== 'booker' || invite.is_expired) {
+      return { error: 'Esse link de convite não é válido ou já expirou.' };
+    }
+  }
+
   const { error } = await supabase.auth.signUp({
     email,
     password,
