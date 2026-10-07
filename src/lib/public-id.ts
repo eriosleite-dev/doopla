@@ -42,6 +42,20 @@ const RESERVED_SLUGS = new Set([
 // invite/token quando as duas contas já existem — antes só existia
 // lookup por contato/e-mail/telefone) e também do roteamento de
 // WhatsApp por link individual, que já usava esse mesmo campo.
+// Código de erro do Postgres pra "unique_violation" (profiles.slug é
+// UNIQUE, migration 0015).
+const UNIQUE_VIOLATION = '23505';
+
+// Sufixo em caso de colisão (07/10/2026, achado da fundadora: "muitas
+// Eduardas no futuro, o que acontece?") — antes era um número aleatório
+// de 4 dígitos (`eduarda-4821`), funcional mas feio. Agora é sequencial
+// (`eduarda`, depois `eduarda-2`, `eduarda-3`...), e cada tentativa é o
+// próprio UPDATE (não SELECT-depois-UPDATE): se duas pessoas com o
+// mesmo nome caem no mesmo candidato ao mesmo tempo, a constraint
+// UNIQUE do banco decide quem ganha e a outra tentativa simplesmente
+// recebe o erro 23505 e tenta o próximo número — elimina de vez a
+// pequena corrida que existia na versão anterior (checar livre e só
+// depois gravar, sem nada travando entre os dois passos).
 export async function ensurePublicId(
   supabase: AnySupabaseClient,
   userId: string,
@@ -49,16 +63,18 @@ export async function ensurePublicId(
 ): Promise<string> {
   let base = slugify(nameHint) || 'doopla';
   if (RESERVED_SLUGS.has(base)) base = `${base}-doopla`;
-  let slug = base;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const { data: existing } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('slug', slug)
-      .maybeSingle<{ id: string }>();
-    if (!existing && !RESERVED_SLUGS.has(slug)) break;
-    slug = `${base}-${Math.floor(Math.random() * 10000)}`;
+
+  for (let n = 1; n <= 50; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    if (RESERVED_SLUGS.has(candidate)) continue;
+    const { error } = await supabase.from('profiles').update({ slug: candidate }).eq('id', userId);
+    if (!error) return candidate;
+    if (error.code !== UNIQUE_VIOLATION) throw error;
   }
-  await supabase.from('profiles').update({ slug }).eq('id', userId);
-  return slug;
+
+  // Caso patológico (50+ pessoas com o mesmo nome base): sufixo
+  // aleatório maior em vez de travar pra sempre.
+  const fallback = `${base}-${Math.floor(Math.random() * 100000)}`;
+  await supabase.from('profiles').update({ slug: fallback }).eq('id', userId);
+  return fallback;
 }
