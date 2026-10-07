@@ -20179,6 +20179,56 @@ sempre o mesmo card único, no mesmo lugar, que o que mostra o link).
 
 Item (B) — Beta Fechado por código — continua não iniciado.
 
+---
+
+## [DELIVERED] Beta Fechado por código (migration 0101) — 07/10/2026
+
+Item (B) do roadmap de Beta, fechado: um único código reutilizável
+(`DOOPLABETA`, `max_uses=null`), digitado na etapa 5 do cadastro
+("Escolha como quer começar"), concede acesso Pro **permanente**
+(nunca um trial de 7 dias) — decisão explícita da fundadora: "na fase
+beta vai ficar aberto pra ela testar até eu achar que tudo está
+redondo".
+
+**O que mudou:**
+- `beta_invite_codes` (code, max_uses, uses_count, active, expires_at)
+  — RLS sem nenhuma policy, só a function acessa (mesmo padrão de
+  `app_settings`, migration 0099)
+- `subscriptions.is_beta_free boolean` — marca "não é assinatura paga",
+  nunca gera cobrança quando billing real for ativado
+- `redeem_beta_code(p_code text)` — autenticado, só `role=artista`, 1
+  resgate por conta, reclama o código com `UPDATE...RETURNING` atômico
+  (mesma técnica de `invites`, migration 0100), concede
+  `artist_plan='pro', status='active', is_beta_free=true,
+  trial_ends_at=null`. `revoke ... from public` explícito desde o
+  início (lição da 0100 aplicada de cara, não depois de um achado).
+- `PlanPicker.tsx`: campo "Código de convite do Beta" nas duas peles
+  (`onboarding` e `legacy`) — voucher Founder removido das duas (nunca
+  foi funcional em nenhum lugar, `savePlanAction`/`signupAction` nunca
+  liam `founderVoucherCode` — achado durante esta entrega, não
+  corrigido além de remover o campo morto).
+- `savePlanAction` (funil novo, `PlanForm.tsx`) processa o código via
+  `redeem_beta_code`, autenticado — funciona de ponta a ponta.
+  `signup-form.tsx` (wizard antigo) só perdeu o voucher Founder quebrado;
+  **não** ganhou o campo de beta funcional — lá o cadastro inteiro
+  acontece numa chamada só, sem sessão autenticada ainda
+  (`redeem_beta_code` exige `auth.uid()`), então mostrar o campo sem
+  processá-lo repetiria o mesmo bug do voucher. Fica pendente um ponto
+  de resgate pós-signup nesse wizard, se algum dia for necessário.
+- CTA/subtítulo da etapa 5 trocam de texto quando o código está
+  preenchido ("Resgatar acesso do Beta" / "sem data pra acabar"), pra
+  nunca sugerir trial de 7 dias quando não é isso que está acontecendo
+  — achado da fundadora durante o próprio teste real.
+
+**QA**: staging (`doopla-qa-staging`) com fluxo real completo (cadastro
+→ etapa 5 → código → Pro permanente), confirmado por ela mesma antes
+de ir pra produção. Aplicado em produção (`doopla`) na sequência,
+confirmado com `has_function_privilege` e leitura direta da tabela.
+
+Roadmap do Beta Fechado (A + B) está completo agora:
+(A) trava de convite pro cadastro de Booker (0100) + (B) código de
+acesso ao Beta (0101).
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
