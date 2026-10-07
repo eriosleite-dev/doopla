@@ -25,9 +25,13 @@ export function PublicIdChip({ publicId, variant = 'legacy' }: { publicId: strin
   // exatamente essa igualdade visual que fazia label+valor+ação lerem
   // como uma frase corrida com fontes trocadas (achado da fundadora,
   // 07/10/2026).
+  // font-medium (500), não font-bold — achado da fundadora, 07/10/2026:
+  // "eduarda em negrito está muito forte". O badge (fundo próprio) já
+  // separa o valor visualmente do label/ação, sem precisar de peso
+  // pesado também.
   const valueClass = isPro
-    ? 'font-doopla-mono rounded-full bg-white/[0.06] px-2.5 py-1 text-[12.5px] font-bold text-[var(--pro-off)]'
-    : 'font-doopla-mono rounded-full bg-[var(--paper-dim)] px-2.5 py-1 text-[12.5px] font-bold text-[var(--ink)]';
+    ? 'font-doopla-mono rounded-full bg-white/[0.06] px-2.5 py-1 text-[12.5px] font-medium text-[var(--pro-off)]'
+    : 'font-doopla-mono rounded-full bg-[var(--paper-dim)] px-2.5 py-1 text-[12.5px] font-medium text-[var(--ink)]';
   const copyButtonClass = isPro
     ? 'flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full border border-[var(--pro-line)] text-[11px] text-[var(--pro-tx-70)] hover:border-[var(--pro-off)]/40 hover:text-[var(--pro-off)]'
     : 'flex h-[26px] w-[26px] flex-none items-center justify-center rounded-full border border-[var(--line-light)] text-[11px] text-[var(--ink)]/70 hover:border-[var(--ink)]/40 hover:text-[var(--ink)]';
