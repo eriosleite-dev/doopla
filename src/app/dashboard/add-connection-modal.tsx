@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 
 import {
   inviteArtistAction,
@@ -154,6 +154,29 @@ export function AddConnectionModal({
   const inviteLinkValueClass = isPro ? 'font-doopla-mono truncate text-[12px] text-[var(--pro-off)]' : 'font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]';
   const resultTextClass = isPro ? 'text-[13px] text-[var(--pro-tx-70)]' : 'text-sm text-[var(--ink)]/70';
 
+  // Overlay de verdade só na pele pro (07/10/2026, achado da fundadora):
+  // antes esse "modal" era um card que se expandia no próprio lugar do
+  // botão-gatilho — que muda de posição conforme o estado da página
+  // (header quando já existe alguém na equipe, dentro do card de estado
+  // vazio quando não existe ninguém), fazendo o card "pular" de lugar
+  // sem motivo. Overlay fixo centralizado nunca depende de onde o
+  // gatilho está no DOM. Mesmo padrão de ProUpgradeModal (Escape fecha,
+  // scroll do body trava). Pele legacy (Booker) inalterada de propósito.
+  useEffect(() => {
+    if (!open || !isPro) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') reset();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isPro]);
+
   function reset() {
     setOpen(false);
     setMode('contact');
@@ -280,9 +303,15 @@ export function AddConnectionModal({
               <span className={`font-doopla-mono text-[11px] uppercase tracking-[.05em] ${isPro ? 'text-[var(--pro-tx-30)]' : 'text-[var(--ink)]/50'}`}>
                 Link do convite
               </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={inviteLinkValueClass}>{inviteLink}</span>
-                <button type="button" onClick={copyInviteLink} className={secondaryBtn}>
+              {/* min-w-0 no span: truncate exige que o flex item possa
+                 encolher abaixo do min-width:auto padrão — sem isso o
+                 texto do link (longo, sem espaços) força a linha (e o
+                 container) mais larga que a tela, cortando o painel à
+                 direita (achado da fundadora, 07/10/2026). Mesma classe
+                 de bug já vista no CSS da Home mobile. */}
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`min-w-0 flex-1 ${inviteLinkValueClass}`}>{inviteLink}</span>
+                <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
                   {linkCopied ? 'Copiado!' : 'Copiar link'}
                 </button>
               </div>
@@ -454,17 +483,35 @@ export function AddConnectionModal({
     return <div className={containerClass}>{formContent}</div>;
   }
 
-  // Composição em duas áreas (07/09/2026, redesign de "Minha equipe" —
-  // referência visual aprovada pelo founder) — mascote/contexto à
-  // esquerda, formulário/resultado à direita, dentro do card já usado
-  // no resto do painel (mesmo border/radius/backdrop de ProCard). Só
-  // muda a COMPOSIÇÃO da pele pro: zero mudança de lógica/estado —
-  // formContent acima é o mesmo conteúdo de sempre, só realocado.
+  // Composição em duas áreas (07/09/2026, referência visual aprovada
+  // pelo founder) — mascote/contexto à esquerda, formulário/resultado à
+  // direita. Overlay fixo centralizado (07/10/2026, ver comentário no
+  // useEffect acima) — mesma composição interna de sempre, só o
+  // CONTAINER externo virou um dialog de verdade em vez de um card
+  // inline. formContent/LeftPanel sem nenhuma mudança de lógica.
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] backdrop-blur-xl lg:grid lg:grid-cols-[280px_1fr]">
-      <LeftPanel copy={copy} />
-      <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] p-5 sm:p-6 lg:border-t-0 lg:border-l">
-        {formContent}
+    <div className="pro-shell contents">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6" role="presentation">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={reset} aria-hidden="true" />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy.leftPanelTitle}
+          className="relative max-h-[92vh] w-full max-w-[680px] overflow-y-auto overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] backdrop-blur-xl lg:grid lg:grid-cols-[280px_1fr]"
+        >
+          <button
+            type="button"
+            onClick={reset}
+            aria-label="Fechar"
+            className="absolute top-4 right-4 z-10 flex h-8 w-8 flex-none items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+          >
+            ✕
+          </button>
+          <LeftPanel copy={copy} />
+          <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] p-5 sm:p-6 lg:border-t-0 lg:border-l">
+            {formContent}
+          </div>
+        </div>
       </div>
     </div>
   );

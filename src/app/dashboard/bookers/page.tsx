@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { AddConnectionModal } from '../add-connection-modal';
 import { confirmInviteAction, respondRepresentationRequestAction } from '../actions';
-import { ResendInviteButton } from '../resend-invite-button';
+import { ResendInviteButton, ViewInviteLinkButton } from '../resend-invite-button';
 import {
   getArtistBookerRelationships,
   getIncomingRepresentationRequests,
@@ -59,7 +59,7 @@ export default async function BookersPage() {
   }));
   const invitesPending = sentInvites
     .filter((i) => i.status === 'pendente' || i.status === 'expirada')
-    .map((i) => ({ key: i.id, name: i.invitee_name, href: null, expired: i.status === 'expirada' }));
+    .map((i) => ({ key: i.id, name: i.invitee_name, href: null, expired: i.status === 'expirada', token: i.token }));
 
   const hasNothing = myBookers.length === 0 && incomingRequests.length === 0 && outgoingPending.length === 0 && invitesPending.length === 0 && receivedInvites.length === 0;
 
@@ -178,6 +178,11 @@ export default async function BookersPage() {
                   <span className={`text-[12px] ${row.expired ? 'text-[var(--pro-amber)]' : 'text-[var(--pro-tx-50)]'}`}>
                     {row.expired ? 'Convite expirado' : 'Convite pendente · Aguardando cadastro'}
                   </span>
+                  {/* Ver/copiar o link atual sem regenerar (achado da
+                     fundadora, 07/10/2026) — só faz sentido pra convite
+                     ainda válido, não pro expirado (o link não serve
+                     mais, só "Reenviar" resolve nesse caso). */}
+                  {!row.expired && <ViewInviteLinkButton token={row.token} variant="pro" />}
                   <ResendInviteButton inviteId={row.key} variant="pro" />
                 </div>
               </div>
