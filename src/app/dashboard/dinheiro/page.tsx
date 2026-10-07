@@ -95,7 +95,9 @@ export default async function DinheiroPage() {
     <main>
       <ProPageHeader title="Financeiro" subtitle="Valores dos seus bookings e os dados que a Doopla usa pra orientar o pagamento." />
 
-      <div className="mb-4 grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+      {/* mb-6 (pass de hierarquia global, 07/10/2026) — 24px antes de
+         ProPaymentDetailsCard. */}
+      <div className="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-3">
         <ProCard>
           <p className="font-pro-display text-[22px] leading-none">{formatCentsAsBRL(artistStats.totalGrossCents)}</p>
           <p className="mt-1.5 text-[11.5px] text-[var(--pro-tx-50)]">Valor em bookings confirmados</p>
@@ -113,7 +115,9 @@ export default async function DinheiroPage() {
       <ProPaymentDetailsCard active={paymentDetails} />
 
       {referralSummary && referralSummary.referrals.length > 0 && (
-        <div className="mt-4">
+        // mt-6 (pass de hierarquia global, 07/10/2026) — 24px depois de
+        // ProPaymentDetailsCard.
+        <div className="mt-6">
           <ProCard>
             <p className="font-pro-sub text-[13.5px] font-bold">Créditos de indicação</p>
             <p className="mt-1 text-[11.5px] text-[var(--pro-tx-50)]">

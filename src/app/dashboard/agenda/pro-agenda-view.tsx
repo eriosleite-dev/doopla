@@ -76,7 +76,9 @@ export function ProAgendaView({
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {/* gap-6 (pass de hierarquia global, 07/10/2026) — 24px entre os
+         3 cards de função diferente (formulário/calendário/eventos). */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <ProAgendaEntryForm artistProfileId={artistProfileId} />
 
         <ProCard>

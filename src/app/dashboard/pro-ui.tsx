@@ -2,6 +2,8 @@
 
 import { useId, useState, type ReactNode } from 'react';
 
+import { proHeaderGapClass } from './pro-format';
+
 // Peças compartilhadas do novo Shell/Home (Professional Product UI —
 // Shell + Home bloco). Puramente visuais/reutilizáveis — nenhuma
 // lógica de produto aqui, só apresentação sobre dados já resolvidos
@@ -104,7 +106,11 @@ export function ProPageHeader({
   badge?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+    // mb (pass de hierarquia global, 07/10/2026) — subiu de mb-5 pra
+    // proHeaderGapClass (32px), mesma distância "header -> primeiro
+    // bloco" em toda rota que usa este componente compartilhado
+    // (Bookings/Financeiro/Minha equipe/Agenda legacy Booker).
+    <div className={`flex flex-wrap items-start justify-between gap-4 ${proHeaderGapClass}`}>
       <div>
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">{title}</h1>

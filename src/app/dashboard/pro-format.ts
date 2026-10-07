@@ -7,6 +7,31 @@
 
 import { wasBookingProposedByViewer, type BookingProposalFields } from './booking-attention';
 
+// Espaçamento padrão do painel novo (pass de hierarquia global,
+// 07/10/2026, achado da fundadora: "tudo parece apertado", pedido de
+// hierarquia visual consistente em todo o painel — Início, Bookings,
+// Agenda, Financeiro, Minha equipe, Configurações). Mesmo padrão de
+// proPrimaryButtonClass abaixo: classes Tailwind centralizadas aqui,
+// nunca CSS custom properties — o projeto nunca tokenizou espaçamento,
+// só cor (--pro-*).
+//
+// Escala (só 2 valores neste pass, nunca mais que isso):
+// - 32px (mb-8) — nav global -> header de página, e header -> primeiro
+//   bloco de conteúdo. Únicos 2 lugares que usam essa distância
+//   exatamente, por isso têm constante própria.
+// - 24px — entre cards/seções principais de função diferente (ex.:
+//   hero -> stats, calendário -> lista de eventos). Usado direto como
+//   `gap-6`/`mb-6`/`mt-6` nos arquivos (não centralizado numa 3ª
+//   constante aqui) porque aparece nas 3 formas conforme o layout de
+//   cada página — o valor é sempre 24px nas 3.
+//
+// Nunca usado pra espaçamento DENTRO de um card/seção (título ->
+// descrição -> ação, ou itens de uma mesma lista) — esses continuam
+// com os valores locais de sempre, menores de propósito: é isso que
+// cria a hierarquia, não um valor único pra tudo.
+export const proTopNavGapClass = 'mb-8';
+export const proHeaderGapClass = 'mb-8';
+
 // Correção 06/09/2026 — nome cadastrado sem capitalização consistente
 // (ex.: "eduarda") não deve vazar pra saudação da Home ("Oi, eduarda").
 // Normaliza pra Title Case preservando acentos, via toLocaleUpperCase/

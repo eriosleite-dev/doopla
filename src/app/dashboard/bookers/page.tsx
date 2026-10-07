@@ -16,7 +16,7 @@ import {
 import { PublicIdChip } from '../public-id-chip';
 import { getSessionProfile } from '../session';
 import { hasDooplaPro } from '@/lib/subscription';
-import { proGhostButtonClass, proPrimaryButtonClass } from '../pro-format';
+import { proGhostButtonClass, proHeaderGapClass, proPrimaryButtonClass } from '../pro-format';
 import { ProCard } from '../pro-ui';
 import { initialsFromName } from '../ui';
 import { TerminateRelationshipButton } from '../terminate-relationship-button';
@@ -75,10 +75,10 @@ export default async function BookersPage() {
          navegação global. Markup inline aqui (não em ProPageHeader,
          componente compartilhado por Bookings/Agenda/Financeiro/
          Configurações) de propósito — essa mudança foi pedida só pra
-         Minha equipe por enquanto; o pass de espaçamento/hierarquia do
-         painel inteiro é um item separado, auditado mas não
-         implementado ainda. */}
-      <div className="mb-5">
+         Minha equipe por enquanto. mb usa proHeaderGapClass (pass de
+         hierarquia global, 07/10/2026), mesma distância header ->
+         conteúdo que ProPageHeader usa nas outras rotas. */}
+      <div className={proHeaderGapClass}>
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">Minha equipe</h1>
           {hasProPlan ? (
@@ -109,7 +109,10 @@ export default async function BookersPage() {
          falta. Fora do ProPageHeader (componente compartilhado por
          outras rotas) de propósito, pra não vazar pra lá. */}
       {profile.slug && (
-        <div className="mb-4">
+        // mb-6 (pass de hierarquia global, 07/10/2026) — 24px entre
+        // seções principais de função diferente, mesmo valor usado nos
+        // outros 3 blocos desta página.
+        <div className="mb-6">
           <PublicIdChip publicId={profile.slug} variant="pro" />
         </div>
       )}
@@ -134,7 +137,7 @@ export default async function BookersPage() {
       )}
 
       {incomingRequests.length > 0 && (
-        <div className="mb-4 flex flex-col gap-3">
+        <div className="mb-6 flex flex-col gap-3">
           {incomingRequests.map((req) => (
             <ProCard key={req.id}>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -170,7 +173,7 @@ export default async function BookersPage() {
       )}
 
       {receivedInvites.length > 0 && (
-        <div className="mb-4 flex flex-col gap-3">
+        <div className="mb-6 flex flex-col gap-3">
           {receivedInvites.map((invite) => (
             <ProCard key={invite.id}>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -193,7 +196,7 @@ export default async function BookersPage() {
       )}
 
       {(outgoingPending.length > 0 || invitesPending.length > 0) && (
-        <div className="mb-4 flex flex-col gap-2">
+        <div className="mb-6 flex flex-col gap-2">
           {outgoingPending.map((row) => (
             <ProCard key={row.key} className="!p-4">
               <Link href={row.href} className="flex items-center justify-between gap-3 text-[13px] text-[var(--pro-off)] hover:text-[var(--pro-tx-70)]">

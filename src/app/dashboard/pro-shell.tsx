@@ -8,6 +8,7 @@ import { NotificationBell } from './notification-bell';
 import { ProHeaderCommunityLink } from './pro-header-community-link';
 import { proNavIcons, ProSidebarNav, type ProNavLink } from './pro-sidebar-nav';
 import { ProSidebarReferralLink } from './pro-sidebar-referral-link';
+import { proTopNavGapClass } from './pro-format';
 import { initialsFromName } from './ui';
 
 // "Decisões" saiu do sidebar (auditoria de legado, 15/09/2026,
@@ -139,15 +140,19 @@ export function ProfessionalShell({
       </aside>
 
       <div className="flex flex-1 flex-col md:flex-row">
-        {/* pt/mb abaixo alinham o início do conteúdo (h1 da página) com
-            "Início" no sidebar (auditoria QA visual, 15/09/2026) — o
-            padding-top aqui replica o da <aside> (py-4/md:py-[18px]) e a
-            margem da faixa de ícones utilitários foi reduzida pra
-            compensar a altura maior dela (h-9) vs. a linha de logo do
-            sidebar. Não mexe no sidebar nem cria offset por página —
-            só o shell compartilhado. */}
+        {/* pt acima replica o padding-top da <aside> (py-4/md:py-[18px]),
+            alinhando a faixa de ícones utilitários com a linha do logo
+            no sidebar (auditoria QA visual, 15/09/2026) — intocado.
+            mb da faixa de ícones (pass de hierarquia global,
+            07/10/2026, achado da fundadora: "os 3 ícones globais
+            precisam de distância clara do primeiro conteúdo, hoje tudo
+            parece apertado") subiu de mb-2 pra proTopNavGapClass
+            (32px) — isso descola o h1 de cada página um pouco mais do
+            alinhamento fino com "Início" que existia antes, troca
+            deliberada: a hierarquia visual pedida pesa mais que esse
+            alinhamento milimétrico. */}
         <main className="min-w-0 flex-1 px-5 pt-4 pb-6 sm:px-8 sm:pt-[18px] sm:pb-7">
-          <div className="mb-2 flex items-center justify-end gap-2.5">
+          <div className={`flex items-center justify-end gap-2.5 ${proTopNavGapClass}`}>
             <NotificationBell />
             <ProHeaderCommunityLink />
             <Link

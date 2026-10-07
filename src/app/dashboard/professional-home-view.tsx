@@ -125,7 +125,10 @@ export async function ProfessionalHomeView({
          isso a coluna esquerda não usa gap (dobraria o espaçamento);
          a direita usa gap-3.5 pra igualar visualmente, já que os cards
          de lá não têm margin próprio. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
+      {/* gap-6 (pass de hierarquia global, 07/10/2026) — 24px, separa
+         a coluna principal (accordions) da coluna de cards laterais;
+         mesmo valor quando empilha no mobile. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start">
         <div className="min-w-0">
           {/* Expansível dentro do próprio card (01/10/2026, pedido da
              fundadora) — "Ver todas as decisões"/"Ver bookings
@@ -211,7 +214,10 @@ function ProHero({
 }) {
   const firstName = capitalizeName((fullName || '').trim().split(/\s+/)[0] || 'você');
   return (
-    <div className="relative mb-4 flex items-start justify-between gap-5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-7 backdrop-blur-xl sm:p-8">
+    // mb-6 (pass de hierarquia global, 07/10/2026) — 24px antes de
+    // StatsRow, mesmo valor usado entre seções de função diferente em
+    // todo o painel novo.
+    <div className="relative mb-6 flex items-start justify-between gap-5 overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-7 backdrop-blur-xl sm:p-8">
       <div className="min-w-0 pt-0.5">
         <span className={`${proPlanBadgeClass(hasDooplaPro)} inline-block`}>{hasDooplaPro ? 'PRO' : 'BÁSICO'}</span>
         <h1 className="font-pro-sub mt-2 flex items-center gap-2 text-[26px] font-bold sm:text-[28px]">
@@ -261,7 +267,9 @@ function StatCard({ tone, icon, num, label }: { tone: 'red' | 'amber' | 'green' 
 function StatsRow({ needsYou, waitingClient, confirmed, completed }: { needsYou: number; waitingClient: number; confirmed: number; completed: number }) {
   const ic = { viewBox: '0 0 24 24', fill: 'none', strokeWidth: 1.8, width: 17, height: 17 } as const;
   return (
-    <div className="mb-4 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+    // mb-6 (pass de hierarquia global, 07/10/2026) — 24px antes do
+    // grid de 2 colunas abaixo (accordions + cards laterais).
+    <div className="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
       <StatCard
         tone="red"
         num={needsYou}
