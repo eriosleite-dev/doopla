@@ -157,7 +157,7 @@
   #home-marketing .opening-copy h1{
     font-family:'Familjen Grotesk',sans-serif; font-weight:700; text-transform:uppercase;
     letter-spacing:.01em; color:var(--black);
-    font-size:clamp(1.7rem,4vw,2.7rem); line-height:1.15; margin-bottom:10px;
+    font-size:clamp(1.7rem,4vw,2.6rem); line-height:1.15; margin-bottom:22px;
   }
   /* "Representação inteligente." como assinatura secundária, não mais
      parágrafo de corpo — mesma linguagem mono/uppercase do .eyebrow/
