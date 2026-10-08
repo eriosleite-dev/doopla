@@ -98,7 +98,10 @@
     background:var(--black); overflow:hidden; white-space:nowrap; padding:11px 0;
     border-bottom:1px solid var(--line);
   }
-  #home-marketing .opening-marquee-track{ display:inline-flex; animation:opening-marquee 22s linear infinite; }
+  /* 88s (era 22s) pra acompanhar o aumento de 4 pra 16 pares de spans no
+     HTML — mesma velocidade de rolagem (~49px/s), só um ciclo completo
+     mais longo. Ver comentário no home.html sobre o motivo do aumento. */
+  #home-marketing .opening-marquee-track{ display:inline-flex; animation:opening-marquee 88s linear infinite; }
   #home-marketing .opening-marquee-track span{
     font-family:'IBM Plex Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
     color:var(--off); padding:0 24px; white-space:nowrap;

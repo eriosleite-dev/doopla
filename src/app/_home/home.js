@@ -152,9 +152,22 @@ function initLegacyEyesMotion() {
 
   var eyeSize = eyeA.getBoundingClientRect().width || 160;
   var MAX = eyeSize * 0.24; // alcance do olhar — mesmo fator do original (eyeSize*0.24)
+  var MIN_EYE_GAP = 14; // distância mínima visível entre os contornos dos dois olhos — nunca podem se tocar
   function jumpSpan() {
     var base = stage.clientWidth * 0.5;
     return Math.min(base, eyeSize * 1.375);
+  }
+  // Quanto cada olho pode avançar em direção ao outro no overshoot da
+  // entrada sem violar MIN_EYE_GAP. Medido ao vivo (não um valor fixo)
+  // porque o espaçamento real entre os olhos é responsivo (gap em clamp()
+  // no CSS) — assim o limite se ajusta sozinho em qualquer largura de tela.
+  function maxInwardShift() {
+    var gap = eyeB.getBoundingClientRect().left - eyeA.getBoundingClientRect().right;
+    // o pico do overshoot lateral coincide no tempo com o pico do squash
+    // do pulo (scaleX 1.16 em cada olho — ver jumpTo/tweenEyeSquash), que
+    // também encolhe o espaço entre os dois. Reserva esse tanto também.
+    var bulge = eyeSize * 0.16;
+    return Math.max(0, (gap - MIN_EYE_GAP - bulge) / 2);
   }
 
   // estado por elemento — WAAPI não acumula como o GSAP, cada tween
@@ -257,8 +270,13 @@ function initLegacyEyesMotion() {
   function entrance() {
     var myToken = ++activeToken;
     var span = jumpSpan();
-    var jumpsL = [-span, span * 0.4, 0];
-    var jumpsR = [span, -span * 0.4, 0];
+    // inward (overshoot de convergência pro centro) é clampado por
+    // maxInwardShift() pra nunca deixar os dois olhos se tocarem ou
+    // sobreporem — o salto pra fora (±span) continua livre, pois
+    // afastar os olhos nunca causa sobreposição.
+    var inward = Math.min(span * 0.4, maxInwardShift());
+    var jumpsL = [-span, inward, 0];
+    var jumpsR = [span, -inward, 0];
     var p = Promise.all([
       jumpTo(colA, eyeA, shadowA, jumpsL[0], 0.6),
       jumpTo(colB, eyeB, shadowB, jumpsR[0], 0.6)
