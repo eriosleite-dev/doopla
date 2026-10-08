@@ -14,8 +14,66 @@
   </div>
 </header>
 
+<!-- LETREIRO + ABERTURA VERMELHA (08/10/2026, achado da fundadora) —
+     resgate da abertura histórica do site (commit cf18bb3), estática
+     (sem o pin/scroll-scrub por GSAP do original, removido
+     deliberadamente — ver nota no topo deste arquivo sobre GSAP).
+     Logo gigante reaproveita a MESMA técnica de EyeLogo.tsx/.nav-logo
+     (d + 2 .eye-slot + pla, só em escala maior) — tracking de cursor
+     reaproveita o mousemove já existente em home.js (.opening-logo
+     adicionado à lista de seletores lá), nenhum JS novo. "Representação
+     inteligente" só aparece aqui, não duplicado em outro lugar
+     (decisão explícita da fundadora). Seção "Apareceu uma
+     oportunidade?" não restaurada (removida deliberadamente antes,
+     fase beta) — depois desta abertura vem direto o hero atual, sem
+     alteração nenhuma nele ou nas seções seguintes. -->
+<div class="opening-marquee" aria-hidden="true">
+  <div class="opening-marquee-track">
+    <span>Representação inteligente</span>
+    <span>Para artistas independentes</span>
+    <span>Representação inteligente</span>
+    <span>Para artistas independentes</span>
+    <span>Representação inteligente</span>
+    <span>Para artistas independentes</span>
+    <span>Representação inteligente</span>
+    <span>Para artistas independentes</span>
+  </div>
+</div>
+
+<section class="opening">
+  <div class="opening-grain" aria-hidden="true"></div>
+  <span class="opening-edge left" aria-hidden="true">Sua carreira</span>
+  <span class="opening-edge right" aria-hidden="true">Sua Doopla</span>
+  <div class="opening-seal" aria-hidden="true">
+    <svg viewBox="0 0 100 100">
+      <rect x="14" y="14" width="72" height="72" rx="6" fill="none" stroke="#121110" stroke-width="2.4" transform="rotate(-3 50 50)"/>
+      <g transform="rotate(-3 50 50)">
+        <circle cx="38" cy="50" r="12" fill="#121110"/>
+        <circle cx="62" cy="50" r="12" fill="#121110"/>
+        <circle cx="38" cy="50" r="4" fill="#e2291c"/>
+        <circle cx="62" cy="50" r="4" fill="#e2291c"/>
+      </g>
+    </svg>
+  </div>
+  <span class="opening-index" aria-hidden="true">Representação</span>
+
+  <div class="opening-logo" aria-label="Doopla">
+    <span>d</span><span class="eye-slot opening-eye"><span class="mascot-pupil"></span></span><span class="eye-slot opening-eye"><span class="mascot-pupil"></span></span><span>pla</span>
+  </div>
+
+  <div class="opening-copy">
+    <h1>Toda carreira merece sua Doopla.</h1>
+    <p>Cliente chamou? Manda pra Doopla.</p>
+  </div>
+
+  <a href="#hero" class="opening-discover">
+    Descubra
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+  </a>
+</section>
+
 <!-- HERO -->
-<section class="hero">
+<section class="hero" id="hero">
   <div class="wrap hero-grid">
     <div class="hero-copy">
       <span class="eyebrow">Toda carreira merece sua Doopla.</span>

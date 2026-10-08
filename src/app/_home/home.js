@@ -39,7 +39,9 @@ function initMascotEyes() {
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduced) return;
 
-  var mascots = Array.prototype.slice.call(document.querySelectorAll('#home-marketing .mascot, #home-marketing .nav-logo, #home-marketing .foot-logo'));
+  // .opening-logo (08/10/2026, abertura vermelha resgatada) adicionado
+  // à lista — mesmo mecanismo de sempre, nenhum listener novo.
+  var mascots = Array.prototype.slice.call(document.querySelectorAll('#home-marketing .mascot, #home-marketing .nav-logo, #home-marketing .foot-logo, #home-marketing .opening-logo'));
   var pupils = [];
   // pupilGroups: um array por mascote/logo (par de olhos do MESMO rosto),
   // não por pupila solta — precisa pra o wander ocioso abaixo sortear UM

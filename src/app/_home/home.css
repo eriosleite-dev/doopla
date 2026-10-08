@@ -88,6 +88,80 @@
   #home-marketing .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--off); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
   #home-marketing .eye-slot .mascot-pupil{ width:34%; height:34%; background:var(--black); }
 
+  /* ===== LETREIRO + ABERTURA VERMELHA (08/10/2026) — resgate estático
+     da abertura histórica (commit cf18bb3). Rolagem suave pro #hero
+     via "Descubra" — só esse anchor, sem afetar navegação do resto do
+     site. */
+  html{ scroll-behavior:smooth; }
+
+  #home-marketing .opening-marquee{
+    background:var(--black); overflow:hidden; white-space:nowrap; padding:11px 0;
+    border-bottom:1px solid var(--line);
+  }
+  #home-marketing .opening-marquee-track{ display:inline-flex; animation:opening-marquee 22s linear infinite; }
+  #home-marketing .opening-marquee-track span{
+    font-family:'IBM Plex Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--off); padding:0 24px; white-space:nowrap;
+  }
+  #home-marketing .opening-marquee-track span::after{ content:"•"; margin-left:24px; color:var(--tx-30); }
+  @keyframes opening-marquee{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
+
+  /* Fundo vermelho + texto preto — mesma regra já documentada no topo
+     deste arquivo pra seção "Sempre com você" (nunca branco sobre
+     vermelho, evita a combinação que lembra o iFood). */
+  #home-marketing .opening{
+    position:relative; background:var(--red); overflow:hidden;
+    min-height:88vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:90px 32px 70px;
+  }
+  #home-marketing .opening-grain{
+    position:absolute; inset:0;
+    background-image:radial-gradient(circle, rgba(0,0,0,.14) 1px, transparent 1px);
+    background-size:3px 3px; opacity:.5; pointer-events:none;
+  }
+  #home-marketing .opening-edge{
+    position:absolute; top:50%; writing-mode:vertical-rl; color:rgba(18,17,16,.65);
+    font-family:'IBM Plex Mono',monospace; font-weight:600; letter-spacing:.16em; font-size:.7rem; text-transform:uppercase;
+  }
+  #home-marketing .opening-edge.left{ left:28px; transform:translateY(-50%) rotate(180deg); }
+  #home-marketing .opening-edge.right{ right:28px; transform:translateY(-50%); }
+  #home-marketing .opening-seal{ position:absolute; bottom:34px; left:34px; width:52px; height:52px; }
+  #home-marketing .opening-seal svg{ width:100%; height:100%; }
+  #home-marketing .opening-index{
+    position:absolute; bottom:38px; right:44px; color:rgba(18,17,16,.65);
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+  }
+  #home-marketing .opening-logo{
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Familjen Grotesk',sans-serif; font-weight:600; color:var(--black);
+    font-size:clamp(3.4rem,13vw,9rem); line-height:1; letter-spacing:-.01em; margin-bottom:40px;
+  }
+  #home-marketing .opening-logo .eye-slot{ background:var(--black); }
+  #home-marketing .opening-logo .eye-slot .mascot-pupil{ background:var(--off); }
+  #home-marketing .opening-copy{ max-width:620px; }
+  #home-marketing .opening-copy h1{
+    font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--black);
+    font-size:clamp(1.8rem,4.2vw,2.9rem); line-height:1.12; margin-bottom:16px;
+  }
+  #home-marketing .opening-copy p{ font-size:1rem; line-height:1.55; color:rgba(18,17,16,.78); }
+  #home-marketing .opening-discover{
+    position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:8px; color:var(--black); cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
+  }
+  @media (max-width:760px){
+    #home-marketing .opening{ min-height:76vh; padding:80px 22px 64px; }
+    #home-marketing .opening-edge,
+    #home-marketing .opening-seal,
+    #home-marketing .opening-index{ display:none; }
+    #home-marketing .opening-logo{ font-size:clamp(2.6rem,18vw,4.6rem); margin-bottom:28px; }
+    #home-marketing .opening-copy h1{ font-size:clamp(1.5rem,6vw,2rem); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #home-marketing .opening-marquee-track{ animation:none; }
+    html{ scroll-behavior:auto; }
+  }
+
   /* ===== MASCOTE (hero + CTA final) — bola vermelha, olho preto, pupila
      branca. Ganha .blink (piscada), nunca tracking de cursor. */
   #home-marketing .mascot{
