@@ -329,6 +329,18 @@
   #home-marketing .problem-text{ flex:1; }
   #home-marketing .problem-title{ margin:0; font-size:.94rem; color:var(--off); font-weight:600; line-height:1.4; }
   #home-marketing .problem-sub{ margin:4px 0 0; font-size:.82rem; color:var(--tx-50); line-height:1.5; }
+  /* Tag "Em breve" (07/10/2026, achado da fundadora) — "Novos
+     trabalhos" (match de oportunidades) é fase beta, não quer prometer
+     isso agora na Home. Mesma linguagem mono/uppercase do .eyebrow já
+     usado no arquivo, só compacta e em pílula, pra marcar item futuro
+     sem precisar remover a linha inteira da lista. */
+  #home-marketing .soon-tag{
+    display:inline-block; font-family:'IBM Plex Mono',monospace;
+    font-size:.6rem; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--tx-50);
+    border:1px solid var(--line); border-radius:999px;
+    padding:2px 8px; margin-left:8px; vertical-align:middle;
+  }
 
   /* ===== NOVAS SEÇÕES — pacote de reposicionamento de comunicação =====
      Nenhum componente visual novo: .centered-copy só reaproveita as

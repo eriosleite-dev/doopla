@@ -136,7 +136,7 @@
       <div class="problem">
         <svg class="ico" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
         <div class="problem-text">
-          <p class="problem-title">Novos trabalhos.</p>
+          <p class="problem-title">Novos trabalhos. <span class="soon-tag">Em breve</span></p>
           <p class="problem-sub">Quando aparece uma oportunidade que combina com você, sua Doopla te chama.</p>
         </div>
       </div>
@@ -165,81 +165,17 @@
   </div>
 </section>
 
-<!-- NOVOS TRABALHOS — segundo lado da Doopla (cliente sem profissional
-     ainda -> Doopla qualifica -> profissional recebe o trabalho já com
-     contexto). Reaproveita .two-col e os componentes de bolha/painel já
-     existentes (.bubble, .plan-card-like panel) — nenhuma estética nova. -->
-<section class="block" id="novos-trabalhos">
-  <div class="two-col">
-    <div>
-      <span class="eyebrow">Novos trabalhos</span>
-      <h2>Apareceu uma oportunidade?<br>Sua Doopla te chama.</h2>
-      <p class="lead">Quando chega um trabalho com o seu perfil, a Doopla identifica quem faz sentido para a oportunidade, cuida do booking e te chama para decidir se quer seguir.</p>
-    </div>
-    <div class="job-demo">
-      <span class="job-demo-glow" aria-hidden="true"></span>
-
-      <div class="job-demo-panel">
-        <div class="job-demo-row">
-          <span class="job-demo-avatar job-demo-avatar-neutral" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
-          </span>
-          <div class="job-demo-row-body">
-            <span class="job-demo-who">Cliente</span>
-            <div class="bubble in">Oi! Preciso de uma fotógrafa para um evento.</div>
-          </div>
-        </div>
-        <div class="job-demo-row">
-          <span class="job-demo-avatar phone-avatar" aria-hidden="true">
-            <span class="mascot-eye" style="width:8px;height:8px;"><span class="mascot-pupil" style="width:3px;height:3px;"></span></span>
-            <span class="mascot-eye" style="width:8px;height:8px;"><span class="mascot-pupil" style="width:3px;height:3px;"></span></span>
-            <span class="mascot-smile"></span>
-          </span>
-          <div class="job-demo-row-body">
-            <span class="job-demo-who">Doopla</span>
-            <div class="bubble out">Olá, tudo bem? Obrigada pelo contato. Me passa mais algumas informações, como local, horário e perfil do profissional que você procura?</div>
-          </div>
-        </div>
-        <span class="job-demo-ellipsis" aria-hidden="true">•••</span>
-      </div>
-
-      <div class="job-demo-transition">
-        <span class="job-demo-whatsapp-badge" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 00-8.62 15.06L2 22l5.06-1.33A10 10 0 1012 2zm5.71 14.24c-.24.68-1.39 1.3-1.92 1.38-.49.08-1.11.11-1.79-.11-.41-.13-.94-.31-1.62-.61-2.85-1.23-4.71-4.1-4.85-4.29-.14-.19-1.16-1.54-1.16-2.94 0-1.4.73-2.09.99-2.38.26-.29.57-.36.76-.36l.55.01c.18 0 .41-.07.64.49.24.57.81 1.97.88 2.11.07.14.12.3.02.49-.1.19-.15.31-.3.48-.15.17-.31.37-.44.5-.15.14-.3.3-.13.59.17.29.76 1.25 1.63 2.02 1.12 1 2.06 1.31 2.35 1.46.29.15.46.13.63-.08.17-.21.72-.84.91-1.13.19-.29.38-.24.64-.14.26.1 1.65.78 1.93.92.28.14.47.21.54.33.07.12.07.68-.17 1.36z"/></svg>
-        </span>
-        <span>Ela te chama quando precisa de você.</span>
-      </div>
-
-      <div class="job-demo-panel">
-        <div class="job-demo-row">
-          <span class="job-demo-avatar job-demo-avatar-neutral" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
-          </span>
-          <span class="job-demo-who" style="padding-top:6px;">Você</span>
-        </div>
-        <div class="job-demo-row">
-          <span class="job-demo-avatar phone-avatar" aria-hidden="true">
-            <span class="mascot-eye" style="width:8px;height:8px;"><span class="mascot-pupil" style="width:3px;height:3px;"></span></span>
-            <span class="mascot-eye" style="width:8px;height:8px;"><span class="mascot-pupil" style="width:3px;height:3px;"></span></span>
-            <span class="mascot-smile"></span>
-          </span>
-          <div class="job-demo-row-body">
-            <span class="job-demo-who">Doopla</span>
-            <div class="bubble out">Oi, tudo bom? Encontrei um trabalho que parece fazer sentido pra você.</div>
-          </div>
-        </div>
-        <div class="job-demo-info">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-          <span>Evento sábado à noite</span>
-        </div>
-        <button type="button" class="btn job-card-cta">
-          Quero saber mais
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
-</section>
+<!-- NOVOS TRABALHOS removida da Home (07/10/2026, achado da fundadora)
+     — decisão de fase beta: "não quero prometer isso agora, voltamos
+     com ela no futuro". Era o segundo lado da Doopla (cliente sem
+     profissional -> Doopla qualifica -> profissional recebe o trabalho
+     já com contexto) — capacidade real por trás (opportunities, ver
+     work-items.ts/dashboard) continua intacta, só a promessa pública
+     desse fluxo some do site enquanto durar o beta. HTML/CSS
+     (.job-demo*, .job-card-cta) preservados no histórico do git, nunca
+     apagados — só a seção inteira (era #novos-trabalhos) saiu daqui;
+     nenhum outro lugar do código linkava pro #novos-trabalhos
+     (conferido antes de remover). -->
 
 <!-- SEMPRE COM VOCE (secao WhatsApp) — fundo vermelho, olhos grandes reais
      da Home anterior reaproveitados (ver home.css/home.js .legacy-eyes-*,
