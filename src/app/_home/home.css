@@ -134,16 +134,29 @@
   #home-marketing .opening-logo{
     display:flex; align-items:center; justify-content:center;
     font-family:'Familjen Grotesk',sans-serif; font-weight:600; color:var(--black);
-    font-size:clamp(3.4rem,13vw,9rem); line-height:1; letter-spacing:-.01em; margin-bottom:40px;
+    font-size:clamp(3.4rem,13vw,9rem); line-height:1; letter-spacing:-.01em; margin-bottom:28px;
   }
   #home-marketing .opening-logo .eye-slot{ background:var(--black); }
   #home-marketing .opening-logo .eye-slot .mascot-pupil{ background:var(--off); }
   #home-marketing .opening-copy{ max-width:620px; }
+  /* Título mais editorial (08/10/2026, achado da fundadora: "menos
+     aparência de título convencional de landing page") — mesma fonte
+     do logo gigante (Familjen Grotesk, já usada no projeto, nenhuma
+     dependência nova) + caixa alta, em vez de Inter/sentence-case
+     (que é o padrão do h1 do hero logo abaixo — precisava se
+     diferenciar). */
   #home-marketing .opening-copy h1{
-    font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--black);
-    font-size:clamp(1.8rem,4.2vw,2.9rem); line-height:1.12; margin-bottom:16px;
+    font-family:'Familjen Grotesk',sans-serif; font-weight:700; text-transform:uppercase;
+    letter-spacing:.01em; color:var(--black);
+    font-size:clamp(1.7rem,4vw,2.7rem); line-height:1.15; margin-bottom:10px;
   }
-  #home-marketing .opening-copy p{ font-size:1rem; line-height:1.55; color:rgba(18,17,16,.78); }
+  /* "Representação inteligente." como assinatura secundária, não mais
+     parágrafo de corpo — mesma linguagem mono/uppercase do .eyebrow/
+     letreiro já usada no site, nunca competindo com o título. */
+  #home-marketing .opening-copy p{
+    font-family:'IBM Plex Mono',monospace; font-weight:700; text-transform:uppercase;
+    font-size:.72rem; letter-spacing:.12em; color:rgba(18,17,16,.65);
+  }
   #home-marketing .opening-discover{
     position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
     display:flex; align-items:center; gap:8px; color:var(--black); cursor:pointer;
@@ -154,8 +167,8 @@
     #home-marketing .opening-edge,
     #home-marketing .opening-seal,
     #home-marketing .opening-index{ display:none; }
-    #home-marketing .opening-logo{ font-size:clamp(2.6rem,18vw,4.6rem); margin-bottom:28px; }
-    #home-marketing .opening-copy h1{ font-size:clamp(1.5rem,6vw,2rem); }
+    #home-marketing .opening-logo{ font-size:clamp(2.6rem,18vw,4.6rem); margin-bottom:20px; }
+    #home-marketing .opening-copy h1{ font-size:clamp(1.4rem,7vw,1.9rem); }
   }
   @media (prefers-reduced-motion: reduce){
     #home-marketing .opening-marquee-track{ animation:none; }
