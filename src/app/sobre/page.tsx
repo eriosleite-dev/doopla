@@ -6,7 +6,7 @@ import { EyesShowcase } from '../_home/EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
-  description: 'A Doopla é uma nova forma de agenciamento para profissionais independentes.',
+  description: 'A Doopla é uma nova forma de agenciamento para artistas independentes.',
 };
 
 export default function SobrePage() {
@@ -17,7 +17,7 @@ export default function SobrePage() {
           <div>
             <span className="eyebrow">Sobre a Doopla</span>
             <h1>Toda carreira merece sua Doopla.</h1>
-            <p className="lead">A Doopla é uma nova forma de agenciamento para profissionais independentes.</p>
+            <p className="lead">A Doopla é uma nova forma de agenciamento para artistas independentes.</p>
           </div>
           <EyesShowcase />
         </div>
