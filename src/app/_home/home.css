@@ -141,7 +141,13 @@
   }
   #home-marketing .opening-logo .eye-slot{ background:var(--black); }
   #home-marketing .opening-logo .eye-slot .mascot-pupil{ background:var(--off); }
-  #home-marketing .opening-copy{ max-width:620px; }
+  /* max-width reduzido de 620 pra 480px (08/10/2026, achado da
+     fundadora: "toda carreira merece sua doopla não pode ultrapassar
+     o logo") — em telas largas o logo gigante (clamp trava em 9rem)
+     renderiza ~500-520px, mais estreito que os 620px que o título
+     podia ocupar antes de quebrar linha. 480px garante que o título
+     nunca exceda a largura real do logo. */
+  #home-marketing .opening-copy{ max-width:480px; }
   /* Título mais editorial (08/10/2026, achado da fundadora: "menos
      aparência de título convencional de landing page") — mesma fonte
      do logo gigante (Familjen Grotesk, já usada no projeto, nenhuma
@@ -372,14 +378,29 @@
 
   /* ===== PROFISSÕES ===== */
   #home-marketing .strip{ border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:30px 44px; }
-  #home-marketing .strip .wrap{ display:flex; align-items:center; gap:40px; flex-wrap:wrap; }
+  /* Alinhamento com as seções abaixo (08/10/2026, achado da fundadora)
+     — .strip tinha padding:44px E .wrap (dentro) seu próprio
+     padding:32px + max-width:1240px, dupla margem (mesmo bug já
+     corrigido no mobile, ver comentário mais abaixo neste arquivo)
+     deixando a barra desalinhada com .two-col (padding:44px do
+     section.block + max-width:1180px, sem padding próprio). Zera o
+     padding do .wrap aqui e iguala o max-width a 1180px — início/fim
+     da barra batem exatamente com o container das seções vizinhas.
+     Só a regra base (desktop); o bloco mobile logo abaixo já tem sua
+     própria versão de .strip .wrap, nunca tocada aqui. */
+  #home-marketing .strip .wrap{ display:flex; align-items:center; gap:40px; flex-wrap:wrap; max-width:1180px; padding:0; }
   /* Coluna do rótulo mono + a nova headline da seção (pacote de
      reposicionamento) — mesmo espaço da .strip original, só empilhado
      em coluna em vez de um único texto solto. */
   #home-marketing .strip-label-col{ display:flex; flex-direction:column; gap:8px; flex:none; max-width:230px; }
   #home-marketing .strip-label{ font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.12em; color:var(--tx-50); text-transform:uppercase; line-height:1.5; }
   #home-marketing .strip-headline{ font-family:'Inter',sans-serif; font-weight:700; font-size:1rem; color:var(--off); line-height:1.35; margin:0; }
-  #home-marketing .prof-list{ display:flex; gap:36px; flex:1; flex-wrap:wrap; }
+  /* Redistribui ao longo da largura (08/10/2026, achado da fundadora:
+     "espremidas", "e muito mais" precisa cair na ponta direita) —
+     space-between usa o espaço todo entre o primeiro item e o último
+     ("e muito mais"), gap maior garante respiro mínimo mesmo se algum
+     dia a lista encolher. */
+  #home-marketing .prof-list{ display:flex; justify-content:space-between; gap:44px; flex:1; flex-wrap:wrap; }
   #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; gap:9px; color:var(--tx-70); }
   #home-marketing .prof-item svg{ color:var(--off); opacity:.85; }
   #home-marketing .prof-item span{ font-size:.78rem; font-weight:500; }
