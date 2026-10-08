@@ -9,7 +9,7 @@ precisa reconstruir o histórico na conversa.
 Legenda: ✅ pronto e no ar · 🔧 em andamento agora · ⏳ na fila, sem trava ·
 🔒 travado (motivo explicado) · ❌ ainda não começou
 
-Última atualização: 2026-09-21.
+Última atualização: 2026-10-08.
 
 ## Comunidade — 3 bugs reais de QA em "Criar tópico" (auto-submit, navegação, delete) — 21/09/2026
 
@@ -20347,6 +20347,82 @@ seções principais de função diferente). Aplicado em `pro-shell.tsx`,
 legado) e nas páginas Início/Agenda/Financeiro/Minha equipe. Nunca
 mexe no espaçamento DENTRO de um card/seção — só isso cria a
 hierarquia pedida.
+
+## [DELIVERED] Resgate da abertura vermelha histórica + lote de ajustes da Home — 08/10/2026
+
+Sessão longa, começou com o resgate de uma versão antiga da Home (a
+"abertura vermelha" pré-redesign, achada via `git log`/`git show` num
+commit antigo, `cf18bb3`) que a fundadora queria reintegrar como nova
+primeira seção da Home atual, mantendo todo o resto intocado. Opção A
+escolhida: não restaurar a seção "Apareceu uma oportunidade?" removida
+antes (fase beta), abertura entra direto antes do hero atual.
+
+- **Abertura vermelha + letreiro preto** — nova seção estática
+  (`.opening`), logo gigante "doopla" reaproveitando o padrão de olhos
+  `.eye-slot`/`.mascot-pupil` já usado no resto do site (zero JS novo —
+  só estender o seletor do cursor-tracking em `home.js`), letreiro
+  (`.opening-marquee`) acima dela. Copy final, depois de rodadas de
+  ajuste: abertura leva "TODA CARREIRA MERECE SUA DOOPLA" (2 linhas
+  fixas via `<br>`, sem ponto) + "Booking inteligente." como assinatura;
+  o hero logo abaixo manteve a eyebrow "Cliente chamou? Manda pra
+  Doopla." e trocou o h1 de "Uma nova forma de agenciamento." pra "O
+  futuro do booking." (consistência de vocabulário com o resto da
+  página — "booking" é termo que o público realmente usa, "agenciamento"
+  soa mais formal/corporativo).
+- **Dois bugs reais achados depois do ar**:
+  1. Letreiro tinha só 4 pares de spans (~2173px de faixa) — em telas
+     largas o `translateX(-50%)` ficava sem conteúdo pra mostrar antes
+     de completar o ciclo, um vão em branco até reiniciar. Subiu pra 16
+     pares (~8,7mil px) + duração 22s→88s (mesma velocidade de
+     rolagem).
+  2. Olhos da seção vermelha "Sempre com você" (`.legacy-eyes-*`)
+     podiam se sobrepor durante o overshoot lateral da animação de
+     entrada — limite de deslocamento agora é medido ao vivo (distância
+     real entre os dois olhos, responsiva) em vez de um valor fixo
+     desconectado do layout.
+- **Título vs. logo**: em telas largas o título podia ultrapassar a
+  largura do logo gigante — `.opening-copy` max-width ajustado e quebra
+  de linha forçada (antes variava entre 2 e 3 linhas dependendo do
+  viewport).
+- **Barra de categorias "Para artistas independentes"**: dupla margem
+  (`.strip` padding + `.wrap` padding próprio) desalinhava a barra do
+  container das seções vizinhas — corrigido só no desktop, mobile
+  intocado por pedido explícito. Ícones de Músicos (nota → banda/grupo)
+  e Stylists (tesoura → manequim) trocados, desktop e mobile.
+- **Reposicionamento "artistas independentes"**: Home e Sobre
+  atualizados (3 ocorrências), categorias de profissão relabeladas
+  (Professores→Designers, Freelancers→Creators, Serviços
+  gerais→Stylists). "Novos trabalhos" (matching de oportunidades)
+  removido da Home por decisão de posicionamento de beta — tag "Em
+  breve" no lugar. Termos de Uso e os fluxos de cadastro/orçamento/
+  convite foram auditados a pedido e **não alterados**: só 1 ocorrência
+  nos Termos (define o escopo contratual, implicação jurídica real) e
+  nada de "profissionais independentes" pra trocar nos outros três.
+- **Avatar/favicon em HD**: `icon.png`/`apple-icon.png` tinham uma
+  transição borrada entre as cores (~10px de degradê) mesmo em 1024px —
+  reconstruído com a geometria exata do original (medida pixel a
+  pixel) e renderizado via CSS com supersampling 3x. `apple-icon.png`
+  também perdeu a transparência (iOS pinta transparência de preto no
+  apple-touch-icon).
+- **Imagem de prévia de link (og:image)** — não existia nenhuma; link
+  do site compartilhado no WhatsApp/iMessage/Slack não mostrava imagem.
+  Adicionado `src/app/opengraph-image.png` (1200x630, convenção de
+  metadata por arquivo do Next.js), mesmo sistema visual da abertura
+  vermelha.
+- **Housekeeping de branches**: as 5 branches `*-qa-preview` pendentes
+  desde 02/10 (ver entrada anterior) foram confirmadas 100% integradas
+  (sem PR aberto, sem trabalho exclusivo além de commits vazios de
+  CI) e apagadas pela fundadora. Outras 4 branches com "qa" no nome
+  (`painel-ux-ajustes`, `painel-ux-ajustes-qa`, `qa-bookings-financeiro`,
+  `qa-comunidade-criar-topico`) auditadas — também 100% integradas,
+  mas aguardando autorização pra apagar.
+
+### QA rodado
+`npm run build` limpo a cada rodada de mudança. Validação visual via
+Playwright (desktop 390/768/1440/1920/3840px, mobile 390px) em cada
+etapa, screenshots mostrados e aprovados pela fundadora antes de cada
+push — nenhuma mudança subiu sem confirmação explícita, dado que esta
+branch deploya direto pra produção.
 
 ## Como usar isso
 
