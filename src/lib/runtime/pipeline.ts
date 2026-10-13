@@ -22,6 +22,7 @@ import { createRuntimePendingReply, fetchPolicyGateDecisionChecks, listPendingRu
 import { shouldCreatePendingReply, shouldSupersedeOnCreation } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
 import { resolveProfessionalDisplayName } from './professional-identity';
+import { sendProfessionalSelfReplyViaWhatsapp } from './professional-whatsapp-reply';
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { attemptResumptionsAfterApproval, type ResumptionOutcome } from './resumption';
@@ -550,6 +551,19 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         body: decision.proposedResponse,
       });
       aiMessageId = aiMessage.id;
+
+      // "Falar com minha Doopla" (produto, setembro/2026, concluído
+      // 13/10/2026) — painel continua sendo o registro de verdade
+      // (linha acima, nunca substituída); isto é só o caminho de saída
+      // adicional quando a conversa é pelo WhatsApp. Ver
+      // professional-whatsapp-reply.ts pro porquê de nunca usar
+      // outbound_intents aqui.
+      if (event.channel === 'whatsapp') {
+        await sendProfessionalSelfReplyViaWhatsapp(supabase, {
+          professionalId: conversation.represented_professional_id,
+          body: decision.proposedResponse,
+        });
+      }
     }
   }
 
