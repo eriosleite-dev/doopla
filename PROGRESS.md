@@ -20450,6 +20450,12 @@ cadastradas em Production. Este commit é só pra forçar um deployment
 novo (nenhuma mudança de lógica) — ver auditoria completa na conversa
 pra detalhe de cada etapa.
 
+Achado real no teste de inbound: `WHATSAPP_APP_SECRET` nunca tinha
+sido configurada em produção — webhook quebrava com 500
+(`requireEnv` lançando exceção, sem try/catch no POST) em toda
+mensagem real recebida. Variável cadastrada em Production. Commit
+sem lógica, só pra forçar deployment novo.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
