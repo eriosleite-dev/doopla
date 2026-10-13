@@ -13,6 +13,7 @@ import {
   evaluateWhatsappRouting,
   parseDisambiguationReply,
   textMentionsName,
+  wholeMessageAsSingleWord,
   type PromptOption,
   type RoutingCandidate,
 } from './intake-routing';
@@ -109,6 +110,18 @@ async function resolveBareCodeMatches(supabase: AnySupabaseClient, candidateWord
     matches.push({ professionalId: profile.id, label: artist.stage_name || profile.full_name });
   }
   return matches;
+}
+
+// Cenário E (produto, 13/10/2026) — reconsidera uma palavra RESERVADA
+// (hoje só 'doopla' tem uso real grandfathered) quando a mensagem
+// INTEIRA é só ela, nunca quando é só uma entre várias palavras
+// (extractBareCodeCandidates já cobre esse caso comum e sempre a
+// exclui por segurança). Mesma validação de sempre — correspondência
+// exata contra profiles.slug, só profissional public_enabled.
+async function resolveExplicitReservedSlugIntent(supabase: AnySupabaseClient, body: string): Promise<NamedCandidate | null> {
+  const word = wholeMessageAsSingleWord(body);
+  if (!word || !RESERVED_SLUGS.has(word)) return null;
+  return resolveProfessionalBySlug(supabase, word);
 }
 
 async function findNameMentionCandidates(supabase: AnySupabaseClient, combinedText: string): Promise<NamedCandidate[]> {
@@ -348,6 +361,9 @@ export async function handleWhatsappInboundMessage(
       const bareMatches = await resolveBareCodeMatches(supabase, bareWords);
       if (bareMatches.length === 1) tokenSlug = bareMatches[0];
     }
+    if (!tokenSlug) {
+      tokenSlug = await resolveExplicitReservedSlugIntent(supabase, params.body);
+    }
 
     const decision = evaluateWhatsappRouting({
       verifiedProfessionalId,
@@ -444,6 +460,9 @@ export async function handleWhatsappInboundMessage(
         }
       }
     }
+  }
+  if (!effectiveTokenSlug) {
+    effectiveTokenSlug = await resolveExplicitReservedSlugIntent(supabase, params.body);
   }
 
   const recentActivityProfessionalId = await findRecentActivityProfessionalId(supabase, historyMatches);

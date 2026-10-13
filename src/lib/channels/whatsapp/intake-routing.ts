@@ -180,20 +180,25 @@ export function extractBareCodeCandidates(text: string, reservedSlugs: ReadonlyS
 }
 
 // Sinal de intenção EXPLÍCITA e inequívoca: a mensagem inteira (sem
-// nenhum outro conteúdo, só pontuação de borda) é o próprio código —
+// nenhum outro conteúdo, só pontuação de borda) é uma única palavra —
 // exatamente como a tela "Seu código" instrui ("envie este código").
 // Só isso diferencia "informar o ID de propósito" de "mencionar a
 // palavra numa frase qualquer" nesta camada determinística (nunca
 // análise de linguagem/intenção real — isso ficaria fora do princípio
 // "nunca fuzzy" já documentado). Usado hoje só pra reconsiderar
 // candidatos reservados (ex.: 'doopla' grandfathered) que a extração
-// normal descarta por segurança.
-export function isWholeMessageExactWord(text: string, word: string): boolean {
+// normal descarta por segurança — ver resolveExplicitReservedSlugIntent
+// em intake-orchestration.ts, único chamador real.
+export function wholeMessageAsSingleWord(text: string): string | null {
   const trimmed = text
     .trim()
     .toLowerCase()
     .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
-  return trimmed === word.toLowerCase();
+  return trimmed && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmed) ? trimmed : null;
+}
+
+export function isWholeMessageExactWord(text: string, word: string): boolean {
+  return wholeMessageAsSingleWord(text) === word.toLowerCase();
 }
 
 // ============================================================
