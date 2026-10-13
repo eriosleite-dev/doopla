@@ -118,10 +118,18 @@ export function evaluateWhatsappRouting(input: RoutingInput): RoutingDecision {
 
 // ============================================================
 // Token determinístico de entrada — link individual público
-// (doopla.com/<slug>), nunca um código escondido. Regex fechada: nunca
-// fuzzy, nunca aceita variação de domínio.
+// (doopla.pro/orcamento/<slug>), nunca um código escondido. Regex
+// fechada: nunca fuzzy, nunca aceita variação de domínio.
+//
+// Correção 13/10/2026: domínio real de produção é doopla.pro (nunca
+// doopla.com) e o link público sempre inclui o segmento /orcamento/
+// antes do slug (ver orcamentoUrl, perfil/page.tsx e demais telas —
+// nenhuma tela monta link raiz doopla.pro/<slug>). Com o padrão
+// antigo, NENHUM link real de produção batia — achado em teste
+// controlado com cliente real (mensagem/link genuínos nunca
+// reconhecidos, decisão sempre caía em 'no_signal').
 // ============================================================
-const DOOPLA_LINK_PATTERN = /doopla\.com\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)/i;
+const DOOPLA_LINK_PATTERN = /doopla\.pro\/orcamento\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)/i;
 
 export function extractDooplaSlugToken(text: string): string | null {
   const match = text.match(DOOPLA_LINK_PATTERN);

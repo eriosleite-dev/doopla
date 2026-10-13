@@ -147,7 +147,7 @@ function buildPromptMessage(candidates: NamedCandidate[]): { text: string; optio
   };
 }
 
-const OPENING_QUESTION = 'Oi! Sou a Doopla 👋 Quem você gostaria de contratar?';
+const OPENING_QUESTION = 'Oi, tudo bem? Sou a Doopla. 👋 Pra eu te ajudar certinho, me conta: Sobre qual artista/profissional você quer falar?';
 
 async function sendSystemWhatsappMessage(to: string, body: string): Promise<void> {
   await sendWhatsappTextMessage({ accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() }, { to, body });
