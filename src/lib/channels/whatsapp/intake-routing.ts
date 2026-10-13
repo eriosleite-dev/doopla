@@ -137,6 +137,66 @@ export function extractDooplaSlugToken(text: string): string | null {
 }
 
 // ============================================================
+// Código enviado SOZINHO, sem link completo (produto, 13/10/2026 —
+// "Seu código" na tela de Configurações já promete isso, nunca tinha
+// sido implementado). Só devolve CANDIDATOS de palavra — nunca decide
+// sozinho se é um código real: quem chama isto (intake-orchestration.ts)
+// ainda precisa validar cada candidato contra profiles.slug de verdade
+// (existe? está public_enabled?), exatamente como já faz pro token de
+// link. Isso é o que torna isto seguro mesmo sendo "qualquer palavra
+// do texto": uma palavra do dia a dia (ex.: "evento", "dia", "quero")
+// nunca por acaso é igual ao slug real de alguém, então o filtro de
+// verdade é a correspondência exata contra o catálogo, não heurística
+// de linguagem/intenção (fora de escopo desta camada determinística —
+// nunca fuzzy, mesmo princípio do nome mencionado).
+// 'doopla' é excluída daqui como menção CASUAL (RESERVED_SLUGS) — é a
+// palavra mais comum em qualquer mensagem trocada com o WhatsApp
+// oficial (a própria Doopla se apresenta assim), nunca pode ser
+// inferida de uma frase comum. Decisão de produto (13/10/2026,
+// Cenário E): isso não é proibição definitiva — uma conta grandfathered
+// que ainda usa 'doopla' como código continua reconhecível quando a
+// INTENÇÃO é inequívoca. Ver isWholeMessageExactWord logo abaixo, usado
+// só pra esse caso especial, nunca pros outros candidatos (que já são
+// seguros por correspondência exata contra o catálogo real).
+// ============================================================
+// Mesmo alfabeto de slugify() (public-id.ts): letras minúsculas, dígitos
+// e hífen interno, 3-40 chars — nunca reinventa o formato do lado de
+// quem gera o slug.
+const BARE_CODE_WORD_PATTERN = /[a-z0-9]+(?:-[a-z0-9]+)*/g;
+const MAX_BARE_CODE_CANDIDATES = 15;
+
+export function extractBareCodeCandidates(text: string, reservedSlugs: ReadonlySet<string>): string[] {
+  const words = text.toLowerCase().match(BARE_CODE_WORD_PATTERN) ?? [];
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  for (const word of words) {
+    if (word.length < 3 || word.length > 40) continue;
+    if (seen.has(word) || reservedSlugs.has(word)) continue;
+    seen.add(word);
+    candidates.push(word);
+    if (candidates.length >= MAX_BARE_CODE_CANDIDATES) break;
+  }
+  return candidates;
+}
+
+// Sinal de intenção EXPLÍCITA e inequívoca: a mensagem inteira (sem
+// nenhum outro conteúdo, só pontuação de borda) é o próprio código —
+// exatamente como a tela "Seu código" instrui ("envie este código").
+// Só isso diferencia "informar o ID de propósito" de "mencionar a
+// palavra numa frase qualquer" nesta camada determinística (nunca
+// análise de linguagem/intenção real — isso ficaria fora do princípio
+// "nunca fuzzy" já documentado). Usado hoje só pra reconsiderar
+// candidatos reservados (ex.: 'doopla' grandfathered) que a extração
+// normal descarta por segurança.
+export function isWholeMessageExactWord(text: string, word: string): boolean {
+  const trimmed = text
+    .trim()
+    .toLowerCase()
+    .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+  return trimmed === word.toLowerCase();
+}
+
+// ============================================================
 // Menção por nome — comparação simples, tolerante a acento/caixa,
 // NUNCA fuzzy/tolerante a erro de digitação nesta v1 (documentado
 // como simplificação deliberada — a segurança vem de nunca decidir

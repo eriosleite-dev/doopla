@@ -13,8 +13,15 @@ function slugify(text: string): string {
     .slice(0, 40);
 }
 
-// Nunca gerar um ID igual a uma rota real do site.
-const RESERVED_SLUGS = new Set([
+// Nunca gerar um ID igual a uma rota real do site. Exportado (achado
+// de produto, 13/10/2026): 'doopla' também é reservada — nunca pode
+// ser o código público de um profissional, porque colide com o nome
+// da própria plataforma (aparece em quase toda mensagem trocada com o
+// WhatsApp oficial, inviabilizando qualquer reconhecimento de código
+// "sozinho" em texto livre pra quem tivesse esse slug). Reaproveitada
+// por intake-routing.ts pro mesmo motivo — única fonte de verdade,
+// nunca duas listas de reservadas.
+export const RESERVED_SLUGS = new Set([
   'ajuda',
   'auth',
   'cadastro',
@@ -26,6 +33,7 @@ const RESERVED_SLUGS = new Set([
   'sobre',
   'termos',
   'api',
+  'doopla',
 ]);
 
 // Identificador público estável de `profiles.slug` (07/09/2026) — até
@@ -61,7 +69,9 @@ export async function ensurePublicId(
   userId: string,
   nameHint: string
 ): Promise<string> {
-  let base = slugify(nameHint) || 'doopla';
+  // Fallback nunca pode ser a própria palavra reservada 'doopla'
+  // (achado de produto, 13/10/2026 — ver comentário de RESERVED_SLUGS).
+  let base = slugify(nameHint) || 'usuario';
   if (RESERVED_SLUGS.has(base)) base = `${base}-doopla`;
 
   for (let n = 1; n <= 50; n++) {

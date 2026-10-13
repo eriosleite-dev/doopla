@@ -4,9 +4,18 @@ import { createServiceRoleClient } from '@/lib/supabase/service-role';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 import { resolveOrCreateExternalParticipant } from '@/lib/runtime/intake';
 import { triggerInboundMessage } from '@/lib/beta-integration/trigger';
+import { RESERVED_SLUGS } from '@/lib/public-id';
 import { sendWhatsappTextMessage } from './client';
 import { findReusableWhatsappConversation } from './conversation';
-import { extractDooplaSlugToken, evaluateWhatsappRouting, parseDisambiguationReply, textMentionsName, type PromptOption, type RoutingCandidate } from './intake-routing';
+import {
+  extractBareCodeCandidates,
+  extractDooplaSlugToken,
+  evaluateWhatsappRouting,
+  parseDisambiguationReply,
+  textMentionsName,
+  type PromptOption,
+  type RoutingCandidate,
+} from './intake-routing';
 
 // Doopla Intelligence Core v1 — WhatsApp Inbound Foundation:
 // orquestração (impura, fala com o banco e com a Meta). O algoritmo em
@@ -67,6 +76,39 @@ async function resolveProfessionalBySlug(supabase: AnySupabaseClient, slug: stri
     .maybeSingle<{ stage_name: string | null; public_enabled: boolean }>();
   if (!artist) return null;
   return { professionalId: profile.id, label: artist.stage_name || profile.full_name };
+}
+
+// Código enviado sozinho (produto, 13/10/2026 — ver extractBareCodeCandidates
+// em intake-routing.ts). MESMO critério de validade de resolveProfessionalBySlug
+// (slug existe + public_enabled), só em lote (1 ida ao banco pros N
+// candidatos da mensagem, nunca N idas). Correspondência SEMPRE exata
+// (profiles.slug = palavra, nunca ilike/fuzzy) — nunca encaminha por
+// aproximação (regra 6 do produto).
+async function resolveBareCodeMatches(supabase: AnySupabaseClient, candidateWords: string[]): Promise<NamedCandidate[]> {
+  if (candidateWords.length === 0) return [];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, slug')
+    .in('slug', candidateWords)
+    .returns<Array<{ id: string; full_name: string; slug: string }>>();
+  if (!profiles || profiles.length === 0) return [];
+
+  const profileIds = profiles.map((p) => p.id);
+  const { data: artists } = await supabase
+    .from('artist_profiles')
+    .select('profile_id, stage_name, public_enabled')
+    .in('profile_id', profileIds)
+    .eq('public_enabled', true)
+    .returns<Array<{ profile_id: string; stage_name: string | null; public_enabled: boolean }>>();
+  const artistByProfileId = new Map((artists ?? []).map((a) => [a.profile_id, a]));
+
+  const matches: NamedCandidate[] = [];
+  for (const profile of profiles) {
+    const artist = artistByProfileId.get(profile.id);
+    if (!artist) continue; // mesmo filtro de resolveProfessionalBySlug — nunca sem public_enabled.
+    matches.push({ professionalId: profile.id, label: artist.stage_name || profile.full_name });
+  }
+  return matches;
 }
 
 async function findNameMentionCandidates(supabase: AnySupabaseClient, combinedText: string): Promise<NamedCandidate[]> {
@@ -285,10 +327,22 @@ export async function handleWhatsappInboundMessage(
   // 0062), texto livre nunca sobrepõe a identidade.
   const verifiedProfessionalId = await resolveVerifiedProfessionalId(supabase, normalizedPhone);
   if (verifiedProfessionalId) {
-    const tokenSlug = await (async () => {
+    let tokenSlug = await (async () => {
       const slug = extractDooplaSlugToken(params.body);
       return slug ? await resolveProfessionalBySlug(supabase, slug) : null;
     })();
+
+    // Código sozinho (produto, 13/10/2026) — só entra se não houver
+    // link completo. Ambíguo (2+ candidatos reais) NUNCA vira override
+    // aqui: o passo 1 do algoritmo não tem como pedir confirmação
+    // quando a identidade já é verificada, então ambíguo = sem sinal
+    // nenhum, fica 'verified_professional' (regra 6: nunca por
+    // correspondência incerta).
+    if (!tokenSlug) {
+      const bareWords = extractBareCodeCandidates(params.body, RESERVED_SLUGS);
+      const bareMatches = await resolveBareCodeMatches(supabase, bareWords);
+      if (bareMatches.length === 1) tokenSlug = bareMatches[0];
+    }
 
     const decision = evaluateWhatsappRouting({
       verifiedProfessionalId,
@@ -355,7 +409,7 @@ export async function handleWhatsappInboundMessage(
   const backlogBodies = existingSession ? await fetchBacklogBodies(supabase, existingSession.id) : [];
   const combinedText = [...backlogBodies, params.body].join('\n');
 
-  const [tokenSlug, nameMentionCandidates, historyMatches] = await Promise.all([
+  const [tokenSlug, nameMentionCandidatesByName, historyMatches] = await Promise.all([
     (async () => {
       const slug = extractDooplaSlugTokenFromAny([...backlogBodies, params.body]);
       return slug ? await resolveProfessionalBySlug(supabase, slug) : null;
@@ -363,11 +417,35 @@ export async function handleWhatsappInboundMessage(
     findNameMentionCandidates(supabase, combinedText),
     findHistoryMatches(supabase, normalizedPhone),
   ]);
+
+  // Código sozinho (produto, 13/10/2026) — só entra se não houver link
+  // completo. Candidato único real = mesma força determinística do
+  // link (vira token). 2+ candidatos reais = ambíguo: NUNCA um token
+  // (regra 6), soma aos candidatos de nome pra forçar confirmação
+  // (regra 5) — nunca decide sozinho.
+  let effectiveTokenSlug = tokenSlug;
+  let nameMentionCandidates = nameMentionCandidatesByName;
+  if (!effectiveTokenSlug) {
+    const bareWords = extractBareCodeCandidates(combinedText, RESERVED_SLUGS);
+    const bareMatches = await resolveBareCodeMatches(supabase, bareWords);
+    if (bareMatches.length === 1) {
+      effectiveTokenSlug = bareMatches[0];
+    } else if (bareMatches.length > 1) {
+      const existingIds = new Set(nameMentionCandidates.map((c) => c.professionalId));
+      for (const match of bareMatches) {
+        if (!existingIds.has(match.professionalId)) {
+          nameMentionCandidates = [...nameMentionCandidates, match];
+          existingIds.add(match.professionalId);
+        }
+      }
+    }
+  }
+
   const recentActivityProfessionalId = await findRecentActivityProfessionalId(supabase, historyMatches);
 
   const decision = evaluateWhatsappRouting({
     verifiedProfessionalId: null,
-    token: tokenSlug ? { professionalId: tokenSlug.professionalId, slug: tokenSlug.label } : null,
+    token: effectiveTokenSlug ? { professionalId: effectiveTokenSlug.professionalId, slug: effectiveTokenSlug.label } : null,
     nameMentionCandidates,
     historyMatches: historyMatches.map((h) => ({ professionalId: h.professionalId, label: h.label })),
     recentActivityProfessionalId,
@@ -383,7 +461,7 @@ export async function handleWhatsappInboundMessage(
       currentMessage: params,
       providerSentAt,
       existingExternalParticipantId: historyEntry?.externalParticipantId ?? null,
-      originReference: tokenSlug ? tokenSlug.label : null,
+      originReference: effectiveTokenSlug ? effectiveTokenSlug.label : null,
     });
   }
 
