@@ -191,6 +191,11 @@ function buildPromptMessage(candidates: NamedCandidate[]): { text: string; optio
 
 const OPENING_QUESTION = 'Oi, tudo bem? Sou a Doopla. 👋 Pra eu te ajudar certinho, me conta: Sobre qual artista/profissional você quer falar?';
 
+// Encerramento honesto do intake (produto, 13/10/2026) — nunca deixa o
+// cliente sem nenhuma resposta quando o limite de tentativas acaba.
+const INTAKE_ABANDONED_MESSAGE =
+  'Oi, não consegui identificar com quem você quer falar. Quando puder, me manda o nome do profissional ou o link/código dele que eu te direciono certinho.';
+
 async function sendSystemWhatsappMessage(to: string, body: string): Promise<void> {
   await sendWhatsappTextMessage({ accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() }, { to, body });
   // Resultado (sent_confirmed/sent_unknown/failed_*) não é rastreado
@@ -488,6 +493,12 @@ export async function handleWhatsappInboundMessage(
 
   if (session.attempt_count >= MAX_INTAKE_ATTEMPTS) {
     await callRpc(supabase, 'mark_channel_inbound_intake_abandoned', { p_intake_id: session.id });
+    // Correção P0 13/10/2026 — achado em teste real com cliente: o
+    // encerramento por limite de tentativas NUNCA mandava nenhuma
+    // mensagem (silêncio total, indistinguível de uma falha técnica
+    // pro cliente do outro lado). Nunca finge que o atendimento
+    // continua — fecha com transparência, sem inventar dado comercial.
+    await sendSystemWhatsappMessage(normalizedPhone, INTAKE_ABANDONED_MESSAGE);
     return { kind: 'abandoned', intakeId: session.id };
   }
 
@@ -504,13 +515,23 @@ export async function handleWhatsappInboundMessage(
     return { kind: 'backlogged', intakeId: session.id, promptSent: false };
   }
 
-  // no_signal — abre a pergunta genérica só uma vez (sem opções
-  // fechadas: a próxima resposta cai de novo na reavaliação geral).
+  // no_signal — causa raiz do silêncio real reportado às 18h16
+  // (13/10/2026): `current_prompt_options` vira `[]` (array vazio, não
+  // null) assim que a pergunta genérica é mandada uma vez; em
+  // JavaScript `![]` é `false`, então a condição "só pergunta se nunca
+  // perguntou" nunca mais era verdadeira de novo — toda mensagem
+  // seguinte ficava sem NENHUMA resposta, indefinidamente, até o limite
+  // de tentativas (que também não avisava nada, corrigido acima).
+  // Agora reenvia a MESMA pergunta aberta em toda mensagem ainda não
+  // resolvida — nunca inventa uma pergunta contextual nova aqui (essa
+  // parte — ex.: já aproveitar data/horário informados — é da
+  // inteligência conversacional real, fora do escopo determinístico
+  // desta camada; tratada à parte).
+  await sendSystemWhatsappMessage(normalizedPhone, OPENING_QUESTION);
   if (!session.current_prompt_options) {
-    await sendSystemWhatsappMessage(normalizedPhone, OPENING_QUESTION);
     await callRpc(supabase, 'set_channel_inbound_intake_prompt', { p_intake_id: session.id, p_options: [] });
   }
-  return { kind: 'backlogged', intakeId: session.id, promptSent: !session.current_prompt_options };
+  return { kind: 'backlogged', intakeId: session.id, promptSent: true };
 }
 
 async function resolveAndFinish(
