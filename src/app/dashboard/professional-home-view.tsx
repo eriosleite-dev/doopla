@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { formatCentsAsBRL } from '@/lib/format';
 import { siteOrigin } from '@/lib/site-url';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
+import { formatBrazilianPhoneForDisplay } from '@/lib/channels/whatsapp/phone';
 import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 
@@ -409,11 +410,12 @@ function BookingChannelsCard({
         <div className="min-w-0 flex-1">
           <p className="text-[10.5px] text-[var(--pro-tx-50)]">WhatsApp da Doopla</p>
           {whatsappNumber ? (
-            <p className="font-doopla-mono truncate text-[12px]">{whatsappNumber}</p>
+            <p className="font-doopla-mono truncate text-[12px]">{formatBrazilianPhoneForDisplay(whatsappNumber)}</p>
           ) : (
             <p className="font-doopla-mono truncate text-[12px] text-[var(--pro-tx-30)]">Em configuração</p>
           )}
         </div>
+        {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Número copiado." />}
       </div>
       {professionalSlug ? (
         <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">

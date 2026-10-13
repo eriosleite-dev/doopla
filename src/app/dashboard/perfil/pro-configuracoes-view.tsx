@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { logoutAction } from '@/app/auth/actions';
+import { formatBrazilianPhoneForDisplay } from '@/lib/channels/whatsapp/phone';
 import { SUPPORT_EMAIL } from '@/lib/support';
 import type { Subscription } from '@/lib/supabase/types';
 
@@ -277,7 +278,7 @@ function DooplaWhatsappAndCodeCard({
         <ChannelItemHeader title="WhatsApp da Doopla" description="Passe este número para o cliente." />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
           {whatsappNumber ? (
-            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{whatsappNumber}</span>
+            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{formatBrazilianPhoneForDisplay(whatsappNumber)}</span>
           ) : (
             <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
           )}

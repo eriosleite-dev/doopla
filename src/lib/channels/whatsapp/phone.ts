@@ -43,3 +43,19 @@ export function normalizeWhatsappPhone(raw: string): string | null {
 export function toWhatsappApiRecipient(e164Phone: string): string {
   return e164Phone.replace(/^\+/, '');
 }
+
+// Formatação só de EXIBIÇÃO (produto, 13/10/2026 — "WhatsApp da
+// Doopla" aparecia como dígitos crus, "5511918527238"). NUNCA usado
+// pra enviar/comparar/persistir — isso continua sempre em dígitos
+// puros, intocado. Específico do formato brasileiro (DDI 55 + DDD 2
+// dígitos + 8 ou 9 dígitos), único caso real hoje. Formato que não bate
+// cai num fallback honesto (só prefixa "+"), nunca inventa separador
+// errado pra um número que não reconhece.
+export function formatBrazilianPhoneForDisplay(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  const match = digits.match(/^55(\d{2})(\d{8,9})$/);
+  if (!match) return `+${digits}`;
+  const [, ddd, local] = match;
+  const splitAt = local.length - 4;
+  return `+55 ${ddd} ${local.slice(0, splitAt)}-${local.slice(splitAt)}`;
+}
