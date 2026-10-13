@@ -8,6 +8,7 @@ import { formatBrazilianPhoneForDisplay } from '@/lib/channels/whatsapp/phone';
 import type { Profile } from '@/lib/supabase/types';
 import { buildTalkToYourDooplaUrl } from '@/lib/professional-doopla-cta';
 
+import { disablePublicProfileAction, enablePublicProfileAction } from './actions';
 import { getActivePaymentDetails, getArtistMatchingCompletion, getOrcamentoLinkInfo, getRecentActivity, getUserBookings, getReferralSummary } from './data';
 import { getCachedConversationStateSummary, getCachedPendencyRows, getCachedProfessionalHomeFacts } from './pro-home-cache';
 import { ProMascot } from './pro-mascot';
@@ -190,7 +191,12 @@ export async function ProfessionalHomeView({
 
         <div className="flex flex-col gap-3.5">
           <ReadinessCard paymentReady={activePaymentDetails !== null} matchingCompletion={matchingCompletion} />
-          <BookingChannelsCard orcamentoUrl={orcamentoUrl} whatsappNumber={whatsappNumber} professionalSlug={profile.slug} />
+          <BookingChannelsCard
+            orcamentoUrl={orcamentoUrl}
+            whatsappNumber={whatsappNumber}
+            professionalSlug={profile.slug}
+            publicEnabled={orcamentoInfo?.publicEnabled ?? false}
+          />
           {referralSummary && (
             <ReferralCard referralTotal={homeFacts.referralTotalCount} referralQualifiedCents={referralSummary.qualifiedTotalCents} />
           )}
@@ -377,29 +383,66 @@ function BookingChannelsCard({
   orcamentoUrl,
   whatsappNumber,
   professionalSlug,
+  publicEnabled,
 }: {
   orcamentoUrl: string | null;
   whatsappNumber: string | null;
   professionalSlug: string | null;
+  publicEnabled: boolean;
 }) {
+  // Correção 13/10/2026 — link de orçamento e código ID SEMPRE juntos,
+  // controlados pelo mesmo public_enabled (decisão de produto: uma
+  // coisa só, "você é encontrável por cliente", nunca duas flags
+  // separadas). Antes o código ID aparecia como se estivesse
+  // disponível mesmo com public_enabled=false, quando na prática o
+  // roteamento do WhatsApp já recusava — nunca mais mostra como
+  // disponível algo que não routeia de verdade.
+  //
+  // O botão "Ativar" antigo apontava pra /dashboard/perfil, que não
+  // tem mais nenhum controle disso desde a limpeza de legado da tela
+  // "Perfil público" — virou link morto. enablePublicProfileAction/
+  // disablePublicProfileAction já existiam, intocadas, só órfãs de UI;
+  // reconectadas aqui via <form action>, mesmo padrão do botão "Sair
+  // da conta" (settings-ui.tsx), sem JS novo.
   return (
     <div className="rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-[18px] backdrop-blur-xl">
       <p className="font-pro-sub mb-3 text-[13.5px] font-bold">Seus canais de booking</p>
-      {orcamentoUrl ? (
-        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu link de orçamento</p>
-            <p className="font-doopla-mono truncate text-[12px]">{orcamentoUrl.replace(/^https?:\/\//, '')}</p>
+      {publicEnabled && orcamentoUrl && professionalSlug ? (
+        <>
+          <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu link de orçamento</p>
+              <p className="font-doopla-mono truncate text-[12px]">{orcamentoUrl.replace(/^https?:\/\//, '')}</p>
+            </div>
+            <ProCopyButton value={orcamentoUrl} label="Link copiado." />
           </div>
-          <ProCopyButton value={orcamentoUrl} label="Link copiado." />
-        </div>
+          <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código ID</p>
+              <p className="font-doopla-mono truncate text-[12px]">{professionalSlug}</p>
+            </div>
+            <ProCopyButton value={professionalSlug} label="Código copiado." />
+          </div>
+          <form action={disablePublicProfileAction} className="border-t border-[var(--pro-line)] pt-2.5">
+            <button type="submit" className="text-[11px] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)] hover:underline">
+              Desativar recebimento de solicitações
+            </button>
+          </form>
+        </>
       ) : (
-        <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)] first:border-t-0">
-          Seu link de orçamento ainda não está ativo.{' '}
-          <Link href="/dashboard/perfil" prefetch={false} className="text-[var(--pro-red)] hover:underline">
-            Ativar
-          </Link>
-        </p>
+        <div className="border-t border-[var(--pro-line)] py-2.5 first:border-t-0">
+          <p className="text-[12px] text-[var(--pro-tx-50)]">
+            Seu link de orçamento e código ID ainda não estão ativos.
+          </p>
+          <form action={enablePublicProfileAction} className="mt-2">
+            <button
+              type="submit"
+              className="rounded-full border border-[var(--pro-red)] px-3.5 py-1.5 text-[11.5px] font-semibold text-[var(--pro-red)] hover:bg-[var(--pro-red)]/10"
+            >
+              Ativar
+            </button>
+          </form>
+        </div>
       )}
       {/* Correção 06/09/2026 — "WhatsApp da Doopla" é um CANAL, não um
          dado condicional: a ausência de NEXT_PUBLIC_WHATSAPP_NUMBER
@@ -417,19 +460,6 @@ function BookingChannelsCard({
         </div>
         {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Número copiado." />}
       </div>
-      {professionalSlug ? (
-        <div className="flex items-center gap-2.5 border-t border-[var(--pro-line)] py-2.5">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10.5px] text-[var(--pro-tx-50)]">Seu código ID</p>
-            <p className="font-doopla-mono truncate text-[12px]">{professionalSlug}</p>
-          </div>
-          <ProCopyButton value={professionalSlug} label="Código copiado." />
-        </div>
-      ) : (
-        <p className="border-t border-[var(--pro-line)] py-2.5 text-[12px] text-[var(--pro-tx-50)]">
-          Seu código ID ainda não está disponível.
-        </p>
-      )}
     </div>
   );
 }

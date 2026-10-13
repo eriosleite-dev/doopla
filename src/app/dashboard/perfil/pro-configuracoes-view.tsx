@@ -6,6 +6,7 @@ import { formatBrazilianPhoneForDisplay } from '@/lib/channels/whatsapp/phone';
 import { SUPPORT_EMAIL } from '@/lib/support';
 import type { Subscription } from '@/lib/supabase/types';
 
+import { disablePublicProfileAction, enablePublicProfileAction } from '../actions';
 import { ProAccordion, ProCopyButton, ProPageHeader } from '../pro-ui';
 import { DeleteAccountModal } from './delete-account-modal';
 import { ProWhatsappIdentityCard } from './pro-whatsapp-identity-card';
@@ -104,6 +105,7 @@ export function ProConfiguracoesView({
   whatsappVerifiedNumber,
   orcamentoUrl,
   professionalSlug,
+  publicEnabled,
   whatsappNumber,
 }: {
   hasPro: boolean;
@@ -112,6 +114,7 @@ export function ProConfiguracoesView({
   whatsappVerifiedNumber: string | null;
   orcamentoUrl: string | null;
   professionalSlug: string | null;
+  publicEnabled: boolean;
   whatsappNumber: string | null;
 }) {
   const isTrialing = subscription?.status === 'trialing';
@@ -174,8 +177,8 @@ export function ProConfiguracoesView({
             <p className="text-[12.5px] text-[var(--pro-tx-50)]">
               Escolha como seus clientes podem chegar até a sua Doopla.
             </p>
-            <DooplaWhatsappAndCodeCard whatsappNumber={whatsappNumber} professionalSlug={professionalSlug} />
-            <BookingLinkCard orcamentoUrl={orcamentoUrl} />
+            <DooplaWhatsappCard whatsappNumber={whatsappNumber} />
+            <BookingLinkAndCodeCard orcamentoUrl={orcamentoUrl} professionalSlug={professionalSlug} publicEnabled={publicEnabled} />
             <div className="border-t border-[var(--pro-line)] pt-4">
               <ProWhatsappIdentityCard status={whatsappStatus} verifiedNumber={whatsappVerifiedNumber} />
             </div>
@@ -257,36 +260,52 @@ function ChannelItemHeader({ title, description }: { title: string; description:
 
 // "WhatsApp da Doopla" (número oficial, whatsappPublicNumber() —
 // nunca hardcoded, estado honesto "Em configuração" quando a env não
-// está setada) + "Seu código" (profiles.slug, o MESMO identificador
-// já usado em /orcamento/[slug] e no token do WhatsApp inbound —
-// nenhum identificador novo). O código não depende do número estar
-// configurado: é um dado próprio e estável do profissional, sempre
-// disponível assim que existe (ensurePublicId garante isso desde a
-// primeira visita ao painel). Copy simplificada (16/09/2026): cada
-// item com uma única explicação, nunca duas perguntas/frases
-// empilhadas.
-function DooplaWhatsappAndCodeCard({
-  whatsappNumber,
-  professionalSlug,
-}: {
-  whatsappNumber: string | null;
-  professionalSlug: string | null;
-}) {
+// está setada). Independente de public_enabled — o número oficial é o
+// mesmo pra todo mundo, nunca gated por profissional.
+function DooplaWhatsappCard({ whatsappNumber }: { whatsappNumber: string | null }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <ChannelItemHeader title="WhatsApp da Doopla" description="Passe este número para o cliente." />
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
-          {whatsappNumber ? (
-            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{formatBrazilianPhoneForDisplay(whatsappNumber)}</span>
-          ) : (
-            <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
-          )}
-          {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Copiar número" />}
-        </div>
+    <div>
+      <ChannelItemHeader title="WhatsApp da Doopla" description="Passe este número para o cliente." />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+        {whatsappNumber ? (
+          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{formatBrazilianPhoneForDisplay(whatsappNumber)}</span>
+        ) : (
+          <span className="font-doopla-mono text-[12.5px] text-[var(--pro-tx-30)]">Em configuração</span>
+        )}
+        {whatsappNumber && <ProCopyButton value={whatsappNumber} label="Copiar número" />}
       </div>
+    </div>
+  );
+}
 
-      {professionalSlug && (
+// Link de booking + "Seu código" (profiles.slug, o MESMO identificador
+// já usado no token do WhatsApp inbound) — correção 13/10/2026:
+// SEMPRE juntos, controlados pela mesma public_enabled (mesmo critério
+// de BookingChannelsCard/professional-home-view.tsx — uma coisa só,
+// "você é encontrável por cliente", nunca duas flags/telas separadas).
+// Botão real (enablePublicProfileAction/disablePublicProfileAction, já
+// existiam, só órfãs desde a remoção da tela legada "Perfil público")
+// no lugar do antigo link morto "Ativar" (apontava pra uma tela sem
+// esse controle há tempos).
+function BookingLinkAndCodeCard({
+  orcamentoUrl,
+  professionalSlug,
+  publicEnabled,
+}: {
+  orcamentoUrl: string | null;
+  professionalSlug: string | null;
+  publicEnabled: boolean;
+}) {
+  if (publicEnabled && orcamentoUrl && professionalSlug) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <ChannelItemHeader title="Seu link de booking" description="Compartilhe este link nas suas redes sociais ou envie para o cliente." />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
+            <span className="font-doopla-mono truncate text-[12.5px] text-[var(--pro-off)]">{orcamentoUrl}</span>
+            <ProCopyButton value={orcamentoUrl} label="Copiar link" />
+          </div>
+        </div>
         <div>
           <ChannelItemHeader
             title="Seu código"
@@ -297,23 +316,25 @@ function DooplaWhatsappAndCodeCard({
             <ProCopyButton value={professionalSlug} label="Copiar código" />
           </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-// Renomeado de "Seu link de orçamento" (copy, 15/09/2026) — mesma URL
-// /orcamento/[slug], mesma action/RPC/tracking de origin/channel,
-// intocados.
-function BookingLinkCard({ orcamentoUrl }: { orcamentoUrl: string | null }) {
-  if (!orcamentoUrl) return null;
+        <form action={disablePublicProfileAction}>
+          <button type="submit" className="text-[11.5px] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)] hover:underline">
+            Desativar recebimento de solicitações
+          </button>
+        </form>
+      </div>
+    );
+  }
   return (
     <div>
-      <ChannelItemHeader title="Seu link de booking" description="Compartilhe este link nas suas redes sociais ou envie para o cliente." />
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-dashed border-[var(--pro-line)] bg-white/[0.03] p-3.5">
-        <span className="font-doopla-mono text-[12.5px] text-[var(--pro-off)]">{orcamentoUrl}</span>
-        <ProCopyButton value={orcamentoUrl} label="Copiar link" />
-      </div>
+      <p className="text-[12.5px] text-[var(--pro-tx-50)]">Seu link de orçamento e código ID ainda não estão ativos.</p>
+      <form action={enablePublicProfileAction} className="mt-2.5">
+        <button
+          type="submit"
+          className="rounded-full border border-[var(--pro-red)] px-3.5 py-1.5 text-[12px] font-semibold text-[var(--pro-red)] hover:bg-[var(--pro-red)]/10"
+        >
+          Ativar
+        </button>
+      </form>
     </div>
   );
 }
