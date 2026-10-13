@@ -24,10 +24,17 @@ import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 //
 // Disparo: Vercel Cron (vercel.json), mesmo padrão do reconciler do
 // passo 5 — menor mecanismo confiável compatível com a infra atual,
-// zero fila/worker novo. Secret DEDICADO (OUTBOUND_SENDER_CRON_SECRET,
-// nunca o mesmo do reconciler — decisão do usuário: separar
-// credenciais de processos com capacidades diferentes, este fala com
-// um provider externo, o reconciler não).
+// zero fila/worker novo.
+//
+// Correção P0 13/10/2026: usava um secret dedicado
+// (OUTBOUND_SENDER_CRON_SECRET) pensado pra separar credenciais de
+// processos com capacidades diferentes — mas a Vercel só injeta
+// `Authorization: Bearer <valor>` automaticamente nas chamadas de cron
+// pra uma variável com nome reservado específico, `CRON_SECRET`
+// (documentado em vercel.com/docs/cron-jobs/manage-cron-jobs). Um nome
+// customizado nunca recebe esse header — o 401 era permanente desde a
+// criação deste cron, não uma falha passageira. Troca pro mesmo
+// mecanismo que já funciona em reconcile-pending-replies/route.ts.
 //
 // 1min de cadência é o mecanismo de PROVA/recuperação deste vertical
 // — não é a UX final do WhatsApp (registrado, decisão do usuário: um
@@ -35,7 +42,7 @@ import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 // pode vir depois, sem trocar outbound_intents como fonte de verdade
 // nem remover este cron como rede de segurança).
 export async function GET(request: NextRequest) {
-  const secret = process.env.OUTBOUND_SENDER_CRON_SECRET;
+  const secret = process.env.CRON_SECRET;
   const authHeader = request.headers.get('authorization');
   if (!secret || authHeader !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
