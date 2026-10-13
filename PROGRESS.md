@@ -20424,6 +20424,32 @@ etapa, screenshots mostrados e aprovados pela fundadora antes de cada
 push — nenhuma mudança subiu sem confirmação explícita, dado que esta
 branch deploya direto pra produção.
 
+## WhatsApp Production — número oficial migrado para a Cloud API — 13/10/2026
+
+Sequência completa de diagnóstico e correção nesta mesma sessão:
+403 no handshake do webhook (causa raiz: bug de cache da Vercel preso
+ao nome da variável — resolvido renomeando pra
+`WHATSAPP_WEBHOOK_VERIFY_TOKEN_V2`, confirmado com teste real
+autenticado, nunca expondo o valor); 401 recorrente e estrutural em
+`send-outbound-intents` (causa raiz: secret com nome customizado nunca
+recebia o header que só a Vercel injeta automaticamente pro nome
+reservado `CRON_SECRET` — corrigido, mesmo mecanismo do reconciler).
+
+Depois disso, número oficial da Doopla (WABA `4848838642067738`,
+Phone Number ID `1321856051005016`) migrado do app WhatsApp Business
+pro Cloud API via registro convencional (decisão de produto: IA
+assume o número integralmente, sem coexistência, conta do app no
+celular apagada antes do registro). Token permanente de System User
+(`doopla-whatsappapi`) gerado com permissão mínima
+(`whatsapp_business_messaging`, sem gestão de números/templates).
+Fila de `outbound_intents` auditada antes de liberar: zero pendências
+em produção no momento da migração.
+
+Credenciais (`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`)
+cadastradas em Production. Este commit é só pra forçar um deployment
+novo (nenhuma mudança de lógica) — ver auditoria completa na conversa
+pra detalhe de cada etapa.
+
 ## Como usar isso
 
 Toda vez que eu terminar um item, atualizo o status aqui e commito
