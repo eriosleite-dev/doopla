@@ -25,7 +25,15 @@ export const supabaseServiceRoleKey = () => requireEnv('SUPABASE_SERVICE_ROLE_KE
 export const whatsappAccessToken = () => requireEnv('WHATSAPP_ACCESS_TOKEN');
 export const whatsappPhoneNumberId = () => requireEnv('WHATSAPP_PHONE_NUMBER_ID');
 export const whatsappAppSecret = () => requireEnv('WHATSAPP_APP_SECRET');
-export const whatsappWebhookVerifyToken = () => requireEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN');
+// _V2 (13/10/2026): a variável original (WHATSAPP_WEBHOOK_VERIFY_TOKEN)
+// ficou presa servindo um valor antigo mesmo depois de editada e
+// redeployada múltiplas vezes — confirmado com teste real (candidato
+// correto retornou match:false contra o runtime de produção). Padrão
+// de bug de cache já relatado na comunidade da Vercel, ligado ao NOME
+// da variável, não ao valor. Trocar o nome foi o que resolveu nesses
+// relatos. Variável antiga preservada no painel por enquanto, não
+// apagada.
+export const whatsappWebhookVerifyToken = () => requireEnv('WHATSAPP_WEBHOOK_VERIFY_TOKEN_V2');
 
 // WhatsApp Inbound Foundation — número PÚBLICO da Doopla (E.164, só
 // dígitos, sem "+"), usado no link wa.me da página /orcamento/[slug].
