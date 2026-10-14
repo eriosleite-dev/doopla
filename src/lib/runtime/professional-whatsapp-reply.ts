@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendWhatsappTextMessage } from '../channels/whatsapp/client';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '../supabase/env';
 import { getWhatsappIdentitySnapshot } from '../whatsapp-identity/data';
+import { stripTravessao } from './message-style';
 
 // Doopla Intelligence Core v1 — Runtime: "Falar com minha Doopla"
 // (produto, setembro/2026 — buildTalkToYourDooplaUrl/professional-doopla-cta.ts
@@ -36,7 +37,11 @@ export async function sendProfessionalSelfReplyViaWhatsapp(
 
     await sendWhatsappTextMessage(
       { accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() },
-      { to: identity.verifiedNumber, body: params.body }
+      // P1 UX (14/10/2026) — defesa em profundidade: já sanitizado em
+      // persistAiMessage, mas este envio recebe sua própria cópia de
+      // params.body do pipeline, nunca relida do banco — sanitiza de
+      // novo aqui (idempotente, nunca duas vezes com efeito diferente).
+      { to: identity.verifiedNumber, body: stripTravessao(params.body) }
     );
   } catch (err) {
     console.error('[professional-self] falha ao enviar resposta da IA pelo WhatsApp', err);

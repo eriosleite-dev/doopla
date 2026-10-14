@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { stripTravessao } from './message-style';
+
 // Doopla Intelligence Core v1 — Runtime: wrappers finos sobre
 // outbound_intents (migration 0051).
 //
@@ -47,6 +49,10 @@ export async function createOutboundIntent(
     requiresProfessionalReview?: boolean;
   }
 ): Promise<{ id: string }> {
+  // P1 UX (14/10/2026) — nunca aplicado a template: conteúdo de
+  // template Meta é texto pré-aprovado, byte-exato, nunca alterável.
+  const content = params.sendAs === 'template' ? params.content : stripTravessao(params.content);
+
   const { data, error } = await supabase
     .rpc('create_outbound_intent', {
       p_conversation_id: params.conversationId,
@@ -55,7 +61,7 @@ export async function createOutboundIntent(
       p_policy_decision_id: params.policyDecisionId,
       p_channel: params.channel,
       p_recipient_external_participant_id: params.recipientExternalParticipantId,
-      p_content: params.content,
+      p_content: content,
       p_send_as: params.sendAs ?? 'free_text',
       p_requires_review: params.requiresProfessionalReview ?? false,
     })

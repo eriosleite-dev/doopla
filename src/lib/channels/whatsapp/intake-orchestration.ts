@@ -5,6 +5,7 @@ import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 import { resolveOrCreateExternalParticipant } from '@/lib/runtime/intake';
 import { triggerInboundMessage } from '@/lib/beta-integration/trigger';
 import { drainProfessionalSelfPendingMessages, enqueueProfessionalSelfPendingMessage } from '@/lib/runtime/professional-self-pending-messages';
+import { stripTravessao } from '@/lib/runtime/message-style';
 import { RESERVED_SLUGS } from '@/lib/public-id';
 import { sendWhatsappTextMessage } from './client';
 import { findReusableWhatsappConversation } from './conversation';
@@ -218,7 +219,10 @@ const INTAKE_ABANDONED_MESSAGE =
   'Oi, não consegui identificar com quem você quer falar. Quando puder, me manda o nome do profissional ou o link/código dele que eu te direciono certinho.';
 
 async function sendSystemWhatsappMessage(to: string, body: string): Promise<void> {
-  await sendWhatsappTextMessage({ accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() }, { to, body });
+  // P1 UX (14/10/2026) — mensagens de sistema são voz da Doopla tanto
+  // quanto um draft do Planner; mesma regra, aplicada aqui como defesa
+  // em profundidade (as constantes atuais já não têm travessão).
+  await sendWhatsappTextMessage({ accessToken: whatsappAccessToken(), phoneNumberId: whatsappPhoneNumberId() }, { to, body: stripTravessao(body) });
   // Resultado (sent_confirmed/sent_unknown/failed_*) não é rastreado
   // com o rigor de outbound_intents de propósito — é um prompt de
   // sistema, nunca visível a nenhum profissional em nenhuma tela;

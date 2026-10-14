@@ -300,7 +300,7 @@ export function missingInformationFallback(field: string): MissingInformationIte
 // existente, não introduzido aqui.
 export function deterministicFallbackResponse(plan: ResponsePlan): string | null {
   if (plan === 'consult_professional') {
-    return 'Preciso que você confirme esse ponto antes de eu responder ao cliente — pode revisar a conversa e me dar uma posição?';
+    return 'Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?';
   }
   if (plan === 'acknowledge') {
     return 'Combinado, obrigado por avisar!';

@@ -52,6 +52,25 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     );
   });
 
+  it('P1 UX (14/10/2026): sanitiza travessão do body antes de enviar pro WhatsApp', async () => {
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    getWhatsappIdentitySnapshot.mockResolvedValue({
+      status: 'verified',
+      verifiedNumber: '+5511999999999',
+      verifiedAt: '2026-10-01T00:00:00Z',
+      candidateNumber: null,
+      candidateRequestedAt: null,
+    });
+    sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
+
+    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'Posso ajudar — só preciso de um detalhe.' });
+
+    expect(sendWhatsappTextMessage).toHaveBeenCalledWith(
+      { accessToken: 'test-token', phoneNumberId: 'test-phone-id' },
+      { to: '+5511999999999', body: 'Posso ajudar, só preciso de um detalhe.' }
+    );
+  });
+
   it('NUNCA envia quando não existe identidade nenhuma (nunca fabrica número)', async () => {
     const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
     getWhatsappIdentitySnapshot.mockResolvedValue(null);
