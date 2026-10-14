@@ -219,6 +219,68 @@ describe('handleWhatsappInboundMessage — retentativa de conversation_busy (P0,
     expect(result).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
     expect(triggerInboundMessage).toHaveBeenCalledTimes(3); // 1 original + 2 retentativas, nunca mais que isso
   });
+
+  it('simula duas mensagens reais consecutivas com a 1ª demorando mais que o orçamento de retentativa (6s): a 2ª esgota antes da 1ª liberar o lease', async () => {
+    const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
+
+    // Modela o lease real: enquanto a mensagem A (lenta) não "terminou"
+    // (processInboundEvent ainda não devolveu/liberou o lease), QUALQUER
+    // tentativa de B (a confirmação) recebe conversation_busy — exatamente
+    // o que acquire_conversation_processing_lease faz de verdade (fail-fast,
+    // nunca enfileira). A só termina em t=7s (1s de defasagem de envio + 6s
+    // de processamento real do ciclo — classify+plan+approval em sequência
+    // facilmente passam de 6s com chamadas reais à OpenAI).
+    let aDone = false;
+    triggerInboundMessage.mockImplementation(async (args: { providerEventId: string }) => {
+      if (args.providerEventId === 'wamid.a') {
+        await new Promise((resolve) => setTimeout(resolve, 6000));
+        aDone = true;
+        return { kind: 'completed' };
+      }
+      if (!aDone) return { kind: 'conversation_busy' };
+      return { kind: 'duplicate_event', alreadyProcessed: false };
+    });
+
+    const supabase = createFakeSupabase({
+      from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
+      rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
+    });
+
+    const resultAPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
+      providerMessageId: 'wamid.a',
+      from: '5511900000001',
+      body: 'Preciso que você fale com o Carlos pra fechar o show de sábado.',
+      contactName: null,
+      providerTimestampSeconds: null,
+    });
+
+    await vi.advanceTimersByTimeAsync(1000); // B chega 1s depois de A
+    const resultBPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
+      providerMessageId: 'wamid.b',
+      from: '5511900000001',
+      body: 'Sim',
+      contactName: null,
+      providerTimestampSeconds: null,
+    });
+
+    // Orçamento inteiro de retentativa de B (2s + 4s) se esgota em t=7s,
+    // exatamente quando A (iniciada em t=1s, 6s de processamento) termina —
+    // a pior janela possível, nunca uma folga confortável.
+    await vi.advanceTimersByTimeAsync(6000);
+    const resultB = await resultBPromise;
+
+    // A prova do risco residual: B volta 'routed' (mascarando a falha —
+    // nenhuma distinção visível entre "processada" e "esgotada sem
+    // processar") e NUNCA chegou a rodar o ciclo real (classify/plan) —
+    // a mensagem "Sim" foi efetivamente descartada, sem registro nenhum
+    // do corpo pra reprocessamento posterior.
+    expect(resultB).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
+    expect(triggerInboundMessage.mock.calls.filter((c) => c[0].providerEventId === 'wamid.b')).toHaveLength(3);
+
+    await vi.advanceTimersByTimeAsync(1);
+    const resultA = await resultAPromise;
+    expect(resultA).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
+  });
 });
 
 describe('handleWhatsappInboundMessage — colisão "doopla" (Cenário E, 13/10/2026)', () => {
