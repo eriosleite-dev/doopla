@@ -4,6 +4,7 @@ import { createServiceRoleClient } from '@/lib/supabase/service-role';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
 import { resolveOrCreateExternalParticipant } from '@/lib/runtime/intake';
 import { triggerInboundMessage } from '@/lib/beta-integration/trigger';
+import { drainProfessionalSelfPendingMessages, enqueueProfessionalSelfPendingMessage } from '@/lib/runtime/professional-self-pending-messages';
 import { RESERVED_SLUGS } from '@/lib/public-id';
 import { sendWhatsappTextMessage } from './client';
 import { findReusableWhatsappConversation } from './conversation';
@@ -48,6 +49,13 @@ export type WhatsappInboundHandlerResult =
   | { kind: 'invalid_phone' }
   | { kind: 'duplicate_event' }
   | { kind: 'routed'; conversationId: string; method: string }
+  // P0 14/10/2026 — a mensagem foi persistida na fila
+  // (professional_self_pending_messages) mas ainda não concluiu um
+  // ciclo real (conversation_busy/falha transitória/tentativas
+  // esgotadas). Nunca interpretado como sucesso por nenhum chamador —
+  // estado interno, recuperável pelo próprio drain (inline de uma
+  // próxima mensagem ou pelo cron), nunca a mensagem desaparece.
+  | { kind: 'deferred'; conversationId: string }
   | { kind: 'backlogged'; intakeId: string; promptSent: boolean }
   | { kind: 'abandoned'; intakeId: string };
 
@@ -316,39 +324,41 @@ async function resolveProfessionalSelfAndFinish(
   // no passo 1 do algoritmo, sempre. Nunca confundido com conversas de
   // cliente (author_type='professional', nunca 'external_participant').
   //
-  // Mitigação P0 14/10/2026 — risco documentado: agora que
-  // professional_self reaproveita UMA conversa contínua (migration
-  // 0107), duas mensagens em sucessão rápida (ex.: "Sim" seguido de
-  // "Agora", segundos depois) competem pela MESMA
-  // conversation_processing_lease. acquire_conversation_processing_lease
-  // (migration 0051) nunca enfileira — falha na hora
-  // ('conversation_busy'), e não existe reconciliador que reprocesse
-  // um inbound_event nesse estado (só runtime_pending_replies tem
-  // retry/backoff — domínio diferente). Sem isto, a 2ª mensagem seria
-  // silenciosamente perdida (nunca respondida). Retry curto e limitado
-  // SÓ aqui (nunca no lease em si, que é compartilhado com
-  // external_inquiry — fora de escopo deste P0): cobre o caso comum
-  // (poucos segundos de diferença); mensagens extremamente próximas ou
-  // um processamento muito longo ainda podem colidir — risco residual
-  // igual ao que já existe hoje pra conversas de cliente, não
-  // introduzido por esta correção.
-  const CONVERSATION_BUSY_RETRY_DELAYS_MS = [2000, 4000];
-  for (let attempt = 0; ; attempt++) {
-    const outcome = await triggerInboundMessage({
-      conversationId,
-      authorType: 'professional',
-      authorProfileId: params.professionalId,
-      body: params.currentMessage.body,
-      channel: 'whatsapp',
-      providerEventId: params.currentMessage.providerMessageId,
-      providerMessageId: params.currentMessage.providerMessageId,
-      workerId: 'whatsapp:webhook',
-    });
-    if (outcome.kind !== 'conversation_busy' || attempt >= CONVERSATION_BUSY_RETRY_DELAYS_MS.length) break;
-    await new Promise((resolve) => setTimeout(resolve, CONVERSATION_BUSY_RETRY_DELAYS_MS[attempt]));
-  }
+  // P0 14/10/2026, revisão 2 — a mitigação original (retentativa
+  // inline por tempo, 2s+4s) nunca registrava a mensagem em lugar
+  // nenhum: se as tentativas se esgotassem, o corpo desaparecia sem
+  // nenhum rastro (comprovado por teste real, ver intake-orchestration.test.ts).
+  // Substituída por fila persistida (migration 0108): a mensagem é
+  // gravada ANTES de qualquer tentativa de ciclo, nunca é descartada
+  // silenciosamente, e uma recuperação automática (cron de 1min,
+  // drain-professional-self-messages) cobre o caso em que nem esta
+  // tentativa inline nem uma próxima mensagem do profissional destravam
+  // a fila. Ver professional-self-pending-messages.ts pro desenho
+  // completo (serialização por profissional, ordem por
+  // provider_timestamp, backoff de falha real).
+  const providerTimestamp = params.currentMessage.providerTimestampSeconds ? new Date(params.currentMessage.providerTimestampSeconds * 1000) : null;
+  const enqueued = await enqueueProfessionalSelfPendingMessage(supabase, {
+    professionalId: params.professionalId,
+    conversationId,
+    providerMessageId: params.currentMessage.providerMessageId,
+    body: params.currentMessage.body,
+    providerTimestamp,
+  });
 
-  return { kind: 'routed', conversationId, method: 'verified_professional' };
+  const drainResult = await drainProfessionalSelfPendingMessages(supabase, {
+    professionalId: params.professionalId,
+    workerId: 'whatsapp:webhook',
+    watchRowId: enqueued.id,
+  });
+
+  // Nunca devolve 'routed' sem confirmar o status real da linha —
+  // 'pending'/'processing' (busy, falha transitória, ou outro drain já
+  // em andamento) viram 'deferred', nunca uma falsa aparência de
+  // sucesso.
+  if (drainResult.watchedStatus === 'completed') {
+    return { kind: 'routed', conversationId, method: 'verified_professional' };
+  }
+  return { kind: 'deferred', conversationId };
 }
 
 export async function handleWhatsappInboundMessage(

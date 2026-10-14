@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Doopla — suíte de regressão do WhatsApp (13/10/2026). Cobre o
 // caminho IMPURO de handleWhatsappInboundMessage com um Supabase fake
@@ -19,12 +19,25 @@ const sendWhatsappTextMessage = vi.fn();
 const triggerInboundMessage = vi.fn();
 const resolveOrCreateExternalParticipant = vi.fn();
 const findReusableWhatsappConversation = vi.fn();
+const enqueueProfessionalSelfPendingMessage = vi.fn();
+const drainProfessionalSelfPendingMessages = vi.fn();
 
 vi.mock('./client', () => ({
   sendWhatsappTextMessage: (...args: unknown[]) => sendWhatsappTextMessage(...args),
 }));
 vi.mock('@/lib/beta-integration/trigger', () => ({
   triggerInboundMessage: (...args: unknown[]) => triggerInboundMessage(...args),
+}));
+// P0 14/10/2026 (revisão 2) — a mecânica real de enfileiramento/drain
+// (ordem, serialização por profissional, reconciliação de
+// duplicate_event) tem cobertura própria em
+// professional-self-pending-messages.test.ts, com um fake Supabase
+// stateful de verdade. Aqui (intake-orchestration) o que importa é só
+// o CONTRATO: handleWhatsappInboundMessage enfileira antes de drenar, e
+// nunca devolve 'routed' quando a linha não terminou 'completed'.
+vi.mock('@/lib/runtime/professional-self-pending-messages', () => ({
+  enqueueProfessionalSelfPendingMessage: (...args: unknown[]) => enqueueProfessionalSelfPendingMessage(...args),
+  drainProfessionalSelfPendingMessages: (...args: unknown[]) => drainProfessionalSelfPendingMessages(...args),
 }));
 vi.mock('@/lib/runtime/intake', () => ({
   resolveOrCreateExternalParticipant: (...args: unknown[]) => resolveOrCreateExternalParticipant(...args),
@@ -149,60 +162,61 @@ describe('handleWhatsappInboundMessage — regressão do silêncio (18h16, 13/10
   });
 });
 
-describe('handleWhatsappInboundMessage — retentativa de conversation_busy (P0, 14/10/2026)', () => {
+describe('handleWhatsappInboundMessage — fila persistida professional_self (P0, 14/10/2026, revisão 2)', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     sendWhatsappTextMessage.mockReset();
     triggerInboundMessage.mockReset();
+    enqueueProfessionalSelfPendingMessage.mockReset();
+    drainProfessionalSelfPendingMessages.mockReset();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('conversation_busy na 1ª tentativa: espera e tenta de novo, mesma conversationId, nunca perde a mensagem', async () => {
+  it('enfileira ANTES de drenar, e devolve routed quando a linha termina completed', async () => {
     const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
 
-    triggerInboundMessage
-      .mockResolvedValueOnce({ kind: 'conversation_busy' })
-      .mockResolvedValueOnce({ kind: 'duplicate_event', alreadyProcessed: false });
+    enqueueProfessionalSelfPendingMessage.mockResolvedValue({ id: 'pending-1' });
+    drainProfessionalSelfPendingMessages.mockResolvedValue({ stoppedReason: 'empty', completedRowIds: ['pending-1'], watchedStatus: 'completed' });
 
     const supabase = createFakeSupabase({
       from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
       rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
     });
 
-    const resultPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
+    const result = await handleWhatsappInboundMessage(supabase, '+5511900000001', {
       providerMessageId: 'wamid.sim',
       from: '5511900000001',
       body: 'Sim',
       contactName: null,
-      providerTimestampSeconds: null,
+      providerTimestampSeconds: 1_760_000_000,
     });
 
-    await vi.advanceTimersByTimeAsync(2000); // 1ª retentativa (2s)
-    const result = await resultPromise;
-
     expect(result).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
-    expect(triggerInboundMessage).toHaveBeenCalledTimes(2);
-    // As duas tentativas usam o MESMO providerEventId — claim_inbound_event
-    // (migration 0051) reclama de novo um evento 'failed', nunca cria
-    // um segundo evento/duplicata.
-    expect(triggerInboundMessage.mock.calls[0][0].providerEventId).toBe('wamid.sim');
-    expect(triggerInboundMessage.mock.calls[1][0].providerEventId).toBe('wamid.sim');
+    expect(enqueueProfessionalSelfPendingMessage).toHaveBeenCalledWith(
+      supabase,
+      expect.objectContaining({
+        professionalId: 'eduarda',
+        conversationId: 'conv-self-continuo',
+        providerMessageId: 'wamid.sim',
+        body: 'Sim',
+        providerTimestamp: new Date(1_760_000_000 * 1000),
+      })
+    );
+    expect(drainProfessionalSelfPendingMessages).toHaveBeenCalledWith(supabase, { professionalId: 'eduarda', workerId: 'whatsapp:webhook', watchRowId: 'pending-1' });
+    // A ordem importa: nunca drena antes de ter persistido.
+    expect(enqueueProfessionalSelfPendingMessage.mock.invocationCallOrder[0]).toBeLessThan(drainProfessionalSelfPendingMessages.mock.invocationCallOrder[0]);
   });
 
-  it('conversation_busy persistente: desiste depois do teto de tentativas, nunca trava pra sempre', async () => {
+  it('nunca devolve routed quando a linha fica pending/processing (busy, falha transitória, ou outro drain em andamento)', async () => {
     const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
 
-    triggerInboundMessage.mockResolvedValue({ kind: 'conversation_busy' });
+    enqueueProfessionalSelfPendingMessage.mockResolvedValue({ id: 'pending-2' });
+    drainProfessionalSelfPendingMessages.mockResolvedValue({ stoppedReason: 'busy', completedRowIds: [], watchedStatus: 'pending' });
 
     const supabase = createFakeSupabase({
       from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
       rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
     });
 
-    const resultPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
+    const result = await handleWhatsappInboundMessage(supabase, '+5511900000001', {
       providerMessageId: 'wamid.agora',
       from: '5511900000001',
       body: 'Agora',
@@ -210,76 +224,32 @@ describe('handleWhatsappInboundMessage — retentativa de conversation_busy (P0,
       providerTimestampSeconds: null,
     });
 
-    await vi.advanceTimersByTimeAsync(2000 + 4000);
-    const result = await resultPromise;
-
-    // Nunca lança/trava — devolve 'routed' mesmo sem confirmação de
-    // sucesso do ciclo (o risco residual documentado: mensagem
-    // extremamente próxima ainda pode não ser respondida a tempo).
-    expect(result).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
-    expect(triggerInboundMessage).toHaveBeenCalledTimes(3); // 1 original + 2 retentativas, nunca mais que isso
+    // 'deferred', nunca 'routed' — requisito explícito (item 7, aprovação
+    // 14/10/2026): uma mensagem pendente nunca é interpretada como
+    // processada com sucesso.
+    expect(result).toEqual({ kind: 'deferred', conversationId: 'conv-self-continuo' });
   });
 
-  it('simula duas mensagens reais consecutivas com a 1ª demorando mais que o orçamento de retentativa (6s): a 2ª esgota antes da 1ª liberar o lease', async () => {
+  it('também devolve deferred quando a linha está failed (tentativas esgotadas) — nunca routed', async () => {
     const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
 
-    // Modela o lease real: enquanto a mensagem A (lenta) não "terminou"
-    // (processInboundEvent ainda não devolveu/liberou o lease), QUALQUER
-    // tentativa de B (a confirmação) recebe conversation_busy — exatamente
-    // o que acquire_conversation_processing_lease faz de verdade (fail-fast,
-    // nunca enfileira). A só termina em t=7s (1s de defasagem de envio + 6s
-    // de processamento real do ciclo — classify+plan+approval em sequência
-    // facilmente passam de 6s com chamadas reais à OpenAI).
-    let aDone = false;
-    triggerInboundMessage.mockImplementation(async (args: { providerEventId: string }) => {
-      if (args.providerEventId === 'wamid.a') {
-        await new Promise((resolve) => setTimeout(resolve, 6000));
-        aDone = true;
-        return { kind: 'completed' };
-      }
-      if (!aDone) return { kind: 'conversation_busy' };
-      return { kind: 'duplicate_event', alreadyProcessed: false };
-    });
+    enqueueProfessionalSelfPendingMessage.mockResolvedValue({ id: 'pending-3' });
+    drainProfessionalSelfPendingMessages.mockResolvedValue({ stoppedReason: 'empty', completedRowIds: [], watchedStatus: 'failed' });
 
     const supabase = createFakeSupabase({
       from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
       rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
     });
 
-    const resultAPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
-      providerMessageId: 'wamid.a',
+    const result = await handleWhatsappInboundMessage(supabase, '+5511900000001', {
+      providerMessageId: 'wamid.falhou',
       from: '5511900000001',
-      body: 'Preciso que você fale com o Carlos pra fechar o show de sábado.',
+      body: 'Confirmado',
       contactName: null,
       providerTimestampSeconds: null,
     });
 
-    await vi.advanceTimersByTimeAsync(1000); // B chega 1s depois de A
-    const resultBPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
-      providerMessageId: 'wamid.b',
-      from: '5511900000001',
-      body: 'Sim',
-      contactName: null,
-      providerTimestampSeconds: null,
-    });
-
-    // Orçamento inteiro de retentativa de B (2s + 4s) se esgota em t=7s,
-    // exatamente quando A (iniciada em t=1s, 6s de processamento) termina —
-    // a pior janela possível, nunca uma folga confortável.
-    await vi.advanceTimersByTimeAsync(6000);
-    const resultB = await resultBPromise;
-
-    // A prova do risco residual: B volta 'routed' (mascarando a falha —
-    // nenhuma distinção visível entre "processada" e "esgotada sem
-    // processar") e NUNCA chegou a rodar o ciclo real (classify/plan) —
-    // a mensagem "Sim" foi efetivamente descartada, sem registro nenhum
-    // do corpo pra reprocessamento posterior.
-    expect(resultB).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
-    expect(triggerInboundMessage.mock.calls.filter((c) => c[0].providerEventId === 'wamid.b')).toHaveLength(3);
-
-    await vi.advanceTimersByTimeAsync(1);
-    const resultA = await resultAPromise;
-    expect(resultA).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
+    expect(result).toEqual({ kind: 'deferred', conversationId: 'conv-self-continuo' });
   });
 });
 
@@ -289,6 +259,8 @@ describe('handleWhatsappInboundMessage — colisão "doopla" (Cenário E, 13/10/
     triggerInboundMessage.mockReset().mockResolvedValue({ kind: 'noop' });
     resolveOrCreateExternalParticipant.mockReset().mockResolvedValue({ id: 'participant-1' });
     findReusableWhatsappConversation.mockReset().mockResolvedValue(null);
+    enqueueProfessionalSelfPendingMessage.mockReset().mockResolvedValue({ id: 'pending-doopla' });
+    drainProfessionalSelfPendingMessages.mockReset().mockResolvedValue({ stoppedReason: 'empty', completedRowIds: ['pending-doopla'], watchedStatus: 'completed' });
   });
 
   it('menção casual a "doopla" numa frase NUNCA redireciona para o profissional com esse código', async () => {
@@ -313,7 +285,7 @@ describe('handleWhatsappInboundMessage — colisão "doopla" (Cenário E, 13/10/
     });
 
     expect(result).toEqual({ kind: 'routed', conversationId: 'conv-self-1', method: 'verified_professional' });
-    expect(triggerInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ authorType: 'professional', authorProfileId: 'artist-b' }));
+    expect(enqueueProfessionalSelfPendingMessage).toHaveBeenCalledWith(supabase, expect.objectContaining({ professionalId: 'artist-b', conversationId: 'conv-self-1' }));
   });
 
   it('mensagem que É só "doopla" (intenção explícita) redireciona pro profissional grandfathered com esse código', async () => {

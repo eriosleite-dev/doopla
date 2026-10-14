@@ -7,6 +7,10 @@
     {
       "path": "/api/runtime/send-outbound-intents",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/runtime/drain-professional-self-messages",
+      "schedule": "* * * * *"
     }
   ]
 }
