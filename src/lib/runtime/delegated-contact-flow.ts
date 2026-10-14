@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { renderColdOutreachTemplateContent } from '../channels/whatsapp/cold-outreach-template';
 import { normalizeWhatsappPhone } from '../channels/whatsapp/phone';
+import { readAppSettingFlag } from './app-settings';
 import {
   checkRecipientConsent,
   recognizeDelegatedContactRequest,
@@ -111,6 +112,19 @@ export async function runDelegatedContactRequestFlow(
   params: DelegatedContactRequestFlowParams,
   opts: DelegatedContactRequestFlowOpts = {}
 ): Promise<DelegatedContactRequestFlowResult> {
+  // Proteção de ativação (app_settings.delegated_contact_enabled,
+  // migration 0109) — nasce 'false': nenhum pedido NOVO é reconhecido
+  // até o teste controlado ligar isto explicitamente (UPDATE, nunca
+  // nova migration/deploy). Checado ANTES de qualquer leitura de
+  // estado ou chamada ao recognizer — desligado é custo zero, nunca só
+  // "esconde a ação", de fato não faz nada. Nunca gateia a resposta do
+  // DESTINATÁRIO (runDelegatedContactRecipientReplyFlow) — uma
+  // delegação já aprovada antes de um desligamento futuro continua até
+  // o fim, nunca é abandonada no meio.
+  if (!(await readAppSettingFlag(supabase, 'delegated_contact_enabled'))) {
+    return { handled: false };
+  }
+
   const recent = await getMostRecentPendingDelegatedContact(supabase, { professionalId: params.professionalId });
   const recognized = await recognizeDelegatedContactRequest(params.messageText, buildActiveSummary(recent), {
     modelCall: opts.recognizerModelCall,

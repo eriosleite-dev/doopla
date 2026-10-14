@@ -44,6 +44,9 @@ class FakeDb {
   outboundIntents = new Map<string, { delivery_state: string }>();
   participants = new Map<string, string>(); // `${professionalId}|${identifier}` -> participant id
   conversations = new Map<string, string>(); // `${professionalId}|${participantId}` -> conversation id
+  // Default 'true' — testes de orquestração existentes exercitam o
+  // fluxo com a proteção já ligada; o gate em si tem teste dedicado.
+  appSettings = new Map<string, string>([['delegated_contact_enabled', 'true']]);
   seq = 0;
 
   nextId(prefix: string): string {
@@ -67,6 +70,15 @@ class FakeDb {
             select: () => ({
               eq: (_col: string, id: string) => ({
                 maybeSingle: async () => ({ data: this.outboundIntents.get(id) ?? null }),
+              }),
+            }),
+          };
+        }
+        if (table === 'app_settings') {
+          return {
+            select: () => ({
+              eq: (_col: string, key: string) => ({
+                maybeSingle: async () => ({ data: { value: this.appSettings.get(key) ?? 'false' } }),
               }),
             }),
           };
@@ -540,5 +552,29 @@ describe('delegated-contact-flow (ponta a ponta)', () => {
     // 2ª passada do sweep sobre o mesmo id (ex.: cron rodou de novo antes da lista ser refrescada) -> nunca reprocessa/avisa de novo.
     const r2 = await sweepDelegatedContactExpirations(supabase, { dueForNoReply: ['pdc-1'] });
     expect(r2.expiredNoReply).toBe(0);
+  });
+});
+
+describe('proteção de ativação (app_settings.delegated_contact_enabled)', () => {
+  it('desligada (default de produção pós-deploy): nenhum pedido novo é reconhecido, nem o recognizer é chamado', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const db = new FakeDb();
+    const supabase = db.supabase();
+    db.appSettings.set('delegated_contact_enabled', 'false');
+
+    let recognizerCalled = false;
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: "manda pra Marina, 11999999999: 'oi'", channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => {
+          recognizerCalled = true;
+          return { parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: '11999999999', purposeSummary: 'x', draftMessageContent: 'oi' } as const, inputTokens: 1, outputTokens: 1 };
+        },
+      }
+    );
+    expect(result.handled).toBe(false);
+    expect(recognizerCalled).toBe(false);
+    expect(db.rows.size).toBe(0);
   });
 });

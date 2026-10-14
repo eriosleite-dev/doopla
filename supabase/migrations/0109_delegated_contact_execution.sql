@@ -759,3 +759,19 @@ $$;
 revoke all on function public.get_pending_delegated_contact_awaiting_reply_by_conversation from public;
 grant execute on function public.get_pending_delegated_contact_awaiting_reply_by_conversation to service_role;
 revoke execute on function public.get_pending_delegated_contact_awaiting_reply_by_conversation from anon, authenticated;
+
+-- ============================================================
+-- 12. Proteção de ativação — mesmo padrão já estabelecido em
+--     app_settings (migration 0099, billing_kill_switch): fonte de
+--     verdade no banco, nunca só uma env var do Next (reativar nunca
+--     exige nova migration, só um UPDATE). Nasce 'false': o deploy
+--     desta Etapa 2.1 fica no ar com o reconhecedor de pedidos
+--     DESLIGADO até o teste controlado — nenhuma mensagem profissional
+--     aciona o fluxo novo enquanto isto não virar 'true'. Só o PEDIDO
+--     (professional_self) é gateado — uma delegação já aprovada antes
+--     de um desligamento futuro continua sendo processada até o fim
+--     (nunca abandona um fluxo em andamento por causa da flag).
+-- ============================================================
+insert into public.app_settings (key, value)
+values ('delegated_contact_enabled', 'false')
+on conflict (key) do nothing;
