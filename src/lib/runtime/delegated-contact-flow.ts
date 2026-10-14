@@ -383,17 +383,34 @@ async function describeStatus(supabase: AnySupabaseClient, recent: PendingDelega
   // status === 'executed': o template já foi criado — o que falta
   // saber é o estado real de cada envio (template x texto literal).
   const templateState = recent.createdOutboundIntentId ? await fetchOutboundIntentDeliveryState(supabase, recent.createdOutboundIntentId) : null;
-  const templateDescription = describeDeliveryState(templateState, `Mandei o contato inicial para ${who}`);
+  const templateFailed = templateState === 'failed_transient' || templateState === 'failed_permanent';
+  const templateDescription = describeDeliveryState(templateState, {
+    sent: `Mandei o contato inicial para ${who}`,
+    queued: `Coloquei o contato inicial para ${who} na fila de envio`,
+    failed: `Tentei mandar o contato inicial para ${who}, mas falhou`,
+  });
 
-  if (recent.literalContentGate === 'awaiting_recipient_reply') return `${templateDescription}, mas ela/ele ainda não respondeu. Sua mensagem original só segue depois disso.`;
-  if (recent.literalContentGate === 'awaiting_recipient_review') return `${who} respondeu, mas de um jeito que não ficou claro se posso seguir — ainda aguardando sua decisão sobre isso.`;
+  if (recent.literalContentGate === 'awaiting_recipient_reply') {
+    // Achado real em teste controlado em produção (14/10/2026): quando
+    // o template falha, não existe "resposta pendente" nenhuma — o
+    // destinatário nunca recebeu nada para responder. Dizer "ainda não
+    // respondeu" nesse caso é enganoso; o pedido certo é tentar
+    // reenviar o template, não esperar uma resposta que nunca vai vir.
+    if (templateFailed) return `${templateDescription}. Por isso ainda não dá pra enviar sua mensagem original. Quer que eu tente mandar o contato inicial de novo?`;
+    return `${templateDescription}, mas ela/ele ainda não respondeu. Sua mensagem original só segue depois disso.`;
+  }
+  if (recent.literalContentGate === 'awaiting_recipient_review') return `${who} respondeu, mas de um jeito que não ficou claro se posso seguir. Ainda aguardando sua decisão sobre isso.`;
   if (recent.literalContentGate === 'declined_by_recipient') return `${who} respondeu de um jeito que indica recusa, então não enviei sua mensagem original.`;
   if (recent.literalContentGate === 'approved_to_send') return `${templateDescription}. Vou enviar sua mensagem original agora.`;
   if (recent.literalContentGate === 'sending') return `Estou enviando sua mensagem original para ${who} agora, só um momento.`;
   if (recent.literalContentGate === 'failed') return `${templateDescription}, mas não consegui enviar sua mensagem original por uma falha técnica. Quer que eu tente de novo?`;
   // 'sent'
   const literalState = recent.literalContentOutboundIntentId ? await fetchOutboundIntentDeliveryState(supabase, recent.literalContentOutboundIntentId) : null;
-  return describeDeliveryState(literalState, `Sua mensagem original para ${who} foi enviada`);
+  return describeDeliveryState(literalState, {
+    sent: `Sua mensagem original para ${who} foi enviada`,
+    queued: `Sua mensagem original para ${who} está na fila de envio`,
+    failed: `Tentei enviar sua mensagem original para ${who}, mas falhou`,
+  });
 }
 
 async function fetchOutboundIntentDeliveryState(supabase: AnySupabaseClient, outboundIntentId: string): Promise<string | null> {
@@ -401,24 +418,24 @@ async function fetchOutboundIntentDeliveryState(supabase: AnySupabaseClient, out
   return (data as { delivery_state: string } | null)?.delivery_state ?? null;
 }
 
-function describeDeliveryState(state: string | null, prefix: string): string {
+function describeDeliveryState(state: string | null, phrasing: { sent: string; queued: string; failed: string }): string {
   switch (state) {
     case 'delivered':
     case 'read':
-      return `${prefix} e foi entregue.`;
+      return `${phrasing.sent} e foi entregue.`;
     case 'sent_confirmed':
-      return `${prefix} e o WhatsApp confirmou o envio (ainda sem confirmação de entrega).`;
+      return `${phrasing.sent} e o WhatsApp confirmou o envio (ainda sem confirmação de entrega).`;
     case 'sent_unknown':
-      return `${prefix}, mas não tenho confirmação se chegou — pode ter falhado silenciosamente.`;
+      return `${phrasing.sent}, mas não tenho confirmação se chegou. Pode ter falhado silenciosamente.`;
     case 'failed_transient':
     case 'failed_permanent':
-      return `Tentei enviar, mas falhou.`;
+      return `${phrasing.failed}.`;
     case 'queued':
     case 'sending':
     case 'policy_allowed':
-      return `${prefix.replace('Mandei', 'Coloquei na fila').replace('foi enviada', 'está na fila de envio')}, ainda não confirmado pelo WhatsApp.`;
+      return `${phrasing.queued}, ainda não confirmado pelo WhatsApp.`;
     default:
-      return `${prefix.replace('Mandei', 'Coloquei na fila').replace('foi enviada', 'está na fila de envio')}.`;
+      return `${phrasing.queued}.`;
   }
 }
 
