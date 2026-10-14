@@ -315,16 +315,38 @@ async function resolveProfessionalSelfAndFinish(
   // desambiguação — identidade verificada resolve incondicionalmente
   // no passo 1 do algoritmo, sempre. Nunca confundido com conversas de
   // cliente (author_type='professional', nunca 'external_participant').
-  await triggerInboundMessage({
-    conversationId,
-    authorType: 'professional',
-    authorProfileId: params.professionalId,
-    body: params.currentMessage.body,
-    channel: 'whatsapp',
-    providerEventId: params.currentMessage.providerMessageId,
-    providerMessageId: params.currentMessage.providerMessageId,
-    workerId: 'whatsapp:webhook',
-  });
+  //
+  // Mitigação P0 14/10/2026 — risco documentado: agora que
+  // professional_self reaproveita UMA conversa contínua (migration
+  // 0107), duas mensagens em sucessão rápida (ex.: "Sim" seguido de
+  // "Agora", segundos depois) competem pela MESMA
+  // conversation_processing_lease. acquire_conversation_processing_lease
+  // (migration 0051) nunca enfileira — falha na hora
+  // ('conversation_busy'), e não existe reconciliador que reprocesse
+  // um inbound_event nesse estado (só runtime_pending_replies tem
+  // retry/backoff — domínio diferente). Sem isto, a 2ª mensagem seria
+  // silenciosamente perdida (nunca respondida). Retry curto e limitado
+  // SÓ aqui (nunca no lease em si, que é compartilhado com
+  // external_inquiry — fora de escopo deste P0): cobre o caso comum
+  // (poucos segundos de diferença); mensagens extremamente próximas ou
+  // um processamento muito longo ainda podem colidir — risco residual
+  // igual ao que já existe hoje pra conversas de cliente, não
+  // introduzido por esta correção.
+  const CONVERSATION_BUSY_RETRY_DELAYS_MS = [2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    const outcome = await triggerInboundMessage({
+      conversationId,
+      authorType: 'professional',
+      authorProfileId: params.professionalId,
+      body: params.currentMessage.body,
+      channel: 'whatsapp',
+      providerEventId: params.currentMessage.providerMessageId,
+      providerMessageId: params.currentMessage.providerMessageId,
+      workerId: 'whatsapp:webhook',
+    });
+    if (outcome.kind !== 'conversation_busy' || attempt >= CONVERSATION_BUSY_RETRY_DELAYS_MS.length) break;
+    await new Promise((resolve) => setTimeout(resolve, CONVERSATION_BUSY_RETRY_DELAYS_MS[attempt]));
+  }
 
   return { kind: 'routed', conversationId, method: 'verified_professional' };
 }

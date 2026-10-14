@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Doopla — suíte de regressão do WhatsApp (13/10/2026). Cobre o
 // caminho IMPURO de handleWhatsappInboundMessage com um Supabase fake
@@ -146,6 +146,78 @@ describe('handleWhatsappInboundMessage — regressão do silêncio (18h16, 13/10
     // A prova real da regressão: 2 mensagens do cliente -> 2 respostas
     // via WhatsApp, nunca 1 (silêncio na segunda).
     expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('handleWhatsappInboundMessage — retentativa de conversation_busy (P0, 14/10/2026)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sendWhatsappTextMessage.mockReset();
+    triggerInboundMessage.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('conversation_busy na 1ª tentativa: espera e tenta de novo, mesma conversationId, nunca perde a mensagem', async () => {
+    const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
+
+    triggerInboundMessage
+      .mockResolvedValueOnce({ kind: 'conversation_busy' })
+      .mockResolvedValueOnce({ kind: 'duplicate_event', alreadyProcessed: false });
+
+    const supabase = createFakeSupabase({
+      from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
+      rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
+    });
+
+    const resultPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
+      providerMessageId: 'wamid.sim',
+      from: '5511900000001',
+      body: 'Sim',
+      contactName: null,
+      providerTimestampSeconds: null,
+    });
+
+    await vi.advanceTimersByTimeAsync(2000); // 1ª retentativa (2s)
+    const result = await resultPromise;
+
+    expect(result).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
+    expect(triggerInboundMessage).toHaveBeenCalledTimes(2);
+    // As duas tentativas usam o MESMO providerEventId — claim_inbound_event
+    // (migration 0051) reclama de novo um evento 'failed', nunca cria
+    // um segundo evento/duplicata.
+    expect(triggerInboundMessage.mock.calls[0][0].providerEventId).toBe('wamid.sim');
+    expect(triggerInboundMessage.mock.calls[1][0].providerEventId).toBe('wamid.sim');
+  });
+
+  it('conversation_busy persistente: desiste depois do teto de tentativas, nunca trava pra sempre', async () => {
+    const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
+
+    triggerInboundMessage.mockResolvedValue({ kind: 'conversation_busy' });
+
+    const supabase = createFakeSupabase({
+      from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
+      rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
+    });
+
+    const resultPromise = handleWhatsappInboundMessage(supabase, '+5511900000001', {
+      providerMessageId: 'wamid.agora',
+      from: '5511900000001',
+      body: 'Agora',
+      contactName: null,
+      providerTimestampSeconds: null,
+    });
+
+    await vi.advanceTimersByTimeAsync(2000 + 4000);
+    const result = await resultPromise;
+
+    // Nunca lança/trava — devolve 'routed' mesmo sem confirmação de
+    // sucesso do ciclo (o risco residual documentado: mensagem
+    // extremamente próxima ainda pode não ser respondida a tempo).
+    expect(result).toEqual({ kind: 'routed', conversationId: 'conv-self-continuo', method: 'verified_professional' });
+    expect(triggerInboundMessage).toHaveBeenCalledTimes(3); // 1 original + 2 retentativas, nunca mais que isso
   });
 });
 
