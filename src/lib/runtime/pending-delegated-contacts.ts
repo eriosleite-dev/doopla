@@ -441,7 +441,13 @@ export function listPendingDelegatedContactsWithExpiredExecutionLease(supabase: 
 }
 
 export function listPendingDelegatedContactsWithExpiredLiteralContentLease(supabase: AnySupabaseClient, params: { limit?: number } = {}): Promise<string[]> {
-  return listIds(supabase, 'list_pending_delegated_contacts_with_expired_literal_content_lease', params.limit ?? 50);
+  // Nome real no banco: list_pending_delegated_contacts_with_expired_literal_lease
+  // (migration 0110) — o nome original da 0109 tinha 66 caracteres,
+  // acima do limite de 63 do Postgres, truncado silenciosamente na
+  // criação (achado real em produção: 404 nesta RPC específica a cada
+  // tick do cron, sempre capturado pelo try/catch, nunca quebrando o
+  // resto, mas o sweep nunca rodava de fato).
+  return listIds(supabase, 'list_pending_delegated_contacts_with_expired_literal_lease', params.limit ?? 50);
 }
 
 // A mais recente de TODAS (não só não-terminais) — "enviou?" precisa
