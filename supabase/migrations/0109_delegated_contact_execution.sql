@@ -196,7 +196,15 @@ revoke execute on function public.claim_pending_delegated_contact_for_template_e
 --    awaiting_recipient_reply) — unificado aqui porque as duas coisas
 --    só fazem sentido juntas, no mesmo commit atômico.
 -- ============================================================
-create or replace function public.mark_pending_delegated_contact_executed(
+-- drop explícito: a assinatura original da 0104 tinha 3 parâmetros
+-- (sem p_no_reply_hours) — create or replace nunca substitui uma
+-- function quando a lista de parâmetros muda de aridade, ele cria uma
+-- SEGUNDA function sobrecarregada com o mesmo nome (achado real deste
+-- teste local: comment on function seguinte falhava com "function name
+-- is not unique"). Precisa dropar a versão de 3 parâmetros primeiro.
+drop function if exists public.mark_pending_delegated_contact_executed(uuid, uuid, uuid);
+
+create function public.mark_pending_delegated_contact_executed(
   p_id uuid,
   p_created_conversation_id uuid,
   p_created_outbound_intent_id uuid,
