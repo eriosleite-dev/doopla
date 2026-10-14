@@ -1,11 +1,18 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import { createServiceRoleClient } from '@/lib/supabase/service-role';
+import { recoverStuckLiteralContentSends, recoverStuckTemplateExecutions, sweepDelegatedContactExpirations } from '@/lib/runtime/delegated-contact-flow';
+import {
+  expireStalePendingDelegatedContacts,
+  listPendingDelegatedContactsDueForNoReplyExpiry,
+  listPendingDelegatedContactsWithExpiredExecutionLease,
+  listPendingDelegatedContactsWithExpiredLiteralContentLease,
+} from '@/lib/runtime/pending-delegated-contacts';
 import {
   drainProfessionalSelfPendingMessages,
   listProfessionalSelfPendingProfessionals,
   purgeExpiredProfessionalSelfPendingMessageBodies,
 } from '@/lib/runtime/professional-self-pending-messages';
+import { createServiceRoleClient } from '@/lib/supabase/service-role';
 
 // Doopla Intelligence Core v1 — Runtime, P0 14/10/2026 (revisão 2):
 // disparo periódico da fila persistida de professional_self
@@ -49,5 +56,25 @@ export async function GET(request: NextRequest) {
   // isto.
   const purgedCount = await purgeExpiredProfessionalSelfPendingMessageBodies(supabase, { olderThanDays: 7 });
 
-  return NextResponse.json({ processedProfessionals: results.length, results, purgedCount });
+  // "Doopla chama o cliente" — Etapa 2.1 (14/10/2026). Mesmo padrão:
+  // nenhum agendamento novo, só mais consumidores do mesmo cron de
+  // 1min já comprovado. Cada chamada é independente e nunca derruba as
+  // outras — uma falha aqui nunca pode impedir o drain normal acima
+  // (já processado nesta mesma invocação) de ter rodado.
+  let delegatedContactExpired = 0;
+  try {
+    await expireStalePendingDelegatedContacts(supabase); // Etapa 1 (migration 0104) — RPC existente, nunca chamada até agora
+    const dueForNoReply = await listPendingDelegatedContactsDueForNoReplyExpiry(supabase);
+    delegatedContactExpired = (await sweepDelegatedContactExpirations(supabase, { dueForNoReply })).expiredNoReply;
+
+    const stuckTemplateExecutions = await listPendingDelegatedContactsWithExpiredExecutionLease(supabase);
+    await recoverStuckTemplateExecutions(supabase, stuckTemplateExecutions);
+
+    const stuckLiteralContentSends = await listPendingDelegatedContactsWithExpiredLiteralContentLease(supabase);
+    await recoverStuckLiteralContentSends(supabase, stuckLiteralContentSends);
+  } catch (err) {
+    console.error('[drain-professional-self-messages] falha no sweep de "Doopla chama o cliente"', err);
+  }
+
+  return NextResponse.json({ processedProfessionals: results.length, results, purgedCount, delegatedContactExpired });
 }

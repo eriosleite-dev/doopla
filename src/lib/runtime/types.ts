@@ -122,4 +122,17 @@ export type RuntimeCycleOutcome =
       runId: string | null;
       outboundIntentId: string;
     }
+  // Etapa 2.1 "Doopla chama o cliente" (14/10/2026) — mesmo raciocínio
+  // de 'cold_outreach_template': nenhuma chamada a classifyIntent/
+  // planResponse/runApprovalEngine/evaluatePostModelGate aconteceu
+  // neste ciclo (delegated-contact-flow.ts decide tudo em código
+  // determinístico + 2 model calls isolados e pequenos, nunca o
+  // Planner) — um outcome próprio em vez de forçar os campos de
+  // 'completed' a null. Cobre os dois ramos (mensagem da profissional
+  // em professional_self, e 1ª resposta do destinatário).
+  | {
+      kind: 'delegated_contact_handled';
+      conversationMessageId: string;
+      runId: string | null;
+    }
   | { kind: 'failed'; error: string };

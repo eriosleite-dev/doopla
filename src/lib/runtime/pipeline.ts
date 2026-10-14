@@ -25,6 +25,7 @@ import { resolveProfessionalDisplayName } from './professional-identity';
 import { sendProfessionalSelfReplyViaWhatsapp } from './professional-whatsapp-reply';
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
+import { runDelegatedContactRecipientReplyFlow, runDelegatedContactRequestFlow } from './delegated-contact-flow';
 import { attemptResumptionsAfterApproval, type ResumptionOutcome } from './resumption';
 import { evaluateDecisionPrepared, evaluateMeaningfulClientAction, recordOrchestratorRunContextEvidence, recordProductEvent } from '../beta-instrumentation';
 import { buildStructuralFacts } from './structural-facts';
@@ -226,6 +227,33 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         source: 'runtime',
       });
     }
+  }
+
+  // Etapa 2.1 "Doopla chama o cliente" (14/10/2026) — dois ramos
+  // isolados, decididos ANTES de qualquer chamada a classifyIntent/
+  // planResponse (mesma posição/mesmo raciocínio do ramo de cold
+  // outreach logo abaixo): nenhum dos dois reconhece um pedido de
+  // delegação -> handled=false -> cai 100% no pipeline normal,
+  // inalterado (garantia estrutural, nunca modifica Classifier/
+  // Planner/Policy Gates/Approval Engine/bookings/outbound existentes).
+  if (event.authorType === 'professional' && conversation.conversation_type === 'professional_self') {
+    const result = await runDelegatedContactRequestFlow(supabase, {
+      professionalId: actorContext.representedProfessionalId,
+      conversationId: event.conversationId,
+      triggerMessageId: message.id,
+      messageText: event.body,
+      channel: event.channel,
+    });
+    if (result.handled) return await finishDelegatedContactBranch(supabase, event, inboundEventId, actorContext, conversation, message.id);
+  }
+
+  if (event.authorType === 'external_participant' && conversation.external_participant_id) {
+    const result = await runDelegatedContactRecipientReplyFlow(supabase, {
+      conversationId: event.conversationId,
+      messageId: message.id,
+      messageText: event.body,
+    });
+    if (result.handled) return await finishDelegatedContactBranch(supabase, event, inboundEventId, actorContext, conversation, message.id);
   }
 
   // Passo 6A+6B Fase 2 — ramo determinístico do primeiro outreach frio
@@ -634,6 +662,38 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     pendingReplyId,
     resumptions,
   };
+}
+
+// Etapa 2.1 "Doopla chama o cliente" — mesmo raciocínio de
+// runColdOutreachTemplateBranch logo abaixo: só a trilha de auditoria
+// (orchestrator_run + inbound_events), já que toda a decisão real
+// (reconhecer o pedido, avançar a máquina de estados, compor a
+// resposta determinística) já aconteceu dentro de
+// runDelegatedContactRequestFlow/runDelegatedContactRecipientReplyFlow
+// antes deste ponto ser alcançado. Nunca chamado fora de runCycle.
+async function finishDelegatedContactBranch(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  event: InboundEvent,
+  inboundEventId: string,
+  actorContext: ActorContext,
+  conversation: MinimalConversation,
+  triggerMessageId: string
+): Promise<RuntimeCycleOutcome> {
+  const run = await startOrchestratorRun(supabase, {
+    conversationId: event.conversationId,
+    representedProfessionalId: actorContext.representedProfessionalId,
+    actorType: actorContext.actorType,
+    actorProfileId: actorContext.actorProfileId,
+    externalParticipantId: conversation.external_participant_id,
+    triggerSource: actorContext.triggerSource,
+    eligibleTools: [],
+  });
+
+  await finishOrchestratorRun(supabase, { runId: run?.id ?? '', status: 'completed', calledTools: [], error: null, fallbackUsed: false });
+  await finishInboundEvent(supabase, { eventId: inboundEventId, status: 'processed', conversationMessageId: triggerMessageId, error: null });
+
+  return { kind: 'delegated_contact_handled', conversationMessageId: triggerMessageId, runId: run?.id ?? null };
 }
 
 // Passo 6A+6B Fase 2 — extraído de runCycle pra deixar o early-return

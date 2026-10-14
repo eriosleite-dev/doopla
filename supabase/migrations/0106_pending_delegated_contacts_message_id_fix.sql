@@ -1,31 +1,34 @@
--- "Doopla chama o cliente" — correção pré-Etapa 2 (13/10/2026).
+-- SUPERSEDIDA — NUNCA APLICAR O DESENHO ORIGINAL DESTE ARQUIVO.
 --
--- Achado ao desenhar a Etapa 2: cada mensagem de um profissional
--- verificado pro WhatsApp oficial cria uma conversa professional_self
--- NOVA (confirmado em create_conversation, migration 0082 — o ramo de
--- reaproveitamento só vale quando p_external_participant_id não é
--- nulo, e professional_self NUNCA tem external_participant_id). Ou
--- seja, a pergunta de confirmação da Doopla e a resposta "sim" do
--- profissional nascem em conversas DIFERENTES — trigger_message_id/
--- confirmation_message_id/decision_message_id como FK pra
--- conversation_messages nunca teriam como se correlacionar de forma
--- confiável entre turnos.
+-- Esta migration foi escrita em 13/10/2026 pra contornar um bug
+-- específico: antes do P0 de 14/10/2026 (migration 0107), cada
+-- mensagem professional_self criava uma conversation NOVA a cada
+-- turno, então a pergunta de confirmação da Doopla e o "sim" do
+-- profissional nasciam em conversations diferentes. A correção
+-- original trocava trigger_message_id/confirmation_message_id/
+-- decision_message_id de uuid (FK pra conversation_messages) pra text
+-- (guardando o provider_message_id/wamid da Meta).
 --
--- Correção: os 3 campos passam a guardar o provider_message_id (wamid)
--- da Meta — sempre único, sempre disponível no momento do webhook,
--- antes mesmo de qualquer conversation_messages existir pra aquele
--- turno. Tabela ainda sem nenhuma linha gravada (Etapa 1 só criou o
--- schema) — zero dado em risco, mudança de tipo direta.
-alter table public.pending_delegated_contacts
-  drop constraint pending_delegated_contacts_trigger_message_id_fkey,
-  drop constraint pending_delegated_contacts_confirmation_message_id_fkey,
-  drop constraint pending_delegated_contacts_decision_message_id_fkey;
-
-alter table public.pending_delegated_contacts
-  alter column trigger_message_id type text using trigger_message_id::text,
-  alter column confirmation_message_id type text using confirmation_message_id::text,
-  alter column decision_message_id type text using decision_message_id::text;
-
-comment on column public.pending_delegated_contacts.trigger_message_id is 'provider_message_id (wamid) da mensagem do profissional que originou o pedido — nunca conversation_messages.id (cada mensagem professional_self nasce numa conversa nova, ver comentário acima).';
-comment on column public.pending_delegated_contacts.confirmation_message_id is 'provider_message_id (wamid) da mensagem de confirmação enviada pela Doopla — correlação da aprovação.';
-comment on column public.pending_delegated_contacts.decision_message_id is 'provider_message_id (wamid) da mensagem do profissional que decidiu (sim/não/cancela).';
+-- Antes de implementar a Etapa 2.1 ("Doopla chama o cliente",
+-- 14/10/2026), confirmamos em produção (query em information_schema.columns)
+-- que esta migration NUNCA foi aplicada — as 3 colunas continuam uuid.
+-- E a causa raiz que ela contornava já foi corrigida pela migration
+-- 0107 (professional_self agora reaproveita a mesma conversation entre
+-- turnos, validado ao vivo). Decisão explícita (aprovada pela
+-- fundadora): tratar esta migration como obsoleta e NUNCA aplicá-la.
+--
+-- Por que este arquivo vira um no-op em vez de ser apagado: a migration
+-- 0109 foi construída sobre a premissa de que estas 3 colunas
+-- CONTINUAM uuid (FK real pra conversation_messages) — inclusive as
+-- RPCs que ela cria (claim_pending_delegated_contact_decision, já
+-- existente desde 0104) comparam confirmation_message_id (uuid) com um
+-- parâmetro uuid. Se o desenho original desta 0106 fosse aplicado
+-- DEPOIS da 0109 (por engano, ex.: uma ferramenta de migration que
+-- aplica tudo que está no diretório em ordem, sem saber deste
+-- histórico), o ALTER COLUMN TYPE quebraria a comparação de tipos
+-- dentro dessas functions (uuid vs text) e derrubaria em produção a
+-- aprovação de pedidos de delegação em andamento. Por isso o arquivo
+-- permanece no histórico (preserva a numeração/sequência), mas seu
+-- corpo agora não faz NADA — seguro de rodar (ou re-rodar) a qualquer
+-- momento, em qualquer ordem, sem efeito nenhum no schema.
+select 1;
