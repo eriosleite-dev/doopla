@@ -40,6 +40,7 @@ yarn-error.log*
 # supabase cli local cache (created by `supabase --version`/other CLI
 # invocations — never project content, official Supabase convention)
 supabase/.temp
+supabase/.branches
 
 # typescript
 *.tsbuildinfo

@@ -36,6 +36,10 @@ export async function persistInboundMessage(
     // Conversas Bloco 2 (migration 0066) — ver comentário em types.ts
     // (InboundEvent.repliedToOutboundIntentId).
     repliedToOutboundIntentId?: string | null;
+    // Idempotência real (migration 0111) — wamid (ou equivalente de
+    // outro provedor). null pra canais sem esse conceito (painel,
+    // email, public_link, outro): nenhum comportamento muda pra eles.
+    providerMessageId?: string | null;
   }
 ): Promise<{ id: string; createdAt: string; repliedToOutboundIntentId: string | null; preparedResponseOutcome: 'sent' | 'edited' | null }> {
   const { data, error } = await supabase
@@ -49,6 +53,7 @@ export async function persistInboundMessage(
       p_body: params.body,
       p_origin_intake_id: null,
       p_replied_to_outbound_intent_id: params.repliedToOutboundIntentId ?? null,
+      p_provider_message_id: params.providerMessageId ?? null,
     })
     .single();
   if (error || !data) throw new Error(`persist_inbound_message falhou: ${error?.message ?? 'sem dado'}`);
