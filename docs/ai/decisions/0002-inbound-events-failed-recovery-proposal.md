@@ -475,6 +475,93 @@ Como a fundadora explicitamente pediu pra nunca confundir: **tudo acima valida o
 
 Schema da Fase 1 (migration 0112) está validado em staging nos dois níveis possíveis sem publicar código: aplicação limpa, compatibilidade com código atual confirmada antes de aplicar, e os 7 pontos de integração SQL todos passando contra dados sintéticos, incluindo o achado corrigido (`delegated`) com prova de correlação real. Nenhuma regressão em 0111. Falta exclusivamente a validação ponta a ponta do webhook publicado (seção 10.4), que depende de uma decisão de publicar código — fora do escopo autorizado agora.
 
+---
+
+## 11. Checklist curto — sequência de validação da Fase 1 após a aprovação do template da Meta
+
+1. **Publicação controlada em staging**: push desta branch (ou merge pra uma branch que o Vercel deploya como preview/staging), confirmando antes que o `main` do projeto Supabase de staging segue com a migration 0112 aplicada (já está, seção 10.2).
+2. **Testes ponta a ponta**: plano da seção 9.7 — requisição sintética assinada, direto no endpoint de staging, matriz de cenários (mensagem única, reentrega do mesmo wamid, lote com 2 mensagens, assinatura inválida, JSON malformado). Confirmar via consulta operacional (entregue em arquivo) que cada cenário produziu o estado esperado em `whatsapp_inbound_raw_captures`.
+3. **Revisão dos resultados**: eu apresento os resultados (sucesso/falha de cada cenário, qualquer achado novo) antes de qualquer próximo passo — mesmo formato desta seção do ADR.
+4. **Só depois**: proposta de aplicação em produção, com o mesmo rigor já usado pra 0111 (migration final, testes, impacto, rollback) — nunca pulando direto pra produção a partir de staging sem esse relatório intermediário.
+
+---
+
+## 12. Fase 2 — proposta mínima de recuperação automática (SEM implementação)
+
+Resposta aos 8 pontos pedidos (15/10/2026). Nenhum código, nenhuma migration — proposta de arquitetura, pra aprovação antes de eu escrever qualquer coisa.
+
+### 12.1 Achado que molda toda a proposta: o risco real é mais estreito do que parecia
+
+Antes de desenhar o mecanismo, rastreei precisamente O QUE poderia duplicar se `handleWhatsappInboundMessage` for chamada de novo do zero pra uma mensagem interrompida no meio. Resultado, com evidência de código (não suposição):
+
+| Efeito dentro de `handleWhatsappInboundMessage` | Protegido contra retry? |
+|---|---|
+| `create_conversation` (professional_self OU external_inquiry) | **Sim** — idempotente nos dois ramos (migration 0107 pra professional_self via `pg_advisory_xact_lock` + represented_professional_id; ramo external_inquiry já reaproveitava por external_participant_id desde antes). Confirmado lendo 0107, não presumido. |
+| `enqueueProfessionalSelfPendingMessage` | **Sim** — `unique(provider_message_id)` em `professional_self_pending_messages` (0108). |
+| `persist_inbound_message` (via `triggerInboundMessage` → pipeline) | **Sim** — idempotente por wamid desde a Fase 0 (0111). |
+| `create_outbound_intent`/envio comercial real | **Sim** — idempotente por `trigger_message_id` desde a Fase 0 (0111). |
+| `append_channel_inbound_intake_message` | **Sim** — materializa de novo só se `materialized_conversation_message_id` ainda for null (já idempotente, código existente). |
+| **`sendSystemWhatsappMessage`** (prompt de desambiguação / pergunta de abertura / mensagem de encerramento por limite de tentativas) | **NÃO.** Confirmado: `claimRawInboundEvent` (linha 530) usa `claim_inbound_event`, mas **`finish_inbound_event` nunca é chamado no ramo ambíguo** (grep confirma zero chamadas em `intake-orchestration.ts`/`pipeline.ts` pro ramo de backlog) — a lease desse claim (300s) expira e fica reclamável de novo, sem nenhum sinal de "já processado". Uma segunda execução pode mandar o MESMO prompt/pergunta/encerramento ao cliente outra vez. |
+
+**Conclusão**: graças à Fase 0 + 0107/0108, o único efeito genuinamente não-protegido é `sendSystemWhatsappMessage` — e ele só é alcançado quando a identidade NÃO resolve de forma determinística (`evaluateWhatsappRouting` devolve `needs_confirmation` ou `no_signal`, nunca `resolved`). Isso estreita exatamente onde a cautela precisa se concentrar — não a função inteira.
+
+### 12.2 Pontos 1-3 — desenho da recuperação, com a distinção de segurança
+
+**Seleção** (ponto 1): elegível pra sweep é toda captura em `pending` (Passagem 2 nunca nem começou — zero execução, zero risco por construção) ou `processing` com `lease_expires_at` vencida (execução começou, destino desconhecido). `needs_attention` entra também, mas só com backoff e nunca pra sempre (ponto 4).
+
+**Reaproveitamento** (ponto 2): zero mecanismo novo de claim/lease — o sweep usa `claim_whatsapp_inbound_raw_capture_for_processing` exatamente como está (já cobre `pending` OU `processing`-com-lease-vencida na mesma cláusula `WHERE`, confirmado na migration 0112). O sweep é, estruturalmente, a MESMA Passagem 2 do webhook, só disparada por um cron em vez de uma requisição ao vivo.
+
+**A distinção que separa seguro de arriscado** (ponto 3 — o cerne do pedido): antes de chamar `handleWhatsappInboundMessage` de verdade, o worker do sweep roda uma "pré-checagem" BARATA e SEM EFEITO COLATERAL — as mesmas leituras puras que `handleWhatsappInboundMessage` já faz antes de decidir (`resolveVerifiedProfessionalId` + extração de token + `evaluateWhatsappRouting`), só que isolada, sem persistir nada. Duas saídas:
+- **`outcome === 'resolved'`** (identidade verificada, token determinístico, ou histórico único) → **seguro pra retomar automaticamente**. Esse caminho nunca chama `sendSystemWhatsappMessage` — vai direto pra `resolveProfessionalSelfAndFinish`/`resolveAndFinish`, cujos efeitos são TODOS idempotentes (tabela acima). Sweep executa `handleWhatsappInboundMessage` de verdade.
+- **`outcome !== 'resolved'`** (ambíguo, ou sem sinal nenhum) → **NUNCA retomado automaticamente nesta fase**. Fica `needs_attention` com um `result_kind` distinto (ex.: `'ambiguous_retry_blocked'`), visível na consulta operacional, pra alguém decidir manualmente — exatamente a cautela que a fundadora pediu ("mantenha bloqueado qualquer retry automático de prompts... sem idempotência comprovada"). Isso não é uma simplificação insegura — é a tradução direta e precisa dessa instrução pro desenho técnico, baseada no achado da seção 12.1, não um palpite.
+
+Nenhum mecanismo novo de idempotência é necessário pra isso — é reaproveitar `evaluateWhatsappRouting` (já puro, já testado) como um filtro de decisão, nunca uma segunda implementação do algoritmo de roteamento.
+
+### 12.3 Ponto 4 — backoff, limites de tentativas, needs_attention
+
+Reaproveita `computeRuntimeRetryBackoffSeconds`/o ESPÍRITO de `RUNTIME_PENDING_REPLY_MAX_ATTEMPTS` (`retry-backoff.ts`, já usado por `runtime_pending_replies`) — mesma forma, constante própria (ex.: `RAW_CAPTURE_MAX_ATTEMPTS`), nunca uma terceira implementação de backoff no projeto.
+
+- `pending`/`processing`-lease-vencida: sempre elegível de novo, sem backoff (nada falhou ainda — só não terminou).
+- `needs_attention` com `result_kind` de uma exceção genérica (potencialmente transitória — ex.: blip de conexão): elegível pra retry com backoff exponencial, até `RAW_CAPTURE_MAX_ATTEMPTS`. Esgotado o limite → permanece `needs_attention`, nunca mais reclamado automaticamente (mesmo padrão de `runtime_pending_replies`).
+- `needs_attention` com `result_kind='invalid_phone'` (determinístico — vai falhar do mesmo jeito sempre): **nunca entra no sweep automático**, vai direto pro estado terminal — retentar não muda o resultado, só adia a visibilidade real do problema.
+- `needs_attention` com `result_kind='ambiguous_retry_blocked'` (seção 12.2): fica fora do sweep automático até a idempotência de `sendSystemWhatsappMessage` existir (pré-requisito já nomeado da Fase 3) — não tem backoff, porque não é question de "tentar de novo mais tarde", é bloqueio de desenho.
+
+### 12.4 Ponto 5 — monitoramento operacional mínimo
+
+Reaproveita a consulta operacional já entregue (ponto 6 da conferência anterior) como base — adiciona só uma visão nova: quantas linhas estão no "limbo do sweep" (tentativas sendo feitas automaticamente) vs. quantas estão genuinamente travadas esperando decisão humana (`ambiguous_retry_blocked`, `invalid_phone`, ou esgotaram `RAW_CAPTURE_MAX_ATTEMPTS`). Sem painel novo nesta proposta (fora de escopo, mesma decisão já tomada na Fase 1) — SQL read-only, mesmo padrão.
+
+### 12.5 Ponto 6 — retenção e LGPD
+
+Nenhuma mudança na política já definida (0112): `completed`/`delegated` zeram corpo na hora; `needs_attention` retém até `purge_expired_whatsapp_inbound_raw_captures` (ainda sem cron — risco residual já registrado, continua aberto, não piora nem melhora com a Fase 2). Uma linha que esgota `RAW_CAPTURE_MAX_ATTEMPTS` e vira `needs_attention` terminal entra na MESMA janela de retenção das demais, sem tratamento especial.
+
+### 12.6 Ponto 7 — testes necessários antes de implementar
+
+- Sweep nunca retoma uma captura cuja pré-checagem resolve `needs_confirmation`/`no_signal` — marca `ambiguous_retry_blocked`, nunca chama `handleWhatsappInboundMessage`.
+- Sweep retoma corretamente `pending` e `processing`-lease-vencida com identidade resolvida — mesma prova de "nunca duplica" já feita pra Fase 0/1 (idempotência de `conversation_messages`/`outbound_intents`/`professional_self_pending_messages` sob a retomada).
+- Backoff cresce corretamente, nunca tenta antes da hora; esgota exatamente em `RAW_CAPTURE_MAX_ATTEMPTS`.
+- `invalid_phone` nunca entra no sweep, em nenhuma circunstância (teste negativo explícito).
+- Concorrência: dois ticks do cron/sweep rodando por acidente ao mesmo tempo nunca processam a mesma captura em paralelo (reaproveita a mesma prova de concorrência real já feita pro claim da Fase 1 — não precisa refazer, só confirmar que o sweep usa a mesma function).
+- Teste de interrupção: sweep retomando uma captura que o PRÓPRIO sweep interrompe de novo (crash dentro do crash) — nunca perde, nunca duplica, lease protege de novo.
+
+### 12.7 Ponto 8 — critérios objetivos pra liberar no beta
+
+1. Suíte do ponto 12.6 inteira verde, Postgres real.
+2. Zero regressão nas suítes de Fase 0/1 já existentes.
+3. Sweep rodando em staging por um período de observação (proponho 48-72h) sem nenhuma captura `ambiguous_retry_blocked` sendo mal classificada (toda vez que cair nesse estado, confirmar manualmente que era mesmo ambíguo, não um bug da pré-checagem).
+4. Consulta operacional (12.4) mostrando números plausíveis — nenhum acúmulo crescente de `needs_attention`, nenhuma captura presa em `processing` além do esperado.
+5. Aprovação explícita da fundadora/Head of AI pra produção, com o mesmo pacote de sempre (migration final, testes, impacto, rollback).
+
+### 12.8 Fora de escopo, explicitamente (nunca implementado nesta fase)
+
+- Retomada automática de QUALQUER mensagem cuja identidade não resolve deterministicamente — bloqueada até `sendSystemWhatsappMessage` ter idempotência própria (pré-requisito nomeado da Fase 3, que continua bloqueada).
+- Cron de purge de retenção (risco residual já aceito, não piora).
+- Qualquer painel/UI nova.
+- Qualquer mudança em Classifier, Planner, regras comerciais ou Approval Engine.
+
+### 12.9 Recomendação
+
+Proposta deliberadamente pequena: reaproveita 100% dos mecanismos já existentes (claim/lease da Fase 1, backoff de `retry-backoff.ts`, `evaluateWhatsappRouting` puro) — o único código genuinamente novo seria a função de seleção/sweep (espelhando `claim_next_professional_self_pending_message`) e a pré-checagem de roteamento isolada (reaproveitando, nunca reimplementando, `evaluateWhatsappRouting`). Fecha a lacuna mais visível da Fase 1 (conteúdo capturado mas nunca processado) sem tocar no ponto que ainda não tem idempotência comprovada. Recomendo aprovar este escopo antes de eu escrever qualquer migration ou código.
+
 ## Próximo passo
 
-Schema da Fase 1 validado em staging. Pendente: autorização pra publicar o código (push/deploy) quando a fundadora decidir, pra completar a validação ponta a ponta antes de produção. Em paralelo, conforme pedido: iniciar planejamento da Fase 2 (recuperação automática). Fase 3 continua bloqueada até a idempotência de envio de prompts de desambiguação estar resolvida.
+Aguardando aprovação da proposta da Fase 2 (seção 12) antes de qualquer implementação. Checklist de validação pós-template (seção 11) pronto pra quando a Meta aprovar. Fase 3 continua bloqueada até `sendSystemWhatsappMessage` ter idempotência própria.
