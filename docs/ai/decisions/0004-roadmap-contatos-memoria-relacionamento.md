@@ -1,7 +1,7 @@
 # ADR 0004 — Roadmap: Doopla como representante inteligente (contatos, memória de relacionamento, aprendizado)
 
 - **Data:** 2026-10-15
-- **Status:** Rodada 1 (15/10/2026): auditoria concluída, proposta de desenho (Prioridade 2, cartões de contato) apresentada, nada implementado. Rodada 2 (15/10/2026, pós-revisão final da Fase 2): arquitetura integrada + MVP de memória de contatos ("fala com a Marina") propostos em detalhe. Rodada 3 (15/10/2026): arquitetura APROVADA pela fundadora/Head of AI com 2 decisões e 3 condições; núcleo de memória de contatos (migration 0115 + lookup em `delegated-contact-flow.ts`) **implementado e testado localmente** (Postgres real + vitest); integração do webhook pra cartões de contato permanece **só proposta**, aguardando Fase 1/2 validadas em staging. Rodada 4 (15/10/2026): auditoria de opt-in inicial (lacuna real encontrada e diagnosticada, correção mínima proposta, não implementada) + arquitetura de memória de preferências profissionais (proposta, não implementada) — ver seções dedicadas abaixo.
+- **Status:** Rodada 1 (15/10/2026): auditoria concluída, proposta de desenho (Prioridade 2, cartões de contato) apresentada, nada implementado. Rodada 2 (15/10/2026, pós-revisão final da Fase 2): arquitetura integrada + MVP de memória de contatos ("fala com a Marina") propostos em detalhe. Rodada 3 (15/10/2026): arquitetura APROVADA pela fundadora/Head of AI com 2 decisões e 3 condições; núcleo de memória de contatos (migration 0115 + lookup em `delegated-contact-flow.ts`) **implementado e testado localmente** (Postgres real + vitest); integração do webhook pra cartões de contato permanece **só proposta**, aguardando Fase 1/2 validadas em staging. Rodada 4 (15/10/2026): auditoria de opt-in inicial (lacuna real encontrada e diagnosticada, correção mínima proposta, não implementada) + arquitetura de memória de preferências profissionais (proposta, não implementada). Rodada 5 (15/10/2026): proteção de opt-in **implementada, testada em Postgres real e vitest (242/242)**; especificação final da memória de preferências refinada (distinção verificável vs. probabilística) — ainda **sem implementação**, por instrução explícita.
 - **Autor:** Claude Code (Principal AI Engineer), a pedido da fundadora/Head of AI
 - **Escopo**: resposta às 6 prioridades da mensagem de 15/10/2026. Prioridade 1 (link de orçamento) já corrigida e commitada localmente (ver changelog no fim). Prioridades 2-6 são auditoria + proposta, não implementação.
 
@@ -489,3 +489,94 @@ Nenhuma migration, nenhum código, nenhuma mudança em `pipeline.ts`/Context Bui
 - Este documento (duas novas seções: auditoria de opt-in + arquitetura de memória de preferências).
 
 Nenhum código, nenhuma migration, nenhum push, nenhum deploy.
+
+---
+
+# Rodada 5 (15/10/2026) — Opt-in implementado e testado; especificação final da memória de preferências (sem implementação)
+
+Fundadora/Head of AI revisaram a Rodada 4 e tomaram duas decisões: **Decisão 1** (corrigir o opt-in, 8 requisitos, autorizada pra implementação local) e **Decisão 2** (aprovar a arquitetura de preferências, com uma distinção estrutural adicional — preparar a especificação final, **sem** implementação extensa nesta rodada).
+
+## 5.1 Decisão 1 — proteção de opt-in: implementada e testada
+
+Migration `0116_whatsapp_outreach_authorization.sql` (nova) + wiring em `delegated-contact-flow.ts`, `pending-delegated-contacts.ts`, `send-outbound-intents/route.ts`. Os 8 requisitos, um a um:
+
+1. **Verificar autorização antes do primeiro contato**: `advanceOrAskForMissing` (`delegated-contact-flow.ts`) nunca arma a pergunta de conteúdo sem antes checar `whatsapp_outreach_authorization_claims` — se não existe, arma uma pergunta DEDICADA de autorização primeiro (`pending_authorization`, novo status), nunca pula direto pra `pending_approval`.
+2. **Registrar origem/finalidade/data/evidência, nunca confundir com autorização do destinatário**: `whatsapp_outreach_authorization_claims` guarda `claimed_basis` (fixo em `'professional_attestation'` — deliberadamente não tentamos classificar SUBTIPOS de base a partir de texto livre, risco real de classificação errada), `purpose_summary`, `claimed_at`, `evidence_message_id`. Nome e comentários da tabela repetem, em dois lugares (SQL e TS), que isto é a ATESTAÇÃO da profissional — `checkRecipientConsent` continua sendo a ÚNICA fonte de consentimento real do destinatário, intocada.
+3. **Autorização desconhecida nunca envia template; oferece convite por link**: confirmado, `buildInviteLinkText` reaproveita `/orcamento/[slug]` (link já existente, nunca duplicado) — a profissional pode mandar esse link por fora da Doopla pra que o PRÓPRIO contato inicie a conversa (sempre compatível com a política da Meta, conversa iniciada pelo cliente nunca precisa de template).
+4. **Registro durável de opt-out/recusa, separado da memória de contatos**: `whatsapp_outreach_blocklist`, tabela própria, nunca um campo em `professional_contact_memories`. Escrita automaticamente quando `checkRecipientConsent` retorna `declined` (`runDelegatedContactRecipientReplyFlow`).
+5. **Impedir novos contatos após recusa, inclusive memória e mensagens enfileiradas**: recheck em TRÊS pontos — (a) antes de perguntar/criar o pedido (`advanceOrAskForMissing`), (b) dentro de `executeTemplateSend` antes de criar o outbound_intent (cobre o intervalo entre aprovação e execução), (c) dentro de `sendOneOutboundIntent` (`send-outbound-intents/route.ts`) antes de QUALQUER chamada real à Meta — este último é universal, cobre qualquer outbound_intent já enfileirado ANTES do bloqueio existir, não só os de "Doopla chama o cliente". Testado explicitamente (`route.test.ts`, cenário "mensagem já enfileirada ANTES do número entrar na blocklist").
+6. **Escopo correto entre artistas — bloqueio geral nunca ignorado por outro artista**: `whatsapp_outreach_blocklist` é escopada só por `phone_number`, nunca por `professional_id` — decisão deliberadamente conservadora (nunca tentamos classificar se uma recusa era "só deste pedido" ou "bloqueio geral"; qualquer `declined` bloqueia o número inteiro). Testado explicitamente: uma recusa num pedido da profissional A bloqueia um pedido NOVO da profissional B pro mesmo telefone, mesmo com a profissional B tendo sua própria atestação de autorização.
+7. **Reverificar autorização e blocklist no momento efetivo do envio**: ver item 5(b)/5(c) — a blocklist é SEMPRE rechecada no instante real do envio, nunca só na hora de perguntar.
+8. **Respeitar janela de 24h, templates aprovados, pedidos de interrupção**: nenhuma mudança na lógica de CSW/template (`cold-outreach.ts`, `resolveSendAction`) — o recheck de blocklist roda ANTES dela, nunca a substitui (testado explicitamente: bloqueio impede o envio mesmo com CSW aberta).
+
+**Achado real durante os testes** (corrigido): `draft_message_content` se perdia entre a pergunta de autorização e a pergunta de conteúdo — só existia na memória do primeiro turno, nunca sobrevivia a uma segunda requisição HTTP (o professional respondendo em outra mensagem, dias depois até). `prepare_pending_delegated_contact_authorization_review` agora persiste o rascunho (coalesce, nunca sobrescreve um valor já salvo).
+
+### Testes (os 6 cenários pedidos, todos cobertos)
+
+`delegated-contact-flow.test.ts` (19 testes, incluindo os 14 de rodadas anteriores) + `send-outbound-intents/route.test.ts` (novo, 3 testes):
+
+- **Sem consentimento**: profissional nega autorização → `blocked_unauthorized`, oferece link, zero `outbound_intent` criado.
+- **Autorização válida**: claim pré-existente → pula a pergunta, vai direto pra `pending_approval`.
+- **Revogação**: destinatário recusa → blocklist grava → pedido NOVO de OUTRO profissional pro mesmo telefone é bloqueado automaticamente, mesmo com atestação própria.
+- **Contato já memorizado**: memória de contato (Rodada 3) resolve o número sozinha, mas o gate de autorização AINDA pergunta — memória de identidade nunca é autorização.
+- **Mensagem enfileirada**: outbound_intent criado antes do bloqueio existir → recheck no cron impede o envio real, nunca chama a Meta.
+- **Concorrência**: duas respostas simultâneas à pergunta de autorização → claim atômico garante avanço único, nunca duas claims.
+
+### Validação final
+
+Replay limpo de **0001→0116** (116 migrations, arquivo por arquivo) contra Postgres real — confirmado que o arquivo final (não os patches incrementais aplicados durante o desenvolvimento) se comporta identicamente. `typecheck`/`lint` limpos, `test` **242/242** (226 anteriores + 19 em `delegated-contact-flow.test.ts`, incluindo os 5 novos cenários − 3 antigos substituídos, + 3 em `route.test.ts` − já contava alguns antes), `build` com sucesso.
+
+### Riscos residuais declarados
+
+- **Alternativa de convite por link depende de slug cadastrado**: se a profissional não tem slug configurado no perfil, a mensagem avisa isso explicitamente em vez de gerar um link quebrado — nunca falha silenciosamente, mas é uma fricção a mais que a fundadora pode querer resolver depois (ex.: gerar slug automaticamente).
+- **Blocklist nunca distingue "recusa deste pedido" de "bloqueio permanente"**: decisão deliberada (seção acima), mas significa que um "não, agora não" malinterpretado como recusa bloqueia permanentemente — mitigado pelo fato de `checkRecipientConsent` já ser bem conservador classificando `declined` (fail-closed pro lado de NUNCA enviar), mas é um residual real: não há hoje um caminho de "desbloquear" um número manualmente. Registrado como item futuro se a fundadora quiser.
+- **`claimed_basis` sempre `'professional_attestation'`, nunca sub-tipado**: por desenho (evitar classificação errada a partir de texto livre) — a auditoria de compliance futura sabe QUE a profissional atestou, mas não exatamente POR QUE categoria. Suficiente pro MVP, pode ser refinado depois com um fluxo estruturado (ex.: botões/opções em vez de texto livre).
+
+## 5.2 Decisão 2 — especificação final da memória de preferências (SEM implementação, por instrução explícita)
+
+A fundadora pediu uma distinção estrutural adicional sobre a proposta da Rodada 4: **"preferências de linguagem/estilo podem orientar o Planner" vs. "restrições comerciais obrigatórias precisam de aplicação verificável, independente da obediência probabilística do modelo."** Esse ponto refina — e em parte CORRIGE — a seção 2.2 da Rodada 4, que tinha proposto `commercial_restriction` como só mais um `MemoryKind` alimentando o prompt do Planner com destaque visual mais forte. Isso NUNCA seria "aplicação verificável" de verdade — é ainda um nudge textual, e um model sempre pode, probabilisticamente, ignorar um nudge textual por melhor que ele seja escrito. A especificação final corrige isso.
+
+### Dois níveis, tratados de forma estruturalmente diferente (nunca a mesma mecânica pros dois)
+
+**Nível 1 — Preferências de linguagem/estilo** (`communication_style`, `operational_preference`, `commercial_preference` — os 3 `MemoryKind` já existentes, inalterados): continuam exatamente como desenhado na Rodada 4 — memória vira contexto no prompt do Planner (`professionalLearnedPreferences`, nova seção do Context Builder, nunca confundida com `professionalBusinessContext`), `contextOnly: true`, só orienta o TOM/ESTILO do draft. Nunca decide nada estrutural. Isso é aceitável ficar "probabilístico" porque a pior consequência de o model ignorar é um draft mais longo do que a profissional preferia — nunca um risco comercial real.
+
+**Nível 2 — Restrições comerciais obrigatórias** (nova categoria, NUNCA mais chamada `MemoryKind`/alimentando o prompt como as de Nível 1 — reclassificada): deixa de ser "memória que o Planner lê" e passa a ser uma **regra estruturada que o Post-model Policy Gate aplica em código**, no MESMO lugar determinístico que já decide `requiresProfessionalReviewBeforeSend` hoje (`planner/invariants.ts`, achado da auditoria desta rodada: essa decisão já é 100% derivada do `responsePlan` escolhido, uma taxonomia fechada, nunca de texto livre — a fundação certa pra pendurar uma regra nova sem reescrever nada).
+
+Desenho proposto (ainda sem código, por instrução explícita):
+- Uma restrição nasce com um **tópico estruturado de uma lista fechada** (ex.: `pricing`, `discount`, `new_client_scheduling`, `payment_terms` — nunca texto livre classificado por um model), nunca um valor livre interpretado por LLM na hora de aplicar.
+- Quando aprovada, o Post-model Gate ganha UM checagem adicional, puramente aditiva: se o turno atual toca o tópico restrito (usando os MESMOS sinais estruturados que o Orchestrator já calcula pra classificar o turno — ex.: o `intent`/`commitmentNature` que a auditoria da Rodada 1 já tinha identificado ativando `price_or_cache` pra pedidos de orçamento — nunca uma nova leitura do texto livre do draft) E a profissional tem uma restrição ativa pra esse tópico, `requiresProfessionalReviewBeforeSend` é forçado pra `true` — **a regra só pode ESCALAR proteção, nunca reduzir**. Nenhuma restrição jamais pode fazer `requiresProfessionalReviewBeforeSend` virar `false` quando o código já o calcularia `true` por outro motivo.
+- Isso é "aplicação verificável, independente da obediência probabilística do modelo" no sentido literal: o model nunca precisa "lembrar" ou "escolher respeitar" a restrição — o código aplica sozinho, sempre, de forma auditável e testável com um caso determinístico (dado um tópico restrito ativo + um turno que toca esse tópico, SEMPRE force revisão — nenhuma chamada de IA no meio dessa decisão específica).
+
+### Regra fundamental, reafirmada e tornada estrutural (nunca só uma frase)
+
+"Nenhuma memória pode autorizar preços, descontos, bookings, pagamentos ou mudanças sem os gates já existentes" — isso já era verdade por desenho na Rodada 4 (memória nunca é lida por nenhum gate, só pelo Planner), e continua verdade aqui com uma garantia adicional: mesmo a regra de Nível 2 (que SIM é lida por código, diferente das de Nível 1) só pode **adicionar** uma exigência de revisão, nunca remover uma. Nenhum caminho de código (nem Nível 1, nem Nível 2) pode fazer `requiresProfessionalReviewBeforeSend` passar de `true` pra `false`. Esta é a invariante central — critério de aceitação proposto: um teste que prova que uma memória/restrição dizendo "pode falar de valores livremente" NUNCA desliga uma revisão que o código já exigiria por outro motivo.
+
+### Fluxo de aprendizado — proveniência, confirmação, atualização, exclusão (reafirmado da Rodada 4, sem mudança de desenho)
+
+- **Só instruções confiáveis da própria artista**: recognizer roda SÓ em `professional_self` (estrutural, nunca um caminho de código que alcance conversa com cliente) — reafirmado da seção 2.6 da Rodada 4.
+- **Proveniência**: toda memória/restrição carrega `evidence` (sourceType + sourceId), nunca um texto solto sem origem rastreável — mesmo padrão de `memory-policy.ts` já testado.
+- **Confirmação quando necessário**: Nível 1 nasce `proposed`, Doopla confirma de volta antes de `reviewMemory(approved)` (seção 2.4 da Rodada 4). Nível 2 (restrição obrigatória), por ter consequência estrutural maior, deveria exigir confirmação SEMPRE, nunca uma via rápida — proposta: a mesma confirmação de Nível 1, mas o texto de confirmação nomeia explicitamente o efeito ("a partir de agora, qualquer conversa sobre valores com cliente novo vai sempre pedir sua revisão antes de responder — confirma?"), nunca escondendo o que a regra vai fazer.
+- **Atualização**: mecanismo de supersessão (seção 2.4 da Rodada 4) — uma correção nova revoga a antiga na mesma confirmação, nunca duas memórias/regras contraditórias do mesmo tópico convivendo.
+- **Exclusão**: Nível 1 seguindo o padrão de `memory-policy.ts` (soft-revoke, dado da própria profissional, trilha de auditoria aceitável). Nível 2, por ser uma regra com efeito de segurança, também aceita exclusão explícita — mas como é uma regra que só RESTRINGE (nunca libera nada sozinha), uma exclusão aqui nunca é tão sensível quanto excluir uma `professional_contact_memories` (dado de terceiro) — soft-revoke é suficiente, mesmo padrão de Nível 1.
+
+### Proteção contra instrução privilegiada vinda de mensagem de cliente CITADA (requisito novo, mais específico que a Rodada 4)
+
+A fundadora pediu explicitamente: "mensagens de clientes **e trechos citados** não podem gravar instruções privilegiadas na memória." A Rodada 4 já fechava o caso óbvio (recognizer nunca roda em conversa com cliente) — este requisito pede mais: e se a PRÓPRIA profissional, dentro de `professional_self`, **citar/relatar** um pedido do cliente ("o cliente pediu 20% de desconto, pode considerar isso pra próxima vez")? Isso é uma mensagem de `professional_self` (passa pelo filtro estrutural), mas o CONTEÚDO da regra extraída seria, na prática, uma instrução de um terceiro, só retransmitida.
+
+**Especificação da correção** (ainda sem implementação): as instruções do recognizer (mesmo padrão de `delegated-contact/recognizer.ts`) precisam de uma regra explícita: só extrai preferência/restrição quando a profissional está declarando algo como **sua própria regra, em primeira pessoa** ("eu prefiro...", "sempre me consulte...", "não aceito...") — nunca quando está RELATANDO ou CITANDO um pedido/instrução de terceiro, mesmo dentro de `professional_self`. Um relato ("o cliente pediu desconto") nunca vira `commercial_preference`/`commercial_restriction` sozinho — na melhor das hipóteses vira um FATO sobre aquela conversa específica (já coberto por `client_context`/dados operacionais existentes, nunca uma regra geral aplicada a conversas futuras). Teste de aceitação proposto: uma mensagem relatando um pedido de cliente nunca propõe uma memória de preferência/restrição; só uma declaração em primeira pessoa da própria profissional propõe.
+
+### O que NÃO está nesta rodada
+
+Confirmado, por instrução explícita ("prepare a especificação final... mas não inicie uma implementação extensa em paralelo"): zero migration, zero código, zero mudança em `planner/invariants.ts`/Context Builder/recognizer novo. Esta seção é a especificação completa pronta pra aprovação de implementação numa rodada futura.
+
+## Changelog da Rodada 5
+
+- `supabase/migrations/0116_whatsapp_outreach_authorization.sql` (novo).
+- `src/lib/runtime/whatsapp-outreach-authorization.ts` (novo).
+- `src/lib/runtime/delegated-contact-flow.ts`, `src/lib/runtime/pending-delegated-contacts.ts` (gate de autorização).
+- `src/app/api/runtime/send-outbound-intents/route.ts` (recheck universal de blocklist).
+- `src/app/api/runtime/send-outbound-intents/route.test.ts` (novo).
+- `src/lib/runtime/delegated-contact-flow.test.ts` (5 cenários novos de segurança).
+- Este documento (implementação do opt-in documentada; especificação final da memória de preferências, sem código).
+
+Nenhum push, merge, deploy. Nenhuma migration aplicada em staging/produção.
