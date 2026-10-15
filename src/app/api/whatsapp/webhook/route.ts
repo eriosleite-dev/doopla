@@ -199,33 +199,51 @@ async function handleInboundMessageWithCapture(supabase: any, message: WhatsappW
   }
 
   // Evidência durável verificada por resultado, nunca otimista — ver
-  // comentário completo em finish_whatsapp_inbound_raw_capture (0112):
-  //   routed       -> conversation_messages gravado (persist_inbound_message, idempotente por wamid desde 0111).
-  //   duplicate_event -> o claim acima (claimWhatsappInboundRawCaptureForProcessing) já serializa
-  //                      qualquer concorrência real pro MESMO wamid — nenhum dos dois call sites de
-  //                      claim_inbound_event pra wamid de cliente (claimRawInboundEvent aqui em
-  //                      intake-orchestration.ts, e o claim tardio da Pipeline pro ramo de identidade
-  //                      verificada, via claimInboundEvent em runtime/inbound-events.ts) pode mais
-  //                      rodar duas vezes em paralelo pro mesmo wamid, porque os dois só são
-  //                      alcançados DE DENTRO de handleWhatsappInboundMessage, agora sempre atrás
-  //                      desta claim. Logo claimed=false aqui só pode significar already_processed=true —
-  //                      genuinamente já tratado antes, nunca uma corrida em voo.
-  //   backlogged/abandoned -> conteúdo já durável em channel_inbound_intake_messages (append_channel_inbound_intake_message).
-  //   deferred     -> conteúdo já durável em professional_self_pending_messages, gravado ANTES de
-  //                   qualquer tentativa de ciclo (migration 0108) — nunca se perde mesmo que o drain falhe.
+  // comentário completo em finish_whatsapp_inbound_raw_capture (0112).
+  // Dois grupos, NUNCA tratados como o mesmo caso (achado da revisão
+  // do Head of AI, 15/10/2026, antes de ir pra staging):
+  //
+  //   COMPLETED — conteúdo numa posição durável e ESTÁVEL, nada mais
+  //   em voo pro conteúdo em si (mesmo que a CONVERSA siga aberta):
+  //     routed       -> conversation_messages gravado (persist_inbound_message, idempotente por wamid desde 0111).
+  //     duplicate_event -> o claim acima (claimWhatsappInboundRawCaptureForProcessing) já serializa
+  //                        qualquer concorrência real pro MESMO wamid — nenhum dos dois call sites de
+  //                        claim_inbound_event pra wamid de cliente (claimRawInboundEvent aqui em
+  //                        intake-orchestration.ts, e o claim tardio da Pipeline pro ramo de identidade
+  //                        verificada, via claimInboundEvent em runtime/inbound-events.ts) pode mais
+  //                        rodar duas vezes em paralelo pro mesmo wamid, porque os dois só são
+  //                        alcançados DE DENTRO de handleWhatsappInboundMessage, agora sempre atrás
+  //                        desta claim. Logo claimed=false aqui só pode significar already_processed=true —
+  //                        genuinamente já tratado antes, nunca uma corrida em voo.
+  //     backlogged/abandoned -> conteúdo já durável em channel_inbound_intake_messages
+  //                        (append_channel_inbound_intake_message RODA ANTES de qualquer um dos dois
+  //                        serem retornados, intake-orchestration.ts) — a MENSAGEM terminou sua
+  //                        jornada aqui, mesmo que a sessão de intake continue aguardando o cliente.
+  //
+  //   DELEGATED — conteúdo já durável, mas a responsabilidade pelo que
+  //   falta é de OUTRO mecanismo, que AINDA está com uma tentativa
+  //   ativa em andamento (não alcançou nem o próprio estado terminal):
+  //     deferred -> conteúdo em professional_self_pending_messages, gravado ANTES de qualquer
+  //                 tentativa de ciclo (migration 0108) — nunca se perde mesmo que o drain falhe —
+  //                 mas resolveProfessionalSelfAndFinish só devolve 'deferred' quando
+  //                 drainResult.watchedStatus AINDA NÃO é 'completed' (pending/processing de
+  //                 verdade) — marcar isso 'completed' aqui esconderia que uma tentativa real
+  //                 segue em andamento noutro lugar.
+  //
   // invalid_phone nunca é sucesso durável em lugar nenhum além desta
   // própria captura (hoje o telefone bruto é só descartado, silencioso
   // — mesmo comportamento de antes da Fase 1) — fica needs_attention de
   // propósito: visível pra investigação (número num formato
   // inesperado?), nunca reinterpretado como sucesso.
-  const isDurableSuccess = result.kind === 'routed' || result.kind === 'duplicate_event' || result.kind === 'backlogged' || result.kind === 'abandoned' || result.kind === 'deferred';
+  const isStableDurable = result.kind === 'routed' || result.kind === 'duplicate_event' || result.kind === 'backlogged' || result.kind === 'abandoned';
+  const isDelegatedElsewhere = result.kind === 'deferred';
 
   await finishWhatsappInboundRawCapture(supabase, {
     providerMessageId: message.id,
     workerId: RAW_CAPTURE_WORKER_ID,
-    status: isDurableSuccess ? 'completed' : 'needs_attention',
+    status: isStableDurable ? 'completed' : isDelegatedElsewhere ? 'delegated' : 'needs_attention',
     resultKind: result.kind,
-    error: isDurableSuccess ? null : `resultado não reconhecido como sucesso durável: ${result.kind}`,
+    error: isStableDurable || isDelegatedElsewhere ? null : `resultado não reconhecido como sucesso durável: ${result.kind}`,
   });
 }
 

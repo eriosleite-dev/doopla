@@ -351,10 +351,83 @@ Execução autorizada pela fundadora/Head of AI (15/10/2026, após aprovar o esc
 3. **Teste funcional real recomendado** (diferente da Fase 0, aqui vale mais a pena): mandar uma mensagem de teste pelo número de staging do WhatsApp, se existir, e confirmar `select * from whatsapp_inbound_raw_captures order by captured_at desc limit 1` mostra a linha `completed` com `result_kind` coerente — prova viva de que o webhook de staging está realmente rodando o código novo, não só que a migration aplicou.
 4. Só depois disso, proposta de produção, mesmo fluxo de aprovação explícita da Fase 0.
 
-### 8.6 Recomendação
+### 8.6 Recomendação (original)
 
-Fase 1 fecha a lacuna mais grave que o Head of AI apontou (mensagem perdida antes de qualquer registro) com o menor escopo possível — sem sweep, sem mudança de comportamento observável pro cliente hoje (a Passagem 2 roda exatamente a mesma lógica de antes). Risco de regressão baixo: toda a suíte de testes existente continua verde, e os testes novos (Postgres real + vitest) cobrem especificamente os cenários que a fundadora/Head of AI exigiram. Recomendo seguir a sequência da seção 8.5 assim que houver aprovação pra tocar staging.
+Fase 1 fecha a lacuna mais grave que o Head of AI apontou (mensagem perdida antes de qualquer registro) com o menor escopo possível — sem sweep, sem mudança de comportamento observável pro cliente hoje (a Passagem 2 roda exatamente a mesma lógica de antes). Risco de regressão baixo: toda a suíte de testes existente continua verde, e os testes novos (Postgres real + vitest) cobrem especificamente os cenários que a fundadora/Head of AI exigiram.
+
+---
+
+## 9. Conferência final pré-staging (revisão do Head of AI, 15/10/2026)
+
+Resposta aos 8 pontos pedidos antes de aplicar em staging. **Achado real que mudou código** no ponto 1 — os demais confirmam o desenho já entregue, com evidência de código, não só reafirmação.
+
+### 9.1 Ponto 1 — nenhuma captura marcada `completed` se o processamento falhou, ficou `deferred`, ou outro estado pendente
+
+**Achado real, corrigido antes de staging.** O código original marcava `deferred` como `completed` — eu tinha verificado que o CONTEÚDO estava durável (`professional_self_pending_messages`, migration 0108), mas não diferenciava isso de um resultado genuinamente FINALIZADO. A revisão do Head of AI está certa em cobrar essa distinção: `resolveProfessionalSelfAndFinish` (intake-orchestration.ts:362-365) só devolve `'deferred'` quando `drainResult.watchedStatus !== 'completed'` — ou seja, a linha em `professional_self_pending_messages` está ATIVAMENTE `pending`/`processing`, uma tentativa real ainda em andamento, não um resultado de repouso.
+
+**Correção**: novo status `delegated` (migration 0112, `whatsapp_inbound_raw_captures.status` CHECK estendido pra `('pending', 'processing', 'completed', 'delegated', 'needs_attention')`). `finish_whatsapp_inbound_raw_capture` agora aceita três desfechos, não dois. `deferred` → `delegated` (conteúdo durável, responsabilidade ativa em outro mecanismo com seu próprio ciclo de retomada já testado). `routed`/`duplicate_event`/`backlogged`/`abandoned` continuam `completed` (conteúdo numa posição durável e ESTÁVEL — nada mais em voo pro conteúdo em si). Exceção ou resultado não reconhecido continuam `needs_attention`, nunca por omissão.
+
+Retestado contra Postgres real: `delegated` nunca reclamado de novo (terminal nesta fase, igual `completed`), purga conteúdo na hora (LGPD, igual `completed`), distinto de `needs_attention` (nunca implica falha) e de `completed` (nunca implica resultado definitivo). `route.test.ts` atualizado: teste dedicado prova `deferred` → `delegated`, nunca `completed`. Suíte completa revalidada (207/207, build verde).
+
+### 9.2 Ponto 2 — `backlogged` só completo quando a mensagem está efetivamente preservada
+
+Confirmado por leitura de código, linha a linha: em `handleWhatsappInboundMessage` (intake-orchestration.ts), `append_channel_inbound_intake_message` (linha 541-547) roda **incondicionalmente, ANTES** de qualquer branch que possa devolver `backlogged` (`needs_confirmation`, linha 560-571; `no_signal`, linha 573-589) ou `abandoned` (linha 549-558). Se essa chamada lançar exceção, a exceção propaga até `handleInboundMessageWithCapture`, que marca a captura `needs_attention` — nunca chega a devolver `backlogged`/`abandoned` sem o append ter commitado primeiro. Não há caminho de código onde `backlogged` é devolvido sem a mensagem já estar em `channel_inbound_intake_messages`.
+
+### 9.3 Ponto 3 — dois webhooks concorrentes nunca executam o mesmo processamento nem seus efeitos externos
+
+`claim_whatsapp_inbound_raw_capture_for_processing` é a ÚNICA porta de entrada pra `handleWhatsappInboundMessage` desde a Fase 1 — toda entrega (original ou reentrega da Meta) precisa reclamar a captura antes de processar; só uma consegue por vez (`UPDATE ... WHERE status='pending' OR (status='processing' AND lease vencida)`, atômico). Qualquer efeito externo (`sendSystemWhatsappMessage`, `triggerInboundMessage`) só acontece DE DENTRO de `handleWhatsappInboundMessage` — logo, nunca em paralelo pro mesmo wamid. **Provado sob concorrência real** (seção 8.3, testes 8-9): 25 processos de SO distintos disputando a mesma captura/claim — sempre exatamente 1 vencedor, nos dois casos. Isso também fecha uma pergunta que a seção 2 deste ADR tinha deixado em aberto (`claim_inbound_event`'s `already_processed=false` — lease viva noutro worker): esse cenário agora é estruturalmente inalcançável pro wamid de cliente, porque o claim novo da Fase 1 serializa tudo antes disso.
+
+### 9.4 Ponto 4 — Passagem 1 só responde 200 depois de persistir TODAS as mensagens elegíveis; falha transitória → 503
+
+Confirmado por leitura literal de `route.ts`: o loop da Passagem 1 tenta capturar CADA mensagem elegível do lote (nunca para no primeiro erro — tenta capturar o máximo possível, reduzindo trabalho repetido na reentrega), setando `captureFailed=true` em qualquer falha. `if (captureFailed) return new NextResponse(null, { status: 503 })` roda **antes** de qualquer linha da Passagem 2. HTTP 200 só é alcançável depois do loop inteiro da Passagem 1 terminar com `captureFailed=false`. Testado explicitamente (`route.test.ts`): captura única falhando → 503, Passagem 2 nunca chamada; lote de 2 mensagens com a 2ª falhando → 503 pro lote INTEIRO, nem a 1ª (que capturou OK) é processada.
+
+### 9.5 Ponto 5 — permissões, RLS, retenção, compatibilidade com 0111, rollback de 0112
+
+- **Permissões**: as 4 functions seguem exatamente o padrão de toda function sensível do projeto desde 0051 — `revoke all ... from public`, `grant execute ... to service_role`, `revoke execute ... from anon, authenticated`. Confirmado por grep nas 4, sem exceção.
+- **RLS**: `alter table whatsapp_inbound_raw_captures enable row level security`, nenhuma policy pra `authenticated`/`anon` — mesmo padrão de `inbound_events`/`professional_self_pending_messages`. `service_role` bypassa RLS (comportamento padrão do Supabase, não uma policy).
+- **Retenção**: `needs_attention` retém corpo até `purge_expired_whatsapp_inbound_raw_captures` (30 dias, SEM cron — risco residual já declarado na seção 8.4). `completed`/`delegated` zeram o corpo na hora do `finish`, nunca retêm.
+- **Compatibilidade com 0111**: 0112 não toca nenhum objeto de 0111 — tabela nova, functions novas, zero sobreposição. O fluxo que a Fase 1 envolve (`handleInboundMessage` → `handleWhatsappInboundMessage` → `triggerInboundMessage` → pipeline → `persist_inbound_message`) continua passando `providerMessageId` exatamente como antes — a proteção de idempotência da Fase 0 (0111) fica intacta e ativa por baixo da Fase 1, sem nenhuma mudança.
+- **Rollback de 0112** (diferença importante em relação ao de 0111, que era retrocompatível com código antigo — este NÃO é):
+  ```sql
+  drop function if exists public.purge_expired_whatsapp_inbound_raw_captures(integer);
+  drop function if exists public.finish_whatsapp_inbound_raw_capture(text, text, text, text, text);
+  drop function if exists public.claim_whatsapp_inbound_raw_capture_for_processing(text, text, integer);
+  drop function if exists public.capture_whatsapp_inbound_raw_message(text, text, text, text, bigint);
+  drop table if exists public.whatsapp_inbound_raw_captures;
+  ```
+  **Aviso explícito**: ao contrário de 0111 (onde o código antigo continuava funcionando perfeitamente mesmo sem a migration, porque os parâmetros novos tinham `default null`), o `route.ts` da Fase 1 chama as 4 RPCs de 0112 **incondicionalmente** — se a migration for revertida enquanto o código novo ainda estiver no ar, TODO webhook de WhatsApp passa a falhar (RPC inexistente). Rollback de 0112 só é seguro se feito JUNTO com a reversão do deploy do código (`route.ts` de volta à versão pré-Fase 1), nunca um sem o outro. Isso é inerente ao desenho (a Passagem 1 é, de propósito, obrigatória) — registrado aqui pra nunca ser esquecido na hora de um rollback real.
+
+### 9.6 Ponto 6 — consulta operacional read-only (enquanto `needs_attention` não tem painel)
+
+Preparada separadamente, entregue em arquivo: 5 blocos SELECT — visão geral por status, fila de atenção (`needs_attention`/`processing`/`pending`, com dado pessoal só visível quando `needs_attention` genuíno), alerta de lease vencida persistente (webhook parado?), `delegated` há muito tempo sem o drain concluir, e `needs_attention` perto do prazo de purge. Nenhuma escrita, segura de rodar a qualquer momento.
+
+### 9.7 Ponto 7 — plano de validação funcional em staging (webhook completo, não só a migration)
+
+Pré-requisitos: migration 0112 aplicada em staging + esta branch deployada num ambiente de staging (preview) que sirva `/api/whatsapp/webhook` com o código novo — nenhum dos dois feito ainda, plano pra quando houver aprovação.
+
+1. **Confirmar schema**: consulta de catálogo equivalente à de 0111 (vou preparar a versão de 0112 nessa hora) — tabela + 4 functions existem com a assinatura certa.
+2. **Requisição sintética direta ao endpoint de staging** (nunca pelo WhatsApp real — sem enviar mensagem indevida nenhuma): um `curl` assinado com o `WHATSAPP_APP_SECRET` de staging (só quem tem acesso a staging consegue gerar a assinatura — não eu, nesta sessão) simulando o payload da Meta, direto pro endpoint `/api/whatsapp/webhook` de staging. Isso testa o código REAL (Next.js + Postgres de staging) sem depender do número de WhatsApp real nem da Meta de verdade.
+3. **Matriz de cenários a rodar**:
+   - Mensagem única de texto → confirmar `whatsapp_inbound_raw_captures` tem 1 linha `completed`, `result_kind` coerente.
+   - Mesmo `wamid` enviado duas vezes seguidas (simula reentrega da Meta) → confirmar ainda 1 linha, mesmo `id`.
+   - Lote com 2 mensagens, `wamid`s diferentes → confirmar as duas capturadas e processadas independentemente.
+   - Assinatura inválida → 401, nenhuma linha criada.
+   - JSON malformado → 400 (comportamento já existente, só confirmando que não regrediu).
+4. **O que NÃO dá pra simular com segurança em staging**: falha de banco durante a captura (exigiria derrubar a conexão de staging de propósito — arriscado demais pro ambiente compartilhado). Essa cobertura já está feita (seção 8.3, `route.test.ts`, mock de falha de captura → 503) — staging valida a integração REAL entre o código e o Postgres de verdade, não reinjeta falha; são complementares, não o mesmo teste duas vezes.
+5. Checar a consulta operacional (9.6) depois de cada cenário — confirma visibilidade real, não só o código "parece certo".
+6. Usar um número de telefone de teste (nunca um contato real) em todos os payloads sintéticos — nenhum dado de cliente de verdade tocado.
+
+### 9.8 Ponto 8 — auditoria da separação dos 24 commits locais
+
+**Achado real, não assumido**: os 24 commits são uma cadeia linear nesta branch. Os 3 commits represados pelo template (`97d35ff`, `31a2e36`, `308a84d` — os três mais antigos, logo após o último push) estão na BASE da história; todo o resto (Charter, Fase 0, correção do link, Fase 1, ADRs) foi construído EM CIMA deles. Isso significa:
+
+- **Hoje, publicar esta branch (push) publica os 24 juntos** — não existe um "fast-forward parcial" que leve só os 21 de cima sem os 3 de baixo, porque eles são a base da linha do tempo.
+- **Dependência real encontrada** (não só teórica): `src/lib/runtime/delegated-contact-flow.ts` e seu `.test.ts` foram tocados tanto pelos 3 commits represados (Etapa 2.1) quanto por commits posteriores (Etapa A/Head of AI, adicionando `logAiUsageEvent` nesse mesmo arquivo). O CONTEÚDO que se sobrepõe é só instrumentação de custo de IA — **nenhuma relação com o template do WhatsApp** — mas um `git cherry-pick` dos 21 commits de cima sozinhos, direto em cima do `origin` atual, provavelmente geraria conflito nesse arquivo (o diff dos commits de cima foi calculado sobre uma versão do arquivo que já inclui as mudanças dos 3 de baixo).
+
+**O que isso significa na prática**: não existe uma ação de git "grátis" pra publicar só a Fase 0/1 sem o trabalho pendente do template. As opções reais são: (a) continuar como está — tudo represado até a aprovação da Meta, sem nenhum risco ou trabalho extra; (b) criar uma branch nova a partir do `origin` atual e reconstruir manualmente só as mudanças de Fase 0/1/ADRs/link nela (recriar `delegated-contact-flow.ts` com só a parte de `logAiUsageEvent`, sem as mudanças de Etapa 2.1) — trabalho real de engenharia, com risco de erro humano/meu ao separar os dois na mão, não uma operação mecânica seguro.
+
+**Minha recomendação**: manter a opção (a) — nenhuma urgência força publicar Fase 0/1 antes da aprovação do template (nada do que foi feito nesta sessão depende de produção estar rodando o código novo; a migration 0111 já está em produção, aplicada manualmente, sem precisar do código correspondente no ar até a Fase 0 do código ser deployada). Se a fundadora decidir que quer Fase 0/1 em produção ANTES da aprovação do template, aí sim vale o esforço de (b) — mas nunca algo que eu faria sem pedir aprovação explícita primeiro, dado o risco de erro numa separação manual de histórico.
 
 ## Próximo passo
 
-Aguardando aprovação pra aplicar a migration 0112 em staging (seção 8.5). Depois de validada: Fase 2 (recuperação automática dos eventos elegíveis) é o próximo item, já anunciado pela fundadora como prioridade seguinte. Fase 3 continua bloqueada.
+Conferência da seção 9 concluída, com um achado real corrigido (ponto 1, status `delegated`) antes de qualquer aplicação. Aguardando aprovação pra aplicar a migration 0112 (versão corrigida) em staging (sequência: seção 8.5 + plano funcional da seção 9.7). Depois de validada: Fase 2 (recuperação automática dos eventos elegíveis) é o próximo item, já anunciado pela fundadora como prioridade seguinte. Fase 3 continua bloqueada.

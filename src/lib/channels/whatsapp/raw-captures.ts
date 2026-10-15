@@ -48,7 +48,12 @@ export async function claimWhatsappInboundRawCaptureForProcessing(
 
 export async function finishWhatsappInboundRawCapture(
   supabase: AnySupabaseClient,
-  params: { providerMessageId: string; workerId: string; status: 'completed' | 'needs_attention'; resultKind?: string | null; error?: string | null }
+  // 'delegated' (achado da revisão do Head of AI, 15/10/2026): distinto
+  // de 'completed' — conteúdo já durável, mas noutro mecanismo (ex.:
+  // professional_self_pending_messages) que AINDA está com uma
+  // tentativa ativa em andamento, não um resultado definitivo. Ver
+  // comentário completo em finish_whatsapp_inbound_raw_capture (0112).
+  params: { providerMessageId: string; workerId: string; status: 'completed' | 'delegated' | 'needs_attention'; resultKind?: string | null; error?: string | null }
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc('finish_whatsapp_inbound_raw_capture', {
     p_provider_message_id: params.providerMessageId,

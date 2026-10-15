@@ -174,14 +174,31 @@ describe('POST /api/whatsapp/webhook — Fase 1, duas passagens', () => {
     ['duplicate_event', { kind: 'duplicate_event' }],
     ['backlogged', { kind: 'backlogged', intakeId: 'i1', promptSent: true }],
     ['abandoned', { kind: 'abandoned', intakeId: 'i1' }],
-    ['deferred', { kind: 'deferred', conversationId: 'c1' }],
-  ])('resultado "%s" tem evidência durável verificada em outro lugar -> completed', async (_label, result) => {
+  ])('resultado "%s" pousa numa posição durável e ESTÁVEL -> completed', async (_label, result) => {
     const { POST } = await import('./route');
     handleWhatsappInboundMessage.mockResolvedValue(result);
 
     await POST(makePostRequest(textMessagePayload([{ id: 'wamid.1', from: '5511988887777', body: 'Oi' }])));
 
     expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: 'completed', resultKind: result.kind }));
+  });
+
+  // Achado da revisão do Head of AI (15/10/2026), antes de ir pra
+  // staging: 'deferred' NUNCA é completed — o conteúdo já está durável
+  // (professional_self_pending_messages), mas essa linha ainda está
+  // pending/processing (tentativa ativa, não terminou nem o PRÓPRIO
+  // ciclo) quando resolveProfessionalSelfAndFinish devolve isso.
+  // 'delegated' nomeia exatamente essa diferença — nunca confundido
+  // com um sucesso definitivo, nunca com uma falha (needs_attention
+  // sugeriria erro, quando é só uma retomada normal já testada em
+  // professional-self-pending-messages.test.ts).
+  it('resultado "deferred" -> delegated, nunca completed (responsabilidade ainda ativa noutro mecanismo)', async () => {
+    const { POST } = await import('./route');
+    handleWhatsappInboundMessage.mockResolvedValue({ kind: 'deferred', conversationId: 'c1' });
+
+    await POST(makePostRequest(textMessagePayload([{ id: 'wamid.1', from: '5511988887777', body: 'Oi' }])));
+
+    expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: 'delegated', resultKind: 'deferred' }));
   });
 
   it('telefone inválido NUNCA é otimisticamente completed — fica needs_attention (nunca teve destino durável antes da Fase 1)', async () => {

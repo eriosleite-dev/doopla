@@ -42,7 +42,22 @@ create table public.whatsapp_inbound_raw_captures (
   contact_name text,
   provider_timestamp_seconds bigint,
 
-  status text not null default 'pending' check (status in ('pending', 'processing', 'completed', 'needs_attention')),
+  -- 'delegated' (achado da revisão do Head of AI, 15/10/2026, antes de
+  -- aplicar em staging): distinto de 'completed' de propósito.
+  -- routed/duplicate_event/backlogged/abandoned pousam numa posição
+  -- durável e ESTÁVEL (conversation_messages ou
+  -- channel_inbound_intake_messages — nada mais "em voo" pro conteúdo
+  -- em si, mesmo que a CONVERSA continue aberta). 'deferred'
+  -- (resolveProfessionalSelfAndFinish, intake-orchestration.ts) é
+  -- diferente: o conteúdo está em professional_self_pending_messages,
+  -- mas essa linha ainda está ATIVAMENTE pending/processing — não
+  -- alcançou nem o PRÓPRIO estado terminal. Marcar isso 'completed'
+  -- esconderia que ainda há uma tentativa em andamento noutro lugar;
+  -- marcar 'needs_attention' sugeriria falha, quando é só uma retomada
+  -- normal (drain cron, já testado). 'delegated' nomeia exatamente o
+  -- que é: conteúdo durável, responsabilidade formalmente passada pra
+  -- outro mecanismo com seu próprio ciclo de retomada.
+  status text not null default 'pending' check (status in ('pending', 'processing', 'completed', 'delegated', 'needs_attention')),
 
   -- Observabilidade (exigência explícita desta rodada: falha
   -- registrada de forma visível, nunca silenciosa) — result_kind
@@ -68,7 +83,7 @@ create table public.whatsapp_inbound_raw_captures (
   updated_at timestamptz not null default now()
 );
 
-comment on table public.whatsapp_inbound_raw_captures is 'Fase 1 (ADR 0002) — captura durável e idempotente de toda mensagem de texto elegível do webhook do WhatsApp, ANTES de qualquer resolução de identidade/roteamento. status=completed (sucesso real, verificado pelo caminho que realmente processou — nunca otimista) zera body/from_phone/contact_name na hora (LGPD, o dado já está durável em outro lugar: conversation_messages ou um mecanismo de fila já existente e auditado, ver finish_whatsapp_inbound_raw_capture). status=needs_attention retém o conteúdo até purge_expired_whatsapp_inbound_raw_captures (função definida, SEM cron automático nesta rodada — escopo mínimo, retomada automática fica pra Fase 2). Nunca confundir com inbound_events (0051, só idempotência física, sem conteúdo) nem com outbound_intents.provider_message_id (wamid de um ENVIO nosso, não de uma mensagem recebida).';
+comment on table public.whatsapp_inbound_raw_captures is 'Fase 1 (ADR 0002) — captura durável e idempotente de toda mensagem de texto elegível do webhook do WhatsApp, ANTES de qualquer resolução de identidade/roteamento. status=completed (sucesso real, verificado pelo caminho que realmente processou — nunca otimista, conteúdo já numa posição durável e ESTÁVEL: conversation_messages ou channel_inbound_intake_messages) e status=delegated (conteúdo já durável mas noutro mecanismo que AINDA está com uma tentativa ativa em andamento — professional_self_pending_messages, achado da revisão do Head of AI 15/10/2026: nunca confundir com completed) zeram body/from_phone/contact_name na hora (LGPD, ver finish_whatsapp_inbound_raw_capture). status=needs_attention retém o conteúdo até purge_expired_whatsapp_inbound_raw_captures (função definida, SEM cron automático nesta rodada — escopo mínimo, retomada automática fica pra Fase 2). Nunca confundir com inbound_events (0051, só idempotência física, sem conteúdo) nem com outbound_intents.provider_message_id (wamid de um ENVIO nosso, não de uma mensagem recebida).';
 
 create index whatsapp_inbound_raw_captures_status_idx on public.whatsapp_inbound_raw_captures (status, captured_at);
 
@@ -185,15 +200,15 @@ grant execute on function public.claim_whatsapp_inbound_raw_capture_for_processi
 revoke execute on function public.claim_whatsapp_inbound_raw_capture_for_processing from anon, authenticated;
 
 -- ============================================================
--- 4. Finish — só dois desfechos possíveis, e só a função que RECLAMOU
+-- 4. Finish — três desfechos possíveis, e só a função que RECLAMOU
 --    pode terminar (lease_worker_id precisa bater — defesa em
 --    profundidade contra um worker zumbi, com a tentativa anterior
 --    ainda rodando depois da lease ter expirado e sido reclamada por
 --    outro, terminando por cima de um processamento mais novo).
---    'completed' só deve ser chamado quando o CAMINHO que processou a
---    mensagem alcançou um estado durável de sucesso verificado (nunca
---    otimista) — essa verificação é responsabilidade do chamador (TS),
---    documentada em detalhe no comentário da function.
+--    'completed'/'delegated' só devem ser chamados quando o CAMINHO
+--    que processou a mensagem alcançou um estado durável verificado
+--    (nunca otimista) — essa verificação é responsabilidade do
+--    chamador (TS), documentada em detalhe no comentário da function.
 -- ============================================================
 create function public.finish_whatsapp_inbound_raw_capture(
   p_provider_message_id text,
@@ -212,20 +227,24 @@ begin
   if not public.is_system_caller() then
     raise exception 'not_authorized' using errcode = '42501';
   end if;
-  if p_status not in ('completed', 'needs_attention') then
+  if p_status not in ('completed', 'delegated', 'needs_attention') then
     raise exception 'invalid_status' using errcode = '22023';
   end if;
 
-  if p_status = 'completed' then
+  if p_status in ('completed', 'delegated') then
     update public.whatsapp_inbound_raw_captures
-    set status = 'completed', result_kind = p_result_kind, last_error = null,
+    set status = p_status, result_kind = p_result_kind, last_error = null,
         -- LGPD: o dado só serve pra reconstruir o processamento se ele
-        -- falhar. Sucesso real já tem o conteúdo em outro lugar durável
-        -- (conversation_messages via persist_inbound_message idempotente,
-        -- 0111; ou channel_inbound_intake_messages; ou
-        -- professional_self_pending_messages — todos já auditados,
-        -- nunca esta tabela de novo) — zera na hora, mesmo padrão de
-        -- finish_professional_self_pending_message (0108).
+        -- falhar. completed já tem o conteúdo em outro lugar durável e
+        -- ESTÁVEL (conversation_messages via persist_inbound_message
+        -- idempotente, 0111; ou channel_inbound_intake_messages —
+        -- ambos já auditados, nunca esta tabela de novo). delegated
+        -- também já tem o conteúdo durável, só que em
+        -- professional_self_pending_messages, cujo PRÓPRIO ciclo de
+        -- retomada (drain cron, já testado) segue responsável por ele
+        -- a partir daqui — nunca esta tabela de novo. Nos dois casos,
+        -- zera na hora (mesmo padrão de
+        -- finish_professional_self_pending_message, 0108).
         from_phone = null, body = null, contact_name = null,
         processed_at = now(), updated_at = now()
     where provider_message_id = p_provider_message_id and status = 'processing' and lease_worker_id = p_worker_id;
@@ -241,7 +260,7 @@ begin
 end;
 $$;
 
-comment on function public.finish_whatsapp_inbound_raw_capture is 'Fase 1 (ADR 0002) — fim da Passagem 2, por mensagem. Só atualiza quando status=processing E lease_worker_id bate com p_worker_id (nunca um worker com lease já vencida/reclamada por outro termina por cima de um processamento mais novo). Contrato do chamador (TS): p_status=completed só depois de handleWhatsappInboundMessage retornar um resultado reconhecido E com evidência verificada de que esse resultado é durável — routed (conversation_messages gravado), duplicate_event (já processado antes — seguro aqui porque o claim acima já serializa qualquer concorrência real pro mesmo wamid, então claimed=false só pode significar already_processed=true neste ponto do fluxo), backlogged/abandoned (conteúdo já durável em channel_inbound_intake_messages) ou deferred (conteúdo já durável em professional_self_pending_messages, ANTES de qualquer tentativa de ciclo). Qualquer exceção, ou um retorno não reconhecido, vira needs_attention — nunca completed por omissão.';
+comment on function public.finish_whatsapp_inbound_raw_capture is 'Fase 1 (ADR 0002) — fim da Passagem 2, por mensagem. Só atualiza quando status=processing E lease_worker_id bate com p_worker_id (nunca um worker com lease já vencida/reclamada por outro termina por cima de um processamento mais novo). Contrato do chamador (TS): p_status=completed só depois de handleWhatsappInboundMessage retornar routed (conversation_messages gravado), duplicate_event (já processado antes — seguro aqui porque o claim acima já serializa qualquer concorrência real pro mesmo wamid, então claimed=false só pode significar already_processed=true neste ponto do fluxo) ou backlogged/abandoned (conteúdo já durável e ESTÁVEL em channel_inbound_intake_messages — nada mais em voo pro conteúdo, mesmo que a conversa siga aberta). p_status=delegated (achado da revisão do Head of AI, 15/10/2026) é pra deferred especificamente — conteúdo já durável em professional_self_pending_messages, mas essa linha AINDA está pending/processing (não alcançou nem o próprio estado terminal) — nunca completed, nunca confundido com um sucesso definitivo. Qualquer exceção, ou um retorno não reconhecido, vira needs_attention — nunca completed/delegated por omissão.';
 
 revoke all on function public.finish_whatsapp_inbound_raw_capture from public;
 grant execute on function public.finish_whatsapp_inbound_raw_capture to service_role;
