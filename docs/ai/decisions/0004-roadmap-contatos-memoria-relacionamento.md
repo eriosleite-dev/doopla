@@ -1,7 +1,7 @@
 # ADR 0004 — Roadmap: Doopla como representante inteligente (contatos, memória de relacionamento, aprendizado)
 
 - **Data:** 2026-10-15
-- **Status:** Rodada 1 (15/10/2026): auditoria concluída, proposta de desenho (Prioridade 2, cartões de contato) apresentada, nada implementado. Rodada 2 (15/10/2026, pós-revisão final da Fase 2): arquitetura integrada + MVP de memória de contatos ("fala com a Marina") propostos em detalhe. Rodada 3 (15/10/2026): arquitetura APROVADA pela fundadora/Head of AI com 2 decisões e 3 condições; núcleo de memória de contatos (migration 0115 + lookup em `delegated-contact-flow.ts`) **implementado e testado localmente** (Postgres real + vitest); integração do webhook pra cartões de contato permanece **só proposta**, aguardando Fase 1/2 validadas em staging — ver seção dedicada abaixo.
+- **Status:** Rodada 1 (15/10/2026): auditoria concluída, proposta de desenho (Prioridade 2, cartões de contato) apresentada, nada implementado. Rodada 2 (15/10/2026, pós-revisão final da Fase 2): arquitetura integrada + MVP de memória de contatos ("fala com a Marina") propostos em detalhe. Rodada 3 (15/10/2026): arquitetura APROVADA pela fundadora/Head of AI com 2 decisões e 3 condições; núcleo de memória de contatos (migration 0115 + lookup em `delegated-contact-flow.ts`) **implementado e testado localmente** (Postgres real + vitest); integração do webhook pra cartões de contato permanece **só proposta**, aguardando Fase 1/2 validadas em staging. Rodada 4 (15/10/2026): auditoria de opt-in inicial (lacuna real encontrada e diagnosticada, correção mínima proposta, não implementada) + arquitetura de memória de preferências profissionais (proposta, não implementada) — ver seções dedicadas abaixo.
 - **Autor:** Claude Code (Principal AI Engineer), a pedido da fundadora/Head of AI
 - **Escopo**: resposta às 6 prioridades da mensagem de 15/10/2026. Prioridade 1 (link de orçamento) já corrigida e commitada localmente (ver changelog no fim). Prioridades 2-6 são auditoria + proposta, não implementação.
 
@@ -393,3 +393,99 @@ MVP de memória de contatos (núcleo + lookup) implementado, testado localmente,
 - Migration 0114 (pendência do ADR 0002, seção 14.7) revalidada contra Postgres real nesta rodada — resolvida.
 
 Nenhum push, merge, deploy. Nenhuma migration aplicada em staging/produção.
+
+---
+
+# Rodada 4 (15/10/2026) — Auditoria de opt-in inicial + arquitetura de memória de preferências profissionais
+
+Fundadora/Head of AI aprovaram o MVP de memória de contatos (Rodada 3) como concluído e validado. Antes de prosseguir, pediram duas coisas, **só diagnóstico e arquitetura, nenhuma implementação**: (1) distinguir com precisão o opt-in exigido pela Meta ANTES do primeiro contato de `checkRecipientConsent` (que avalia a resposta DEPOIS do primeiro template já enviado); (2) arquitetura mínima pra memória de preferências profissionais, usando `memory-policy.ts`. **Nenhum push, merge, deploy, migration nova ou mudança no webhook nesta rodada.**
+
+## 1. Auditoria: verificação de opt-in inicial vs. `checkRecipientConsent`
+
+A distinção que a fundadora pediu pra nunca confundir é real e a auditoria a confirma: **são dois mecanismos completamente diferentes, em momentos diferentes, e só um dos dois existe no código hoje.**
+
+- **Opt-in exigido pela Meta**: autorização do DESTINATÁRIO, obtida ANTES de qualquer mensagem iniciada pelo negócio, que legitima o negócio a dar o primeiro passo (mandar um template). É uma exigência de política comercial da Meta (quem fiscaliza é a própria Meta, via qualidade do número/denúncias de spam — a API não verifica isso tecnicamente, só exige que a PRIMEIRA mensagem fora da janela de 24h seja um template aprovado).
+- **`checkRecipientConsent`**: lê a PRIMEIRA RESPOSTA do destinatário DEPOIS que o template já foi enviado, decidindo só se o TEXTO LITERAL original da profissional pode seguir. Isso nunca é opt-in — é uma leitura de reação a um contato que JÁ aconteceu.
+
+### As 5 perguntas, respondidas com evidência de código
+
+**Onde a autorização inicial é verificada?** Em lugar nenhum. Rastreei `handleNewRequest` → `advanceOrAskForMissing` → `handleFirstGateDecision` (a profissional confirma "sim, pode mandar") → `executeTemplateSend` (`delegated-contact-flow.ts`). A ÚNICA confirmação exigida antes do template ser enviado é a da PRÓPRIA PROFISSIONAL aprovando seu próprio pedido — nunca uma confirmação de que o destinatário deu consentimento prévio pra ser contatado. Busquei "opt-in"/"optin" em todo o código: a única ocorrência é de uma feature não relacionada (Comunidade, `community_profiles`, migration 0059) — zero relação com WhatsApp/outreach.
+
+**Qual é a evidência dessa autorização?** Nenhuma é coletada, nem antes nem depois. `recipient_first_reply_message_id` (migration 0109) é a única coisa que se parece com "evidência" — mas ela só existe DEPOIS do template já enviado, e o próprio comentário da migration já documenta isso como "auditoria, nunca usado pra decidir nada sozinho" (nunca foi desenhado como prova de opt-in prévio).
+
+**O que acontece quando ela é desconhecida?** Nada — porque o sistema não tem a variável "opt-in do destinatário" em lugar nenhum do seu modelo de dados ou lógica. `executeTemplateSend` roda incondicionalmente assim que a profissional aprova; não existe um estado "desconhecido" que bloqueie, porque não existe o conceito pra começar.
+
+**Um número recém-compartilhado pela artista pode gerar envio sem opt-in verificável?** **Sim — hoje, exatamente como qualquer outro número.** A memória de contatos (Rodada 3) não piora nem melhora isso: ela só decide se a Doopla PERGUNTA o número de novo, nunca se o número pode receber um template. Um telefone digitado agora mesmo segue o idêntico caminho de um memorizado há meses — aprovação da profissional, template enviado, zero verificação do lado do destinatário.
+
+**Como são respeitados pedidos de descadastramento ou bloqueio?** Só PARCIALMENTE, e só DENTRO do pedido em andamento: se a resposta do destinatário ao template é lida como `declined` por `checkRecipientConsent`, o TEXTO LITERAL daquele pedido específico não é enviado. Mas isso não cria nenhum registro durável — busquei "blocklist"/"opt-out"/"descadastr"/"unsubscribe" no código inteiro: zero resultados relevantes. Nada impede um pedido de delegação FUTURO (de hoje, do mês que vem, de outra profissional até, se o número coincidir) de mandar outro template pro MESMO número que já recusou antes.
+
+### Diagnóstico
+
+A lacuna real: o sistema trata "autorização pra iniciar contato" como garantida pela aprovação da PRÓPRIA PROFISSIONAL — mas a exigência da Meta (e a base legal de LGPD pra contatar um terceiro) é sobre o DESTINATÁRIO, nunca sobre quem pede o contato. Tecnicamente a Cloud API não impede o envio (ela só exige que seja um template aprovado pra abrir a janela) — a responsabilidade de ter opt-in de verdade é inteiramente do negócio, fiscalizada indiretamente por qualidade do número/denúncias. Isso significa que toda a funcionalidade "Doopla chama o cliente", desde que existe, opera em modo de contato frio não verificado — um risco real de qualidade do número (denúncias de spam podem derrubar a classificação de qualidade da conta comercial) e de base legal sob LGPD, não uma preocupação abstrata.
+
+### Menor correção necessária (PROPOSTA — não implementada, aguardando aprovação específica)
+
+Duas peças, as mínimas que fecham a lacuna sem reescrever nada do que já funciona:
+
+1. **Uma pergunta explícita adicional antes de `executeTemplateSend`**, separada da pergunta de conteúdo que já existe ("Vou iniciar o contato com Marina e mandar esta mensagem: '...'. Confirma?"). Algo como: "Você já tem autorização da Marina pra te contatar comercialmente pelo WhatsApp (ela topou receber mensagem, é cliente que já conversou com você, pediu o contato)?" — só avança pra `executeTemplateSend` com uma resposta afirmativa EXPLÍCITA, registrada como evidência (`authorization_basis`, texto curto categorizado: `client_relationship`/`explicit_request`/`other`, mais o id da mensagem de confirmação). Sem essa confirmação, o pedido fica bloqueado (mesmo padrão de `pending_approval` já existente, um novo "gate" antes dele, não uma reescrita).
+2. **Registro durável de recusa/bloqueio por telefone**, estendendo a tabela de auditoria de autorização já proposta na Condição 3 da Rodada 3 (nunca implementada ainda): quando `checkRecipientConsent` retorna `declined`, grava isso de forma permanente por `(professional_id, phone_number)` — e QUALQUER pedido de delegação futuro pra esse número (resolvido via memória de contato ou não) é bloqueado automaticamente antes mesmo de chegar em `executeTemplateSend`, com uma mensagem clara pra profissional ("Esse número já pediu pra não ser contatado antes — não posso iniciar de novo automaticamente").
+
+Nenhum dos dois toca `checkRecipientConsent` nem `executeTemplateSend` em si — ambos são gates ADICIONAIS, antes do fluxo já existente, nunca uma substituição. Implementação (migration + código) só mediante aprovação específica, como de praxe.
+
+## 2. Arquitetura mínima — memória de preferências profissionais
+
+Objetivo explícito da fundadora: "não é aumentar a quantidade de dados armazenados, é fazer a Doopla usar o que aprendeu pra representar cada artista de forma mais inteligente, sem ultrapassar sua autonomia autorizada." Toda a proposta abaixo reaproveita `memory-policy.ts` (já pronto, testado, zero wiring) — nenhum motor novo.
+
+### 2.1 Taxonomia — mapeando as 5 categorias pedidas
+
+| Categoria pedida | `MemoryKind` | Exemplo | Observação |
+|---|---|---|---|
+| Preferências de comunicação | `communication_style` (já existe) | "mensagens mais curtas" | sem mudança |
+| Informações sobre a carreira | `operational_preference` (já existe) | "não aceito eventos aos domingos" | sem mudança |
+| Preferências de negociação | `commercial_preference` (já existe) | "costumo negociar parcelado" | sem mudança |
+| Restrições comerciais | **novo kind: `commercial_restriction`** | "sempre me consulte antes de falar sobre valores com cliente novo" | ver 2.2 — motivo de ser um kind separado, não uma reaproveitamento de `commercial_preference` |
+| Informações sobre relacionamentos específicos | **fora de `memory-policy.ts`** — campo novo em `professional_contact_memories` (Rodada 3) | "tom mais informal com a Marina" | ver 2.3 — nunca entra no módulo de preferência geral, porque tem uma dimensão (o contato) que `memory-policy.ts` não modela |
+
+### 2.2 Por que `commercial_restriction` é um kind novo, não um valor de `commercial_preference`
+
+Uma PREFERÊNCIA ("costumo negociar parcelado") é uma informação de contexto — o Planner pode usá-la pra escrever um draft melhor, mas nunca muda se algo precisa de revisão humana. Uma RESTRIÇÃO ("sempre me consulte antes de falar sobre valores") tem a forma de uma regra que a profissional quer ver respeitada — e é exatamente aí que **a Regra Fundamental da fundadora precisa ser estruturalmente impossível de violar**: memória nunca pode ser o mecanismo que decide se algo precisa de aprovação.
+
+Auditoria confirma que isso já é estrutural, independente desta feature: `requiresProfessionalReviewBeforeSend` (`planner/invariants.ts`) é derivado DETERMINISTICAMENTE do `responsePlan` escolhido pelo model (`consult_professional` sempre exige revisão; os outros planos, por definição de `prompt.ts`, nunca afirmam compromisso) — nunca de texto livre, nunca de uma memória. Uma restrição como "sempre me consulte sobre valores" só pode, na prática, **influenciar qual `responsePlan` o model tende a escolher** (um nudge mais forte no prompt pra preferir `consult_professional` em tópicos de preço) — ela nunca pode, nem por desenho futuro, SUBSTITUIR o código que decide se `consult_professional` exige revisão. Separar `commercial_restriction` de `commercial_preference` como `MemoryKind` é o que permite o prompt tratar os dois com pesos textuais diferentes (uma restrição declarada merece destaque visual mais forte, "ATENÇÃO: restrição explícita da profissional") sem nunca lhes dar poder estrutural diferente — ambas continuam `contextOnly: true`, a mesma garantia de tipo que já existe hoje.
+
+### 2.3 Por que "relacionamentos específicos" não entra em `memory-policy.ts`
+
+`ProfessionalMemory` é escopada só por `professionalId` — não tem (nem deveria ganhar) uma dimensão de "sobre qual contato". Forçar isso dentro do `value: string` misturaria duas perguntas diferentes ("o que a profissional prefere, em geral" vs. "o que ela me disse sobre a Marina especificamente"). A Rodada 3 já construiu exatamente a peça certa pra isso: `professional_contact_memories`, que JÁ é escopada por contato. Proposta: um campo novo opcional nessa tabela (ex. `communication_note`, texto curto) — "pode usar tom mais informal, gosta de ser chamada de 'Má'" vira uma nota ligada à Marina, nunca uma memória genérica do profissional. Zero tabela nova, zero motor novo — só um campo a mais numa tabela que já existe e já tem toda a disciplina de proveniência/correção/exclusão resolvida.
+
+### 2.4 Fluxo proposto (captura → revisão → persistência → recuperação)
+
+**1. Captura de preferências explícitas**: um recognizer isolado novo (mesmo padrão de `delegated-contact/recognizer.ts` — model call pequeno, schema fechado, nunca decide nada sozinho, falha sempre vira "não reconheceu"), rodando SÓ em `professional_self` (nunca em conversas com cliente — ver 2.6). Reconhece quando a profissional declara uma preferência explicitamente, classifica o `kind`, extrai o valor.
+
+**Diferença deliberada da Decisão 1 da Rodada 3 (memória de contato nasce `active` direto)**: aqui, a memória nasce **`proposed`** (o default de `proposeMemory`, já testado) — NUNCA ativa de origem. Motivo: um telefone errado falha alto e na hora (a Doopla pergunta nome/número de novo, sem dano); uma preferência mal interpretada influencia SILENCIOSAMENTE todas as conversas futuras até alguém notar. A Doopla confirma de volta ("Entendi — você prefere mensagens mais curtas a partir de agora, confirma?") e só uma confirmação explícita chama `reviewMemory(decision:'approved')`. Isso atende diretamente o item 2 da lista da fundadora ("revisão e correção pelo artista").
+
+**2. Revisão e correção — fechando uma lacuna já documentada no próprio módulo**: o topo de `memory-policy.ts` já lista como risco conhecido "Supersession: não existe um conceito de 'esta memória substitui aquela outra'". Proposta mínima pra fechar isso (requisito 5 da fundadora, "testes de contradição e atualização"): quando o recognizer propõe uma memória de um `kind` que já tem uma `approved` pro mesmo profissional, a confirmação de volta menciona as duas ("Antes você tinha dito X, agora Y — Y substitui X?"); a confirmação da profissional aprova a nova E revoga a antiga (`revokeMemory`) na MESMA transação. Sem isso, duas preferências contraditórias do mesmo kind conviveriam no contexto do Planner sem nenhuma delas vencer — risco real que esta correção fecha.
+
+**3. Persistência segura por profissional**: nova migration (NÃO implementada nesta rodada) — tabela espelhando `ProfessionalMemory` 1:1 (`professional_memories`: id, professional_id, kind, value, evidence jsonb, confidence, status, created_at, reviewed_at, reviewed_by, expires_at), RLS sem policy pra `authenticated`/`anon` (mesmo padrão de sempre), RPCs atômicas (`propose_professional_memory`/`review_professional_memory`/`revoke_professional_memory`) com guarda de estado por `UPDATE ... WHERE status = 'proposed'` (mesmo rigor de claim já usado em todo o projeto — o próprio `memory-policy.ts` já pede isso explicitamente no seu comentário de riscos residuais).
+
+**4. Recuperação contextual no momento certo**: o Context Builder (`context-builder/build.ts`) já tem exatamente o padrão certo pra isso — uma function por seção (`buildProfessionalBusinessContextSection` etc.), cada uma com seu próprio `ContextSection<ContextFact>`/status/citação em `evidenceUsed`. **Achado importante**: `professionalBusinessContext` (que `prompt.ts` já descreve como "preferências/dados de negócio que ele já declarou") NÃO é alimentada por `memory-policy.ts` — vem de uma tool separada (`get_professional_business_context`, dados estruturados que a profissional preenche no painel, ex. `pricingNotes`/`workTypes`/`feeRange`). São fontes de proveniência DIFERENTES (um dado digitado deliberadamente num formulário vs. algo aprendido numa conversa) — misturar as duas na mesma seção do contexto perderia essa distinção, importante pra auditoria/evidência. Proposta: uma seção NOVA, `professionalLearnedPreferences`, seguindo o MESMO padrão estrutural (nunca um mecanismo de contexto paralelo), alimentada por `selectContextMemories` (já pronta, já testada — só troca o array estático por uma leitura real da tabela nova). `prompt.ts` ganha uma frase curta reaproveitando EXATAMENTE a mesma linguagem de segurança que `professionalBusinessContext` já usa hoje ("CONHECER ≠ COMPARTILHAR... nunca marque nada como autorizado") — nunca uma política nova, a mesma já revisada.
+
+**5. Testes de contradição e atualização**: cobertos pelo mecanismo de supersessão do item 2 — cenário completo proposto (não escrito): duas mensagens contraditórias do mesmo kind, confirmação da segunda revoga a primeira, `selectContextMemories` nunca devolve as duas.
+
+### 2.5 Avaliação de qualidade antes/depois (requisito 7)
+
+Proposta: estender o padrão já existente de golden-suite (`dev/*-golden-suite`, hoje usado pro Classifier/Planner/Policy Gate) com cenários que rodam o MESMO turno duas vezes — uma vez sem nenhuma `professionalLearnedPreferences`, uma vez com uma memória aprovada relevante — e comparam o draft resultante (ex.: memória diz "mensagens curtas" → draft da segunda rodada deve ser objetivamente mais curto). Reaproveita 100% da infraestrutura de golden-suite já existente, nenhum motor de avaliação novo.
+
+### 2.6 Proteção contra instruções maliciosas vindas de mensagens de clientes (requisito 6)
+
+`memory-policy.ts` já antecipa isso estruturalmente: `MemoryEvidenceSourceType` inclui `'client_message'`, mas `proposeMemory` SEMPRE nasce `'proposed'`, nunca aprovada, "mesmo com confiança máxima" (já testado, `memory-policy.test.ts`). A proteção adicional que esta proposta soma: **o recognizer desta rodada nunca roda fora de `professional_self`** — não é uma checagem em runtime que poderia ter um bug, é a ausência estrutural do caminho (o recognizer simplesmente nunca é chamado a partir do pipeline de conversa com cliente). Isso significa que, nesta primeira fase, `sourceType: 'client_message'` nunca é de fato usado por nenhum código novo — fica reservado no tipo pra um desenho futuro, deliberadamente mais cauteloso, nunca aberto por acidente agora.
+
+Vale uma ressalva honesta: `professional_self` já é a mesma fronteira de confiança que TODA a Fase 2/Etapa 2.1 usa (`decision.method === 'verified_professional'`) — um comprometimento do próprio número de WhatsApp da profissional (troca de SIM, etc.) afetaria isso tanto quanto afeta "Doopla chama o cliente" hoje. Não é um risco novo desta feature, é herdado da mesma fronteira de identidade que todo o professional_self já depende — registrado por transparência, não uma lacuna desta proposta especificamente.
+
+### 2.7 O que NÃO está nesta rodada
+
+Nenhuma migration, nenhum código, nenhuma mudança em `pipeline.ts`/Context Builder/`prompt.ts`. Tudo acima é arquitetura pra aprovação — implementação (recognizer + migration + wiring no Context Builder + testes) fica pra quando autorizado especificamente, seguindo o mesmo processo de sempre.
+
+## Changelog da Rodada 4
+
+- Este documento (duas novas seções: auditoria de opt-in + arquitetura de memória de preferências).
+
+Nenhum código, nenhuma migration, nenhum push, nenhum deploy.
