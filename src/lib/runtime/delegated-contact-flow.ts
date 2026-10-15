@@ -6,11 +6,16 @@ import { readAppSettingFlag } from './app-settings';
 import {
   checkRecipientConsent,
   recognizeDelegatedContactRequest,
+  AI_FEATURE_DELEGATED_CONTACT_RECOGNITION,
+  AI_FEATURE_RECIPIENT_CONSENT_CHECK,
   DELEGATED_CONTACT_NO_REPLY_TIMEOUT_HOURS,
+  DELEGATED_CONTACT_RECOGNIZER_MODEL,
+  RECIPIENT_CONSENT_CHECK_MODEL,
   type ActiveDelegatedContactSummary,
   type DelegatedContactRecognizerModelCall,
   type RecipientConsentCheckModelCall,
 } from '../intelligence/delegated-contact';
+import { logAiUsageEvent } from '../intelligence/observability';
 import { resolveOrCreateExternalParticipant } from './intake';
 import { createOutboundIntent } from './outbound';
 import {
@@ -129,6 +134,19 @@ export async function runDelegatedContactRequestFlow(
   const recognized = await recognizeDelegatedContactRequest(params.messageText, buildActiveSummary(recent), {
     modelCall: opts.recognizerModelCall,
     maxRetries: opts.recognizerMaxRetries,
+  });
+  // Head of AI (15/10/2026) — achado de auditoria: AI_FEATURE_DELEGATED_CONTACT_RECOGNITION
+  // já existia em config.ts desde a Etapa 2.1, mas nunca foi conectada
+  // a logAiUsageEvent — roda a cada mensagem do professional_self.
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_DELEGATED_CONTACT_RECOGNITION,
+    model: DELEGATED_CONTACT_RECOGNIZER_MODEL,
+    status: 'success',
+    conversationId: params.conversationId,
+    inputTokens: recognized.inputTokens,
+    outputTokens: recognized.outputTokens,
+    runId: null,
+    professionalId: params.professionalId,
   });
 
   const reply = (body: string) => replyToProfessional(supabase, { conversationId: params.conversationId, professionalId: params.professionalId, channel: params.channel, body });
@@ -504,6 +522,22 @@ export async function runDelegatedContactRecipientReplyFlow(
   if (!pdc) return { handled: false };
 
   const consent = await checkRecipientConsent(params.messageText, { modelCall: opts.consentModelCall, maxRetries: opts.consentMaxRetries });
+  // Head of AI (15/10/2026) — mesmo achado do recognizer acima:
+  // AI_FEATURE_RECIPIENT_CONSENT_CHECK já existia em config.ts, nunca
+  // conectada a logAiUsageEvent.
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_RECIPIENT_CONSENT_CHECK,
+    model: RECIPIENT_CONSENT_CHECK_MODEL,
+    status: 'success',
+    // params.conversationId = a conversation EXTERNA onde a resposta
+    // do destinatário chegou (nunca pdc.conversationId, que é a
+    // conversation do professional_self onde o pedido nasceu).
+    conversationId: params.conversationId,
+    inputTokens: consent.inputTokens,
+    outputTokens: consent.outputTokens,
+    runId: null,
+    professionalId: pdc.requestingProfessionalId,
+  });
   const set = await setPendingDelegatedContactRecipientReply(supabase, { id: pdc.id, messageId: params.messageId, outcome: consent.outcome });
   if (!set) return { handled: true }; // já processado (concorrência) — nunca reprocessa
 

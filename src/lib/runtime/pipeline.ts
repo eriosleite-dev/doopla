@@ -4,7 +4,7 @@ import { runApprovalEngine } from '../intelligence/approval';
 import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION } from '../intelligence/classification';
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
-import { detectInboundProposal } from '../intelligence/inbound-proposal';
+import { detectInboundProposal, AI_FEATURE_INBOUND_PROPOSAL_DETECTION, INBOUND_PROPOSAL_MODEL } from '../intelligence/inbound-proposal';
 import { finishOrchestratorRun, logAiUsageEvent, startOrchestratorRun } from '../intelligence/observability';
 import { AI_FEATURE_RESPONSE_PLANNING, filterCommitmentAuthorizingEvidence, planResponse } from '../intelligence/planner';
 import { evaluatePreModelGate } from '../intelligence/policy-gate';
@@ -352,6 +352,21 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     // (input só {messageText, temporalCandidates}, nunca contexto).
     if (commercialRootId) {
       const detection = await detectInboundProposal(event.body, { referenceTimestamp: message.createdAt, timezone: null, knownEventDate });
+      // Head of AI (15/10/2026) — achado de auditoria: esta chamada real
+      // à OpenAI nunca registrava uso/custo, apesar de rodar em TODA
+      // mensagem inbound com commercial root (potencialmente mais vezes
+      // por ciclo que Classifier/Planner juntos). AI_FEATURE_INBOUND_PROPOSAL_DETECTION
+      // já existia em config.ts, só nunca foi conectada a logAiUsageEvent.
+      await logAiUsageEvent(supabase, {
+        feature: AI_FEATURE_INBOUND_PROPOSAL_DETECTION,
+        model: INBOUND_PROPOSAL_MODEL,
+        status: detection.unavailable ? 'error' : 'success',
+        conversationId: event.conversationId,
+        inputTokens: detection.inputTokens,
+        outputTokens: detection.outputTokens,
+        runId: run?.id ?? null,
+        professionalId: actorContext.representedProfessionalId,
+      });
       for (const proposal of detection.proposals) {
         await registerInboundProposal(supabase, {
           messageId: message.id,
@@ -412,6 +427,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       opportunityId: effectiveOpportunityId,
       structuralFacts,
       workerId: event.workerId,
+      runId: run?.id ?? null,
     });
     approvalOutcome = approvalResult.status;
 
@@ -469,6 +485,8 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       // usuário, rodada anterior) — nunca um default implícito.
       timezone: null,
       knownEventDate,
+      conversationId: event.conversationId,
+      runId: run?.id ?? null,
     });
     policyGateOutcome = gate.outcome;
     policyGateBlockReason = gate.primaryBlockReason;

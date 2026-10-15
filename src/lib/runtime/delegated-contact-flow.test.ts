@@ -295,6 +295,13 @@ class FakeDb {
       case 'persist_ai_message':
         return { id: this.nextId('msg-ai') };
 
+      // Head of AI (15/10/2026) — recognizer e consent-check agora
+      // registram uso via logAiUsageEvent (mesmo padrão já usado por
+      // Classifier/Planner em pipeline.ts). Stub simples: só precisa
+      // não lançar, nenhum teste aqui inspeciona o retorno.
+      case 'log_ai_usage_event':
+        return { id: this.nextId('ai-usage-event') };
+
       default:
         throw new Error(`FakeDb.rpc não implementa ${fn}`);
     }

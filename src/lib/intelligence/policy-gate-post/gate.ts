@@ -2,7 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { extractCommitments, type PolicyGateExtractorModelCall } from './extractor';
 import { evaluateCommitments } from './matcher';
-import { POLICY_GATE_VERSION } from './config';
+import { AI_FEATURE_POLICY_GATE_EXTRACTION, POLICY_GATE_EXTRACTOR_MODEL, POLICY_GATE_VERSION } from './config';
+import { logAiUsageEvent } from '../observability';
 import type { ActiveApprovalForMatch, PostModelGateResult } from './types';
 
 // Doopla Intelligence Core v1 — Post-model Policy Gate: ponto de
@@ -41,6 +42,11 @@ export type PostModelGateInput = {
   referenceTimestamp: string;
   timezone: string | null;
   knownEventDate: string | null;
+  // Opcionais, só pra observabilidade (logAiUsageEvent) — nunca usados
+  // em nenhuma decisão de política. Ambos podem ficar de fora quando o
+  // chamador não tiver (ex.: um harness de teste).
+  conversationId?: string | null;
+  runId?: string | null;
 };
 
 type ApprovalRecordRow = {
@@ -84,6 +90,20 @@ export async function evaluatePostModelGate(
       { referenceTimestamp: input.referenceTimestamp, timezone: input.timezone, knownEventDate: input.knownEventDate },
       opts
     );
+    // Head of AI (15/10/2026) — achado de auditoria: AI_FEATURE_POLICY_GATE_EXTRACTION
+    // já existia em config.ts, mas esta chamada real à OpenAI (roda em
+    // TODO draft do Planner, inclusive sem commercial root) nunca
+    // registrava uso/custo.
+    await logAiUsageEvent(supabase, {
+      feature: AI_FEATURE_POLICY_GATE_EXTRACTION,
+      model: POLICY_GATE_EXTRACTOR_MODEL,
+      status: extraction.unavailable ? 'error' : 'success',
+      conversationId: input.conversationId ?? null,
+      inputTokens: extraction.inputTokens,
+      outputTokens: extraction.outputTokens,
+      runId: input.runId ?? null,
+      professionalId: input.professionalId,
+    });
     if (extraction.unavailable) {
       return { outcome: 'blocked', checks: [], policyVersion: POLICY_GATE_VERSION, primaryBlockReason: 'extraction_unavailable' };
     }
@@ -138,6 +158,19 @@ export async function evaluatePostModelGate(
 
   if (approvalsRes.error) throw new Error(`get_active_approvals falhou: ${approvalsRes.error.message}`);
   if (terminalRes.error) throw new Error(`is_commercial_root_terminal falhou: ${terminalRes.error.message}`);
+
+  // Head of AI (15/10/2026) — mesmo achado/mesma correção do outro
+  // call site de extractCommitments acima (ramo sem commercial root).
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_POLICY_GATE_EXTRACTION,
+    model: POLICY_GATE_EXTRACTOR_MODEL,
+    status: extraction.unavailable ? 'error' : 'success',
+    conversationId: input.conversationId ?? null,
+    inputTokens: extraction.inputTokens,
+    outputTokens: extraction.outputTokens,
+    runId: input.runId ?? null,
+    professionalId: input.professionalId,
+  });
 
   // Extrator indisponível (timeout/erro/parse inválido em todas as
   // tentativas) — decisão do usuário: bloqueio incondicional, nunca

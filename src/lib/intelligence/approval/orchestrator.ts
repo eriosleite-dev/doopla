@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { computeContextIdentity } from './canonicalize';
+import { AI_FEATURE_APPROVAL_RESOLUTION, APPROVAL_RESOLVER_MODEL } from './config';
+import { logAiUsageEvent } from '../observability';
 import { buildResolutionContext } from './resolution-context';
 import { resolveApproval, type ApprovalResolverModelCall } from './resolver';
 import type { CommitResolutionResult } from './types';
@@ -65,6 +67,10 @@ export async function runApprovalEngine(
     structuralFacts: Record<string, unknown>;
     workerId: string;
     modelCall?: ApprovalResolverModelCall;
+    // Opcional de propósito — liga o evento de uso de IA ao
+    // orchestrator_run do ciclo que chamou (quando existir um). Nunca
+    // obrigatório: nem todo chamador roda dentro de um orchestrator_run.
+    runId?: string | null;
   }
 ): Promise<RunApprovalEngineResult> {
   // Checa backoff (inclusive overflow, migration 0047) ANTES de montar
@@ -158,7 +164,25 @@ export async function runApprovalEngine(
 
   // Só agora, com token reservado e lease revalidado, a chamada
   // externa acontece — fora de qualquer transação Postgres.
-  const { output } = await resolveApproval(contextF1, { modelCall: params.modelCall });
+  const { output, inputTokens, outputTokens } = await resolveApproval(contextF1, { modelCall: params.modelCall });
+  // Head of AI (15/10/2026) — achado de auditoria: resolveApproval já
+  // devolvia inputTokens/outputTokens, mas nenhum chamador registrava
+  // uso/custo (AI_FEATURE_APPROVAL_RESOLUTION existia em config.ts, só
+  // nunca foi conectada). status='success' sempre que chega até aqui —
+  // resolveApproval nunca lança (fail-closed interno vira outcome
+  // 'inconclusive', não exceção), mesmo padrão já usado pro Planner em
+  // pipeline.ts (só o Classifier distingue status aqui dentro, porque é
+  // o único módulo cujo contrato expõe isso explicitamente).
+  await logAiUsageEvent(supabase, {
+    feature: AI_FEATURE_APPROVAL_RESOLUTION,
+    model: APPROVAL_RESOLVER_MODEL,
+    status: 'success',
+    conversationId: params.conversationId,
+    inputTokens,
+    outputTokens,
+    runId: params.runId ?? null,
+    professionalId: params.professionalId,
+  });
 
   // F2: recomputa o contexto imediatamente antes do commit — se
   // divergir de F1, commit_approval_resolution descarta tudo (V3.4).
