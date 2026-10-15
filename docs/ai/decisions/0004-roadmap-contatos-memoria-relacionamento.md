@@ -1,7 +1,7 @@
 # ADR 0004 — Roadmap: Doopla como representante inteligente (contatos, memória de relacionamento, aprendizado)
 
 - **Data:** 2026-10-15
-- **Status:** Rodada 1 (15/10/2026): auditoria concluída, proposta de desenho (Prioridade 2, cartões de contato) apresentada, nada implementado. Rodada 2 (15/10/2026, pós-revisão final da Fase 2): arquitetura integrada + MVP de memória de contatos ("fala com a Marina") propostos em detalhe — ver seção dedicada abaixo. **Ainda nada implementado** — aguardando aprovação explícita antes de qualquer migration/código, e aguardando a Fase 2 validada em staging antes de tocar o webhook de novo (ver seção 6 da Rodada 2).
+- **Status:** Rodada 1 (15/10/2026): auditoria concluída, proposta de desenho (Prioridade 2, cartões de contato) apresentada, nada implementado. Rodada 2 (15/10/2026, pós-revisão final da Fase 2): arquitetura integrada + MVP de memória de contatos ("fala com a Marina") propostos em detalhe. Rodada 3 (15/10/2026): arquitetura APROVADA pela fundadora/Head of AI com 2 decisões e 3 condições; núcleo de memória de contatos (migration 0115 + lookup em `delegated-contact-flow.ts`) **implementado e testado localmente** (Postgres real + vitest); integração do webhook pra cartões de contato permanece **só proposta**, aguardando Fase 1/2 validadas em staging — ver seção dedicada abaixo.
 - **Autor:** Claude Code (Principal AI Engineer), a pedido da fundadora/Head of AI
 - **Escopo**: resposta às 6 prioridades da mensagem de 15/10/2026. Prioridade 1 (link de orçamento) já corrigida e commitada localmente (ver changelog no fim). Prioridades 2-6 são auditoria + proposta, não implementação.
 
@@ -277,3 +277,119 @@ Estrutural, por `professional_id`, idêntico ao resto do Charter (`external_part
 ## Changelog da Rodada 2
 
 - Este documento (nova seção). Nenhum código, nenhuma migration, nenhum push, nenhum deploy — proposta de arquitetura e MVP aguardando aprovação, exatamente como pedido.
+
+---
+
+# Rodada 3 (15/10/2026) — Aprovação da fundadora/Head of AI: núcleo de memória de contatos implementado e testado
+
+A fundadora revisou a proposta da Rodada 2 com o ChatGPT (Head of AI) e **aprovou a arquitetura do MVP**, com 2 decisões e 3 condições + 2 condições de execução. Resposta ponto a ponto abaixo, seguida do que foi de fato implementado e testado nesta rodada.
+
+## Decisão 1 — Memória ativa: CONFIRMADA, implementada como aprovado
+
+Memória nasce `active` quando o profissional, identificado de forma confiável (conversa `professional_self`, já resolvida como `verified_professional` antes de qualquer código desta feature rodar), compartilha explicitamente o contato pedido. Guarda nome, telefone normalizado, origem (`source_type`/`source_pending_delegated_contact_id`/`source_trigger_message_id`), profissional proprietário, com correção e exclusão sempre possíveis (seções seguintes). `active` significa só "contato disponível pra reconhecimento" — a tabela nova (`professional_contact_memories`, migration 0115) **não tem nenhum campo de autorização de envio**, de propósito (ver Condição 3).
+
+Ambiguidade antes de associar, exatamente como pedido: se o telefone já memorizado pertence a um NOME diferente, o nome novo vira `alias` do mesmo contato (nunca duplica a linha nem escolhe sozinho entre dois fatos conflitantes — o telefone é a chave real de identidade, nomes são como o profissional chama a pessoa). Se o MESMO nome bate com 2+ telefones diferentes, o lookup nunca escolhe — pergunta qual (ver seção "O que já funciona" abaixo).
+
+## Decisão 2 — Exclusão física: CONFIRMADA, implementada como aprovado
+
+`delete_professional_contact_memory` (migration 0115) é hard delete real — `DELETE` de verdade, nunca uma mudança de status. Testado em Postgres real (ver seção de validação). Integridade referencial: `external_participant_id` usa `on delete set null` — apagar a memória nunca apaga a conversa/participante reais que porventura já existam; são entidades independentes. Auditoria mínima: a própria linha apagada não deixa rastro nesta tabela (por desenho — é exclusão real, não um log de exclusão), mas a proveniência da CRIAÇÃO (`source_pending_delegated_contact_id`/`source_trigger_message_id`) permanece no `pending_delegated_contacts`/`conversation_messages` originais, que têm sua própria política de retenção, inalterada por esta feature.
+
+**Limite real, documentado explicitamente (nunca prometido como "apagado de todo lugar")**: retenção de backup/WAL do Postgres e a política de retenção de backup da própria Supabase ficam fora do alcance de um `DELETE` de aplicação — um backup tirado ANTES da exclusão ainda contém a linha, pelo tempo que a política de retenção da infraestrutura mantiver esse backup. Isto não é uma lacuna desta implementação, é uma propriedade de qualquer exclusão em qualquer sistema com backup — mas a fundadora pediu que isso fosse "considerado", então fica registrado aqui explicitamente em vez de assumido como resolvido.
+
+## Condição 3 — Consentimento de envio: auditado, risco real NÃO encontrado na lógica existente, ajuste mínimo proposto (não implementado)
+
+Auditoria pedida: "`checkRecipientConsent` não substitui a autorização necessária antes do primeiro contato... audite o gate de início de contato da Etapa 2.1 e proponha o ajuste mínimo necessário pra verificar e registrar autorização válida do destinatário."
+
+**O que a auditoria encontrou (leitura completa de `delegated-contact-flow.ts`)**: o gate já existente é mais conservador do que o necessário, na direção certa — e a memória de contato desta rodada não afrouxa isso em nada:
+
+1. `create_delegated_contact_conversation` (migration 0109) **reaproveita** a conversa existente quando já há uma pro mesmo (profissional, participante) — então um SEGUNDO pedido de delegação pra um número já conhecido (seja por memória, seja porque o profissional digitou de novo) cai na MESMA conversa de antes.
+2. Apesar disso, `executeTemplateSend` (`delegated-contact-flow.ts`) **sempre** cria um outbound_intent novo com `sendAs: 'template'` e sempre espera uma resposta fresca — `checkRecipientConsent` roda de novo, sobre a resposta REAL deste pedido, toda vez que um `pending_delegated_contacts` novo chega em `executed`. Não existe nenhum caminho de código que pule isso por causa de um contato já estar memorizado, ou por causa de uma conversa/consentimento anterior já ter existido.
+3. `recipient_first_reply_message_id` (migration 0109) já é documentado no próprio schema como "auditoria, nunca usado pra decidir nada sozinho" — ou seja, o princípio "nunca confundir identidade conhecida com autorização de envio" já é a prática estabelecida da Etapa 2.1, antes mesmo desta memória existir.
+
+**Conclusão**: a memória de contato (Decisões 1/2) nunca pode, por construção do código auditado, liberar um envio sozinha — ela só evita a PERGUNTA do número, nunca toca o gate de consentimento, que é sempre revalidado do zero a cada novo pedido de delegação, para o mesmo destinatário ou não.
+
+**O que falta, e o ajuste mínimo proposto (NÃO implementado nesta rodada — proposta, aguardando aprovação)**: hoje o resultado de `checkRecipientConsent` fica registrado só DENTRO da linha `pending_delegated_contacts` daquele pedido específico (via `literal_content_gate`) — não existe um rastro de autorização agregado POR DESTINATÁRIO, reutilizável entre pedidos, que sirva de evidência de compliance (ex.: "Marina já recusou contato duas vezes neste ano" não é uma pergunta que o sistema consegue responder hoje sem vasculhar todos os `pending_delegated_contacts` manualmente). Proposta:
+
+- Uma tabela de auditoria pequena e **append-only** (nunca atualizada, só inserida), ex. `delegated_contact_recipient_authorizations` — uma linha por `checkRecipientConsent` já realizado, com `professional_id`, `phone_number`, `outcome`, `pending_delegated_contact_id`, `message_id`, `created_at`.
+- **Invariante estrutural, nunca violável**: nenhum código no caminho de ENVIO (`executeTemplateSend`/`handleFirstGateDecision`/etc.) lê essa tabela pra decidir nada — ela é só observabilidade/auditoria, no mesmo espírito do `recipient_first_reply_message_id` já existente. A ÚNICA leitura write-side continua sendo o resultado FRESCO de `checkRecipientConsent` sobre a resposta deste pedido especificamente.
+- Teste de regressão proposto que tornaria essa invariante impossível de quebrar por acidente: mesmo com uma linha de autorização `granted` recente na tabela, uma NOVA execução de `pending_delegated_contacts` pro mesmo número sempre passa pelo template+`checkRecipientConsent` do zero, nunca pula pra envio direto.
+
+Isto é exatamente um "ajuste mínimo" — observabilidade pura, zero mudança de comportamento de envio, reaproveita 100% do gate já existente. Implementação fica para quando a fundadora aprovar especificamente (é mudança em `delegated-contact-flow.ts`/migration nova, mesma disciplina de aprovação separada de sempre).
+
+## Condição 4 — Cartões de contato não podem desaparecer: desenho refinado (ainda SÓ PROPOSTA — webhook não implementado)
+
+Pontos aceitos e incorporados ao desenho (nenhum código ainda, por acordo explícito — "a integração do webhook... deve aguardar a validação ponta a ponta das Fases 1 e 2"):
+
+- **Captura durável primeiro, decisão depois**: todo inbound `type: contacts` passa pela MESMA Passagem 1 da Fase 1 (`captureWhatsappInboundRawMessage`/`whatsapp_inbound_raw_captures`, dedup por `provider_message_id`/wamid) ANTES de qualquer lógica de "existe pedido pendente?" — exatamente como texto já funciona hoje. Nunca se decide se processa ou não antes de ter preservado a mensagem. Cartão fora de contexto (sem `pending_number` aberto): capturado, status final `needs_attention`/um `result_kind` próprio (ex. `contact_card_unmatched`) — nunca descartado sem rastro, nunca processado às cegas.
+- **Múltiplos contatos numa mensagem** (`message.contacts` com 2+ entradas): nunca associa sozinho — se há um `pending_number` aberto, pergunta qual dos cartões é a pessoa certa (mesmo padrão de desambiguação já usado pra múltiplos telefones dentro de UM contato).
+- **Múltiplos números dentro de um contato**: comportamento já desenhado na Rodada 1, reaproveitado sem mudança — pergunta qual é o principal.
+- **Duplicação**: a dedup por `provider_message_id` (idempotência da Fase 1) garante que o MESMO cartão reentregue pela Meta nunca é processado duas vezes; duplicação de CONTEÚDO (o mesmo telefone chegando por cartão depois de já memorizado por texto) cai na mesma regra de dedup por telefone da migration 0115 (vira alias, nunca duplica).
+- **Falha de parsing** (vCard malformado, telefone sem código de país que `normalizeWhatsappPhone` não consegue normalizar, nome ausente): nunca lança, nunca trava o webhook — cai em `needs_attention` com um `result_kind` específico, mesma disciplina de `invalid_phone` já estabelecida na Fase 1.
+- **Divergência entre nome pedido e nome do cartão** (profissional pediu "Marina", cartão compartilhado se chama "José"): **nunca associa silenciosamente**. Quando o nome do cartão diverge do `recipientName` já registrado no `pending_delegated_contacts` aberto, o sistema PERGUNTA antes de associar ("O cartão que você mandou é de José — era isso mesmo, ou era pra ser o contato da Marina?") — nunca assume que a profissional quis dizer o que o cartão diz, nem o contrário.
+- **Privacidade de dados não usados**: um cartão de WhatsApp pode trazer campos que esta feature nunca precisa (endereço, aniversário, notas, foto) — o parser só extrai `name`/`phones`/`org` (os únicos campos que `professional_contact_memories` guarda), nunca persiste o vCard bruto nem os campos não usados, mesmo princípio de minimização já em prática em `channel_inbound_intake_messages` ("guarda só o que é estritamente necessário").
+
+Isto refina (não substitui) o desenho da Rodada 2, seção 2.2 — continua fora de escopo de implementação nesta rodada, exatamente como combinado.
+
+## Condição 5 — Isolamento e reutilização: CONFIRMADA, satisfeita pela implementação
+
+- `pending_delegated_contacts`, o recognizer (`recognizeDelegatedContactRequest`) e `delegated-contact-flow.ts` foram reaproveitados integralmente — a ÚNICA mudança no arquivo foi inserir o lookup/escrita de memória nos pontos onde `recipientNumber` já era resolvido antes (`handleNewRequest`/`handleProvidesMissingInfo`), nenhuma mudança na máquina de estados de `pending_delegated_contacts` em si.
+- Isolamento por `professional_id`: estrutural (toda query/RPC de `professional_contact_memories` exige `professional_id`, testado explicitamente — ver seção de validação). Nenhum vazamento entre artistas, nenhuma policy nova a inventar.
+- Ambiguidade sempre respeitada: lookup por nome com 2+ resultados nunca escolhe, sempre pergunta (testado).
+- `memory-policy.ts` **intocado** — continua só preferência em texto curto da própria profissional, zero campo de telefone/contato de terceiro. `professional_contact_memories` é uma tabela própria, mesma filosofia (evidência rastreável, correção e exclusão sempre possíveis), schema diferente, nunca um "depósito genérico" dentro do módulo de preferências.
+
+## Execução — o que foi implementado e testado localmente nesta rodada
+
+Escopo exatamente como autorizado: núcleo de memória + lookup, **sem tocar o webhook crítico**.
+
+### Arquivos novos/alterados
+
+- `supabase/migrations/0115_professional_contact_memories.sql` (novo) — tabela `professional_contact_memories` + 4 functions: `create_or_update_professional_contact_memory` (único jeito de nascer/ganhar alias, sempre `active`), `find_professional_contact_memories_by_name` (lookup, nunca escolhe sozinho), `correct_professional_contact_memory` (correção, sempre exige o profissional dono), `delete_professional_contact_memory` (hard delete real, idem). RLS sem policy pra `authenticated`/`anon`, só `service_role` — mesmo padrão de `pending_delegated_contacts`.
+- `src/lib/runtime/professional-contact-memories.ts` (novo) — wrappers finos sobre as RPCs acima, mesmo padrão de `pending-delegated-contacts.ts`.
+- `src/lib/runtime/delegated-contact-flow.ts` — `resolveRecipientNumberFromMemory` (lookup antes de perguntar, só quando o recognizer não extraiu um número literal da mensagem) e `recordContactMemoryIfExplicitlyProvided` (escreve a memória só quando a profissional forneceu o contato nesta mensagem, nunca quando veio da própria memória) conectados em `handleNewRequest`/`handleProvidesMissingInfo`/`advanceOrAskForMissing`. Lookup e escrita nunca lançam pro chamador — falha de qualquer um dos dois faz o fluxo cair no comportamento de hoje (pergunta o número), nunca derruba "Doopla chama o cliente".
+- `src/lib/runtime/delegated-contact-flow.test.ts` — FakeDb estendida com as 2 novas RPCs (réplica da semântica real: dedup por telefone, nome novo vira alias) + 5 testes novos (14 no total, todos passando).
+
+### Validação em Postgres real (migration 0115)
+
+Ambiente teve que ser reerguido nesta sessão (Docker não estava ativo; iniciado manualmente). Replay limpo de **todas as 115 migrations, 0001→0115, arquivo por arquivo** (mesmo método de sempre) contra um Postgres novo, sem aproveitar nenhum volume antigo — garante que o que foi testado é exatamente o que está no repositório hoje, não um estado acumulado de sessões anteriores. Confirmado nesse processo, de forma ainda mais rigorosa que o normal: **a migration 0114 (pendência da seção 14.7 do ADR 0002) também foi revalidada nesta rodada** — `professional_self_retry_blocked` corretamente excluído da seleção do sweep, grants corretos (`service_role=true`, `authenticated=false`). Essa pendência do ADR 0002 está, portanto, resolvida.
+
+Testes diretos via SQL (`professional_contact_memories`):
+- **Deduplicação por telefone**: duas chamadas com o mesmo telefone e nomes diferentes ("Marina" depois "Marina Produtora") produzem UMA linha só, com "Marina Produtora" como alias — nunca duas linhas.
+- **Ambiguidade por nome**: duas linhas com nomes iguais ("Marina") e telefones diferentes — lookup por "Marina" devolve as 2, nunca escolhe.
+- **Lookup por alias**: "marina produtora" (case-insensitive) encontra a linha certa.
+- **Lookup 0 resultados**: nome desconhecido devolve vazio.
+- **Isolamento**: lookup do profissional B por "Marina" (memorizada só pelo profissional A) devolve vazio.
+- **Correção legítima**: atualiza o campo pedido. **Correção cross-tenant**: levanta erro, nunca atualiza linha de outro profissional.
+- **Exclusão cross-tenant**: devolve `false`, linha continua existindo. **Exclusão legítima**: devolve `true`, linha **fisicamente removida** (confirmado por contagem zero depois).
+- **Permissões**: `service_role` pode executar as 4 functions; `authenticated`/`anon`, nenhuma.
+
+### Validação de software
+
+`typecheck` (0 erros), `lint` (0 erros, mesmos 2 warnings pré-existentes não relacionados), `test` (231/231, 25 arquivos — 226 anteriores + 5 novos), `build` (sucesso). Stack local derrubado sem backup ao final, nenhum artefato deixado para trás.
+
+## O que já funciona vs. o que ainda depende do webhook
+
+**Já funciona, testado, local (nunca aplicado em staging/produção)**:
+- Profissional fornece o contato de Marina por TEXTO (número digitado na mensagem) → memória nasce automaticamente, `active`, associada ao profissional certo.
+- Próximo "fala com a Marina" (nova conversa, novo `pending_delegated_contacts`) → **resolve sozinho, nunca pergunta o número de novo** — o critério central do MVP.
+- Duas Marinas memorizadas → nunca escolhe sozinho, pergunta qual (com empresa/telefone de cada uma, quando disponível).
+- Isolamento entre profissionais, correção explícita, exclusão física — todos testados.
+- Consentimento de envio: auditado, confirmado que a memória nunca o afrouxa (Condição 3) — nenhuma mudança necessária nesta rodada, ajuste de observabilidade proposto para quando aprovado.
+
+**Ainda depende do webhook (não implementado, aguardando Fase 1/2 validadas em staging + aprovação específica)**:
+- Receber o cartão de contato em si pelo WhatsApp — hoje `route.ts` só aceita `type: 'text'`; um cartão compartilhado ainda desaparece sem rastro, inclusive em `professional_self`.
+- Tudo o que depende desse canal: a experiência completa "Doopla pede o contato → cartão compartilhado → associado automaticamente" só fecha quando o cartão existir como entrada. Até lá, o caminho testado hoje é só o de **texto** (profissional digita o número) — que já entrega sozinho uma fatia real de valor (nunca mais perguntar duas vezes o número de alguém já conhecido), mas não ainda a experiência do cartão descrita no pedido original.
+
+## Próximo passo
+
+MVP de memória de contatos (núcleo + lookup) implementado, testado localmente, aguardando: (a) Fase 1/2 validadas em staging antes de qualquer migration aplicada (0114 e 0115 seguem o mesmo processo de aprovação separada de sempre), (b) aprovação específica pra implementar a Condição 3 (log de autorização, observabilidade) e a Condição 4 (canal de cartão no webhook). Depois disso: preferências profissionais (wiring de `memory-policy.ts`) e aprendizado com feedback, integrados ao Intelligence Core existente, conforme a fundadora pediu como próxima prioridade.
+
+## Changelog da Rodada 3
+
+- `supabase/migrations/0115_professional_contact_memories.sql` (novo).
+- `src/lib/runtime/professional-contact-memories.ts` (novo).
+- `src/lib/runtime/delegated-contact-flow.ts` (lookup + escrita de memória conectados).
+- `src/lib/runtime/delegated-contact-flow.test.ts` (5 testes novos, 14 no total).
+- Este documento.
+- Migration 0114 (pendência do ADR 0002, seção 14.7) revalidada contra Postgres real nesta rodada — resolvida.
+
+Nenhum push, merge, deploy. Nenhuma migration aplicada em staging/produção.

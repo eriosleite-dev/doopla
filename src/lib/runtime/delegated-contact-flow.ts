@@ -18,6 +18,7 @@ import {
 import { logAiUsageEvent } from '../intelligence/observability';
 import { resolveOrCreateExternalParticipant } from './intake';
 import { createOutboundIntent } from './outbound';
+import { createOrUpdateProfessionalContactMemory, findProfessionalContactMemoriesByName } from './professional-contact-memories';
 import {
   cancelPendingDelegatedContact,
   claimPendingDelegatedContactDecision,
@@ -200,6 +201,64 @@ export async function runDelegatedContactRequestFlow(
   }
 }
 
+// ADR 0004, Rodada 2 (15/10/2026) — "fala com a Marina" não perguntar o
+// contato de novo. Só entra em jogo quando o recognizer NÃO extraiu um
+// número literal da mensagem atual (se extraiu, é isso que vale, sem
+// lookup nenhum — mesmo princípio de "nunca inventa/nunca duvida do
+// que foi dito explicitamente"). 0 resultados: comportamento de hoje,
+// sem mudança. 1: resolve sozinho. 2+: NUNCA escolhe — devolve uma
+// pergunta composta em código (nunca o Planner) listando as opções.
+async function resolveRecipientNumberFromMemory(
+  supabase: AnySupabaseClient,
+  professionalId: string,
+  recipientName: string | null
+): Promise<{ recipientNumber: string | null; ambiguityNote: string | null }> {
+  if (!recipientName) return { recipientNumber: null, ambiguityNote: null };
+
+  let matches: Awaited<ReturnType<typeof findProfessionalContactMemoriesByName>>;
+  try {
+    matches = await findProfessionalContactMemoriesByName(supabase, { professionalId, name: recipientName });
+  } catch (err) {
+    // Lookup é uma otimização (evita perguntar de novo), nunca uma
+    // dependência dura do fluxo principal — uma falha aqui nunca pode
+    // impedir o pedido de seguir pelo caminho de hoje (perguntar).
+    console.error('[delegated-contact-flow] falha ao consultar memória de contatos, seguindo sem lookup', err);
+    return { recipientNumber: null, ambiguityNote: null };
+  }
+
+  if (matches.length === 1) return { recipientNumber: matches[0].phoneNumber, ambiguityNote: null };
+  if (matches.length >= 2) {
+    const options = matches.map((m) => `${m.canonicalName}${m.company ? ` (${m.company})` : ''}: ${m.phoneNumber}`).join('; ');
+    return { recipientNumber: null, ambiguityNote: `Encontrei mais de um contato chamado "${recipientName}" salvo: ${options}. Qual é o número certo?` };
+  }
+  return { recipientNumber: null, ambiguityNote: null };
+}
+
+// Memória só nasce da profissional fornecendo o contato EXPLICITAMENTE
+// nesta mensagem (normalizedNumber vindo do recognizer, nunca de um
+// valor já resolvido via memória) — Decisão 1 do ADR 0004: autoria
+// inequívoca. Nunca bloqueia o fluxo principal se a escrita falhar
+// (mesmo princípio do lookup acima: memória é um reforço, não uma
+// dependência dura de "Doopla chama o cliente").
+async function recordContactMemoryIfExplicitlyProvided(
+  supabase: AnySupabaseClient,
+  params: { professionalId: string; recipientName: string | null; normalizedNumber: string | null; pendingDelegatedContactId: string; triggerMessageId: string }
+): Promise<void> {
+  if (!params.normalizedNumber || !params.recipientName) return;
+  try {
+    await createOrUpdateProfessionalContactMemory(supabase, {
+      professionalId: params.professionalId,
+      canonicalName: params.recipientName,
+      phoneNumber: params.normalizedNumber,
+      sourceType: 'manual_text',
+      sourcePendingDelegatedContactId: params.pendingDelegatedContactId,
+      sourceTriggerMessageId: params.triggerMessageId,
+    });
+  } catch (err) {
+    console.error('[delegated-contact-flow] falha ao gravar memória de contato, seguindo sem memorizar', err);
+  }
+}
+
 async function handleNewRequest(
   supabase: AnySupabaseClient,
   params: DelegatedContactRequestFlowParams,
@@ -216,16 +275,28 @@ async function handleNewRequest(
   }
 
   const normalizedNumber = recognized.recipientNumber ? normalizeWhatsappPhone(recognized.recipientNumber) : null;
+  const resolved = normalizedNumber
+    ? { recipientNumber: normalizedNumber, ambiguityNote: null }
+    : await resolveRecipientNumberFromMemory(supabase, params.professionalId, recognized.recipientName);
+
   const row = await createPendingDelegatedContact(supabase, {
     requestingProfessionalId: params.professionalId,
     conversationId: params.conversationId,
     triggerMessageId: params.triggerMessageId,
     purposeSummary: recognized.purposeSummary ?? '(não especificado)',
     recipientName: recognized.recipientName,
-    recipientNumber: normalizedNumber,
+    recipientNumber: resolved.recipientNumber,
   });
 
-  return advanceOrAskForMissing(supabase, params, row, { draftMessageContent: recognized.draftMessageContent }, reply);
+  await recordContactMemoryIfExplicitlyProvided(supabase, {
+    professionalId: params.professionalId,
+    recipientName: recognized.recipientName,
+    normalizedNumber,
+    pendingDelegatedContactId: row.id,
+    triggerMessageId: params.triggerMessageId,
+  });
+
+  return advanceOrAskForMissing(supabase, params, row, { draftMessageContent: recognized.draftMessageContent, ambiguityNote: resolved.ambiguityNote }, reply);
 }
 
 async function handleProvidesMissingInfo(
@@ -236,15 +307,32 @@ async function handleProvidesMissingInfo(
   reply: (body: string) => Promise<void>
 ): Promise<DelegatedContactRequestFlowResult> {
   const normalizedNumber = recognized.recipientNumber ? normalizeWhatsappPhone(recognized.recipientNumber) : null;
+  // recent.recipientName já existente conta pro lookup/memória tanto
+  // quanto um nome dito agora — este turno pode trazer só o número,
+  // sem repetir o nome (coalesce do lado do banco já preserva isso no
+  // row; aqui é só pra decidir lookup/memória neste MESMO turno).
+  const effectiveName = recognized.recipientName ?? recent.recipientName;
+  const resolved = normalizedNumber
+    ? { recipientNumber: normalizedNumber, ambiguityNote: null }
+    : await resolveRecipientNumberFromMemory(supabase, params.professionalId, effectiveName);
+
   const updated = await updatePendingDelegatedContactPendingInfo(supabase, {
     id: recent.id,
     recipientName: recognized.recipientName,
-    recipientNumber: normalizedNumber,
+    recipientNumber: resolved.recipientNumber,
     draftMessageContent: recognized.draftMessageContent,
     purposeSummary: recognized.purposeSummary,
   });
 
-  return advanceOrAskForMissing(supabase, params, updated, { draftMessageContent: updated.draftMessageContent }, reply);
+  await recordContactMemoryIfExplicitlyProvided(supabase, {
+    professionalId: params.professionalId,
+    recipientName: effectiveName,
+    normalizedNumber,
+    pendingDelegatedContactId: updated.id,
+    triggerMessageId: params.triggerMessageId,
+  });
+
+  return advanceOrAskForMissing(supabase, params, updated, { draftMessageContent: updated.draftMessageContent, ambiguityNote: resolved.ambiguityNote }, reply);
 }
 
 // Comum aos dois caminhos acima: uma vez que recipientNumber E
@@ -255,12 +343,13 @@ async function advanceOrAskForMissing(
   supabase: AnySupabaseClient,
   params: DelegatedContactRequestFlowParams,
   row: PendingDelegatedContact,
-  extra: { draftMessageContent: string | null },
+  extra: { draftMessageContent: string | null; ambiguityNote?: string | null },
   reply: (body: string) => Promise<void>
 ): Promise<DelegatedContactRequestFlowResult> {
   const draftMessageContent = extra.draftMessageContent ?? row.draftMessageContent;
   if (!row.recipientNumber) {
-    await reply(`Entendi${row.recipientName ? ` que é pra falar com ${row.recipientName}` : ''}. Falta só o número de WhatsApp dela/dele para eu continuar.`);
+    const askBody = extra.ambiguityNote ?? `Entendi${row.recipientName ? ` que é pra falar com ${row.recipientName}` : ''}. Falta só o número de WhatsApp dela/dele para eu continuar.`;
+    await reply(askBody);
     return { handled: true };
   }
   if (!draftMessageContent) {

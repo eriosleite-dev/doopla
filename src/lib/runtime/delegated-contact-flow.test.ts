@@ -39,15 +39,42 @@ type PdcRow = {
   literal_content_outbound_intent_id: string | null;
 };
 
+type ContactMemoryRow = {
+  id: string;
+  professional_id: string;
+  canonical_name: string;
+  aliases: string[];
+  phone_number: string;
+  company: string | null;
+  relationship_note: string | null;
+};
+
 class FakeDb {
   rows = new Map<string, PdcRow>();
   outboundIntents = new Map<string, { delivery_state: string }>();
   participants = new Map<string, string>(); // `${professionalId}|${identifier}` -> participant id
   conversations = new Map<string, string>(); // `${professionalId}|${participantId}` -> conversation id
+  // ADR 0004, Rodada 2 (15/10/2026) — réplica mínima da semântica real
+  // de professional_contact_memories (migration 0115): dedup por
+  // (professional_id, phone_number), nome novo vira alias.
+  contactMemories = new Map<string, ContactMemoryRow>();
   // Default 'true' — testes de orquestração existentes exercitam o
   // fluxo com a proteção já ligada; o gate em si tem teste dedicado.
   appSettings = new Map<string, string>([['delegated_contact_enabled', 'true']]);
   seq = 0;
+
+  seedContactMemory(params: { professionalId: string; canonicalName: string; phoneNumber: string; company?: string | null }): void {
+    const key = `${params.professionalId}|${params.phoneNumber}`;
+    this.contactMemories.set(key, {
+      id: this.nextId('ccm'),
+      professional_id: params.professionalId,
+      canonical_name: params.canonicalName,
+      aliases: [],
+      phone_number: params.phoneNumber,
+      company: params.company ?? null,
+      relationship_note: null,
+    });
+  }
 
   nextId(prefix: string): string {
     this.seq++;
@@ -294,6 +321,40 @@ class FakeDb {
 
       case 'persist_ai_message':
         return { id: this.nextId('msg-ai') };
+
+      case 'create_or_update_professional_contact_memory': {
+        const professionalId = args.p_professional_id as string;
+        const phoneNumber = args.p_phone_number as string;
+        const canonicalName = args.p_canonical_name as string;
+        const key = `${professionalId}|${phoneNumber}`;
+        const existing = this.contactMemories.get(key);
+        if (!existing) {
+          const row: ContactMemoryRow = {
+            id: this.nextId('ccm'),
+            professional_id: professionalId,
+            canonical_name: canonicalName,
+            aliases: [],
+            phone_number: phoneNumber,
+            company: (args.p_company as string | null) ?? null,
+            relationship_note: (args.p_relationship_note as string | null) ?? null,
+          };
+          this.contactMemories.set(key, row);
+          return row;
+        }
+        const nameNorm = canonicalName.trim().toLowerCase();
+        if (existing.canonical_name.trim().toLowerCase() !== nameNorm && !existing.aliases.some((a) => a.trim().toLowerCase() === nameNorm)) {
+          existing.aliases = [...existing.aliases, canonicalName];
+        }
+        return existing;
+      }
+
+      case 'find_professional_contact_memories_by_name': {
+        const professionalId = args.p_professional_id as string;
+        const nameNorm = (args.p_name as string).trim().toLowerCase();
+        return [...this.contactMemories.values()]
+          .filter((m) => m.professional_id === professionalId)
+          .filter((m) => m.canonical_name.trim().toLowerCase() === nameNorm || m.aliases.some((a) => a.trim().toLowerCase() === nameNorm));
+      }
 
       // Head of AI (15/10/2026) — recognizer e consent-check agora
       // registram uso via logAiUsageEvent (mesmo padrão já usado por
@@ -668,6 +729,170 @@ describe('delegated-contact-flow (ponta a ponta)', () => {
     const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
     expect(bodies.some((b) => b.includes('expirou'))).toBe(true);
     expect(bodies.some((b) => b.includes('em andamento'))).toBe(false);
+  });
+});
+
+describe('memória de contatos — lookup e escrita (ADR 0004, Rodada 2, 15/10/2026)', () => {
+  let db: FakeDb;
+
+  beforeEach(() => {
+    db = new FakeDb();
+    vi.clearAllMocks();
+  });
+
+  it('1 contato memorizado: resolve o número sozinho, nunca pergunta de novo', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+    db.seedContactMemory({ professionalId: 'prof-1', canonicalName: 'Marina', phoneNumber: '+5511988887777' });
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: 'fala com a Marina sobre o cachê', channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => ({
+          parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: null, purposeSummary: 'combinar o cachê', draftMessageContent: null } as const,
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
+      }
+    );
+    expect(result.handled).toBe(true);
+    const row = [...db.rows.values()][0];
+    // Número resolvido pela memória, nunca 'pending_number' — segue
+    // direto pro próximo passo que falta (texto da mensagem).
+    expect(row.recipient_number).toBe('+5511988887777');
+    expect(row.status).toBe('pending_number'); // falta só o draftMessageContent, nunca o número
+
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
+    expect(bodies.some((b) => b.includes('Falta só o número'))).toBe(false);
+    expect(bodies.some((b) => b.includes('texto exato'))).toBe(true);
+  });
+
+  it('2+ contatos com o mesmo nome: nunca escolhe sozinho, pergunta qual', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+    db.seedContactMemory({ professionalId: 'prof-1', canonicalName: 'Marina', phoneNumber: '+5511988887777', company: 'Estúdio A' });
+    db.seedContactMemory({ professionalId: 'prof-1', canonicalName: 'Marina', phoneNumber: '+5511977776666', company: 'Estúdio B' });
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: 'fala com a Marina', channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => ({
+          parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: null, purposeSummary: 'combinar horário', draftMessageContent: null } as const,
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
+      }
+    );
+    expect(result.handled).toBe(true);
+    const row = [...db.rows.values()][0];
+    expect(row.recipient_number).toBeNull(); // nunca escolhe sozinho
+    expect(row.status).toBe('pending_number');
+
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
+    const askBody = bodies.find((b) => b.includes('mais de um contato'));
+    expect(askBody).toBeDefined();
+    expect(askBody).toContain('+5511988887777');
+    expect(askBody).toContain('+5511977776666');
+    expect(askBody).toContain('Estúdio A');
+    expect(askBody).toContain('Estúdio B');
+  });
+
+  it('0 contatos memorizados: comportamento de hoje, pergunta o número normalmente', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: 'fala com a Marina', channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => ({
+          parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: null, purposeSummary: 'combinar horário', draftMessageContent: null } as const,
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
+      }
+    );
+    expect(result.handled).toBe(true);
+    expect([...db.rows.values()][0].recipient_number).toBeNull();
+
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
+    expect(bodies.some((b) => b.includes('Falta só o número'))).toBe(true);
+  });
+
+  it('profissional fornece o número explicitamente: memória nasce active, isolada por profissional', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+
+    await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: "manda pra Marina, 11988887777: 'oi'", channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => ({
+          parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: '11988887777', purposeSummary: 'avisar', draftMessageContent: 'oi' } as const,
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
+      }
+    );
+
+    const memory = [...db.contactMemories.values()].find((m) => m.professional_id === 'prof-1');
+    expect(memory).toBeDefined();
+    expect(memory!.canonical_name).toBe('Marina');
+
+    // Isolamento: profissional B nunca vê essa memória.
+    const result = await runDelegatedContactRequestFlow(
+      db.supabase(),
+      { professionalId: 'prof-2', conversationId: 'conv-self-2', triggerMessageId: 'msg-2', messageText: 'fala com a Marina', channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => ({
+          parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: null, purposeSummary: 'x', draftMessageContent: null } as const,
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
+      }
+    );
+    expect(result.handled).toBe(true);
+    const rowB = [...db.rows.values()].find((r) => r.requesting_professional_id === 'prof-2')!;
+    expect(rowB.recipient_number).toBeNull(); // nunca resolve com a memória da prof-1
+  });
+
+  it('falha no lookup de memória nunca derruba o fluxo — segue perguntando o número normalmente', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const db2 = new FakeDb();
+    // Remove a RPC de lookup do mapa de handlers simulando uma falha
+    // real (ex.: função indisponível) — FakeDb.handleRpc lança por
+    // padrão pra qualquer RPC não reconhecida.
+    const supabase = {
+      rpc: (fn: string, args: Record<string, unknown>) => {
+        if (fn === 'find_professional_contact_memories_by_name') {
+          return { then: (resolve: (v: unknown) => void) => Promise.resolve({ data: null, error: { message: 'boom' } }).then(resolve) };
+        }
+        const result = db2.handleRpc(fn, args);
+        return { single: async () => ({ data: result, error: null }), then: (resolve: (v: unknown) => void) => Promise.resolve({ data: result, error: null }).then(resolve) };
+      },
+      from: db2.supabase().from,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: 'fala com a Marina', channel: 'whatsapp' },
+      {
+        recognizerModelCall: async () => ({
+          parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: null, purposeSummary: 'x', draftMessageContent: null } as const,
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
+      }
+    );
+    expect(result.handled).toBe(true);
+    expect([...db2.rows.values()][0].recipient_number).toBeNull();
+    expect([...db2.rows.values()][0].status).toBe('pending_number');
   });
 });
 
