@@ -1,7 +1,7 @@
 # ADR 0002 — Arquitetura final: recuperação confiável de mensagens inbound
 
-- **Data:** 2026-10-15 (revisão 5 — Fase 0 aplicada em staging, ver seção 7)
-- **Status:** Arquitetura aprovada (Fases 1-3 ainda aguardando). **Fase 0 (migration `0111_inbound_outbound_idempotency.sql`) testada localmente e APLICADA EM STAGING pela própria fundadora (15/10/2026, consulta de verificação do ponto 1d rodada antes, 0 duplicatas históricas). Ainda NÃO aplicada em produção, nenhum push/deploy feito.**
+- **Data:** 2026-10-15 (revisão 6 — Fase 0 aplicada em produção, ver seção 7)
+- **Status:** Arquitetura aprovada (Fases 1-3 ainda aguardando). **Fase 0 (migration `0111_inbound_outbound_idempotency.sql`) CONCLUÍDA: testada localmente, aplicada em staging e em PRODUÇÃO (15/10/2026, ambas pela fundadora via SQL Editor, com aprovação explícita antes de cada uma). Nenhum push de código/deploy feito ainda — segue represado pelo template `doopla_primeiro_contato_v2`, sem relação com esta migration.**
 - **Autor:** Claude Code (Principal AI Engineer)
 - **Escopo**: arquitetura técnica completa, fases de implementação, critérios objetivos de aprovação, contratos SQL propostos. Implementação é um passo futuro separado, fase por fase, cada uma com sua própria aprovação.
 
@@ -286,9 +286,11 @@ Bate com a arquitetura já aprovada (seções 1-3) e fecha os 5 pontos exigidos 
 
 1. ✅ Query de 7.6 rodada em produção pela fundadora — **0 linhas**, sem duplicidade histórica.
 2. ✅ Migration 0111 aplicada em **staging** (`doopla-qa-staging`, projeto Supabase separado de produção, confirmado pela fundadora) — sucesso, sem erro, consistente com os testes locais da seção 7.4.
-3. ✅ **Fase 0 considerada validada por mim** — decisão técnica minha, não precisava de nova rodada de teste da fundadora: a evidência já reunida (seção 7.4 — Postgres real, inclusive 25 conexões concorrentes reais pro mesmo wamid/trigger — mais a aplicação limpa em staging, schema idêntico) é suficiente. Não vou pedir um teste funcional adicional (ex.: mensagem real de WhatsApp em staging) só por rigor formal — seria repetir, com mais fricção, o que a seção 7.4 já prova.
-4. **Pendente, única decisão que resta pra fundadora**: aprovar aplicar em **produção**. Nada técnico em aberto da minha parte.
+3. ✅ **Fase 0 considerada validada por mim** — decisão técnica minha, não precisou de nova rodada de teste da fundadora: a evidência já reunida (seção 7.4 — Postgres real, inclusive 25 conexões concorrentes reais pro mesmo wamid/trigger — mais a aplicação limpa em staging, schema idêntico) foi suficiente.
+4. ✅ **Migration 0111 aplicada em PRODUÇÃO** (15/10/2026, pela fundadora via SQL Editor, com aprovação explícita dela pedida e dada antes). "Success. No rows returned" — mesmo resultado limpo de staging, nenhum erro de constraint/arity.
+
+**Fase 0 está concluída.** `conversation_messages.provider_message_id`, `persist_inbound_message` idempotente por wamid, `outbound_intents_one_per_trigger_message_idx` e `create_outbound_intent`/`resolve_runtime_pending_reply_allowed` idempotentes por `trigger_message_id` — tudo em produção, protegendo qualquer retry futuro (inclusive os que a Fase 1 vai introduzir) contra duplicar mensagem ao cliente ou duplicar envio comercial.
 
 ## Próximo passo
 
-Pronto pra aplicar em produção assim que a fundadora aprovar — um sim/não simples, sem mais pontos técnicos pendentes. Push/deploy real do WhatsApp continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration (ela pode ir pra produção independente disso). Fases 1-3 continuam na fila, nesta ordem, cada uma com sua própria aprovação.
+Fase 0 encerrada. Push/deploy real do WhatsApp (Etapa 2.1, "Doopla chama o cliente") continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration. Fases 1-3 (captura durável em duas passagens, retomada do cenário (c), retomada de (a)/(b)) continuam na fila, nesta ordem, cada uma com sua própria aprovação explícita antes de qualquer implementação.
