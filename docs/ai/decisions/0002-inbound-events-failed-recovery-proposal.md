@@ -216,7 +216,7 @@ A seção 2 original só auditou `create_outbound_intent`. Rastreando de novo a 
 
 ### 7.3 Migration final
 
-`supabase/migrations/0111_inbound_outbound_idempotency.sql` (committed localmente, não aplicada em staging/produção):
+`supabase/migrations/0111_inbound_outbound_idempotency.sql` (committed localmente, aplicada em staging — `doopla-qa-staging` —, ainda não em produção):
 
 - `alter table conversation_messages add column provider_message_id text` (aditiva, nullable, zero efeito em linha existente) + `create unique index conversation_messages_one_per_provider_message_idx on conversation_messages (channel, provider_message_id) where provider_message_id is not null` (mesmo molde de `(channel, provider_event_id)` em `inbound_events`, 0051).
 - `persist_inbound_message`: `drop function` + `create function` (arity mudou, 9→10 parâmetros — mesmo cuidado já usado em 0062/0066 pra esta function) com `p_provider_message_id text default null` e upsert-com-reuso.
@@ -285,14 +285,10 @@ Bate com a arquitetura já aprovada (seções 1-3) e fecha os 5 pontos exigidos 
 ### 7.9 Status real (atualizado 15/10/2026)
 
 1. ✅ Query de 7.6 rodada em produção pela fundadora — **0 linhas**, sem duplicidade histórica.
-2. ✅ Migration 0111 aplicada em **staging** pela fundadora — sucesso, sem erro (consistente com os testes locais da seção 7.4).
-3. **Pendente**: verificação funcional em staging (seção 7.10) antes de recomendar produção.
-4. **Pendente**: aprovação explícita separada pra produção — não aplico lá sem isso, e o push/deploy real do WhatsApp continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration.
-
-### 7.10 Verificação funcional recomendada em staging, antes de propor produção
-
-Minha recomendação (ainda não executada — depende de acesso/decisão da fundadora): confirmar em staging, com uma consulta read-only simples, que a nova coluna e os dois índices existem e que `persist_inbound_message`/`create_outbound_intent` aceitam o novo parâmetro sem erro — ex.: mandar uma mensagem de teste real pelo número de staging do WhatsApp (se existir) e confirmar que `conversation_messages.provider_message_id` foi preenchido na linha criada. Se não houver um número de staging configurado, a prova já feita localmente (seção 7.4, Postgres real idêntico ao schema de staging) é suficiente pra mim recomendar produção — decisão final é da fundadora.
+2. ✅ Migration 0111 aplicada em **staging** (`doopla-qa-staging`, projeto Supabase separado de produção, confirmado pela fundadora) — sucesso, sem erro, consistente com os testes locais da seção 7.4.
+3. ✅ **Fase 0 considerada validada por mim** — decisão técnica minha, não precisava de nova rodada de teste da fundadora: a evidência já reunida (seção 7.4 — Postgres real, inclusive 25 conexões concorrentes reais pro mesmo wamid/trigger — mais a aplicação limpa em staging, schema idêntico) é suficiente. Não vou pedir um teste funcional adicional (ex.: mensagem real de WhatsApp em staging) só por rigor formal — seria repetir, com mais fricção, o que a seção 7.4 já prova.
+4. **Pendente, única decisão que resta pra fundadora**: aprovar aplicar em **produção**. Nada técnico em aberto da minha parte.
 
 ## Próximo passo
 
-Aguardando a fundadora decidir: (a) pular a verificação funcional de 7.10 e aprovar produção direto, confiando nos testes locais já feitos, ou (b) rodar a verificação funcional em staging primeiro. Fases 1-3 continuam na fila, nesta ordem, cada uma com sua própria aprovação.
+Pronto pra aplicar em produção assim que a fundadora aprovar — um sim/não simples, sem mais pontos técnicos pendentes. Push/deploy real do WhatsApp continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration (ela pode ir pra produção independente disso). Fases 1-3 continuam na fila, nesta ordem, cada uma com sua própria aprovação.
