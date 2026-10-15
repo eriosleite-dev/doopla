@@ -562,6 +562,47 @@ Nenhuma mudança na política já definida (0112): `completed`/`delegated` zeram
 
 Proposta deliberadamente pequena: reaproveita 100% dos mecanismos já existentes (claim/lease da Fase 1, backoff de `retry-backoff.ts`, `evaluateWhatsappRouting` puro) — o único código genuinamente novo seria a função de seleção/sweep (espelhando `claim_next_professional_self_pending_message`) e a pré-checagem de roteamento isolada (reaproveitando, nunca reimplementando, `evaluateWhatsappRouting`). Fecha a lacuna mais visível da Fase 1 (conteúdo capturado mas nunca processado) sem tocar no ponto que ainda não tem idempotência comprovada. Recomendo aprovar este escopo antes de eu escrever qualquer migration ou código.
 
+---
+
+## 13. Fase 2 entregue localmente — implementação, testes, riscos residuais
+
+Execução autorizada pela fundadora/Head of AI (15/10/2026): "Aprovo implementar agora a Fase 2 de recuperação automática de mensagens, conforme a proposta da seção 12." Mesmas regras de sempre: nada aplicado em staging/produção, nenhum push/deploy, sem autorização separada.
+
+### 13.1 Arquivos alterados
+
+- `src/lib/channels/whatsapp/intake-orchestration.ts` — nova function exportada `evaluateWhatsappInboundRoutingSafety`: réplica fiel (mesmos helpers privados, zero duplicação de algoritmo) da leitura+decisão de `handleWhatsappInboundMessage`, SEM nenhum efeito colateral. Só `{safe: true}` quando a identidade resolve deterministicamente (verified_professional/token/unique_history/client_confirmation) — é a implementação direta do achado da seção 12.1.
+- `src/lib/channels/whatsapp/raw-captures.ts` — nova function `classifyWhatsappInboundResultForCapture` (ÚNICA implementação da classificação completed/delegated/needs_attention, antes duplicada só em route.ts — consolidada aqui e reaproveitada pelo sweep) + `listWhatsappInboundRawCapturesForSweep` (wrapper fino).
+- `src/app/api/whatsapp/webhook/route.ts` — refatoração mínima e segura (mesmo comportamento, zero mudança funcional): passa a chamar `classifyWhatsappInboundResultForCapture` em vez de repetir a lógica inline.
+- `src/lib/channels/whatsapp/raw-capture-sweep.ts` (novo) — orquestração do sweep: `sweepOneWhatsappInboundRawCapture` (backoff → pré-checagem de segurança → claim → execução real → classificação) e `runWhatsappInboundRawCaptureSweep` (lista + processa sequencialmente, isolamento de falha por captura).
+- `src/app/api/runtime/sweep-whatsapp-inbound-raw-captures/route.ts` (novo) — cron endpoint, mesmo padrão de autenticação (`CRON_SECRET`) dos 3 crons já existentes.
+- `vercel.json` — novo cron registrado (`* * * * *`, mesma cadência dos demais). Puramente declarativo — inerte até haver deploy, que não foi feito.
+- `supabase/migrations/0113_whatsapp_inbound_raw_capture_sweep.sql` (novo) — uma única function nova, `list_whatsapp_inbound_raw_captures_for_sweep` (seleção grosseira, `language sql stable`, mesmo padrão de `list_professional_self_pending_professionals`, 0108). Nenhum mecanismo novo de claim/lease — reaproveita 0112 integralmente.
+- `src/app/api/whatsapp/webhook/route.test.ts` — mock ajustado pra usar a implementação real (pura) de `classifyWhatsappInboundResultForCapture` via `importActual`, nunca remockada.
+- `src/lib/channels/whatsapp/raw-capture-sweep.test.ts` (novo, 11 testes).
+
+### 13.2 Resultados dos testes
+
+**SQL (Postgres real, réplica local de 0001-0113)**: fixture com 8 cenários (pending, processing com lease vencida, processing com lease VIVA, needs_attention retryable, needs_attention/invalid_phone, needs_attention/ambiguous_retry_blocked, needs_attention com tentativas esgotadas, completed) — a seleção trouxe EXATAMENTE os 3 elegíveis (pending, processing-vencida, needs_attention-retryable), excluindo corretamente os outros 5. Ordem por `captured_at asc` confirmada. `p_limit` respeitado.
+
+**Achado real de metodologia de teste** (não uma falha da migration): testei permissão via JWT claim fake como superuser `postgres` — `list_whatsapp_inbound_raw_captures_for_sweep` pareceu aceitar o caller `authenticated`. Investigando: essa function (como `list_professional_self_pending_professionals`, 0108, que ela espelha) nunca teve um check interno `is_system_caller()` — depende inteiramente de `REVOKE EXECUTE`/`GRANT EXECUTE` no nível real do papel do Postgres. Um teste via JWT-claim-fake como superuser nunca exercita isso de verdade (superuser ignora REVOKE). Corrigido testando do jeito certo — `has_function_privilege` no catálogo — confirmando `service_role_pode=true, authenticated_pode=false, anon_pode=false`, idêntico ao precedente de 0108. Nenhuma mudança de código foi necessária; o gap era só no meu método de teste, registrado aqui por transparência (mesmo padrão de rigor das rodadas anteriores: nunca esconder um achado, mesmo quando o achado sou eu mesmo errando o teste).
+
+**Concorrência**: reaproveitada a prova já feita na Fase 1 (25 processos de SO reais disputando o mesmo claim, sempre 1 vencedor) — o sweep usa a MESMA `claim_whatsapp_inbound_raw_capture_for_processing`, sem nenhum mecanismo de exclusão mútua próprio, então a garantia já provada se aplica integralmente. Duas execuções do sweep (ou o sweep + o webhook) disputando a mesma captura nunca processam em paralelo.
+
+**Vitest** (`raw-capture-sweep.test.ts`, 11 testes): identidade determinística + claim ganho → retoma de verdade, classifica `completed`; `deferred` → `resumed_delegated` (nunca completed, reaproveitando a mesma classificação do webhook); identidade AMBÍGUA → nunca chama `handleWhatsappInboundMessage`, bloqueia com `ambiguous_retry_blocked`; claim perdido → `claim_missed`, nunca processa nem finaliza; exceção durante processamento → `needs_attention`, `resumed_failed`; telefone/corpo ausente (defesa em profundidade) → `invalid_phone` sem sequer chamar a pré-checagem; `pending` nunca respeita backoff (sempre elegível); `needs_attention` com backoff ainda não vencido → `backoff_not_due`, nunca tenta; backoff vencido → tenta normalmente; tally do sweep soma corretamente e uma captura que lança inesperadamente nunca derruba o loop inteiro (isolamento de falha, mesmo princípio do webhook).
+
+**Suíte completa**: `typecheck` (0 erros), `lint` (0 erros, 2 warnings pré-existentes não relacionados), `test` (218/218, 24 arquivos — 207 anteriores + 11 novos), `build` (sucesso, inclusive o novo cron route aparecendo no output).
+
+### 13.3 Riscos residuais (declarados)
+
+1. **Mesma lacuna de monitoramento da Fase 1** — `ambiguous_retry_blocked`/`invalid_phone`/tentativas esgotadas ficam visíveis só via consulta SQL manual (seção 12.4), nenhum painel novo (fora de escopo, decisão deliberada).
+2. **Cron nunca testado rodando de verdade** — só a função TS/SQL foi testada (mocks + Postgres real). O disparo periódico real (Vercel cron chamando o endpoint) só será exercitado quando houver deploy — mesma limitação já registrada pra Fase 1 (seção 10.4): esquema e lógica validados, integração ponta a ponta publicada ainda pendente.
+3. **`RAW_CAPTURE_SWEEP_MAX_ATTEMPTS=8`** (mesmo valor de `RUNTIME_PENDING_REPLY_MAX_ATTEMPTS`) é um palpite razoável, nunca calibrado com dado real de produção — pode precisar de ajuste depois de observação real em staging/produção (critério 3 da seção 12.7 já previa isso).
+4. **Pré-checagem reavalia sinais que podem mudar entre a checagem e a execução real** (ex.: um profissional desativa `public_enabled` no meio) — janela pequena, mesma categoria de risco que já existe no caminho normal do webhook (não introduzida pela Fase 2), não uma regressão nova.
+
+### 13.4 Recomendação
+
+Implementação fiel à proposta aprovada — nenhuma expansão de escopo, reaproveita 100% dos mecanismos já testados (claim/lease, backoff, algoritmo de roteamento). A distinção de segurança do ponto 3 (pré-checagem bloqueando retomada de identidade ambígua) está implementada e testada exatamente como desenhada. Pronta pra revisão do Head of AI; aplicação em staging segue o mesmo processo já estabelecido (apresentar, aguardar aprovação explícita, nunca aplicar sozinho).
+
 ## Próximo passo
 
-Aguardando aprovação da proposta da Fase 2 (seção 12) antes de qualquer implementação. Checklist de validação pós-template (seção 11) pronto pra quando a Meta aprovar. Fase 3 continua bloqueada até `sendSystemWhatsappMessage` ter idempotência própria.
+Fase 2 implementada e testada localmente, aguardando revisão do Head of AI. Checklist de validação pós-template (seção 11) e proposta de staging (quando aprovada) seguem o mesmo processo das fases anteriores. Fase 3 continua bloqueada até `sendSystemWhatsappMessage` ter idempotência própria. Depois da validação da Fase 2: evolução do cérebro da Doopla (ADR 0004) — memória profissional, contatos, aprendizado.

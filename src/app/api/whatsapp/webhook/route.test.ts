@@ -35,11 +35,19 @@ vi.mock('@/lib/supabase/service-role', () => ({
 vi.mock('@/lib/channels/whatsapp/intake-orchestration', () => ({
   handleWhatsappInboundMessage: (...args: unknown[]) => handleWhatsappInboundMessage(...args),
 }));
-vi.mock('@/lib/channels/whatsapp/raw-captures', () => ({
-  captureWhatsappInboundRawMessage: (...args: unknown[]) => captureWhatsappInboundRawMessage(...args),
-  claimWhatsappInboundRawCaptureForProcessing: (...args: unknown[]) => claimWhatsappInboundRawCaptureForProcessing(...args),
-  finishWhatsappInboundRawCapture: (...args: unknown[]) => finishWhatsappInboundRawCapture(...args),
-}));
+// classifyWhatsappInboundResultForCapture é pura (sem I/O) — usa a
+// implementação REAL via importActual, nunca remockada, pra este
+// teste continuar provando o comportamento verdadeiro da classificação
+// (não um stub que poderia mascarar uma regressão nela).
+vi.mock('@/lib/channels/whatsapp/raw-captures', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/channels/whatsapp/raw-captures')>();
+  return {
+    ...actual,
+    captureWhatsappInboundRawMessage: (...args: unknown[]) => captureWhatsappInboundRawMessage(...args),
+    claimWhatsappInboundRawCaptureForProcessing: (...args: unknown[]) => claimWhatsappInboundRawCaptureForProcessing(...args),
+    finishWhatsappInboundRawCapture: (...args: unknown[]) => finishWhatsappInboundRawCapture(...args),
+  };
+});
 vi.mock('@/lib/runtime', () => ({
   markOutboundIntentDelivered: (...args: unknown[]) => markOutboundIntentDelivered(...args),
   markOutboundIntentRead: (...args: unknown[]) => markOutboundIntentRead(...args),

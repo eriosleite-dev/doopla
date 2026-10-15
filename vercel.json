@@ -11,6 +11,10 @@
     {
       "path": "/api/runtime/drain-professional-self-messages",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/runtime/sweep-whatsapp-inbound-raw-captures",
+      "schedule": "* * * * *"
     }
   ]
 }

@@ -365,6 +365,124 @@ async function resolveProfessionalSelfAndFinish(
   return { kind: 'deferred', conversationId };
 }
 
+export type WhatsappInboundRoutingSafety = { safe: true } | { safe: false; reason: 'ambiguous' | 'no_signal' };
+
+// Fase 2 (ADR 0002, seção 12) — pré-checagem PURA (zero escrita, zero
+// efeito colateral) pro sweep de recuperação decidir se uma mensagem
+// capturada e travada é segura pra retomar automaticamente. Replica
+// EXATAMENTE a mesma sequência de leitura/decisão de
+// handleWhatsappInboundMessage logo abaixo (reaproveita os MESMOS
+// helpers privados deste módulo — nunca uma segunda implementação do
+// algoritmo de roteamento) mas para na decisão: nunca chega a
+// claimRawInboundEvent/append_channel_inbound_intake_message/
+// sendSystemWhatsappMessage.
+//
+// Só 'resolved' (identidade determinística, nos dois ramos do
+// algoritmo — verified_professional/token/unique_history/
+// client_confirmation) é seguro pra retomada automática. Achado da
+// auditoria da Fase 2 (ADR 0002 seção 12.1): esse é o ÚNICO ponto sem
+// proteção de idempotência comprovada — create_conversation (0107),
+// persist_inbound_message/outbound_intents (0111) e
+// professional_self_pending_messages (0108) já são todos seguros pra
+// retry. 'needs_confirmation'/'no_signal' envolveriam (re)mandar um
+// prompt que a tentativa interrompida pode já ter mandado — nunca
+// retomado automaticamente enquanto isso não tiver idempotência
+// própria (pré-requisito nomeado da Fase 3, ainda bloqueada).
+export async function evaluateWhatsappInboundRoutingSafety(
+  supabase: AnySupabaseClient,
+  normalizedPhone: string,
+  body: string
+): Promise<WhatsappInboundRoutingSafety> {
+  const verifiedProfessionalId = await resolveVerifiedProfessionalId(supabase, normalizedPhone);
+  if (verifiedProfessionalId) {
+    let tokenSlug = await (async () => {
+      const slug = extractDooplaSlugToken(body);
+      return slug ? await resolveProfessionalBySlug(supabase, slug) : null;
+    })();
+    if (!tokenSlug) {
+      const bareWords = extractBareCodeCandidates(body, RESERVED_SLUGS);
+      const bareMatches = await resolveBareCodeMatches(supabase, bareWords);
+      if (bareMatches.length === 1) tokenSlug = bareMatches[0];
+    }
+    if (!tokenSlug) {
+      tokenSlug = await resolveExplicitReservedSlugIntent(supabase, body);
+    }
+    const decision = evaluateWhatsappRouting({
+      verifiedProfessionalId,
+      token: tokenSlug ? { professionalId: tokenSlug.professionalId, slug: tokenSlug.label } : null,
+      nameMentionCandidates: [],
+      historyMatches: [],
+      recentActivityProfessionalId: null,
+    });
+    // Passo 1 do algoritmo nunca devolve outro outcome quando
+    // verifiedProfessionalId != null (mesmo comentário de
+    // handleWhatsappInboundMessage, abaixo) — sempre 'resolved' aqui.
+    if (decision.outcome === 'resolved') return { safe: true };
+  }
+
+  const { data: existingSessionRows } = await supabase
+    .from('channel_inbound_intakes')
+    .select('*')
+    .eq('channel', 'whatsapp')
+    .eq('from_identifier', normalizedPhone)
+    .eq('routing_status', 'pending_disambiguation')
+    .limit(1)
+    .returns<IntakeSessionRow[]>();
+  const existingSession: IntakeSessionRow | null = existingSessionRows?.[0] ?? null;
+
+  if (existingSession?.current_prompt_options) {
+    const options = existingSession.current_prompt_options as PromptOption[];
+    const answer = parseDisambiguationReply(body, options);
+    if (answer) return { safe: true };
+  }
+
+  const backlogBodies = existingSession ? await fetchBacklogBodies(supabase, existingSession.id) : [];
+  const combinedText = [...backlogBodies, body].join('\n');
+
+  const [tokenSlug, nameMentionCandidatesByName, historyMatches] = await Promise.all([
+    (async () => {
+      const slug = extractDooplaSlugTokenFromAny([...backlogBodies, body]);
+      return slug ? await resolveProfessionalBySlug(supabase, slug) : null;
+    })(),
+    findNameMentionCandidates(supabase, combinedText),
+    findHistoryMatches(supabase, normalizedPhone),
+  ]);
+
+  let effectiveTokenSlug = tokenSlug;
+  let nameMentionCandidates = nameMentionCandidatesByName;
+  if (!effectiveTokenSlug) {
+    const bareWords = extractBareCodeCandidates(combinedText, RESERVED_SLUGS);
+    const bareMatches = await resolveBareCodeMatches(supabase, bareWords);
+    if (bareMatches.length === 1) {
+      effectiveTokenSlug = bareMatches[0];
+    } else if (bareMatches.length > 1) {
+      const existingIds = new Set(nameMentionCandidates.map((c) => c.professionalId));
+      for (const match of bareMatches) {
+        if (!existingIds.has(match.professionalId)) {
+          nameMentionCandidates = [...nameMentionCandidates, match];
+          existingIds.add(match.professionalId);
+        }
+      }
+    }
+  }
+  if (!effectiveTokenSlug) {
+    effectiveTokenSlug = await resolveExplicitReservedSlugIntent(supabase, body);
+  }
+
+  const recentActivityProfessionalId = await findRecentActivityProfessionalId(supabase, historyMatches);
+
+  const decision = evaluateWhatsappRouting({
+    verifiedProfessionalId: null,
+    token: effectiveTokenSlug ? { professionalId: effectiveTokenSlug.professionalId, slug: effectiveTokenSlug.label } : null,
+    nameMentionCandidates,
+    historyMatches: historyMatches.map((h) => ({ professionalId: h.professionalId, label: h.label })),
+    recentActivityProfessionalId,
+  });
+
+  if (decision.outcome === 'resolved') return { safe: true };
+  return { safe: false, reason: decision.outcome === 'needs_confirmation' ? 'ambiguous' : 'no_signal' };
+}
+
 export async function handleWhatsappInboundMessage(
   supabase: AnySupabaseClient,
   normalizedPhone: string,
