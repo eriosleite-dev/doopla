@@ -24,9 +24,16 @@ export function OrcamentoForm({ slug, artistName }: { slug: string; artistName: 
   if (state.success) {
     return (
       <div className="flex flex-col items-center gap-2 py-2 text-center">
-        <p className="font-pro-sub text-[18px] font-bold text-[var(--pro-off)]">Atendimento iniciado</p>
+        {/* Achado real de auditoria (15/10/2026, a pedido da fundadora):
+            "Atendimento iniciado"/"já está cuidando" afirmava uma conversa
+            que nunca aconteceu — submit_orcamento_request (0082) só cria
+            opportunity + conversation vazia, sem nenhuma mensagem e sem
+            disparar o Runtime. Nenhuma IA leu ou respondeu nada ainda
+            neste ponto. Copy corrigida pra descrever só o que de fato
+            aconteceu: o pedido foi recebido e entrou na fila. */}
+        <p className="font-pro-sub text-[18px] font-bold text-[var(--pro-off)]">Pedido recebido</p>
         <p className="text-[13.5px] leading-relaxed text-[var(--pro-tx-70)]">
-          A Doopla de {artistName} recebeu o que você contou e já está cuidando do seu pedido.
+          A Doopla de {artistName} recebeu o que você contou. {artistName} vai dar retorno em breve.
         </p>
       </div>
     );
