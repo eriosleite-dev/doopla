@@ -12,3 +12,11 @@ of AI/revisor independente, e Claude Code, como Principal AI Engineer).
 Decisões de arquitetura de IA ficam registradas como ADRs versionados em
 `docs/ai/decisions/` — leia o índice lá antes de propor algo que talvez já
 tenha sido decidido.
+
+# Estilo de resposta
+
+Sempre que apresentar um achado, diagnóstico ou pergunta em aberto pra
+fundadora (inclusive dentro de um ADR), inclua junto a sua própria
+recomendação de como resolver — nunca só exponha a pergunta e espere ela
+decidir sozinha. Recomendação não substitui aprovação dela quando
+necessária (migration, runtime, push, deploy); só agiliza o processo.
