@@ -62,7 +62,7 @@ describe('logAiUsageEvent — best-effort real', () => {
 
   it('rejeição que não é instância de Error (ex.: string/objeto lançado) ainda vira um {ok:false, error:string}, nunca quebra', async () => {
     const supabase = fakeSupabase(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-throw-literal
+      // Teste deliberado de rejeição não-Error (sem disable necessário — nenhuma regra ativa neste projeto proíbe throw de literal).
       throw 'string literal lançada, não um Error';
     });
     const result = await logAiUsageEvent(supabase, BASE_PARAMS);
