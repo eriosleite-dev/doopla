@@ -1,7 +1,7 @@
 # ADR 0002 — Arquitetura final: recuperação confiável de mensagens inbound
 
-- **Data:** 2026-10-15 (revisão 4 — Fase 0 preparada localmente, ver seção 7)
-- **Status:** Arquitetura aprovada (Fases 1-3 ainda aguardando). **Fase 0 preparada e testada localmente (migration `0111_inbound_outbound_idempotency.sql`) — NÃO aplicada em staging/produção, nenhum push/deploy feito**, conforme autorização explícita da fundadora ("Pode preparar localmente... Não aplique a migration em staging ou produção. Não faça push ou deploy.").
+- **Data:** 2026-10-15 (revisão 5 — Fase 0 aplicada em staging, ver seção 7)
+- **Status:** Arquitetura aprovada (Fases 1-3 ainda aguardando). **Fase 0 (migration `0111_inbound_outbound_idempotency.sql`) testada localmente e APLICADA EM STAGING pela própria fundadora (15/10/2026, consulta de verificação do ponto 1d rodada antes, 0 duplicatas históricas). Ainda NÃO aplicada em produção, nenhum push/deploy feito.**
 - **Autor:** Claude Code (Principal AI Engineer)
 - **Escopo**: arquitetura técnica completa, fases de implementação, critérios objetivos de aprovação, contratos SQL propostos. Implementação é um passo futuro separado, fase por fase, cada uma com sua própria aprovação.
 
@@ -280,8 +280,19 @@ Nenhuma etapa do rollback apaga ou altera uma linha existente em `conversation_m
 
 ### 7.8 Recomendação
 
-Bate com a arquitetura já aprovada (seções 1-3) e fecha os 5 pontos exigidos antes da implementação, incluindo o gap do índice nu (1e) e o segundo ponto de escrita (`resolve_runtime_pending_reply_allowed`) que a auditoria original não tinha nomeado. Minha recomendação: (1) a fundadora roda a query de 7.6 em produção — se devolver 0 linhas (esperado, não há relato de duplicidade histórica), (2) aprova a aplicação da migration 0111 em staging primeiro, nunca direto em produção, com o rollback de 7.7 pronto, (3) só então produção, fora da janela de qualquer envio real pendente (o bloqueio de push/deploy por causa do template `doopla_primeiro_contato_v2` continua intacto — esta migration não depende disso e não precisa esperar, mas o push/deploy real continua represado até a aprovação do template, por definição). Aplicação em staging/produção continua exigindo aprovação explícita separada, que não foi dada ainda.
+Bate com a arquitetura já aprovada (seções 1-3) e fecha os 5 pontos exigidos antes da implementação, incluindo o gap do índice nu (1e) e o segundo ponto de escrita (`resolve_runtime_pending_reply_allowed`) que a auditoria original não tinha nomeado.
+
+### 7.9 Status real (atualizado 15/10/2026)
+
+1. ✅ Query de 7.6 rodada em produção pela fundadora — **0 linhas**, sem duplicidade histórica.
+2. ✅ Migration 0111 aplicada em **staging** pela fundadora — sucesso, sem erro (consistente com os testes locais da seção 7.4).
+3. **Pendente**: verificação funcional em staging (seção 7.10) antes de recomendar produção.
+4. **Pendente**: aprovação explícita separada pra produção — não aplico lá sem isso, e o push/deploy real do WhatsApp continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration.
+
+### 7.10 Verificação funcional recomendada em staging, antes de propor produção
+
+Minha recomendação (ainda não executada — depende de acesso/decisão da fundadora): confirmar em staging, com uma consulta read-only simples, que a nova coluna e os dois índices existem e que `persist_inbound_message`/`create_outbound_intent` aceitam o novo parâmetro sem erro — ex.: mandar uma mensagem de teste real pelo número de staging do WhatsApp (se existir) e confirmar que `conversation_messages.provider_message_id` foi preenchido na linha criada. Se não houver um número de staging configurado, a prova já feita localmente (seção 7.4, Postgres real idêntico ao schema de staging) é suficiente pra mim recomendar produção — decisão final é da fundadora.
 
 ## Próximo passo
 
-Aguardando a fundadora rodar a verificação de 7.6 e aprovar (ou pedir ajuste) na migration 0111 antes de qualquer aplicação em staging/produção. Fases 1-3 continuam na fila, nesta ordem, cada uma com sua própria aprovação.
+Aguardando a fundadora decidir: (a) pular a verificação funcional de 7.10 e aprovar produção direto, confiando nos testes locais já feitos, ou (b) rodar a verificação funcional em staging primeiro. Fases 1-3 continuam na fila, nesta ordem, cada uma com sua própria aprovação.
