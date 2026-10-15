@@ -58,7 +58,23 @@ export type WhatsappInboundHandlerResult =
   // próxima mensagem ou pelo cron), nunca a mensagem desaparece.
   | { kind: 'deferred'; conversationId: string }
   | { kind: 'backlogged'; intakeId: string; promptSent: boolean }
-  | { kind: 'abandoned'; intakeId: string };
+  | { kind: 'abandoned'; intakeId: string }
+  // Fase 2 (ADR 0002, achado da revisão do Head of AI, 15/10/2026) —
+  // devolvido só quando o chamador pediu onlyProvenIdempotentPaths=true
+  // (sweep de recuperação) e a decisão de roteamento DE VERDADE, agora,
+  // nesta execução, cai num caminho sem idempotência comprovada.
+  // 'ambiguous_identity': identidade não resolve deterministicamente —
+  // mandar o prompt de desambiguação/pergunta de abertura poderia
+  // repetir um envio que a tentativa interrompida já tenha feito.
+  // 'professional_self_unproven': identidade verificada (professional_self)
+  // — content->ResolveProfessionalSelfAndFinish->drainProfessionalSelfPendingMessages
+  // pode alcançar sendProfessionalSelfReplyViaWhatsapp (pipeline.ts),
+  // um envio direto ao WhatsApp do PRÓPRIO profissional, fora de
+  // outbound_intents, sem nenhuma proteção de idempotência própria —
+  // nunca retomado automaticamente até esse envio ter sua própria
+  // idempotência comprovada (mesma categoria de pré-requisito da
+  // Fase 3, agora também nomeada aqui).
+  | { kind: 'retry_blocked'; reason: 'ambiguous_identity' | 'professional_self_unproven' };
 
 type NamedCandidate = RoutingCandidate;
 
@@ -365,7 +381,7 @@ async function resolveProfessionalSelfAndFinish(
   return { kind: 'deferred', conversationId };
 }
 
-export type WhatsappInboundRoutingSafety = { safe: true } | { safe: false; reason: 'ambiguous' | 'no_signal' };
+export type WhatsappInboundRoutingSafety = { safe: true } | { safe: false; reason: 'ambiguous' | 'no_signal' | 'professional_self_unproven' };
 
 // Fase 2 (ADR 0002, seção 12) — pré-checagem PURA (zero escrita, zero
 // efeito colateral) pro sweep de recuperação decidir se uma mensagem
@@ -375,19 +391,36 @@ export type WhatsappInboundRoutingSafety = { safe: true } | { safe: false; reaso
 // helpers privados deste módulo — nunca uma segunda implementação do
 // algoritmo de roteamento) mas para na decisão: nunca chega a
 // claimRawInboundEvent/append_channel_inbound_intake_message/
-// sendSystemWhatsappMessage.
+// sendSystemWhatsappMessage/resolveProfessionalSelfAndFinish.
 //
-// Só 'resolved' (identidade determinística, nos dois ramos do
-// algoritmo — verified_professional/token/unique_history/
-// client_confirmation) é seguro pra retomada automática. Achado da
-// auditoria da Fase 2 (ADR 0002 seção 12.1): esse é o ÚNICO ponto sem
-// proteção de idempotência comprovada — create_conversation (0107),
-// persist_inbound_message/outbound_intents (0111) e
-// professional_self_pending_messages (0108) já são todos seguros pra
-// retry. 'needs_confirmation'/'no_signal' envolveriam (re)mandar um
-// prompt que a tentativa interrompida pode já ter mandado — nunca
-// retomado automaticamente enquanto isso não tiver idempotência
-// própria (pré-requisito nomeado da Fase 3, ainda bloqueada).
+// IMPORTANTE: isto é só uma PREVISÃO, no instante da seleção do sweep
+// — nunca a garantia real. A garantia de verdade é o gate dentro de
+// handleWhatsappInboundMessage (parâmetro onlyProvenIdempotentPaths),
+// que reavalia a decisão NO MOMENTO da execução e aborta se ela tiver
+// mudado nesse meio-tempo (achado da revisão do Head of AI,
+// 15/10/2026 — identidade/histórico/sessão podem mudar entre a seleção
+// e a execução). Esta pré-checagem existe só como otimização (evita
+// reclamar+executar uma captura previsivelmente bloqueada), nunca como
+// a única camada de proteção.
+//
+// Dois caminhos sem proteção comprovada (achado da auditoria da Fase
+// 2, ADR 0002 seção 12.1 + revisão de 15/10/2026):
+//   'ambiguous'/'no_signal' — identidade não resolve deterministicamente;
+//     (re)mandar o prompt de desambiguação/pergunta de abertura
+//     poderia repetir um envio que a tentativa interrompida já tenha
+//     feito (sendSystemWhatsappMessage, sem idempotência própria).
+//   'professional_self_unproven' — identidade verificada resolve pro
+//     PRÓPRIO profissional (method='verified_professional') ->
+//     resolveProfessionalSelfAndFinish -> drainProfessionalSelfPendingMessages
+//     -> pipeline -> pode alcançar sendProfessionalSelfReplyViaWhatsapp
+//     (pipeline.ts), um envio direto ao WhatsApp do profissional, fora
+//     de outbound_intents, SEM nenhuma proteção de idempotência
+//     própria — confirmado lendo professional-whatsapp-reply.ts.
+// Todo o resto (token/unique_history/client_confirmation, inclusive
+// token override pra OUTRO profissional enquanto o remetente é
+// verificado) vai por resolveAndFinish -> persist_inbound_message/
+// outbound_intents, protegidos desde a Fase 0 (0111) — esses sim são
+// seguros pra retomada automática.
 export async function evaluateWhatsappInboundRoutingSafety(
   supabase: AnySupabaseClient,
   normalizedPhone: string,
@@ -417,7 +450,13 @@ export async function evaluateWhatsappInboundRoutingSafety(
     // Passo 1 do algoritmo nunca devolve outro outcome quando
     // verifiedProfessionalId != null (mesmo comentário de
     // handleWhatsappInboundMessage, abaixo) — sempre 'resolved' aqui.
-    if (decision.outcome === 'resolved') return { safe: true };
+    // 'verified_professional' é o caminho SEM proteção comprovada
+    // (ver comentário acima); 'token' (override pra outro
+    // profissional) vai por resolveAndFinish, protegido desde a Fase 0.
+    if (decision.outcome === 'resolved') {
+      if (decision.method === 'verified_professional') return { safe: false, reason: 'professional_self_unproven' };
+      return { safe: true };
+    }
   }
 
   const { data: existingSessionRows } = await supabase
@@ -483,10 +522,30 @@ export async function evaluateWhatsappInboundRoutingSafety(
   return { safe: false, reason: decision.outcome === 'needs_confirmation' ? 'ambiguous' : 'no_signal' };
 }
 
+export type WhatsappInboundHandlerOptions = {
+  // Fase 2 (ADR 0002) — GATE REAL, no caminho de execução, nunca só na
+  // seleção do sweep (achado da revisão do Head of AI, 15/10/2026: a
+  // pré-checagem de evaluateWhatsappInboundRoutingSafety pode estar
+  // desatualizada no instante em que a execução chega aqui —
+  // identidade/histórico/sessão mudam entre a seleção e a execução,
+  // TOCTOU). Quando true (sempre true quando quem chama é o sweep de
+  // recuperação, nunca o webhook ao vivo pra mensagem nova — lá cada
+  // mensagem é processada pela primeira e única vez, sempre), a
+  // função REAVALIA a decisão de roteamento agora mesmo e aborta de
+  // forma controlada (devolve 'retry_blocked', nunca lança) se o
+  // caminho determinado AGORA passar por sendSystemWhatsappMessage
+  // (identidade ambígua) ou sendProfessionalSelfReplyViaWhatsapp
+  // (professional_self) — os dois únicos envios diretos sem
+  // idempotência própria comprovada. Default false preserva 100% do
+  // comportamento do webhook ao vivo.
+  onlyProvenIdempotentPaths?: boolean;
+};
+
 export async function handleWhatsappInboundMessage(
   supabase: AnySupabaseClient,
   normalizedPhone: string,
-  params: WhatsappInboundHandlerParams
+  params: WhatsappInboundHandlerParams,
+  options: WhatsappInboundHandlerOptions = {}
 ): Promise<WhatsappInboundHandlerResult> {
   const providerSentAt = params.providerTimestampSeconds ? new Date(params.providerTimestampSeconds * 1000).toISOString() : null;
 
@@ -532,6 +591,14 @@ export async function handleWhatsappInboundMessage(
     // 'verified_professional' (padrão) ou 'token' (override
     // determinístico pra outro profissional).
     if (decision.outcome === 'resolved' && decision.method === 'verified_professional') {
+      // GATE REAL (ver WhatsappInboundHandlerOptions acima) — nunca
+      // chega a resolveProfessionalSelfAndFinish/
+      // drainProfessionalSelfPendingMessages/
+      // sendProfessionalSelfReplyViaWhatsapp (pipeline.ts, envio
+      // direto sem idempotência própria) numa retomada automática.
+      if (options.onlyProvenIdempotentPaths) {
+        return { kind: 'retry_blocked', reason: 'professional_self_unproven' };
+      }
       return await resolveProfessionalSelfAndFinish(supabase, { professionalId: decision.professionalId, currentMessage: params });
     }
     if (decision.outcome === 'resolved') {
@@ -641,6 +708,15 @@ export async function handleWhatsappInboundMessage(
       existingExternalParticipantId: historyEntry?.externalParticipantId ?? null,
       originReference: effectiveTokenSlug ? effectiveTokenSlug.label : null,
     });
+  }
+
+  // GATE REAL (ver WhatsappInboundHandlerOptions acima) — nunca chega
+  // a claimRawInboundEvent/append_channel_inbound_intake_message/
+  // sendSystemWhatsappMessage numa retomada automática, mesmo que a
+  // pré-checagem do sweep tivesse previsto "seguro" antes (identidade/
+  // histórico/sessão podem ter mudado nesse meio-tempo — TOCTOU).
+  if (options.onlyProvenIdempotentPaths) {
+    return { kind: 'retry_blocked', reason: 'ambiguous_identity' };
   }
 
   // 3) Ainda ambíguo/sem sinal — preserva a mensagem (claim raw +

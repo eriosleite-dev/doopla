@@ -314,3 +314,103 @@ describe('handleWhatsappInboundMessage — colisão "doopla" (Cenário E, 13/10/
     expect(triggerInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ authorType: 'external_participant' }));
   });
 });
+
+// Fase 2 (ADR 0002, achado real da revisão do Head of AI, 15/10/2026):
+// GATE REAL no caminho de execução — prova que handleWhatsappInboundMessage
+// em si (não só o sweep que o chama) nunca alcança um envio sem
+// idempotência própria quando onlyProvenIdempotentPaths=true, mesmo
+// que a pré-checagem tivesse previsto diferente. sendWhatsappTextMessage
+// é o fundo de poço de AMBOS os envios de risco (sendSystemWhatsappMessage
+// e, indiretamente via drainProfessionalSelfPendingMessages/pipeline,
+// sendProfessionalSelfReplyViaWhatsapp) — "nunca chamado" aqui é a
+// prova mais forte possível de que nenhum dos dois aconteceu.
+describe('handleWhatsappInboundMessage — gate onlyProvenIdempotentPaths (Fase 2, 15/10/2026)', () => {
+  beforeEach(() => {
+    sendWhatsappTextMessage.mockReset().mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.sys' });
+    triggerInboundMessage.mockReset();
+    enqueueProfessionalSelfPendingMessage.mockReset();
+    drainProfessionalSelfPendingMessages.mockReset();
+  });
+
+  it('professional_self (identidade verificada): aborta ANTES de enfileirar/drenar/enviar, devolve retry_blocked', async () => {
+    const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
+
+    const supabase = createFakeSupabase({
+      from: { professional_whatsapp_identities: ok({ professional_id: 'eduarda' }), profiles: EMPTY },
+      rpc: { create_conversation: ok({ id: 'conv-self-continuo' }) },
+    });
+
+    const result = await handleWhatsappInboundMessage(
+      supabase,
+      '+5511900000001',
+      { providerMessageId: 'wamid.retry1', from: '5511900000001', body: 'Sim', contactName: null, providerTimestampSeconds: null },
+      { onlyProvenIdempotentPaths: true }
+    );
+
+    expect(result).toEqual({ kind: 'retry_blocked', reason: 'professional_self_unproven' });
+    expect(enqueueProfessionalSelfPendingMessage).not.toHaveBeenCalled();
+    expect(drainProfessionalSelfPendingMessages).not.toHaveBeenCalled();
+    expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('identidade ambígua/sem sinal: aborta ANTES do claim/append/prompt, devolve retry_blocked, nunca envia nada', async () => {
+    const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
+
+    const supabase = createFakeSupabase({
+      from: {
+        professional_whatsapp_identities: NONE,
+        artist_profiles: EMPTY,
+        profiles: EMPTY,
+        external_participant_channel_identities: EMPTY,
+        channel_inbound_intakes: EMPTY,
+        channel_inbound_intake_messages: EMPTY,
+      },
+      rpc: {
+        claim_inbound_event: ok({ claimed: true, event_id: 'evt-never-called' }),
+        claim_or_create_channel_inbound_intake: ok({ id: 'intake-never-called', attempt_count: 0, current_prompt_options: null }),
+        append_channel_inbound_intake_message: ok({}),
+      },
+    });
+
+    const result = await handleWhatsappInboundMessage(
+      supabase,
+      '+5511988887777',
+      { providerMessageId: 'wamid.retry2', from: '5511988887777', body: 'Olá, gostaria de saber sobre um orçamento.', contactName: null, providerTimestampSeconds: null },
+      { onlyProvenIdempotentPaths: true }
+    );
+
+    expect(result).toEqual({ kind: 'retry_blocked', reason: 'ambiguous_identity' });
+    expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('identidade resolve de forma determinística (token): gate NUNCA bloqueia um caminho seguro, segue normalmente', async () => {
+    const { handleWhatsappInboundMessage } = await import('./intake-orchestration');
+
+    const supabase = createFakeSupabase({
+      from: {
+        professional_whatsapp_identities: NONE,
+        profiles: ok({ id: 'eduarda', full_name: 'Eduarda Rios Leite' }),
+        // Duas chamadas concorrentes nesta tabela no ramo geral
+        // (findNameMentionCandidates espera array; resolveProfessionalBySlug
+        // espera single) — fila na ordem real de disparo.
+        artist_profiles: [EMPTY, ok({ stage_name: null, public_enabled: true })],
+        channel_inbound_intakes: EMPTY,
+        external_participant_channel_identities: EMPTY,
+      },
+      rpc: { create_conversation: ok({ id: 'conv-ext-retry' }) },
+    });
+    triggerInboundMessage.mockResolvedValue({ kind: 'noop' });
+    resolveOrCreateExternalParticipant.mockResolvedValue({ id: 'participant-retry' });
+    findReusableWhatsappConversation.mockResolvedValue(null);
+
+    const result = await handleWhatsappInboundMessage(
+      supabase,
+      '+5511900000001',
+      { providerMessageId: 'wamid.retry3', from: '5511900000001', body: 'doopla', contactName: null, providerTimestampSeconds: null },
+      { onlyProvenIdempotentPaths: true }
+    );
+
+    expect(result).toEqual({ kind: 'routed', conversationId: 'conv-ext-retry', method: 'token' });
+    expect(triggerInboundMessage).toHaveBeenCalledWith(expect.objectContaining({ authorType: 'external_participant' }));
+  });
+});

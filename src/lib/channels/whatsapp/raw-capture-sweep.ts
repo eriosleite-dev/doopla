@@ -39,7 +39,17 @@ export type SweepCaptureOutcome =
   | 'resumed_completed'
   | 'resumed_delegated'
   | 'resumed_failed'
-  | 'ambiguous_blocked'
+  | 'blocked_at_precheck'
+  // Achado da revisão do Head of AI (15/10/2026): a pré-checagem previu
+  // "seguro", mas o GATE REAL dentro de handleWhatsappInboundMessage
+  // (onlyProvenIdempotentPaths) reavaliou no instante da execução e
+  // encontrou um caminho sem idempotência comprovada — identidade/
+  // histórico/sessão mudaram entre a seleção e a execução (TOCTOU).
+  // Distinto de 'blocked_at_precheck' só pra observabilidade (os dois
+  // terminam no MESMO estado needs_attention, nunca enviam nada) —
+  // um valor alto aqui indica que a pré-checagem está desatualizada
+  // com frequência, vale investigar.
+  | 'blocked_at_execution'
   | 'invalid_phone'
   | 'claim_missed'
   | 'backoff_not_due';
@@ -87,33 +97,43 @@ export async function sweepOneWhatsappInboundRawCapture(
     return 'invalid_phone';
   }
 
+  // Pré-checagem: otimização, nunca a garantia (ver comentário completo
+  // em evaluateWhatsappInboundRoutingSafety) — evita reclamar+executar
+  // uma captura previsivelmente bloqueada. A garantia REAL é o gate
+  // dentro de handleWhatsappInboundMessage logo abaixo, reavaliado no
+  // instante da execução.
   const safety = await evaluateWhatsappInboundRoutingSafety(supabase, normalizedPhone, body);
   if (!safety.safe) {
     const claim = await claimWhatsappInboundRawCaptureForProcessing(supabase, { providerMessageId: capture.providerMessageId, workerId: SWEEP_WORKER_ID });
     if (!claim.claimed) return 'claim_missed';
-    await finishWhatsappInboundRawCapture(supabase, {
-      providerMessageId: capture.providerMessageId,
-      workerId: SWEEP_WORKER_ID,
-      status: 'needs_attention',
-      resultKind: 'ambiguous_retry_blocked',
-      error: `identidade não resolve de forma determinística (${safety.reason}) — retomada automática bloqueada até sendSystemWhatsappMessage ter idempotência própria (pré-requisito da Fase 3)`,
-    });
-    return 'ambiguous_blocked';
+    const resultKind = safety.reason === 'professional_self_unproven' ? 'professional_self_retry_blocked' : 'ambiguous_retry_blocked';
+    const error =
+      safety.reason === 'professional_self_unproven'
+        ? 'identidade resolve pro próprio profissional (pré-checagem) — retomada automática bloqueada até sendProfessionalSelfReplyViaWhatsapp ter idempotência própria'
+        : `identidade não resolve de forma determinística (${safety.reason}) — retomada automática bloqueada até sendSystemWhatsappMessage ter idempotência própria (pré-requisito da Fase 3)`;
+    await finishWhatsappInboundRawCapture(supabase, { providerMessageId: capture.providerMessageId, workerId: SWEEP_WORKER_ID, status: 'needs_attention', resultKind, error });
+    return 'blocked_at_precheck';
   }
 
   const claim = await claimWhatsappInboundRawCaptureForProcessing(supabase, { providerMessageId: capture.providerMessageId, workerId: SWEEP_WORKER_ID });
   if (!claim.claimed) return 'claim_missed';
 
   try {
-    const result = await handleWhatsappInboundMessage(supabase, normalizedPhone, {
-      providerMessageId: capture.providerMessageId,
-      from: fromPhone,
-      body,
-      contactName: capture.contactName,
-      providerTimestampSeconds: capture.providerTimestampSeconds,
-    });
-    const { status, error } = classifyWhatsappInboundResultForCapture(result);
-    await finishWhatsappInboundRawCapture(supabase, { providerMessageId: capture.providerMessageId, workerId: SWEEP_WORKER_ID, status, resultKind: result.kind, error });
+    // onlyProvenIdempotentPaths: true — GATE REAL (nunca só a
+    // pré-checagem acima). Reavalia a decisão de roteamento agora,
+    // nesta execução, e aborta de forma controlada (devolve
+    // 'retry_blocked', nunca lança, nunca chama
+    // sendSystemWhatsappMessage/sendProfessionalSelfReplyViaWhatsapp)
+    // se ela tiver mudado desde a pré-checagem.
+    const result = await handleWhatsappInboundMessage(
+      supabase,
+      normalizedPhone,
+      { providerMessageId: capture.providerMessageId, from: fromPhone, body, contactName: capture.contactName, providerTimestampSeconds: capture.providerTimestampSeconds },
+      { onlyProvenIdempotentPaths: true }
+    );
+    const { status, resultKind, error } = classifyWhatsappInboundResultForCapture(result);
+    await finishWhatsappInboundRawCapture(supabase, { providerMessageId: capture.providerMessageId, workerId: SWEEP_WORKER_ID, status, resultKind, error });
+    if (result.kind === 'retry_blocked') return 'blocked_at_execution';
     if (status === 'completed') return 'resumed_completed';
     if (status === 'delegated') return 'resumed_delegated';
     return 'resumed_failed';
@@ -142,7 +162,8 @@ export async function runWhatsappInboundRawCaptureSweep(
     resumed_completed: 0,
     resumed_delegated: 0,
     resumed_failed: 0,
-    ambiguous_blocked: 0,
+    blocked_at_precheck: 0,
+    blocked_at_execution: 0,
     invalid_phone: 0,
     claim_missed: 0,
     backoff_not_due: 0,

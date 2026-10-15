@@ -41,20 +41,25 @@ as $$
     or (status = 'processing' and lease_expires_at < now())
     -- needs_attention só entra se ainda não esgotou o teto de
     -- tentativas E não é um resultado sabidamente determinístico-nunca-
-    -- muda (invalid_phone) nem um bloqueio de desenho deliberado
-    -- (ambiguous_retry_blocked — ver evaluateWhatsappInboundRoutingSafety,
-    -- intake-orchestration.ts: identidade não resolve de forma
-    -- determinística, retomar sozinho arriscaria reenviar um prompt).
+    -- muda (invalid_phone) nem um bloqueio de desenho deliberado —
+    -- ambiguous_retry_blocked (identidade não resolve de forma
+    -- determinística) ou professional_self_retry_blocked (achado da
+    -- revisão do Head of AI, 15/10/2026: identidade verificada ->
+    -- sendProfessionalSelfReplyViaWhatsapp, envio direto sem
+    -- idempotência própria, pipeline.ts) — ver
+    -- evaluateWhatsappInboundRoutingSafety/handleWhatsappInboundMessage
+    -- (intake-orchestration.ts): retomar sozinho arriscaria reenviar
+    -- um prompt ou duplicar um envio direto.
     or (
       status = 'needs_attention'
       and attempt_count < p_max_attempts
-      and (result_kind is null or result_kind not in ('invalid_phone', 'ambiguous_retry_blocked'))
+      and (result_kind is null or result_kind not in ('invalid_phone', 'ambiguous_retry_blocked', 'professional_self_retry_blocked'))
     )
   order by captured_at asc
   limit p_limit;
 $$;
 
-comment on function public.list_whatsapp_inbound_raw_captures_for_sweep is 'Fase 2 (ADR 0002, seção 12) — seleção grosseira pro sweep de recuperação. Nunca inclui invalid_phone nem ambiguous_retry_blocked (nenhum dos dois se resolve com uma retentativa — o primeiro é determinístico, o segundo é bloqueio de desenho até sendSystemWhatsappMessage ter idempotência própria, pré-requisito da Fase 3). O backoff fino entre tentativas de needs_attention é aplicado no TS (computeRuntimeRetryBackoffSeconds), não aqui — esta function só filtra o teto duro de tentativas.';
+comment on function public.list_whatsapp_inbound_raw_captures_for_sweep is 'Fase 2 (ADR 0002, seção 12) — seleção grosseira pro sweep de recuperação. Nunca inclui invalid_phone (determinístico), ambiguous_retry_blocked (identidade ambígua, sendSystemWhatsappMessage sem idempotência própria) nem professional_self_retry_blocked (identidade verificada, sendProfessionalSelfReplyViaWhatsapp sem idempotência própria — achado da revisão de 15/10/2026). O backoff fino entre tentativas de needs_attention é aplicado no TS (computeRuntimeRetryBackoffSeconds), não aqui — esta function só filtra o teto duro de tentativas.';
 
 revoke all on function public.list_whatsapp_inbound_raw_captures_for_sweep from public;
 grant execute on function public.list_whatsapp_inbound_raw_captures_for_sweep to service_role;

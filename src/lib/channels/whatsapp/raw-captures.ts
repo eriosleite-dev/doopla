@@ -102,17 +102,40 @@ export async function finishWhatsappInboundRawCapture(
 //                 drainResult.watchedStatus AINDA NÃO é 'completed' (pending/processing de verdade) —
 //                 marcar isso 'completed' esconderia que uma tentativa real segue em andamento.
 //
+//   RETRY_BLOCKED (Fase 2, achado da revisão do Head of AI, 15/10/2026)
+//   — devolvido só pelo sweep de recuperação (onlyProvenIdempotentPaths=true),
+//   nunca pelo webhook ao vivo. O GATE REAL dentro de
+//   handleWhatsappInboundMessage abortou de forma controlada antes de
+//   alcançar um envio sem idempotência própria (sendSystemWhatsappMessage
+//   ou sendProfessionalSelfReplyViaWhatsapp) — nunca um erro, nunca
+//   reinterpretado como sucesso, sempre needs_attention com o motivo
+//   exato preservado em result_kind (pra nunca confundir os dois
+//   motivos na consulta operacional).
+//
 // invalid_phone/demais `kind`s não reconhecidos nunca são sucesso
 // durável em lugar nenhum além desta própria captura — ficam
 // needs_attention de propósito, nunca reinterpretados como sucesso.
-export function classifyWhatsappInboundResultForCapture(result: WhatsappInboundHandlerResult): { status: 'completed' | 'delegated' | 'needs_attention'; error: string | null } {
+//
+// Devolve resultKind já pronto pra persistir (ÚNICA fonte de verdade
+// pro valor gravado em whatsapp_inbound_raw_captures.result_kind) —
+// nenhum chamador deriva isso de result.kind por fora, nunca duas
+// fontes que possam divergir.
+export function classifyWhatsappInboundResultForCapture(result: WhatsappInboundHandlerResult): { status: 'completed' | 'delegated' | 'needs_attention'; resultKind: string; error: string | null } {
   if (result.kind === 'routed' || result.kind === 'duplicate_event' || result.kind === 'backlogged' || result.kind === 'abandoned') {
-    return { status: 'completed', error: null };
+    return { status: 'completed', resultKind: result.kind, error: null };
   }
   if (result.kind === 'deferred') {
-    return { status: 'delegated', error: null };
+    return { status: 'delegated', resultKind: result.kind, error: null };
   }
-  return { status: 'needs_attention', error: `resultado não reconhecido como sucesso durável: ${result.kind}` };
+  if (result.kind === 'retry_blocked') {
+    const resultKind = result.reason === 'professional_self_unproven' ? 'professional_self_retry_blocked' : 'ambiguous_retry_blocked';
+    const error =
+      result.reason === 'professional_self_unproven'
+        ? 'identidade resolveu pro próprio profissional na execução real — retomada automática bloqueada até sendProfessionalSelfReplyViaWhatsapp ter idempotência própria'
+        : 'identidade não resolveu de forma determinística na execução real (divergência da pré-checagem, ou TOCTOU) — retomada automática bloqueada até sendSystemWhatsappMessage ter idempotência própria';
+    return { status: 'needs_attention', resultKind, error };
+  }
+  return { status: 'needs_attention', resultKind: result.kind, error: `resultado não reconhecido como sucesso durável: ${result.kind}` };
 }
 
 export type WhatsappInboundRawCaptureRow = {

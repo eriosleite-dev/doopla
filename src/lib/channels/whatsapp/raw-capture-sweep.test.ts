@@ -79,15 +79,60 @@ describe('sweepOneWhatsappInboundRawCapture', () => {
     expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith({}, expect.objectContaining({ status: 'delegated', resultKind: 'deferred' }));
   });
 
-  it('identidade AMBÍGUA -> nunca chama handleWhatsappInboundMessage, bloqueia com ambiguous_retry_blocked', async () => {
+  it('identidade AMBÍGUA (pré-checagem) -> nunca chama handleWhatsappInboundMessage, bloqueia com ambiguous_retry_blocked', async () => {
     const { sweepOneWhatsappInboundRawCapture } = await import('./raw-capture-sweep');
     evaluateWhatsappInboundRoutingSafety.mockResolvedValue({ safe: false, reason: 'ambiguous' });
 
     const outcome = await sweepOneWhatsappInboundRawCapture(fakeSupabase, makeCapture());
 
-    expect(outcome).toBe('ambiguous_blocked');
+    expect(outcome).toBe('blocked_at_precheck');
     expect(handleWhatsappInboundMessage).not.toHaveBeenCalled();
     expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith({}, expect.objectContaining({ status: 'needs_attention', resultKind: 'ambiguous_retry_blocked' }));
+  });
+
+  // Achado real da revisão do Head of AI (15/10/2026): sendProfessionalSelfReplyViaWhatsapp
+  // (pipeline.ts) é um envio direto ao WhatsApp do profissional, fora
+  // de outbound_intents, sem idempotência própria — a pré-checagem
+  // precisa bloquear o caminho professional_self tanto quanto o
+  // ambíguo, nunca só este último.
+  it('identidade verificada (professional_self) -> nunca chama handleWhatsappInboundMessage, bloqueia com professional_self_retry_blocked', async () => {
+    const { sweepOneWhatsappInboundRawCapture } = await import('./raw-capture-sweep');
+    evaluateWhatsappInboundRoutingSafety.mockResolvedValue({ safe: false, reason: 'professional_self_unproven' });
+
+    const outcome = await sweepOneWhatsappInboundRawCapture(fakeSupabase, makeCapture());
+
+    expect(outcome).toBe('blocked_at_precheck');
+    expect(handleWhatsappInboundMessage).not.toHaveBeenCalled();
+    expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith({}, expect.objectContaining({ status: 'needs_attention', resultKind: 'professional_self_retry_blocked' }));
+  });
+
+  // TOCTOU: a pré-checagem previu "seguro", mas a execução REAL (que
+  // reavalia a decisão de verdade, com onlyProvenIdempotentPaths=true)
+  // encontra um caminho sem idempotência comprovada — identidade/
+  // histórico/sessão mudaram entre a seleção e a execução. O GATE REAL
+  // dentro de handleWhatsappInboundMessage é quem evita o envio aqui,
+  // não a pré-checagem (que já disse "pode ir").
+  it('pré-checagem diz seguro, mas a execução real diverge (retry_blocked) -> blocked_at_execution, nunca um envio', async () => {
+    const { sweepOneWhatsappInboundRawCapture } = await import('./raw-capture-sweep');
+    evaluateWhatsappInboundRoutingSafety.mockResolvedValue({ safe: true });
+    handleWhatsappInboundMessage.mockResolvedValue({ kind: 'retry_blocked', reason: 'ambiguous_identity' });
+
+    const outcome = await sweepOneWhatsappInboundRawCapture(fakeSupabase, makeCapture());
+
+    expect(outcome).toBe('blocked_at_execution');
+    expect(handleWhatsappInboundMessage).toHaveBeenCalledWith(fakeSupabase, expect.anything(), expect.anything(), { onlyProvenIdempotentPaths: true });
+    expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith({}, expect.objectContaining({ status: 'needs_attention', resultKind: 'ambiguous_retry_blocked' }));
+  });
+
+  it('pré-checagem diz seguro, execução real diverge pra professional_self_unproven -> blocked_at_execution', async () => {
+    const { sweepOneWhatsappInboundRawCapture } = await import('./raw-capture-sweep');
+    evaluateWhatsappInboundRoutingSafety.mockResolvedValue({ safe: true });
+    handleWhatsappInboundMessage.mockResolvedValue({ kind: 'retry_blocked', reason: 'professional_self_unproven' });
+
+    const outcome = await sweepOneWhatsappInboundRawCapture(fakeSupabase, makeCapture());
+
+    expect(outcome).toBe('blocked_at_execution');
+    expect(finishWhatsappInboundRawCapture).toHaveBeenCalledWith({}, expect.objectContaining({ status: 'needs_attention', resultKind: 'professional_self_retry_blocked' }));
   });
 
   it('claim perdido (outra entrega/tick já reclamou) -> claim_missed, nunca processa, nunca finaliza', async () => {

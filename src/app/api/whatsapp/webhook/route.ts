@@ -204,8 +204,8 @@ async function handleInboundMessageWithCapture(supabase: any, message: WhatsappW
   // ÚNICA implementação desta classificação (Fase 2, ADR 0002: o
   // sweep de recuperação reaproveita a MESMA function, nunca uma
   // segunda tabela de decisão que possa divergir desta).
-  const { status, error } = classifyWhatsappInboundResultForCapture(result);
-  await finishWhatsappInboundRawCapture(supabase, { providerMessageId: message.id, workerId: RAW_CAPTURE_WORKER_ID, status, resultKind: result.kind, error });
+  const { status, resultKind, error } = classifyWhatsappInboundResultForCapture(result);
+  await finishWhatsappInboundRawCapture(supabase, { providerMessageId: message.id, workerId: RAW_CAPTURE_WORKER_ID, status, resultKind, error });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

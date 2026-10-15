@@ -603,6 +603,76 @@ Execução autorizada pela fundadora/Head of AI (15/10/2026): "Aprovo implementa
 
 Implementação fiel à proposta aprovada — nenhuma expansão de escopo, reaproveita 100% dos mecanismos já testados (claim/lease, backoff, algoritmo de roteamento). A distinção de segurança do ponto 3 (pré-checagem bloqueando retomada de identidade ambígua) está implementada e testada exatamente como desenhada. Pronta pra revisão do Head of AI; aplicação em staging segue o mesmo processo já estabelecido (apresentar, aguardar aprovação explícita, nunca aplicar sozinho).
 
+## 14. Revisão final de segurança da Fase 2 (4 pontos do Head of AI, 15/10/2026) — dois riscos reais encontrados e corrigidos
+
+A fundadora revisou o relatório da seção 13 com o ChatGPT (Head of AI) e aprovou a implementação como candidata à validação em staging, condicionado a verificar 4 pontos específicos de segurança antes de encerrar a revisão local. Autorização explícita: "Se encontrar um risco real, corrija apenas esse risco localmente, com testes de regressão, sem expandir o escopo. Não faça push, merge, deploy nem aplique migrations." Os pontos 1 e 2 eram riscos reais, não hipotéticos — confirmados por rastreamento de código e corrigidos.
+
+### 14.1 Ponto 1 — TOCTOU entre pré-checagem e execução real
+
+**O risco**: `evaluateWhatsappInboundRoutingSafety` (seção 13.1) só prevê segurança no instante da seleção do sweep. Entre essa leitura e a execução real (`handleWhatsappInboundMessage`, chamada depois do claim), identidade/sessão/histórico podem mudar — a garantia vivia inteiramente na pré-checagem, uma predição, nunca no caminho efetivo de envio.
+
+**A correção**: novo parâmetro `WhatsappInboundHandlerOptions.onlyProvenIdempotentPaths` em `handleWhatsappInboundMessage` (`intake-orchestration.ts`). Dois pontos de aborto controlado, reavaliando a decisão de roteamento no instante real da execução, nunca só na seleção:
+
+1. Antes de `resolveProfessionalSelfAndFinish` (`decision.method === 'verified_professional'`) — se a flag estiver ligada, devolve `{kind: 'retry_blocked', reason: 'professional_self_unproven'}` em vez de executar.
+2. Antes de `claimRawInboundEvent` no caminho ambíguo geral (`decision.outcome !== 'resolved'`) — devolve `{kind: 'retry_blocked', reason: 'ambiguous_identity'}`.
+
+Default `false` preserva 100% do comportamento do webhook ao vivo (zero risco de regressão ali); o sweep sempre passa `true`. Defesa em profundidade: a pré-checagem continua existindo como otimização (evita reclamar+processar uma captura previsivelmente bloqueada), mas a garantia real agora é o gate dentro do próprio `handleWhatsappInboundMessage`, reavaliado no instante do envio.
+
+### 14.2 Ponto 2 — `sendProfessionalSelfReplyViaWhatsapp` sem idempotência própria
+
+**O risco**: auditoria do caminho alcançável pela Fase 2 via `resolveProfessionalSelfAndFinish` → `drainProfessionalSelfPendingMessages` → `triggerInboundMessage` → pipeline do Runtime → ramo `persist_ai_message` → `sendProfessionalSelfReplyViaWhatsapp` (`src/lib/runtime/professional-whatsapp-reply.ts`). Essa function é um envio direto ao WhatsApp, documentado no próprio código como nunca passando por `outbound_intents` ("falha de envio aqui NUNCA derruba o ciclo") — zero proteção de idempotência própria. Em `drainProfessionalSelfPendingMessages`, a ordem é claim → `triggerInboundMessage` (pode enviar) → só DEPOIS `finish` marca concluído; um crash entre o envio e o `finish` deixa a linha reclamável, arriscando um segundo envio numa reexecução. Gap sistêmico pré-existente, mas o sweep é um chamador novo que o exercita com mais frequência.
+
+**A correção**: estendido o MESMO gate do ponto 14.1 — `evaluateWhatsappInboundRoutingSafety` agora devolve `{safe: false, reason: 'professional_self_unproven'}` quando `decision.method === 'verified_professional'` (antes era incondicionalmente seguro), e o gate de execução (abort 1 acima) bloqueia a retomada automática pelo mesmo caminho. Nenhuma mudança em `sendProfessionalSelfReplyViaWhatsapp` em si (fora de escopo desta rodada — ela precisaria de idempotência própria pra alguma rotina algum dia poder reenviar por esse caminho com segurança); a correção é só impedir que a Fase 2 a alcance automaticamente até isso existir.
+
+### 14.3 Ponto 3 — checklist de cron e recuperação operacional (confirmado, nenhuma mudança necessária)
+
+Cada item verificado contra a implementação já entregue na seção 13 e os testes existentes:
+
+- **Autenticação `CRON_SECRET`**: endpoint rejeita com 401 antes de qualquer trabalho (mesmo padrão dos 3 crons anteriores, inalterado).
+- **Limite por execução**: `limit: 50` passado ao sweep (`runWhatsappInboundRawCaptureSweep`).
+- **Isolamento de falha**: `try/catch` por captura no loop sequencial — uma exceção inesperada processando uma captura nunca derruba as demais (testado em `raw-capture-sweep.test.ts`).
+- **Lease e backoff respeitados**: reaproveitamento integral de `claim_whatsapp_inbound_raw_capture_for_processing` (0112) e `computeRuntimeRetryBackoffSeconds` — nenhuma fórmula nova.
+- **Tentativas esgotadas**: excluídas na seleção SQL (`attempt_count < p_max_attempts`).
+- **Visibilidade de `needs_attention`**: coberta pela consulta operacional já entregue na Fase 1 (filtra por status, não por `result_kind` específico — os dois novos valores ficam visíveis automaticamente, nenhuma mudança necessária).
+- **Nenhum reprocessamento automático de casos ambíguos**: agora garantido em DUAS camadas — exclusão na seleção SQL (migration 0113, `result_kind not in (...)`) E o gate de execução real (seção 14.1) — mais forte que antes desta rodada, que tinha só a camada SQL/pré-checagem.
+
+### 14.4 Ponto 4 — teste integrado local
+
+Novo arquivo `src/lib/channels/whatsapp/raw-capture-sweep.integration.test.ts` — deliberadamente SEM mockar `intake-orchestration.ts` nem `raw-captures.ts` (ao contrário de todos os outros testes desta área), só os limites externos reais (envio de WhatsApp, pipeline do Runtime, fila de `professional_self`). Dois cenários, atravessando seleção → claim → pré-checagem → processamento real → estado final:
+
+1. **Cenário feliz**: captura pendente → sweep real completo → identidade determinística → `resumed_completed`, nenhum envio de WhatsApp.
+2. **A prova central do ponto 4**: `channel_inbound_intakes` configurado como fila de 2 respostas — a 1ª leitura (dentro da pré-checagem) traz uma sessão com uma opção de prompt que a mensagem responde (pré-checagem diz `safe: true`); a 2ª leitura (dentro da execução real) traz a MESMA sessão, mas com `current_prompt_options: []` (simula a sessão mudando nesse meio-tempo — o TOCTOU que a revisão pediu pra fechar). A execução real cai em `no_signal`/ambíguo e o gate aborta. Resultado: `sendWhatsappTextMessage` e `triggerInboundMessage` nunca chamados, `tally.blocked_at_execution === 1`, `tally.blocked_at_precheck === 0`.
+
+Ambos os testes passam.
+
+### 14.5 Arquivos alterados nesta rodada
+
+- `src/lib/channels/whatsapp/intake-orchestration.ts` — `WhatsappInboundHandlerOptions`/`onlyProvenIdempotentPaths`, dois pontos de aborto, `WhatsappInboundHandlerResult` estendido com `retry_blocked`, `evaluateWhatsappInboundRoutingSafety` com o novo motivo `professional_self_unproven`.
+- `src/lib/channels/whatsapp/raw-captures.ts` — `classifyWhatsappInboundResultForCapture` consolidada (devolve `{status, resultKind, error}`, fonte única de verdade) + tratamento do novo `retry_blocked`.
+- `src/lib/channels/whatsapp/raw-capture-sweep.ts` — `SweepCaptureOutcome` com `blocked_at_precheck`/`blocked_at_execution` (antes só `ambiguous_blocked`); chama `handleWhatsappInboundMessage` com `onlyProvenIdempotentPaths: true`.
+- `src/app/api/whatsapp/webhook/route.ts` — usa o `resultKind` consolidado de `classifyWhatsappInboundResultForCapture` em vez de derivar separadamente.
+- `supabase/migrations/0113_whatsapp_inbound_raw_capture_sweep.sql` — exclusão estendida pra também excluir `professional_self_retry_blocked`.
+- `src/app/api/whatsapp/webhook/route.test.ts`, `src/lib/channels/whatsapp/raw-capture-sweep.test.ts`, `src/lib/channels/whatsapp/intake-orchestration.test.ts` — ajustes de mock e 7 testes novos no total provando o gate real (não só mocks isolados).
+- `src/lib/channels/whatsapp/raw-capture-sweep.integration.test.ts` (novo) — teste integrado do ponto 4.
+
+### 14.6 Validação final
+
+`typecheck` (0 erros), `lint` (0 erros, mesmos 2 warnings pré-existentes não relacionados), `test` (226/226, 25 arquivos — 218 da seção 13 + 2 do novo arquivo integrado + 6 novos nos arquivos existentes), `build` (sucesso). Migration 0113 reaplicada e reconferida contra Postgres local real (função recriada, linha `professional_self_retry_blocked` inserida, exclusão confirmada por consulta direta).
+
+### 14.7 Status de staging da migration 0113
+
+A versão de 0113 aplicada em staging anteriormente (seção 10) é a versão ANTERIOR a esta correção — ainda não exclui `professional_self_retry_blocked`. A versão local atual (com a exclusão estendida) precisa de uma reaplicação em staging antes da validação completa da Fase 2 lá, quando a fundadora autorizar.
+
+### 14.8 Riscos residuais (atualizado da seção 13.3)
+
+Os 4 riscos da seção 13.3 continuam válidos e inalterados. Nenhum risco novo introduzido por esta correção — ela estreita o automatismo (menos casos retomados sozinhos), nunca o amplia.
+
+### 14.9 Recomendação e relatório de prontidão para staging
+
+Os 4 pontos pedidos estão comprovados: (1) TOCTOU fechado por gate na execução real, com teste integrado simulando a divergência; (2) `sendProfessionalSelfReplyViaWhatsapp` agora inalcançável pela retomada automática, mesmo gate; (3) checklist operacional do cron já estava satisfeito, agora com reforço de duas camadas; (4) teste integrado ponta a ponta entregue, incluindo o cenário de divergência. Ambos os riscos reais encontrados foram corrigidos com a mudança mínima necessária — nenhuma expansão de escopo, nenhuma função nova além do gate já desenhado pra este propósito.
+
+**Recomendação do Principal AI Engineer**: a Fase 2 está pronta para validação em staging, com uma única pendência administrativa — reaplicar a migration 0113 atualizada em staging (seção 14.7) antes de rodar o checklist de validação completo lá. Nenhum push, merge ou deploy foi feito; os commits permanecem locais aguardando a aprovação do template `doopla_primeiro_contato_v2` pela Meta, conforme a restrição em vigor.
+
 ## Próximo passo
 
-Fase 2 implementada e testada localmente, aguardando revisão do Head of AI. Checklist de validação pós-template (seção 11) e proposta de staging (quando aprovada) seguem o mesmo processo das fases anteriores. Fase 3 continua bloqueada até `sendSystemWhatsappMessage` ter idempotência própria. Depois da validação da Fase 2: evolução do cérebro da Doopla (ADR 0004) — memória profissional, contatos, aprendizado.
+Fase 2 revisada e corrigida (seção 14), aguardando validação em staging — reaplicar 0113 atualizada é o único passo pendente antes do checklist completo lá. Fase 3 continua bloqueada até `sendSystemWhatsappMessage`/`sendProfessionalSelfReplyViaWhatsapp` terem idempotência própria. Por instrução explícita da fundadora, a implementação de infraestrutura desta rodada está encerrada aqui — a próxima prioridade de produto é o ADR 0004 (memória profissional, contatos compartilhados pelo WhatsApp, aprendizado com feedback).
