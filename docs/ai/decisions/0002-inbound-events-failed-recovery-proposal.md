@@ -291,6 +291,8 @@ Bate com a arquitetura já aprovada (seções 1-3) e fecha os 5 pontos exigidos 
 
 **Fase 0 está concluída.** `conversation_messages.provider_message_id`, `persist_inbound_message` idempotente por wamid, `outbound_intents_one_per_trigger_message_idx` e `create_outbound_intent`/`resolve_runtime_pending_reply_allowed` idempotentes por `trigger_message_id` — tudo em produção, protegendo qualquer retry futuro (inclusive os que a Fase 1 vai introduzir) contra duplicar mensagem ao cliente ou duplicar envio comercial.
 
+**Confirmação independente (16/10/2026)**: a pedido do Head of AI, a fundadora rodou em produção a consulta de catálogo/contagem de `0111_confirmacao_schema_producao.sql` (read-only, sem passar pelo meu relato) — `duplicatas_outbound = 0`, `duplicatas_inbound = 0`. Confirma, por evidência direta do banco, que os índices únicos foram criados sem violação e que não há nenhuma duplicata pós-migration nos dois lados.
+
 ## Próximo passo
 
 Fase 0 encerrada. Push/deploy real do WhatsApp (Etapa 2.1, "Doopla chama o cliente") continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration. Fases 1-3 (captura durável em duas passagens, retomada do cenário (c), retomada de (a)/(b)) continuam na fila, nesta ordem, cada uma com sua própria aprovação explícita antes de qualquer implementação.
