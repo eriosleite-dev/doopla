@@ -1,7 +1,7 @@
 # ADR 0002 — Arquitetura final: recuperação confiável de mensagens inbound
 
-- **Data:** 2026-10-15 (revisão 6 — Fase 0 aplicada em produção, ver seção 7)
-- **Status:** Arquitetura aprovada (Fases 1-3 ainda aguardando). **Fase 0 (migration `0111_inbound_outbound_idempotency.sql`) CONCLUÍDA: testada localmente, aplicada em staging e em PRODUÇÃO (15/10/2026, ambas pela fundadora via SQL Editor, com aprovação explícita antes de cada uma). Nenhum push de código/deploy feito ainda — segue represado pelo template `doopla_primeiro_contato_v2`, sem relação com esta migration.**
+- **Data:** 2026-10-15 (revisão 7 — Fase 1 preparada localmente, ver seção 8)
+- **Status:** Arquitetura aprovada (Fases 2-3 ainda aguardando). **Fase 0 CONCLUÍDA: aplicada em staging e produção.** **Fase 1 (migration `0112_whatsapp_inbound_raw_captures.sql`) preparada e testada localmente (seção 8) — NÃO aplicada em staging/produção, aguardando aprovação separada.** Nenhum push de código/deploy feito ainda — segue represado pelo template `doopla_primeiro_contato_v2`, sem relação com nenhuma destas migrations.
 - **Autor:** Claude Code (Principal AI Engineer)
 - **Escopo**: arquitetura técnica completa, fases de implementação, critérios objetivos de aprovação, contratos SQL propostos. Implementação é um passo futuro separado, fase por fase, cada uma com sua própria aprovação.
 
@@ -194,7 +194,7 @@ Antes de ativar qualquer sweep, rodar uma auditoria única (consulta, não migra
 | Fase | Conteúdo | Migration | Critério de aprovação |
 |---|---|---|---|
 | **0 — Bloqueadores** | `conversation_messages.provider_message_id` + dedup em `persist_inbound_message`; `outbound_intents_one_per_trigger_message_idx` | **Sim — `0111_inbound_outbound_idempotency.sql`, escrita e testada localmente (seção 7). Não aplicada em staging/produção.** | Teste local (Postgres real) provando que chamar cada RPC duas vezes pro mesmo id nunca duplica; zero regressão nos fluxos existentes (toda a suíte atual passando) — **atendido, ver seção 7** |
-| **1 — Captura durável + processamento best-effort (sem sweep ainda)** | `whatsapp_inbound_raw_captures`, as duas passagens no webhook (seção 1) | Sim (aditiva) | Captura sobrevive a falha simulada em cada ponto; webhook com falha parcial de captura devolve 503 e reentrega é idempotente; **nenhum sweep rodando ainda** — só grava, zero risco de reprocessar nada |
+| **1 — Captura durável + processamento best-effort (sem sweep ainda)** | `whatsapp_inbound_raw_captures`, as duas passagens no webhook (seção 1) | **Sim — `0112_whatsapp_inbound_raw_captures.sql`, escrita e testada localmente (seção 8). Não aplicada em staging/produção.** | Captura sobrevive a falha simulada em cada ponto; webhook com falha parcial de captura devolve 503 e reentrega é idempotente; **nenhum sweep rodando ainda** — só grava, zero risco de reprocessar nada — **atendido, ver seção 8** |
 | **2 — Retomada do cenário (c)** | Função nova (claim/lease/backoff sobre captures com `resolved_conversation_message_id is not null`), monitoramento no Admin | Sim (tabela de controle) | Teste de retry real sem duplicar `conversation_messages`/`outbound_intents`/efeitos comerciais; `needs_attention` visível no Admin pros dois mecanismos |
 | **3 — Retomada dos cenários (a)/(b)** | Reexecução de `handleWhatsappInboundMessage` do zero | Possivelmente mais colunas | **Bloqueada até a estratégia de idempotência de `sendSystemWhatsappMessage` (seção 4) estar desenhada e testada** — nunca ativada por suposição |
 
@@ -293,6 +293,68 @@ Bate com a arquitetura já aprovada (seções 1-3) e fecha os 5 pontos exigidos 
 
 **Confirmação independente (16/10/2026)**: a pedido do Head of AI, a fundadora rodou em produção a consulta de catálogo/contagem de `0111_confirmacao_schema_producao.sql` (read-only, sem passar pelo meu relato) — `duplicatas_outbound = 0`, `duplicatas_inbound = 0`. Confirma, por evidência direta do banco, que os índices únicos foram criados sem violação e que não há nenhuma duplicata pós-migration nos dois lados.
 
+Fase 0 encerrada (produção). Push/deploy real do WhatsApp (Etapa 2.1, "Doopla chama o cliente") continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com nenhuma migration deste ADR.
+
+---
+
+## 8. Fase 1 entregue localmente — captura durável, testes, riscos residuais, sequência de staging
+
+Execução autorizada pela fundadora/Head of AI (15/10/2026, após aprovar o escopo mínimo proposto): "Pode começar a implementação local da captura durável de mensagens do WhatsApp." Mesmas regras da Fase 0: nada aplicado em staging/produção, nenhum push/deploy, sem autorização separada.
+
+### 8.1 Arquivos alterados
+
+- `supabase/migrations/0112_whatsapp_inbound_raw_captures.sql` (novo) — tabela `whatsapp_inbound_raw_captures` + 4 functions: `capture_whatsapp_inbound_raw_message` (idempotente, ON CONFLICT DO NOTHING + fallback SELECT, mesmo padrão da Fase 0), `claim_whatsapp_inbound_raw_capture_for_processing` (claim/lease, só reclama pending ou processing com lease vencida), `finish_whatsapp_inbound_raw_capture` (só aceita o worker dono da lease; completed purga body/from_phone/contact_name na hora — LGPD; needs_attention retém pra investigação), `purge_expired_whatsapp_inbound_raw_captures` (retenção, SEM cron automático nesta rodada — mesmo precedente de `purge_expired_professional_self_pending_message_bodies`, 0108, que também não tem cron próprio hoje).
+- `src/lib/channels/whatsapp/raw-captures.ts` (novo) — wrappers finos das 3 RPCs de runtime (capture/claim/finish), mesmo padrão de `inbound-events.ts`/`outbound.ts`.
+- `src/app/api/whatsapp/webhook/route.ts` (reescrito) — duas passagens explícitas: Passagem 1 captura todo texto elegível do lote (mesmo filtro de hoje: `type==='text'` com `body`) ANTES de qualquer roteamento; qualquer falha de captura → 503 pro lote inteiro. Passagem 2 reclama a captura (impede duas entregas processando a mesma mensagem em paralelo) e só então chama `handleWhatsappInboundMessage` (inalterada) — nunca afeta o status HTTP.
+- `src/app/api/whatsapp/webhook/route.test.ts` (novo, 14 testes) — cobre a orquestração das duas passagens com Supabase mockado.
+
+### 8.2 O que a Fase 1 garante, e o que ainda depende da Fase 2 (pedido explícito da fundadora pra deixar claro)
+
+**Garante agora** (uma vez aplicada): nenhuma mensagem de texto elegível desaparece sem deixar rastro, mesmo que todo o resto do processamento falhe — o conteúdo bruto (telefone, corpo, nome, timestamp) sobrevive em `whatsapp_inbound_raw_captures` até alcançar um destino durável verificado, e fica **visível** (`status='needs_attention'`) quando isso não acontece, em vez de silenciosamente sumir (comportamento de hoje, especialmente nos cenários (a)/(b) do mapa de falhas da seção 3).
+
+**NÃO garante ainda, por desenho desta rodada** (Fase 2, não implementada): uma linha em `needs_attention` não é retomada sozinha. Alguém (um humano, ou um sweep futuro) precisa olhar e decidir o que fazer. Não há cron, não há retry automático. Isso é a lacuna que a Fase 2 ("recuperação automática dos eventos elegíveis", já citada como próximo passo pela fundadora) fecha.
+
+### 8.3 Resultados dos testes
+
+**Postgres real** (réplica local de 0001-0112, `supabase start` bare + replay arquivo-a-arquivo):
+
+| # | Teste | Resultado |
+|---|---|---|
+| 1 | Captura — retry sequencial do mesmo wamid | Mesmo `id`, 1 única linha |
+| 2 | Claim — segundo worker enquanto o primeiro processa | `claimed=false`, nunca os dois ao mesmo tempo |
+| 3 | Finish — worker que NÃO detém a lease tenta terminar | Rejeitado (`false`, nenhuma linha afetada) — nunca termina por cima de um processamento mais novo |
+| 3b | Finish — worker correto termina com `completed` | Aceito; `body`/`from_phone`/`contact_name` zerados na hora (LGPD) |
+| 4 | Claim numa captura já `completed` | Nunca reclamada de novo (terminal nesta fase) |
+| 5 | Claim numa captura com lease VENCIDA (worker travado/crashado) | Reclamável por outro worker, `attempt_count` incrementado |
+| 6 | Finish com `needs_attention` | Retém `body`/`from_phone`/`contact_name`/erro — nunca purgado na hora |
+| 7 | `purge_expired_whatsapp_inbound_raw_captures` | Só afeta `needs_attention` além do prazo; nunca toca `completed` (já zerado) nem `needs_attention` recente |
+| 8 | **Concorrência real** — 25 processos `psql` distintos capturando o MESMO wamid simultaneamente | 25/25 mesmo `id`; 1 única linha |
+| 9 | **Concorrência real** — 25 processos `psql` distintos reclamando o MESMO wamid simultaneamente | Exatamente 1 `claimed=true`; os outros 24, `false` |
+
+**Bug real pego pelo teste 2** (antes de eu prosseguir): `claim_whatsapp_inbound_raw_capture_for_processing` tinha `attempt_count` ambíguo entre a coluna da tabela e a variável de saída do `RETURNS TABLE` — Postgres recusava a function. Corrigido com alias explícito (`c.attempt_count`) antes de qualquer outro teste rodar. Fica registrado como prova de que os testes locais pegam erro real, não são só formalidade.
+
+**Vitest** (`route.test.ts`, Supabase mockado, 14 testes): captura bem-sucedida → `completed`; falha de captura (banco fora) → 503, Passagem 2 nunca roda; lote com falha PARCIAL de captura → 503 pro lote inteiro, nenhuma mensagem processada (nem a que capturou OK — nunca um sucesso parcial); reentrega do mesmo lote (claim já concluído) → nunca reprocessa; concorrência (claim perdido) → nunca processa em paralelo; exceção durante processamento → `needs_attention`, HTTP ainda 200; os 5 resultados reconhecidos como sucesso durável (`routed`/`duplicate_event`/`backlogged`/`abandoned`/`deferred`) → sempre `completed`; telefone inválido → `needs_attention`, nunca otimista; mensagem não-texto → fora de escopo, comportamento inalterado; assinatura inválida → 401, nunca captura nada.
+
+**Suíte completa**: `typecheck` (0 erros), `lint` (0 erros, 2 warnings pré-existentes não relacionados), `test` (207/207, 23 arquivos — 192 da Fase 0 + 15 novos), `build` (sucesso).
+
+### 8.4 Riscos residuais (declarados, não escondidos)
+
+1. **`purge_expired_whatsapp_inbound_raw_captures` sem cron** — decisão deliberada desta rodada (mesmo precedente de 0108), mas significa que, até alguém ligar isso a um cron (ou chamar manualmente), uma mensagem presa em `needs_attention` retém o conteúdo além dos 30 dias pensados. Baixo risco funcional (só acumula retenção além do previsto), real do ponto de vista de LGPD se ignorado por muito tempo.
+2. **`needs_attention` ainda não aparece em nenhuma tela** — mesmo achado já registrado na seção 7 (`runtime_pending_replies`) se repete aqui: o mecanismo existe, a visibilidade operacional (um humano realmente vendo e agindo) ainda depende de alguém olhar o banco direto. Recomendo que a Fase 2 (ou uma etapa de observabilidade isolada, mais barata) resolva os dois mecanismos juntos, nunca dois painéis separados.
+3. **Tipo `contacts` (Prioridade 2 do roadmap, ADR 0004) ainda não capturado** — só `type==='text'` é elegível nesta rodada, por desenho (mesmo escopo que já excluía áudio/imagem/documento). Cartão de contato compartilhado hoje passa batido sem captura — vai precisar de uma extensão desta mesma Fase 1 (ou uma tabela irmã) quando a Prioridade 2 for implementada.
+4. **Nenhum teste de carga/volume real** — os testes de concorrência provam CORREÇÃO sob concorrência (nunca duas linhas, nunca dois vencedores), não comportamento sob volume alto sustentado. Aceitável pro tamanho do beta hoje; registrar como algo a observar se o volume crescer.
+
+### 8.5 Sequência segura de validação em staging (antes de propor produção)
+
+1. Rodar a migration `0112_whatsapp_inbound_raw_captures.sql` inteira no SQL Editor de staging (mesmo procedimento já usado pra 0111) — DDL puro, sem dado existente afetado (tabela nova).
+2. Confirmar a aplicação limpa com uma consulta read-only de catálogo (mesmo padrão de `0111_confirmacao_schema_producao.sql`) — vou preparar a versão equivalente pra 0112 quando chegar a hora.
+3. **Teste funcional real recomendado** (diferente da Fase 0, aqui vale mais a pena): mandar uma mensagem de teste pelo número de staging do WhatsApp, se existir, e confirmar `select * from whatsapp_inbound_raw_captures order by captured_at desc limit 1` mostra a linha `completed` com `result_kind` coerente — prova viva de que o webhook de staging está realmente rodando o código novo, não só que a migration aplicou.
+4. Só depois disso, proposta de produção, mesmo fluxo de aprovação explícita da Fase 0.
+
+### 8.6 Recomendação
+
+Fase 1 fecha a lacuna mais grave que o Head of AI apontou (mensagem perdida antes de qualquer registro) com o menor escopo possível — sem sweep, sem mudança de comportamento observável pro cliente hoje (a Passagem 2 roda exatamente a mesma lógica de antes). Risco de regressão baixo: toda a suíte de testes existente continua verde, e os testes novos (Postgres real + vitest) cobrem especificamente os cenários que a fundadora/Head of AI exigiram. Recomendo seguir a sequência da seção 8.5 assim que houver aprovação pra tocar staging.
+
 ## Próximo passo
 
-Fase 0 encerrada. Push/deploy real do WhatsApp (Etapa 2.1, "Doopla chama o cliente") continua represado pelo bloqueio do template `doopla_primeiro_contato_v2`, sem relação com esta migration. Fases 1-3 (captura durável em duas passagens, retomada do cenário (c), retomada de (a)/(b)) continuam na fila, nesta ordem, cada uma com sua própria aprovação explícita antes de qualquer implementação.
+Aguardando aprovação pra aplicar a migration 0112 em staging (seção 8.5). Depois de validada: Fase 2 (recuperação automática dos eventos elegíveis) é o próximo item, já anunciado pela fundadora como prioridade seguinte. Fase 3 continua bloqueada.
