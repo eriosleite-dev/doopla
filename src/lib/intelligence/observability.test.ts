@@ -60,6 +60,67 @@ describe('logAiUsageEvent — best-effort real', () => {
     }
   });
 
+  it('DIAGNÓSTICO (Etapa 2, 15/10/2026): o timeout nunca CANCELA a RPC, só para de ESPERAR por ela — a chamada real continua rodando em segundo plano até terminar sozinha', async () => {
+    vi.useFakeTimers();
+    try {
+      let backgroundCompletedAt: number | null = null;
+      const start = Date.now();
+      const supabase = fakeSupabase(
+        () =>
+          new Promise((resolve) => {
+            // RPC real que demora 8s pra responder — mais lenta que o
+            // timeout de 5s, mas NÃO travada pra sempre (diferente do
+            // teste acima). Simula uma RPC "só lenta", não "morta".
+            setTimeout(() => {
+              backgroundCompletedAt = Date.now() - start;
+              resolve({ data: { id: 'evt-tarde-demais' }, error: null });
+            }, 8000);
+          })
+      );
+
+      const promise = logAiUsageEvent(supabase, BASE_PARAMS);
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await promise;
+
+      // logAiUsageEvent já devolveu (via timeout) — e a chamada real
+      // ainda não terminou, continua pendurada em segundo plano.
+      expect(result).toEqual({ ok: false, error: 'timeout após 5000ms' });
+      expect(backgroundCompletedAt).toBeNull();
+
+      // Avança mais 3s (total 8s) — prova que a RPC original SEMPRE
+      // ia terminar sozinha, consumindo conexão/recurso até lá, sem
+      // que nenhum código nosso jamais a interrompesse.
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(backgroundCompletedAt).toBe(8000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('DIAGNÓSTICO (Etapa 2, 15/10/2026): chamadas sequenciais SOMAM atraso, nunca se sobrepõem — um ciclo real com N pontos de IA trava até N × 5s no pior caso', async () => {
+    vi.useFakeTimers();
+    try {
+      const supabase = fakeSupabase(() => new Promise(() => {})); // sempre trava, como as outras RPCs do mesmo ciclo travariam juntas
+      const start = Date.now();
+
+      // Reproduz o padrão REAL do Runtime: await síncrono, uma chamada
+      // depois da outra (classify -> inbound-proposal -> plan ->
+      // approval -> policy-gate, e cada reply pendente destravado por
+      // uma aprovação repete classify+plan de novo) — nunca em
+      // paralelo.
+      const callCount = 3; // ex.: classify + inbound-proposal + plan, sem nem contar approval/gate/resumption
+      for (let i = 0; i < callCount; i++) {
+        const promise = logAiUsageEvent(supabase, BASE_PARAMS);
+        await vi.advanceTimersByTimeAsync(5000);
+        await promise;
+      }
+
+      expect(Date.now() - start).toBe(callCount * 5000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejeição que não é instância de Error (ex.: string/objeto lançado) ainda vira um {ok:false, error:string}, nunca quebra', async () => {
     const supabase = fakeSupabase(async () => {
       // Teste deliberado de rejeição não-Error (sem disable necessário — nenhuma regra ativa neste projeto proíbe throw de literal).
