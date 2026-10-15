@@ -154,7 +154,7 @@ export type WhatsappInboundRawCaptureRow = {
 
 // Fase 2 (ADR 0002, seção 12) — leitura pro sweep de recuperação.
 // Seleção grosseira em SQL (status elegível + teto de tentativas,
-// migration 0113); o backoff fino (computeRuntimeRetryBackoffSeconds,
+// migrations 0113/0114); o backoff fino (computeRuntimeRetryBackoffSeconds,
 // reaproveitado de runtime/retry-backoff.ts, nunca uma segunda
 // implementação) é aplicado do lado de cá, em runWhatsappInboundRawCaptureSweep.
 export async function listWhatsappInboundRawCapturesForSweep(

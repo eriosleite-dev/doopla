@@ -651,28 +651,33 @@ Ambos os testes passam.
 - `src/lib/channels/whatsapp/raw-captures.ts` — `classifyWhatsappInboundResultForCapture` consolidada (devolve `{status, resultKind, error}`, fonte única de verdade) + tratamento do novo `retry_blocked`.
 - `src/lib/channels/whatsapp/raw-capture-sweep.ts` — `SweepCaptureOutcome` com `blocked_at_precheck`/`blocked_at_execution` (antes só `ambiguous_blocked`); chama `handleWhatsappInboundMessage` com `onlyProvenIdempotentPaths: true`.
 - `src/app/api/whatsapp/webhook/route.ts` — usa o `resultKind` consolidado de `classifyWhatsappInboundResultForCapture` em vez de derivar separadamente.
-- `supabase/migrations/0113_whatsapp_inbound_raw_capture_sweep.sql` — exclusão estendida pra também excluir `professional_self_retry_blocked`.
 - `src/app/api/whatsapp/webhook/route.test.ts`, `src/lib/channels/whatsapp/raw-capture-sweep.test.ts`, `src/lib/channels/whatsapp/intake-orchestration.test.ts` — ajustes de mock e 7 testes novos no total provando o gate real (não só mocks isolados).
 - `src/lib/channels/whatsapp/raw-capture-sweep.integration.test.ts` (novo) — teste integrado do ponto 4.
 
 ### 14.6 Validação final
 
-`typecheck` (0 erros), `lint` (0 erros, mesmos 2 warnings pré-existentes não relacionados), `test` (226/226, 25 arquivos — 218 da seção 13 + 2 do novo arquivo integrado + 6 novos nos arquivos existentes), `build` (sucesso). Migration 0113 reaplicada e reconferida contra Postgres local real (função recriada, linha `professional_self_retry_blocked` inserida, exclusão confirmada por consulta direta).
+`typecheck` (0 erros), `lint` (0 erros, mesmos 2 warnings pré-existentes não relacionados), `test` (226/226, 25 arquivos — 218 da seção 13 + 2 do novo arquivo integrado + 6 novos nos arquivos existentes), `build` (sucesso).
 
-### 14.7 Status de staging da migration 0113
+### 14.7 Correção de rastreabilidade — migration 0113 editada em local errado, corrigida pra 0114
 
-A versão de 0113 aplicada em staging anteriormente (seção 10) é a versão ANTERIOR a esta correção — ainda não exclui `professional_self_retry_blocked`. A versão local atual (com a exclusão estendida) precisa de uma reaplicação em staging antes da validação completa da Fase 2 lá, quando a fundadora autorizar.
+**Erro cometido nesta rodada, encontrado pela fundadora/Head of AI**: na primeira versão desta seção eu havia editado `0113_whatsapp_inbound_raw_capture_sweep.sql` DIRETAMENTE pra adicionar a exclusão de `professional_self_retry_blocked` — mas essa migration já tinha sido registrada como aplicada em staging na sua versão original (seção 10), antes desta correção. Editar um arquivo de migration já aplicado quebra a rastreabilidade entre o que o histórico de migrations de cada ambiente registra como aplicado e o que o arquivo no repositório realmente contém.
+
+**Corrigido**: `0113_whatsapp_inbound_raw_capture_sweep.sql` foi revertido pro seu conteúdo ORIGINAL (idêntico ao que está aplicado em staging). A correção (exclusão de `professional_self_retry_blocked`) virou uma migration incremental nova — `0114_whatsapp_inbound_raw_capture_sweep_professional_self_exclusion.sql`, via `create or replace function` sobre a mesma function, com os grants reafirmados explicitamente. Mesmo padrão já usado no projeto pela `0110_fix_literal_content_lease_function_name_truncation.sql` (correção incremental sobre a 0109, nunca uma edição em local). `raw-captures.ts` ajustado pra citar "migrations 0113/0114" no comentário.
+
+**Limitação desta verificação**: o container desta sessão não tem acesso ao daemon Docker (`Cannot connect to the Docker daemon`, sem permissão pra iniciá-lo), então não foi possível replayar 0001→0113(original)+0114 contra Postgres real nesta rodada, como fiz nas rodadas anteriores. O corpo da function na 0114 é byte-idêntico ao que FOI testado ao vivo na rodada anterior (mesma cláusula WHERE, mesmo valor de exclusão adicionado) — só a embalagem mudou, de `create function` editado em local pra `create or replace function` incremental, um padrão padrão e seguro do Postgres (o mesmo que a 0110 já depende implicitamente). Ainda assim, isto é uma verificação declarada como PENDENTE, não assumida como feita — recomendo rodar a mesma conferência direta por `has_function_privilege`/consulta de exclusão (seção 13.2) assim que houver acesso a Postgres real, antes de aplicar a 0114 em staging.
+
+**Status de staging**: a 0113 aplicada em staging (seção 10) é exatamente a versão original — nenhuma divergência, nenhuma ação necessária sobre ela. A 0114 NÃO foi aplicada em nenhum ambiente — fica pendente de aprovação específica da fundadora, junto com a verificação acima.
 
 ### 14.8 Riscos residuais (atualizado da seção 13.3)
 
-Os 4 riscos da seção 13.3 continuam válidos e inalterados. Nenhum risco novo introduzido por esta correção — ela estreita o automatismo (menos casos retomados sozinhos), nunca o amplia.
+Os 4 riscos da seção 13.3 continuam válidos e inalterados. Nenhum risco novo introduzido pela correção do ponto 14.1/14.2 — ela estreita o automatismo (menos casos retomados sozinhos), nunca o amplia. Risco novo desta rodada: a 0114 ainda não foi reconferida contra Postgres real (seção 14.7) — mitigado por ser uma mudança textualmente idêntica a algo já testado, mas declarado em aberto até a reconfirmação.
 
 ### 14.9 Recomendação e relatório de prontidão para staging
 
 Os 4 pontos pedidos estão comprovados: (1) TOCTOU fechado por gate na execução real, com teste integrado simulando a divergência; (2) `sendProfessionalSelfReplyViaWhatsapp` agora inalcançável pela retomada automática, mesmo gate; (3) checklist operacional do cron já estava satisfeito, agora com reforço de duas camadas; (4) teste integrado ponta a ponta entregue, incluindo o cenário de divergência. Ambos os riscos reais encontrados foram corrigidos com a mudança mínima necessária — nenhuma expansão de escopo, nenhuma função nova além do gate já desenhado pra este propósito.
 
-**Recomendação do Principal AI Engineer**: a Fase 2 está pronta para validação em staging, com uma única pendência administrativa — reaplicar a migration 0113 atualizada em staging (seção 14.7) antes de rodar o checklist de validação completo lá. Nenhum push, merge ou deploy foi feito; os commits permanecem locais aguardando a aprovação do template `doopla_primeiro_contato_v2` pela Meta, conforme a restrição em vigor.
+**Recomendação do Principal AI Engineer**: a Fase 2 está pronta para validação em staging, com duas pendências administrativas antes de aplicar qualquer coisa lá: (a) reconfirmar a 0114 contra Postgres real assim que houver ambiente disponível (seção 14.7), e (b) aplicar a 0114 (nunca reaplicar a 0113, que já está correta em staging) só depois dessa reconfirmação e de aprovação específica. Nenhum push, merge ou deploy foi feito; os commits permanecem locais aguardando a aprovação do template `doopla_primeiro_contato_v2` pela Meta, conforme a restrição em vigor.
 
 ## Próximo passo
 
-Fase 2 revisada e corrigida (seção 14), aguardando validação em staging — reaplicar 0113 atualizada é o único passo pendente antes do checklist completo lá. Fase 3 continua bloqueada até `sendSystemWhatsappMessage`/`sendProfessionalSelfReplyViaWhatsapp` terem idempotência própria. Por instrução explícita da fundadora, a implementação de infraestrutura desta rodada está encerrada aqui — a próxima prioridade de produto é o ADR 0004 (memória profissional, contatos compartilhados pelo WhatsApp, aprendizado com feedback).
+Fase 2 revisada e corrigida (seção 14), aguardando validação em staging — aplicar a 0114 (incremental, nunca reaplicar a 0113) é o único passo pendente, condicionado à reconfirmação contra Postgres real e aprovação específica. Fase 3 continua bloqueada até `sendSystemWhatsappMessage`/`sendProfessionalSelfReplyViaWhatsapp` terem idempotência própria. Por instrução explícita da fundadora, a implementação de infraestrutura desta rodada está encerrada aqui — a próxima prioridade de produto é o ADR 0004 (memória profissional, contatos compartilhados pelo WhatsApp, aprendizado com feedback).
