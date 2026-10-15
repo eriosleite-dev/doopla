@@ -41,4 +41,19 @@ describe('checkRecipientConsent', () => {
     const result = await checkRecipientConsent('qualquer coisa', { modelCall: fakeModelCall(null), maxRetries: 0 });
     expect(result.outcome).toBe('ambiguous');
   });
+
+  it('soma os tokens de TODAS as tentativas de retry, nunca só a última (achado real, Head of AI 15/10/2026)', async () => {
+    let call = 0;
+    const result = await checkRecipientConsent('qualquer coisa', {
+      maxRetries: 2,
+      modelCall: async (): Promise<RecipientConsentCheckModelCallResult> => {
+        call++;
+        if (call === 1) return { parsed: null, inputTokens: 15, outputTokens: 3 };
+        if (call === 2) return { parsed: null, inputTokens: 14, outputTokens: 2 };
+        return { parsed: { outcome: 'proceed' }, inputTokens: 12, outputTokens: 2 };
+      },
+    });
+    expect(result.inputTokens).toBe(15 + 14 + 12);
+    expect(result.outputTokens).toBe(3 + 2 + 2);
+  });
 });

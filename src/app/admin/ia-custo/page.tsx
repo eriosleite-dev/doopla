@@ -11,13 +11,27 @@ export default async function AdminIaCustoPage() {
     <div className="flex flex-col gap-6">
       <h1 className="text-lg font-semibold">Custo estimado das chamadas monitoradas</h1>
       <p className="text-[12px] text-zinc-500">
-        Últimos 30 dias, por dia/modelo/feature/status — dados reais de <code className="text-zinc-400">ai_usage_events</code>. Custo é
-        sempre uma ESTIMATIVA calculada em código (tokens × preço por modelo), nunca um valor real cobrado pelo provider.
+        Últimos 30 dias, por dia/modelo/feature/status — dados reais de <code className="text-zinc-400">ai_usage_events</code>.
       </p>
-      <p className="text-[12px] text-zinc-600">
-        Algumas chamadas de IA ainda não estão incluídas neste cálculo (classificação, planejamento e o teste de infraestrutura são
-        monitorados hoje; aprovação, policy-gate e detecção de proposta ainda não gravam uso).
-      </p>
+      <div className="flex flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 text-[12px] text-zinc-400">
+        <p>
+          <span className="font-semibold text-zinc-300">Chamadas instrumentadas</span> — quantas vezes um dos 7 pontos de IA do
+          Runtime (Classifier, Planner, Approval Resolver, Policy Gate Extractor, Inbound Proposal, delegated-contact recognizer e
+          recipient-consent-check) de fato rodou e conseguiu registrar o evento. Cada linha soma os tokens de TODAS as tentativas de
+          retry daquela chamada (nunca só a última), mas uma falha na própria gravação do evento (RPC indisponível, timeout) faz essa
+          chamada real não aparecer aqui — best-effort, nunca bloqueia a resposta ao cliente, mas pode subcontar silenciosamente.
+        </p>
+        <p>
+          <span className="font-semibold text-zinc-300">Custo estimado</span> — tokens × preço por modelo (
+          <code className="text-zinc-500">src/lib/admin/ai-pricing.ts</code>), sempre uma ESTIMATIVA calculada aqui em código, nunca
+          lida de uma fatura real.
+        </p>
+        <p>
+          <span className="font-semibold text-zinc-300">Gasto real faturado pela OpenAI</span> — não disponível nesta página. Não há
+          integração com a API de billing/usage da OpenAI; não existe hoje nenhuma forma de comparar a estimativa acima com o valor
+          que a OpenAI de fato cobra.
+        </p>
+      </div>
 
       <div className="overflow-hidden rounded-xl border border-zinc-800">
         <table className="w-full text-left text-[13px]">
@@ -27,7 +41,7 @@ export default async function AdminIaCustoPage() {
               <th className="px-4 py-2 font-normal">Modelo</th>
               <th className="px-4 py-2 font-normal">Feature</th>
               <th className="px-4 py-2 font-normal">Status</th>
-              <th className="px-4 py-2 text-right font-normal">Chamadas</th>
+              <th className="px-4 py-2 text-right font-normal">Chamadas instrumentadas</th>
               <th className="px-4 py-2 text-right font-normal">Tokens (in/out)</th>
               <th className="px-4 py-2 text-right font-normal">Custo estimado</th>
             </tr>

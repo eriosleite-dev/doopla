@@ -62,29 +62,81 @@ export type LogAiUsageEventParams = {
 
 export type LogAiUsageEventResult = { ok: true } | { ok: false; error: string };
 
+// Head of AI (15/10/2026) — achado de auditoria: esta function é
+// chamada em TODO ponto real de IA do Runtime (Classifier, Planner,
+// Approval Resolver, Policy Gate Extractor, Inbound Proposal,
+// delegated-contact), sempre com `await` síncrono no caminho crítico
+// que responde ao WhatsApp/cliente. "Best-effort" só valia pra quando
+// a RPC respondia normalmente com {error} preenchido — uma Promise
+// REJEITADA (exceção de rede/driver, não só um erro de negócio) ou
+// uma chamada que trava indefinidamente nunca tinham proteção
+// nenhuma, e qualquer uma das duas derrubaria o ciclo principal
+// inteiro (resposta comercial nunca sai) só por causa de telemetria.
+// Mesmo timeout (5s) já usado como convenção pras tools de leitura
+// (ver timeoutMs em intelligence/tools/*.ts).
+const LOG_AI_USAGE_EVENT_TIMEOUT_MS = 5000;
+
 export async function logAiUsageEvent(
   supabase: SupabaseClient<Database>,
   params: LogAiUsageEventParams
 ): Promise<LogAiUsageEventResult> {
-  const { error } = await supabase.rpc('log_ai_usage_event', {
-    p_feature: params.feature,
-    p_model: params.model,
-    p_status: params.status,
-    p_conversation_id: params.conversationId ?? null,
-    p_input_tokens: params.inputTokens ?? null,
-    p_output_tokens: params.outputTokens ?? null,
-    p_run_id: params.runId ?? null,
-    p_professional_id: params.professionalId ?? null,
-  });
-
-  if (error) {
-    // Observável (aparece nos logs do processo/plataforma), nunca
-    // lançado — ver comentário acima sobre a separação deliberada
-    // entre falha de observabilidade e falha da operação principal.
-    console.error(`log_ai_usage_event falhou (telemetria — ciclo principal não é afetado): ${error.message}`);
-    return { ok: false, error: error.message };
+  try {
+    const { error } = await raceWithTimeout(callLogAiUsageEventRpc(supabase, params), LOG_AI_USAGE_EVENT_TIMEOUT_MS);
+    if (error) {
+      // Observável (aparece nos logs do processo/plataforma), nunca
+      // lançado — ver comentário acima sobre a separação deliberada
+      // entre falha de observabilidade e falha da operação principal.
+      console.error(`log_ai_usage_event falhou (telemetria — ciclo principal não é afetado): ${error.message}`);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err) {
+    // Blindagem final: mesmo uma falha totalmente inesperada aqui
+    // dentro (ex.: supabase.rpc() lançando síncrono, antes de devolver
+    // qualquer Promise) nunca pode escapar desta function.
+    const message = err instanceof Error ? err.message : 'erro desconhecido';
+    console.error(`log_ai_usage_event lançou uma exceção inesperada (telemetria — ciclo principal não é afetado): ${message}`);
+    return { ok: false, error: message };
   }
-  return { ok: true };
+}
+
+// async function (não arrow com .then/.catch encadeado) de propósito:
+// o builder que supabase.rpc() devolve é só PromiseLike, não Promise
+// real (sem .catch() próprio) — `await` dentro de uma function async
+// normal já cobre os dois casos (resolve com {error} de negócio, OU
+// rejeita de verdade) sem precisar de nenhum encadeamento manual. Esta
+// function NUNCA rejeita — qualquer exceção vira um {error} normal.
+async function callLogAiUsageEventRpc(
+  supabase: SupabaseClient<Database>,
+  params: LogAiUsageEventParams
+): Promise<{ error: { message: string } | null }> {
+  try {
+    const { error } = await supabase.rpc('log_ai_usage_event', {
+      p_feature: params.feature,
+      p_model: params.model,
+      p_status: params.status,
+      p_conversation_id: params.conversationId ?? null,
+      p_input_tokens: params.inputTokens ?? null,
+      p_output_tokens: params.outputTokens ?? null,
+      p_run_id: params.runId ?? null,
+      p_professional_id: params.professionalId ?? null,
+    });
+    return { error };
+  } catch (err) {
+    return { error: { message: err instanceof Error ? err.message : 'erro desconhecido (rpc rejeitou a Promise)' } };
+  }
+}
+
+async function raceWithTimeout<T extends { error: { message: string } | null }>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeoutHandle = setTimeout(() => resolve({ error: { message: `timeout após ${timeoutMs}ms` } } as T), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutHandle!);
+  }
 }
 
 export async function finishOrchestratorRun(

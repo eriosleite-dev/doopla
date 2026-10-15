@@ -92,8 +92,16 @@ export async function classifyIntent(
     if (attempt > 0) requiredRetry = true;
     try {
       const result = await modelCall({ instructions, input });
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
+      // Head of AI (15/10/2026) — achado real de auditoria: cada
+      // tentativa de retry é uma chamada de verdade à OpenAI, cobrada
+      // de verdade. Sobrescrever inputTokens/outputTokens aqui (em vez
+      // de acumular) subcontava o custo real sempre que uma tentativa
+      // anterior falhava mas ainda assim consumiu tokens. Soma
+      // null-safe: cada tentativa que devolve um número real entra na
+      // soma; se NENHUMA tentativa jamais devolveu tokens, permanece
+      // null (nunca inventa um 0 que esconderia "não sei o custo real").
+      if (result.inputTokens !== null) inputTokens = (inputTokens ?? 0) + result.inputTokens;
+      if (result.outputTokens !== null) outputTokens = (outputTokens ?? 0) + result.outputTokens;
       if (result.parsed) {
         parsed = result.parsed;
         break;

@@ -102,8 +102,12 @@ export async function recognizeDelegatedContactRequest(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await modelCall({ instructions: INSTRUCTIONS, input });
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
+      // Head of AI (15/10/2026) — mesmo achado/mesma correção de
+      // classification/classify.ts: soma null-safe em vez de
+      // sobrescrever, nunca subconta tokens de tentativas anteriores
+      // já cobradas pela OpenAI.
+      if (result.inputTokens !== null) inputTokens = (inputTokens ?? 0) + result.inputTokens;
+      if (result.outputTokens !== null) outputTokens = (outputTokens ?? 0) + result.outputTokens;
       if (result.parsed) {
         parsed = result.parsed;
         break;

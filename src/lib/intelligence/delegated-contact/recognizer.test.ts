@@ -83,6 +83,21 @@ describe('recognizeDelegatedContactRequest', () => {
     expect(result.signal).toBe('no_delegation_signal');
   });
 
+  it('soma os tokens de TODAS as tentativas de retry, nunca só a última (achado real, Head of AI 15/10/2026)', async () => {
+    let call = 0;
+    const result = await recognizeDelegatedContactRequest('qualquer coisa', null, {
+      maxRetries: 2,
+      modelCall: async (): Promise<DelegatedContactRecognizerModelCallResult> => {
+        call++;
+        if (call === 1) return { parsed: null, inputTokens: 30, outputTokens: 6 };
+        if (call === 2) return { parsed: null, inputTokens: 28, outputTokens: 5 };
+        return { parsed: { signal: 'no_delegation_signal', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null }, inputTokens: 25, outputTokens: 4 };
+      },
+    });
+    expect(result.inputTokens).toBe(30 + 28 + 25);
+    expect(result.outputTokens).toBe(6 + 5 + 4);
+  });
+
   it('cancels_pending e rejects_pending preservam o signal sem extração', async () => {
     const cancel = await recognizeDelegatedContactRequest('cancela isso', { status: 'pending_approval', literalContentGate: 'not_applicable', recipientName: null, recipientNumberKnown: false, pendingConfirmationText: 'x' }, {
       modelCall: fakeModelCall({ signal: 'cancels_pending', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null }),

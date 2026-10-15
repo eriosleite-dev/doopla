@@ -129,8 +129,12 @@ export async function planResponse(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await modelCall({ instructions, input });
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
+      // Head of AI (15/10/2026) — mesmo achado/mesma correção de
+      // classify.ts: soma null-safe em vez de sobrescrever, pra nunca
+      // subcontar tokens de tentativas anteriores que falharam mas
+      // ainda assim foram cobradas de verdade pela OpenAI.
+      if (result.inputTokens !== null) inputTokens = (inputTokens ?? 0) + result.inputTokens;
+      if (result.outputTokens !== null) outputTokens = (outputTokens ?? 0) + result.outputTokens;
       if (result.parsed) {
         parsed = result.parsed;
         break;
