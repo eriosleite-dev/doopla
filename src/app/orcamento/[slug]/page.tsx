@@ -3,15 +3,19 @@ import { notFound } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
 import { whatsappPublicNumber } from '@/lib/supabase/env';
+import { DOOPLA_ORCAMENTO_LINK_BASE } from '@/lib/channels/whatsapp/intake-routing';
 import { OrcamentoForm } from './orcamento-form';
 
 // WhatsApp Inbound Foundation — texto pré-preenchido natural, nunca um
-// código escondido: o próprio link público (doopla.com/<slug>) já
-// visível nesta página é o token técnico de routing (parseado pelo
-// webhook, ver src/lib/channels/whatsapp/intake-routing.ts), citado
-// aqui de forma que soa como referência normal, não como comando.
+// código escondido: o próprio link público (doopla.pro/orcamento/<slug>,
+// DOOPLA_ORCAMENTO_LINK_BASE — nunca um literal próprio, achado real
+// 15/10/2026: esta function gerava "doopla.com/<slug>", domínio errado
+// e sem o segmento /orcamento/, e nenhum link real desta página batia
+// com o parser) já visível nesta página é o token técnico de routing
+// (parseado pelo webhook, ver src/lib/channels/whatsapp/intake-routing.ts),
+// citado aqui de forma que soa como referência normal, não como comando.
 function buildWhatsappCtaUrl(number: string, slug: string, artistName: string): string {
-  const text = `Oi! Vim pelo link de ${artistName} (doopla.com/${slug}) e queria falar sobre um trabalho.`;
+  const text = `Oi! Vim pelo link de ${artistName} (${DOOPLA_ORCAMENTO_LINK_BASE}/${slug}) e queria falar sobre um trabalho.`;
   return `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DOOPLA_ORCAMENTO_LINK_BASE,
   evaluateWhatsappRouting,
   extractBareCodeCandidates,
   extractDooplaSlugToken,
@@ -147,6 +148,19 @@ describe('extractDooplaSlugToken — Cenário A (link completo)', () => {
 
   it('código inexistente dentro de um link válido ainda é extraído (validade real é responsabilidade de quem chama)', () => {
     expect(extractDooplaSlugToken('doopla.pro/orcamento/nao-existe-123')).toBe('nao-existe-123');
+  });
+
+  // Regressão real (15/10/2026, auditoria pedida pela fundadora):
+  // orcamento/[slug]/page.tsx (o CTA de WhatsApp da própria página de
+  // orçamento) gerava "doopla.com/<slug>" — domínio errado, sem o
+  // segmento /orcamento/ — e NENHUM link real dessa página era
+  // reconhecido por este parser. Corrigido fazendo o gerador importar
+  // DOOPLA_ORCAMENTO_LINK_BASE em vez de manter um literal próprio;
+  // este teste prova o acoplamento (constante -> regex), nunca deixa
+  // os dois lados divergirem de novo silenciosamente.
+  it('qualquer texto construído com DOOPLA_ORCAMENTO_LINK_BASE é sempre reconhecido (gerador e parser nunca divergem)', () => {
+    const text = `Oi! Vim pelo link de Milky (${DOOPLA_ORCAMENTO_LINK_BASE}/milky) e queria falar sobre um trabalho.`;
+    expect(extractDooplaSlugToken(text)).toBe('milky');
   });
 });
 

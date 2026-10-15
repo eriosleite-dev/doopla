@@ -20,8 +20,9 @@ export type RoutingInput = {
   // (whatsapp_verified_number) — parâmetro já presente pra não exigir
   // retrabalho do algoritmo quando esse bloco chegar.
   verifiedProfessionalId: string | null;
-  // Contexto determinístico de entrada (doopla.com/<slug>) extraído da
-  // mensagem atual OU de qualquer mensagem já acumulada na sessão.
+  // Contexto determinístico de entrada (doopla.pro/orcamento/<slug>)
+  // extraído da mensagem atual OU de qualquer mensagem já acumulada na
+  // sessão.
   token: { professionalId: string; slug: string } | null;
   // Candidatos por nome mencionado no texto (atual + backlog) — nunca
   // decide sozinho, só reduz candidatos pra confirmação.
@@ -128,7 +129,19 @@ export function evaluateWhatsappRouting(input: RoutingInput): RoutingDecision {
 // antigo, NENHUM link real de produção batia — achado em teste
 // controlado com cliente real (mensagem/link genuínos nunca
 // reconhecidos, decisão sempre caía em 'no_signal').
+//
+// Achado novo (15/10/2026, auditoria pedida pela fundadora): a mesma
+// divergência voltou a existir, agora do lado do GERADOR do link —
+// orcamento/[slug]/page.tsx montava o CTA de WhatsApp com
+// "doopla.com/<slug>" (domínio errado, sem o segmento /orcamento/),
+// nunca atualizado quando este regex foi corrigido em 13/10. Nenhum
+// link real da própria página de orçamento batia com este padrão.
+// Corrigido reexportando DOOPLA_ORCAMENTO_LINK_BASE abaixo como única
+// fonte de verdade do host+caminho — o gerador importa daqui, nunca
+// mantém um literal próprio que possa divergir de novo.
 // ============================================================
+export const DOOPLA_ORCAMENTO_LINK_BASE = 'doopla.pro/orcamento';
+
 const DOOPLA_LINK_PATTERN = /doopla\.pro\/orcamento\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)/i;
 
 export function extractDooplaSlugToken(text: string): string | null {
