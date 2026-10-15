@@ -428,6 +428,53 @@ Pré-requisitos: migration 0112 aplicada em staging + esta branch deployada num 
 
 **Minha recomendação**: manter a opção (a) — nenhuma urgência força publicar Fase 0/1 antes da aprovação do template (nada do que foi feito nesta sessão depende de produção estar rodando o código novo; a migration 0111 já está em produção, aplicada manualmente, sem precisar do código correspondente no ar até a Fase 0 do código ser deployada). Se a fundadora decidir que quer Fase 0/1 em produção ANTES da aprovação do template, aí sim vale o esforço de (b) — mas nunca algo que eu faria sem pedir aprovação explícita primeiro, dado o risco de erro numa separação manual de histórico.
 
+---
+
+## 10. Migration 0112 aplicada em staging + testes de integração SQL (autorização de 15/10/2026)
+
+### 10.1 Compatibilidade com o código publicado, confirmada antes de aplicar
+
+Pedido explícito da fundadora/Head of AI antes da aplicação: confirmar que a migration não depende de deploy simultâneo pra manter o webhook funcionando. Confirmado por grep no arquivo inteiro: **zero** `drop function`, `create or replace function` ou `alter table` em objeto pré-existente — só `create table`/`create index`/`create function` com nomes que não existiam antes desta sessão. O código hoje publicado em staging (versão anterior à Fase 1) nunca referencia esses nomes, logo não há como colidir. Aplicação é segura independente de quando o código novo for publicado.
+
+### 10.2 Migration aplicada em staging
+
+A fundadora aplicou `0112_whatsapp_inbound_raw_captures.sql` (versão corrigida, com `delegated`) em `doopla-qa-staging` — sucesso, sem erro. Confirmado depois por consulta de catálogo (schema correto, incluindo o `CHECK` com `delegated`) e pela consulta operacional (0 linhas — esperado, tabela nova, sem tráfego real ainda, já que o código novo não está publicado).
+
+### 10.3 Testes de integração SQL (dados sintéticos, réplica local de staging) — os 7 pontos pedidos
+
+Rodados contra Postgres local, réplica fiel do schema de staging (0001-0112). Todos passaram, `exit code 0`.
+
+| # | Ponto | O que foi provado |
+|---|---|---|
+| 1 | Captura durável e unicidade por wamid | 2 capturas do mesmo wamid → mesmo `id`, 1 única linha |
+| 2 | Concorrência e controle de lease | Segundo claim enquanto o primeiro está ativo → rejeitado; lease vencida → reclamável, `attempt_count` incrementa corretamente (concorrência real de SO já provada em rodada anterior — 25 processos simultâneos, sempre 1 vencedor, resultado repetido aqui pra registro) |
+| 3 | Transições entre os 5 estados | `pending` → `processing` → `completed` / `delegated` / `needs_attention`, cada uma testada de ponta a ponta, estado final confirmado em cada caso |
+| 4 | Rejeição de transições inválidas | Status desconhecido → exceção `22023`; `finish` numa captura nunca reclamada (ainda `pending`) → `false`, nada muda; segundo `finish` numa captura já `completed` → `false`, não sobrescreve; `claim` numa `needs_attention` → nunca reclamada |
+| 5 | Permissões, RLS e acesso restrito | Caller `authenticated` (sem `service_role`) → `not_authorized` (`42501`) nas 4 functions, testado diretamente, não só lido no código; grants confirmados via catálogo (`service_role` sim, `anon`/`authenticated` não); RLS habilitado, 0 policies |
+| 6 | Compatibilidade com 0111 | `persist_inbound_message`/`create_outbound_intent` continuam idempotentes por wamid/trigger_message_id depois de 0112 aplicada — nenhuma regressão |
+| 7 | Comportamento após interrupção de processamento | Worker reclama e "morre" sem chamar `finish` → conteúdo intacto, nunca perdido; lease expira; worker novo reclama (`attempt_count` incrementa) e conclui → 1 única linha, nunca duplicada |
+
+**Prova adicional pedida**: que `delegated` está de fato correlacionado com um processamento ativo em outro mecanismo durável, não só um status solto. Teste cria uma captura `delegated` E a linha correspondente em `professional_self_pending_messages` com `status='pending'`, depois faz o `JOIN` real pelos dois `provider_message_id`:
+
+```
+provider_message_id | status_na_captura | status_na_fila_professional_self | processamento_ainda_nao_terminou
+wamid.DELPROVA       | delegated         | pending                          | t
+```
+
+Confirma exatamente o que a fundadora pediu: dado `delegated`, é possível identificar objetivamente que o processamento correspondente ainda não terminou (consultando a tabela correlacionada), nunca um estado opaco.
+
+### 10.4 O que ainda falta — nunca confundir aprovação de schema com aprovação ponta a ponta
+
+Como a fundadora explicitamente pediu pra nunca confundir: **tudo acima valida o SCHEMA e as GARANTIAS DE BANCO** (idempotência, concorrência, permissões, transições de estado). **Isso NÃO é validação funcional do webhook Next.js completo** — o código da Fase 1 (`route.ts` reestruturado) ainda não foi publicado em nenhum ambiente real, só testado localmente (vitest, mock de Supabase) e via estes testes SQL diretos às functions. Falta, antes de autorizar produção:
+
+1. Publicar o código da Fase 1 num ambiente de teste seguro (staging) — bloqueado por decisão explícita de não fazer push/deploy nesta rodada.
+2. Rodar o plano da seção 9.7 (requisição sintética assinada, direto ao endpoint de staging) contra o código REAL publicado — confirma que `route.ts` chama as RPCs certas, na ordem certa, com os dados certos, algo que nenhum teste de banco sozinho consegue provar.
+3. Só depois disso, com os dois níveis (schema + ponta a ponta) validados, proposta de produção.
+
+### 10.5 Relatório breve
+
+Schema da Fase 1 (migration 0112) está validado em staging nos dois níveis possíveis sem publicar código: aplicação limpa, compatibilidade com código atual confirmada antes de aplicar, e os 7 pontos de integração SQL todos passando contra dados sintéticos, incluindo o achado corrigido (`delegated`) com prova de correlação real. Nenhuma regressão em 0111. Falta exclusivamente a validação ponta a ponta do webhook publicado (seção 10.4), que depende de uma decisão de publicar código — fora do escopo autorizado agora.
+
 ## Próximo passo
 
-Conferência da seção 9 concluída, com um achado real corrigido (ponto 1, status `delegated`) antes de qualquer aplicação. Aguardando aprovação pra aplicar a migration 0112 (versão corrigida) em staging (sequência: seção 8.5 + plano funcional da seção 9.7). Depois de validada: Fase 2 (recuperação automática dos eventos elegíveis) é o próximo item, já anunciado pela fundadora como prioridade seguinte. Fase 3 continua bloqueada.
+Schema da Fase 1 validado em staging. Pendente: autorização pra publicar o código (push/deploy) quando a fundadora decidir, pra completar a validação ponta a ponta antes de produção. Em paralelo, conforme pedido: iniciar planejamento da Fase 2 (recuperação automática). Fase 3 continua bloqueada até a idempotência de envio de prompts de desambiguação estar resolvida.
