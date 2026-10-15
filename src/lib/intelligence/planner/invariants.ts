@@ -292,18 +292,32 @@ export function missingInformationFallback(field: string): MissingInformationIte
 // cumpria a promessa "nunca silêncio" mas o ciclo inteiro (Gate/
 // outbound/persist_ai_message) nunca chegava a rodar, porque
 // pipeline.ts só age quando decision.proposedResponse é truthy.
-// Só cobre os dois planos que o piso PODE produzir sem o model ter
+// Cobre os três planos que o piso PODE produzir sem o model ter
 // escrito pra eles — os demais (ask_external_participant/
-// clarify_ambiguity/answer_with_known_information) sempre dependem
-// do texto real do model; sem fallback seguro pra eles (inventaria
-// conteúdo), continuam null se o model falhar — risco residual já
-// existente, não introduzido aqui.
+// answer_with_known_information) sempre dependem do texto real do
+// model; sem fallback seguro pra eles (inventaria conteúdo), continuam
+// null se o model falhar — risco residual já existente, não
+// introduzido aqui.
+//
+// clarify_ambiguity: achado real de produção (teste controlado da
+// Etapa 2.1, 14/10/2026) — uma mensagem informativa/solta do
+// professional_self (ex.: "ok, é ela ok?") cai no piso de
+// classificação pouco confiável (resolveResponsePlan acima), o model
+// tinha proposto no_response_needed (proposedResponse naturalmente
+// null) e, como clarify_ambiguity está na lista de planos que mantêm
+// o draft do model mesmo com divergência (plan.ts), nunca havia um
+// texto pra manter nem um fallback pra cobrir — silêncio total,
+// mesmo com triggerHasUsableText=true. Texto fixo e neutro, nunca
+// assume quem é o destinatário (professional_self ou cliente).
 export function deterministicFallbackResponse(plan: ResponsePlan): string | null {
   if (plan === 'consult_professional') {
     return 'Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?';
   }
   if (plan === 'acknowledge') {
     return 'Combinado, obrigado por avisar!';
+  }
+  if (plan === 'clarify_ambiguity') {
+    return 'Não entendi direito o que você quis dizer, pode explicar de outro jeito?';
   }
   return null;
 }
