@@ -155,7 +155,19 @@ export async function runDelegatedContactRequestFlow(
     case 'cancels_pending':
       if (!recent || (recent.status !== 'pending_number' && recent.status !== 'pending_approval')) {
         if (recent) {
-          await reply('Esse pedido já está em andamento e não pode mais ser cancelado por aqui — mas ainda não enviei a mensagem original, se for isso que você quer evitar me avise o que prefere.');
+          // Achado real (revisão de código, 15/10/2026): esta resposta
+          // genérica fazia sentido só pra 'approved'/'executing'/'executed'
+          // (algo realmente em andamento). Pra status já TERMINAL
+          // (rejected/cancelled/expired/failed/expired_no_reply) ela é
+          // factualmente errada — nada está "em andamento" nesses casos,
+          // e em alguns deles a mensagem original pode já ter sido
+          // enviada ou o pedido já ter sido abandonado há muito tempo.
+          const terminal = recent.status === 'rejected' || recent.status === 'cancelled' || recent.status === 'expired' || recent.status === 'failed' || recent.status === 'expired_no_reply';
+          if (terminal) {
+            await reply(await describeStatus(supabase, recent));
+          } else {
+            await reply('Esse pedido já está em andamento e não pode mais ser cancelado por aqui. Mas ainda não enviei sua mensagem original, se for isso que você quer evitar me avise o que prefere.');
+          }
           return { handled: true };
         }
         return { handled: false };
@@ -267,7 +279,7 @@ async function handleFirstGateDecision(
     approved,
   });
   if (!claim.granted) {
-    await reply('Não consegui confirmar agora — se eu já tiver perguntado de novo, responda a pergunta mais recente.');
+    await reply('Não consegui confirmar agora. Se eu já tiver perguntado de novo, responda a pergunta mais recente.');
     return { handled: true };
   }
   if (!approved) {
@@ -320,7 +332,7 @@ async function executeTemplateSend(supabase: AnySupabaseClient, params: { id: st
       conversationId: claim.conversationId,
       professionalId: claim.requestingProfessionalId,
       channel: params.channel,
-      body: `Coloquei o contato inicial com ${claim.recipientName ?? claim.recipientNumber} na fila de envio. Como ela/ele nunca falou com a Doopla, o primeiro contato é uma mensagem de apresentação padrão (exigência da própria Meta/WhatsApp) — sua mensagem original só pode seguir depois que ela/ele responder. Vou te avisar.`,
+      body: `Coloquei o contato inicial com ${claim.recipientName ?? claim.recipientNumber} na fila de envio. Como ela/ele nunca falou com a Doopla, o primeiro contato é uma mensagem de apresentação padrão (exigência da própria Meta/WhatsApp). Sua mensagem original só pode seguir depois que ela/ele responder. Vou te avisar.`,
     });
   } catch {
     await markPendingDelegatedContactFailed(supabase, { id: params.id });
@@ -350,7 +362,7 @@ async function handleSecondGateDecision(
     approved,
   });
   if (!claim.granted) {
-    await reply('Não consegui registrar essa decisão agora — se eu já tiver perguntado de novo, responda a pergunta mais recente.');
+    await reply('Não consegui registrar essa decisão agora. Se eu já tiver perguntado de novo, responda a pergunta mais recente.');
     return { handled: true };
   }
   if (!approved) {
@@ -372,12 +384,19 @@ async function handleStatusInquiry(supabase: AnySupabaseClient, recent: PendingD
 async function describeStatus(supabase: AnySupabaseClient, recent: PendingDelegatedContact): Promise<string> {
   const who = recent.recipientName ?? recent.recipientNumber ?? 'o contato pedido';
 
-  if (recent.status === 'pending_number') return `Ainda não tenho o número de ${who} — pode me mandar?`;
+  if (recent.status === 'pending_number') return `Ainda não tenho o número de ${who}. Pode me mandar?`;
   if (recent.status === 'pending_approval') return `Ainda estou esperando sua confirmação pra começar o contato com ${who}.`;
   if (recent.status === 'rejected' || recent.status === 'cancelled') return `Esse pedido foi cancelado antes de eu enviar qualquer coisa para ${who}.`;
-  if (recent.status === 'expired') return `Esse pedido expirou antes de você confirmar — se ainda quiser, pode pedir de novo.`;
+  if (recent.status === 'expired') return `Esse pedido expirou antes de você confirmar. Se ainda quiser, pode pedir de novo.`;
   if (recent.status === 'failed') return `Não consegui iniciar o contato com ${who} por uma falha técnica. Quer que eu tente de novo?`;
   if (recent.status === 'expired_no_reply') return `${who} nunca respondeu ao contato inicial e o prazo de ${DELEGATED_CONTACT_NO_REPLY_TIMEOUT_HOURS}h passou. Quer que eu tente de outro jeito?`;
+  // Achado real (revisão de código, 15/10/2026): sem este branch, um
+  // 'approved' caía direto na lógica de 'executed' logo abaixo (que
+  // assume createdOutboundIntentId/literalContentGate já populados).
+  // Pra uma linha ainda não executada eles vêm null/not_applicable,
+  // produzindo uma resposta inventada ("sua mensagem original está na
+  // fila de envio") pra algo que nem começou a ser enviado.
+  if (recent.status === 'approved') return `Já confirmei esse pedido, o contato com ${who} está prestes a começar.`;
   if (recent.status === 'executing') return `Estou iniciando o contato com ${who} agora, só um momento.`;
 
   // status === 'executed': o template já foi criado — o que falta
@@ -460,7 +479,28 @@ export async function runDelegatedContactRecipientReplyFlow(
   params: DelegatedContactRecipientReplyFlowParams,
   opts: DelegatedContactRecipientReplyFlowOpts = {}
 ): Promise<{ handled: boolean }> {
-  const pdc = await getPendingDelegatedContactAwaitingReplyByConversation(supabase, { conversationId: params.conversationId });
+  // Achado real (revisão de código, 15/10/2026): esta function roda pra
+  // TODA mensagem de todo external_participant em toda conversation
+  // (nunca gateada pela flag de propósito — ver comentário acima em
+  // runDelegatedContactRequestFlow — e sem nenhum jeito barato de saber
+  // de antemão se esta conversation tem a ver com a feature). Sem
+  // try/catch aqui, uma falha transiente nesta chamada (ex.: o mesmo
+  // tipo de 404 que a migration 0110 corrigiu numa function irmã)
+  // derrubava o ciclo INTEIRO do Runtime pra qualquer cliente comum,
+  // sem relação nenhuma com "Doopla chama o cliente" — a mensagem já
+  // tinha sido persistida (persistInboundMessage roda antes, em
+  // pipeline.ts), mas o Runtime nunca a processava nem respondia, e
+  // inbound_events não tem nenhum sweep de retry pra eventos 'failed'.
+  // Fail-open pra handled=false: pior caso vira "este ciclo não tratou
+  // como resposta de destinatário delegado", nunca "cliente real sem
+  // resposta nenhuma".
+  let pdc: Awaited<ReturnType<typeof getPendingDelegatedContactAwaitingReplyByConversation>>;
+  try {
+    pdc = await getPendingDelegatedContactAwaitingReplyByConversation(supabase, { conversationId: params.conversationId });
+  } catch (err) {
+    console.error('[delegated-contact-flow] falha ao buscar pending_delegated_contact aguardando resposta, seguindo pro pipeline normal', err);
+    return { handled: false };
+  }
   if (!pdc) return { handled: false };
 
   const consent = await checkRecipientConsent(params.messageText, { modelCall: opts.consentModelCall, maxRetries: opts.consentMaxRetries });

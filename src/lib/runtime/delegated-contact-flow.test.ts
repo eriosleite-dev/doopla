@@ -553,6 +553,115 @@ describe('delegated-contact-flow (ponta a ponta)', () => {
     const r2 = await sweepDelegatedContactExpirations(supabase, { dueForNoReply: ['pdc-1'] });
     expect(r2.expiredNoReply).toBe(0);
   });
+
+  // Achados reais de revisão de código (15/10/2026), enquanto aguardava
+  // a aprovação do template no Meta — nenhum deles exigiu nova
+  // migration, só código de aplicação.
+
+  it('falha transiente no lookup de resposta do destinatário nunca derruba o ciclo de uma conversation qualquer (fail-open)', async () => {
+    const { runDelegatedContactRecipientReplyFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+
+    const realHandle = db.handleRpc.bind(db);
+    vi.spyOn(db, 'handleRpc' as never).mockImplementation(((fn: string, args: Record<string, unknown>) => {
+      if (fn === 'get_pending_delegated_contact_awaiting_reply_by_conversation') throw new Error('boom (404 simulado, mesma classe do achado da migration 0110)');
+      return realHandle(fn, args);
+    }) as never);
+
+    const result = await runDelegatedContactRecipientReplyFlow(supabase, {
+      conversationId: 'conv-cliente-qualquer',
+      messageId: 'msg-1',
+      messageText: 'oi, tudo bem?',
+    });
+    // Nunca lança, nunca trata como "resposta de destinatário delegado"
+    // -> pipeline.ts cai no fluxo normal pra esta mensagem.
+    expect(result.handled).toBe(false);
+  });
+
+  it('status === "approved" (travado entre a confirmação e o início da execução): status real, nunca a lógica de "executed"', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+    db.rows.set('pdc-1', {
+      id: 'pdc-1',
+      requesting_professional_id: 'prof-1',
+      conversation_id: 'conv-self-1',
+      trigger_message_id: 'msg-1',
+      recipient_name: 'Marina',
+      recipient_number: '11999999999',
+      purpose_summary: 'x',
+      draft_message_content: 'texto original',
+      confirmation_message_id: 'msg-c1',
+      decision_message_id: 'msg-d1',
+      status: 'approved',
+      created_conversation_id: null,
+      created_outbound_intent_id: null, // nunca populado pra 'approved' -- era aqui que a lógica de 'executed' quebrava
+      expires_at: null,
+      created_at: new Date().toISOString(),
+      resolved_at: null,
+      no_reply_deadline_at: null,
+      literal_content_gate: 'not_applicable',
+      recipient_first_reply_message_id: null,
+      literal_content_confirmation_message_id: null,
+      literal_content_decision_message_id: null,
+      literal_content_outbound_intent_id: null,
+    });
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-2', messageText: 'enviou?', channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'status_inquiry', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(result.handled).toBe(true);
+
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
+    expect(bodies.some((b) => b.includes('prestes a começar'))).toBe(true);
+    // Nunca a frase inventada da lógica de 'executed' (mensagem original "na fila"/"enviada") pra um pedido que nem começou a ser executado.
+    expect(bodies.some((b) => b.toLowerCase().includes('mensagem original'))).toBe(false);
+  });
+
+  it('"cancela" num pedido já em estado TERMINAL (ex.: expirado): status real, nunca a frase genérica de "em andamento"', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+    db.rows.set('pdc-1', {
+      id: 'pdc-1',
+      requesting_professional_id: 'prof-1',
+      conversation_id: 'conv-self-1',
+      trigger_message_id: 'msg-1',
+      recipient_name: 'Marina',
+      recipient_number: '11999999999',
+      purpose_summary: 'x',
+      draft_message_content: 'texto original',
+      confirmation_message_id: 'msg-c1',
+      decision_message_id: 'msg-d1',
+      status: 'expired',
+      created_conversation_id: null,
+      created_outbound_intent_id: null,
+      expires_at: new Date(Date.now() - 1000).toISOString(),
+      created_at: new Date().toISOString(),
+      resolved_at: new Date().toISOString(),
+      no_reply_deadline_at: null,
+      literal_content_gate: 'not_applicable',
+      recipient_first_reply_message_id: null,
+      literal_content_confirmation_message_id: null,
+      literal_content_decision_message_id: null,
+      literal_content_outbound_intent_id: null,
+    });
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-2', messageText: 'cancela isso', channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'cancels_pending', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(result.handled).toBe(true);
+    // Nunca muda o estado -- já é terminal.
+    expect(db.rows.get('pdc-1')!.status).toBe('expired');
+
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
+    expect(bodies.some((b) => b.includes('expirou'))).toBe(true);
+    expect(bodies.some((b) => b.includes('em andamento'))).toBe(false);
+  });
 });
 
 describe('proteção de ativação (app_settings.delegated_contact_enabled)', () => {

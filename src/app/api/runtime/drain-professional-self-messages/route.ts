@@ -61,19 +61,40 @@ export async function GET(request: NextRequest) {
   // 1min já comprovado. Cada chamada é independente e nunca derruba as
   // outras — uma falha aqui nunca pode impedir o drain normal acima
   // (já processado nesta mesma invocação) de ter rodado.
+  //
+  // Achado real (revisão de código, 15/10/2026): as 4 chamadas abaixo
+  // estavam dentro de UM ÚNICO try/catch — contradizia o comentário
+  // acima e repetia, pras 3 primeiras, exatamente a classe de bug que
+  // a migration 0110 corrigiu só pra última (uma falha na 1ª chamada
+  // escondia as outras 3 indefinidamente se persistente, não só nesse
+  // tick). Cada chamada agora tem seu próprio try/catch, igual ao loop
+  // por profissional logo acima.
   let delegatedContactExpired = 0;
   try {
     await expireStalePendingDelegatedContacts(supabase); // Etapa 1 (migration 0104) — RPC existente, nunca chamada até agora
+  } catch (err) {
+    console.error('[drain-professional-self-messages] falha ao expirar pending_delegated_contacts obsoletos', err);
+  }
+
+  try {
     const dueForNoReply = await listPendingDelegatedContactsDueForNoReplyExpiry(supabase);
     delegatedContactExpired = (await sweepDelegatedContactExpirations(supabase, { dueForNoReply })).expiredNoReply;
+  } catch (err) {
+    console.error('[drain-professional-self-messages] falha no sweep de expiração por falta de resposta (no_reply)', err);
+  }
 
+  try {
     const stuckTemplateExecutions = await listPendingDelegatedContactsWithExpiredExecutionLease(supabase);
     await recoverStuckTemplateExecutions(supabase, stuckTemplateExecutions);
+  } catch (err) {
+    console.error('[drain-professional-self-messages] falha na recuperação de leases travados (execução do template)', err);
+  }
 
+  try {
     const stuckLiteralContentSends = await listPendingDelegatedContactsWithExpiredLiteralContentLease(supabase);
     await recoverStuckLiteralContentSends(supabase, stuckLiteralContentSends);
   } catch (err) {
-    console.error('[drain-professional-self-messages] falha no sweep de "Doopla chama o cliente"', err);
+    console.error('[drain-professional-self-messages] falha na recuperação de leases travados (envio da mensagem original)', err);
   }
 
   return NextResponse.json({ processedProfessionals: results.length, results, purgedCount, delegatedContactExpired });
