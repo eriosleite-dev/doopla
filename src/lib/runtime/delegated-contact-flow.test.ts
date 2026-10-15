@@ -58,10 +58,24 @@ class FakeDb {
   // de professional_contact_memories (migration 0115): dedup por
   // (professional_id, phone_number), nome novo vira alias.
   contactMemories = new Map<string, ContactMemoryRow>();
+  // ADR 0004, Rodada 5 (15/10/2026) — réplica mínima da semântica real
+  // de whatsapp_outreach_authorization_claims/whatsapp_outreach_blocklist
+  // (migration 0116). Blocklist é um Set GLOBAL por telefone (nunca
+  // escopado por profissional, mesmo desenho da tabela real).
+  authorizationClaims = new Map<string, true>(); // key: `${professionalId}|${phoneNumber}`
+  blocklist = new Set<string>(); // key: phoneNumber
   // Default 'true' — testes de orquestração existentes exercitam o
   // fluxo com a proteção já ligada; o gate em si tem teste dedicado.
   appSettings = new Map<string, string>([['delegated_contact_enabled', 'true']]);
   seq = 0;
+
+  // Helper pra testes que não são especificamente sobre o gate de
+  // autorização: pré-semeia a claim, pulando a pergunta extra e
+  // preservando o comportamento de content-approval que o teste
+  // original exercita.
+  seedAuthorizationClaim(professionalId: string, phoneNumber: string): void {
+    this.authorizationClaims.set(`${professionalId}|${phoneNumber}`, true);
+  }
 
   seedContactMemory(params: { professionalId: string; canonicalName: string; phoneNumber: string; company?: string | null }): void {
     const key = `${params.professionalId}|${params.phoneNumber}`;
@@ -88,6 +102,7 @@ class FakeDb {
         const result = this.handleRpc(fn, args);
         return {
           single: async () => ({ data: result, error: null }),
+          maybeSingle: async () => ({ data: result, error: null }),
           then: (resolve: (v: unknown) => void) => Promise.resolve({ data: result, error: null }).then(resolve),
         };
       },
@@ -106,6 +121,15 @@ class FakeDb {
             select: () => ({
               eq: (_col: string, key: string) => ({
                 maybeSingle: async () => ({ data: { value: this.appSettings.get(key) ?? 'false' } }),
+              }),
+            }),
+          };
+        }
+        if (table === 'profiles') {
+          return {
+            select: () => ({
+              eq: () => ({
+                maybeSingle: async () => ({ data: { slug: 'profissional-teste' } }),
               }),
             }),
           };
@@ -180,7 +204,7 @@ class FakeDb {
 
       case 'cancel_pending_delegated_contact': {
         const row = this.rows.get(args.p_id as string);
-        if (!row || !['pending_number', 'pending_approval'].includes(row.status)) return false;
+        if (!row || !['pending_number', 'pending_authorization', 'pending_approval'].includes(row.status)) return false;
         row.status = 'cancelled';
         row.decision_message_id = args.p_decision_message_id as string;
         return true;
@@ -322,6 +346,54 @@ class FakeDb {
       case 'persist_ai_message':
         return { id: this.nextId('msg-ai') };
 
+      // ADR 0004, Rodada 5 (15/10/2026).
+      case 'is_whatsapp_outreach_blocked':
+        return this.blocklist.has(args.p_phone_number as string);
+
+      case 'create_whatsapp_outreach_block':
+        this.blocklist.add(args.p_phone_number as string);
+        return { id: this.nextId('block'), phone_number: args.p_phone_number };
+
+      case 'find_whatsapp_outreach_authorization_claim': {
+        const key = `${args.p_professional_id}|${args.p_phone_number}`;
+        return this.authorizationClaims.has(key) ? { id: key, professional_id: args.p_professional_id, phone_number: args.p_phone_number, claimed_basis: 'professional_attestation' } : null;
+      }
+
+      case 'create_whatsapp_outreach_authorization_claim': {
+        const key = `${args.p_professional_id}|${args.p_phone_number}`;
+        this.authorizationClaims.set(key, true);
+        return { id: key, professional_id: args.p_professional_id, phone_number: args.p_phone_number, claimed_basis: 'professional_attestation', purpose_summary: args.p_purpose_summary ?? null, evidence_message_id: args.p_evidence_message_id ?? null };
+      }
+
+      case 'prepare_pending_delegated_contact_authorization_review': {
+        const row = this.rows.get(args.p_id as string);
+        if (!row || !['pending_number', 'pending_authorization'].includes(row.status)) throw new Error('pending_delegated_contact_not_preparable_for_authorization');
+        row.confirmation_message_id = args.p_confirmation_message_id as string;
+        row.decision_message_id = null;
+        row.status = 'pending_authorization';
+        row.draft_message_content = (args.p_draft_message_content as string | null) ?? row.draft_message_content;
+        return row;
+      }
+
+      case 'claim_pending_delegated_contact_authorization_decision': {
+        const row = this.rows.get(args.p_id as string);
+        if (!row || row.status !== 'pending_authorization' || row.confirmation_message_id !== args.p_expected_confirmation_message_id) {
+          return { granted: false, requesting_professional_id: null, recipient_number: null, purpose_summary: null };
+        }
+        row.status = args.p_confirmed ? 'pending_approval' : 'blocked_unauthorized';
+        row.decision_message_id = args.p_decision_message_id as string;
+        if (!args.p_confirmed) row.resolved_at = new Date().toISOString();
+        return { granted: true, requesting_professional_id: row.requesting_professional_id, recipient_number: row.recipient_number, purpose_summary: row.purpose_summary };
+      }
+
+      case 'mark_pending_delegated_contact_blocked_unauthorized': {
+        const row = this.rows.get(args.p_id as string);
+        if (!row || !['pending_number', 'pending_authorization', 'pending_approval', 'executing'].includes(row.status)) return false;
+        row.status = 'blocked_unauthorized';
+        row.resolved_at = new Date().toISOString();
+        return true;
+      }
+
       case 'create_or_update_professional_contact_memory': {
         const professionalId = args.p_professional_id as string;
         const phoneNumber = args.p_phone_number as string;
@@ -393,12 +465,28 @@ describe('delegated-contact-flow (ponta a ponta)', () => {
     );
     expect(r1.handled).toBe(true);
     const afterRequest = [...db.rows.values()][0];
-    expect(afterRequest.status).toBe('pending_approval');
-    expect(afterRequest.draft_message_content).toBe('Confirma presença no evento de sábado?');
+    // ADR 0004, Rodada 5 (15/10/2026) — gate de autorização novo:
+    // primeiro pedido pra um telefone nunca visto antes SEMPRE para em
+    // pending_authorization, nunca pula direto pra pending_approval.
+    expect(afterRequest.status).toBe('pending_authorization');
     expect(afterRequest.confirmation_message_id).not.toBeNull();
 
-    // Turno 2: profissional confirma com "sim" -> claim único, template executado.
+    // Turno 1.5: profissional confirma que já tem autorização -> avança
+    // pra pending_approval (mesma máquina de sempre a partir daqui).
     const recognizerConfirms = async () => ({ parsed: { signal: 'confirms_pending', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null } as const, inputTokens: 1, outputTokens: 1 });
+    const rAuth = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId, conversationId: professionalSelfConversationId, triggerMessageId: 'msg-1.5', messageText: 'sim, já conversei com ela antes', channel: 'whatsapp' },
+      { recognizerModelCall: recognizerConfirms }
+    );
+    expect(rAuth.handled).toBe(true);
+    const afterAuth = db.rows.get(afterRequest.id)!;
+    expect(afterAuth.status).toBe('pending_approval');
+    expect(afterAuth.draft_message_content).toBe('Confirma presença no evento de sábado?');
+    expect(afterAuth.confirmation_message_id).not.toBeNull();
+    expect(db.authorizationClaims.has(`${professionalId}|+5511999999999`)).toBe(true);
+
+    // Turno 2: profissional confirma com "sim" -> claim único, template executado.
     const r2 = await runDelegatedContactRequestFlow(
       supabase,
       { professionalId, conversationId: professionalSelfConversationId, triggerMessageId: 'msg-2', messageText: 'sim, pode mandar', channel: 'whatsapp' },
@@ -917,5 +1005,137 @@ describe('proteção de ativação (app_settings.delegated_contact_enabled)', ()
     expect(result.handled).toBe(false);
     expect(recognizerCalled).toBe(false);
     expect(db.rows.size).toBe(0);
+  });
+});
+
+describe('gate de autorização de abordagem — opt-in (ADR 0004, Rodada 5, 15/10/2026)', () => {
+  let db: FakeDb;
+
+  beforeEach(() => {
+    db = new FakeDb();
+    vi.clearAllMocks();
+  });
+
+  it('sem consentimento: profissional nega autorização -> blocked_unauthorized, oferece link de convite, nunca cria outbound_intent', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+
+    const r1 = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: "manda pro José, 11933332222: 'oi'", channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'new_request', recipientName: 'José', recipientNumber: '11933332222', purposeSummary: 'avisar', draftMessageContent: 'oi' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(r1.handled).toBe(true);
+    const row = [...db.rows.values()][0];
+    expect(row.status).toBe('pending_authorization');
+
+    const r2 = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-2', messageText: 'não, nunca conversei com ele', channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'rejects_pending', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(r2.handled).toBe(true);
+    expect(db.rows.get(row.id)!.status).toBe('blocked_unauthorized');
+    expect(db.outboundIntents.size).toBe(0);
+
+    const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+    const bodies = (sendProfessionalSelfReplyViaWhatsapp as unknown as { mock: { calls: Array<[unknown, { body: string }]> } }).mock.calls.map((c) => c[1].body);
+    expect(bodies.some((b) => b.includes('orcamento') || b.includes('iniciar a conversa aqui'))).toBe(true);
+  });
+
+  it('autorização válida (claim já existe): pula a pergunta, vai direto pra pending_approval', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+    db.seedAuthorizationClaim('prof-1', '+5511933332222');
+
+    const r1 = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: "manda pro José, 11933332222: 'oi'", channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'new_request', recipientName: 'José', recipientNumber: '11933332222', purposeSummary: 'avisar', draftMessageContent: 'oi' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(r1.handled).toBe(true);
+    const row = [...db.rows.values()][0];
+    expect(row.status).toBe('pending_approval'); // nunca pending_authorization — claim já existia
+  });
+
+  it('revogação: recusa do destinatário bloqueia GLOBALMENTE, inclusive pedido futuro de OUTRO profissional', async () => {
+    const { runDelegatedContactRequestFlow, runDelegatedContactRecipientReplyFlow } = await import('./delegated-contact-flow');
+    db.seedAuthorizationClaim('prof-1', '+5511933332222');
+    const supabase = db.supabase();
+
+    await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: "manda pro José, 11933332222: 'oi'", channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'new_request', recipientName: 'José', recipientNumber: '11933332222', purposeSummary: 'avisar', draftMessageContent: 'oi' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    const row = [...db.rows.values()][0];
+    await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-2', messageText: 'sim, pode mandar', channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'confirms_pending', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(db.rows.get(row.id)!.status).toBe('executed');
+    const externalConversationId = db.rows.get(row.id)!.created_conversation_id!;
+
+    const rReply = await runDelegatedContactRecipientReplyFlow(
+      supabase,
+      { conversationId: externalConversationId, messageId: 'msg-reply-1', messageText: 'não me contate mais' },
+      { consentModelCall: async () => ({ parsed: { outcome: 'declined' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(rReply.handled).toBe(true);
+    expect(db.blocklist.has('+5511933332222')).toBe(true);
+
+    // Pedido NOVO, de um profissional DIFERENTE, pro MESMO telefone,
+    // já atestado por ESSE profissional também (isolamento de
+    // autorização é por profissional — isolamento de bloqueio NUNCA é).
+    db.seedAuthorizationClaim('prof-2', '+5511933332222');
+    const r3 = await runDelegatedContactRequestFlow(
+      db.supabase(),
+      { professionalId: 'prof-2', conversationId: 'conv-self-2', triggerMessageId: 'msg-3', messageText: "manda pro José, 11933332222: 'oi'", channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'new_request', recipientName: 'José', recipientNumber: '11933332222', purposeSummary: 'avisar', draftMessageContent: 'oi' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(r3.handled).toBe(true);
+    const rowB = [...db.rows.values()].find((r) => r.requesting_professional_id === 'prof-2')!;
+    expect(rowB.status).toBe('blocked_unauthorized'); // bloqueado mesmo com claim própria e mesmo sendo outro profissional
+  });
+
+  it('contato já memorizado: memória resolve o número sozinha, mas o gate de autorização AINDA pergunta (memória != autorização)', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+    db.seedContactMemory({ professionalId: 'prof-1', canonicalName: 'Marina', phoneNumber: '+5511988887777' });
+
+    const result = await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: 'fala com a Marina sobre o cachê', channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: null, purposeSummary: 'combinar cachê', draftMessageContent: 'oi, bom dia' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    expect(result.handled).toBe(true);
+    const row = [...db.rows.values()][0];
+    expect(row.recipient_number).toBe('+5511988887777'); // memória resolveu o número
+    expect(row.status).toBe('pending_authorization'); // mas autorização nunca foi pulada
+  });
+
+  it('concorrência: duas respostas simultâneas à pergunta de autorização -> só uma processa', async () => {
+    const { runDelegatedContactRequestFlow } = await import('./delegated-contact-flow');
+    const supabase = db.supabase();
+
+    await runDelegatedContactRequestFlow(
+      supabase,
+      { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-1', messageText: "manda pro José, 11933332222: 'oi'", channel: 'whatsapp' },
+      { recognizerModelCall: async () => ({ parsed: { signal: 'new_request', recipientName: 'José', recipientNumber: '11933332222', purposeSummary: 'avisar', draftMessageContent: 'oi' } as const, inputTokens: 1, outputTokens: 1 }) }
+    );
+    const row = [...db.rows.values()][0];
+
+    const confirms = async () => ({ parsed: { signal: 'confirms_pending', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null } as const, inputTokens: 1, outputTokens: 1 });
+    const [a, b] = await Promise.all([
+      runDelegatedContactRequestFlow(supabase, { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-2a', messageText: 'sim', channel: 'whatsapp' }, { recognizerModelCall: confirms }),
+      runDelegatedContactRequestFlow(supabase, { professionalId: 'prof-1', conversationId: 'conv-self-1', triggerMessageId: 'msg-2b', messageText: 'sim', channel: 'whatsapp' }, { recognizerModelCall: confirms }),
+    ]);
+    expect(a.handled).toBe(true);
+    expect(b.handled).toBe(true);
+    // O estado final é consistente (avançou exatamente uma vez) —
+    // nunca duas claims/autorizações para o mesmo pedido.
+    expect(db.rows.get(row.id)!.status).toBe('pending_approval');
+    expect(db.authorizationClaims.size).toBe(1);
   });
 });

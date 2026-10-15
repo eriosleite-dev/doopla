@@ -13,6 +13,10 @@ type AnySupabaseClient = SupabaseClient<any>;
 
 export type PendingDelegatedContactStatus =
   | 'pending_number'
+  // ADR 0004, Rodada 5 (15/10/2026) — aguardando a profissional
+  // confirmar que já tem base pra contatar este telefone (nenhuma
+  // whatsapp_outreach_authorization_claims existe ainda pro par).
+  | 'pending_authorization'
   | 'pending_approval'
   | 'approved'
   // Etapa 2.1 (migration 0109) — transitório entre approved e
@@ -24,6 +28,9 @@ export type PendingDelegatedContactStatus =
   // Etapa 2.1 — terminal: template enviado, destinatário nunca
   // respondeu dentro de no_reply_deadline_at.
   | 'expired_no_reply'
+  // ADR 0004, Rodada 5 — terminal: bloqueado pela blocklist OU a
+  // profissional não confirmou ter autorização pra este contato.
+  | 'blocked_unauthorized'
   | 'executed'
   | 'failed';
 
@@ -212,6 +219,69 @@ export async function claimPendingDelegatedContactDecision(
     recipientNumber: row.recipient_number!,
     draftMessageContent: row.draft_message_content!,
   };
+}
+
+// ADR 0004, Rodada 5 (15/10/2026) — gate de autorização, mesmo padrão
+// exato do gate de aprovação de conteúdo acima (correlação por
+// confirmation_message_id/decision_message_id, reaproveitadas, nunca
+// um par novo). Arma a pergunta "você já tem autorização pra contatar
+// esta pessoa?" — só chamada quando nenhuma authorization claim existe
+// ainda pro par (professionalId, phoneNumber), checagem feita por quem
+// chama (delegated-contact-flow.ts), nunca aqui.
+export async function preparePendingDelegatedContactAuthorizationReview(
+  supabase: AnySupabaseClient,
+  params: { id: string; confirmationMessageId: string; draftMessageContent?: string | null }
+): Promise<PendingDelegatedContact> {
+  const { data, error } = await supabase
+    .rpc('prepare_pending_delegated_contact_authorization_review', {
+      p_id: params.id,
+      p_confirmation_message_id: params.confirmationMessageId,
+      p_draft_message_content: params.draftMessageContent ?? null,
+    })
+    .single();
+  if (error || !data) throw new Error(`prepare_pending_delegated_contact_authorization_review falhou: ${error?.message ?? 'sem dado'}`);
+  return mapRow(data as RawRow);
+}
+
+export type ClaimPendingDelegatedContactAuthorizationDecisionResult =
+  | { granted: false }
+  | { granted: true; requestingProfessionalId: string; recipientNumber: string; purposeSummary: string | null };
+
+export async function claimPendingDelegatedContactAuthorizationDecision(
+  supabase: AnySupabaseClient,
+  params: { id: string; expectedConfirmationMessageId: string; decisionMessageId: string; confirmed: boolean }
+): Promise<ClaimPendingDelegatedContactAuthorizationDecisionResult> {
+  const { data, error } = await supabase
+    .rpc('claim_pending_delegated_contact_authorization_decision', {
+      p_id: params.id,
+      p_expected_confirmation_message_id: params.expectedConfirmationMessageId,
+      p_decision_message_id: params.decisionMessageId,
+      p_confirmed: params.confirmed,
+    })
+    .single();
+  if (error || !data) throw new Error(`claim_pending_delegated_contact_authorization_decision falhou: ${error?.message ?? 'sem dado'}`);
+  const row = data as {
+    granted: boolean;
+    requesting_professional_id: string | null;
+    recipient_number: string | null;
+    purpose_summary: string | null;
+  };
+  if (!row.granted) return { granted: false };
+  return {
+    granted: true,
+    requestingProfessionalId: row.requesting_professional_id!,
+    recipientNumber: row.recipient_number!,
+    purposeSummary: row.purpose_summary,
+  };
+}
+
+// Transição direta (sem claim de decisão — nenhuma pergunta foi feita
+// ainda) pra quando a blocklist já bloqueia o telefone antes de
+// qualquer pergunta de autorização ser armada.
+export async function markPendingDelegatedContactBlockedUnauthorized(supabase: AnySupabaseClient, id: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('mark_pending_delegated_contact_blocked_unauthorized', { p_id: id });
+  if (error) throw new Error(`mark_pending_delegated_contact_blocked_unauthorized falhou: ${error.message}`);
+  return Boolean(data);
 }
 
 export async function cancelPendingDelegatedContact(

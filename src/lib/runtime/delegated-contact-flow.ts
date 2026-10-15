@@ -21,6 +21,7 @@ import { createOutboundIntent } from './outbound';
 import { createOrUpdateProfessionalContactMemory, findProfessionalContactMemoriesByName } from './professional-contact-memories';
 import {
   cancelPendingDelegatedContact,
+  claimPendingDelegatedContactAuthorizationDecision,
   claimPendingDelegatedContactDecision,
   claimPendingDelegatedContactForLiteralContentSend,
   claimPendingDelegatedContactForTemplateExecution,
@@ -29,12 +30,14 @@ import {
   createPendingDelegatedContact,
   getMostRecentPendingDelegatedContact,
   getPendingDelegatedContactAwaitingReplyByConversation,
+  markPendingDelegatedContactBlockedUnauthorized,
   markPendingDelegatedContactExecuted,
   markPendingDelegatedContactExpiredNoReply,
   markPendingDelegatedContactFailed,
   markPendingDelegatedContactLiteralContentFailed,
   markPendingDelegatedContactLiteralContentSent,
   preparePendingDelegatedContactApproval,
+  preparePendingDelegatedContactAuthorizationReview,
   preparePendingDelegatedContactLiteralContentReview,
   setPendingDelegatedContactRecipientReply,
   updatePendingDelegatedContactPendingInfo,
@@ -43,6 +46,8 @@ import {
 import { persistAiMessage } from './professional-message';
 import { resolveProfessionalDisplayName } from './professional-identity';
 import { sendProfessionalSelfReplyViaWhatsapp } from './professional-whatsapp-reply';
+import { createWhatsappOutreachBlock, findWhatsappOutreachAuthorizationClaim, isWhatsappOutreachBlocked, createWhatsappOutreachAuthorizationClaim } from './whatsapp-outreach-authorization';
+import { DOOPLA_ORCAMENTO_LINK_BASE } from '../channels/whatsapp/intake-routing';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabaseClient = SupabaseClient<any>;
@@ -70,6 +75,20 @@ async function replyToProfessional(supabase: AnySupabaseClient, params: { conver
   }
 }
 
+// ADR 0004, Rodada 5 (15/10/2026) — alternativa ao contato frio
+// (requisito 3): quando a autorização é desconhecida/recusada, nunca
+// insiste num template não verificado — oferece o link PÚBLICO que já
+// existe (/orcamento/[slug], mesma infraestrutura do fluxo de
+// orçamento, nunca duplicada aqui) pra que o PRÓPRIO contato inicie a
+// conversa, sempre compatível com a política da Meta (conversa
+// iniciada pelo cliente nunca precisa de template/opt-in prévio).
+async function buildInviteLinkText(supabase: AnySupabaseClient, professionalId: string): Promise<string> {
+  const { data } = await supabase.from('profiles').select('slug').eq('id', professionalId).maybeSingle();
+  const slug = (data as { slug: string | null } | null)?.slug;
+  if (!slug) return 'o link do seu perfil (ainda não configurado — cadastre um slug no seu perfil pra eu poder gerar esse link)';
+  return `${DOOPLA_ORCAMENTO_LINK_BASE}/${slug}`;
+}
+
 function buildActiveSummary(recent: PendingDelegatedContact | null): ActiveDelegatedContactSummary | null {
   if (!recent) return null;
   // Descrição sintética da pergunta pendente (nunca o texto literal
@@ -80,7 +99,9 @@ function buildActiveSummary(recent: PendingDelegatedContact | null): ActiveDeleg
   // a 'awaiting_recipient_review' bem depois de status já ter saído de
   // 'pending_approval').
   let pendingConfirmationText: string | null = null;
-  if (recent.status === 'pending_approval') {
+  if (recent.status === 'pending_authorization') {
+    pendingConfirmationText = `confirmar se já tem autorização pra contatar ${recent.recipientName ?? 'o destinatário'}`;
+  } else if (recent.status === 'pending_approval') {
     pendingConfirmationText = `confirmar envio da mensagem para ${recent.recipientName ?? 'o destinatário'}`;
   } else if (recent.literalContentGate === 'awaiting_recipient_review') {
     pendingConfirmationText = `prosseguir mesmo com resposta ambígua de ${recent.recipientName ?? 'o destinatário'}`;
@@ -166,22 +187,30 @@ export async function runDelegatedContactRequestFlow(
     case 'confirms_pending':
     case 'rejects_pending': {
       const approved = recognized.signal === 'confirms_pending';
+      if (recent?.status === 'pending_authorization') return handleAuthorizationGateDecision(supabase, params, recent, approved, reply);
       if (recent?.status === 'pending_approval') return handleFirstGateDecision(supabase, params, recent, approved, reply);
       if (recent?.literalContentGate === 'awaiting_recipient_review') return handleSecondGateDecision(supabase, recent, params.triggerMessageId, approved, reply);
       return { handled: false };
     }
 
     case 'cancels_pending':
-      if (!recent || (recent.status !== 'pending_number' && recent.status !== 'pending_approval')) {
+      if (!recent || (recent.status !== 'pending_number' && recent.status !== 'pending_authorization' && recent.status !== 'pending_approval')) {
         if (recent) {
           // Achado real (revisão de código, 15/10/2026): esta resposta
           // genérica fazia sentido só pra 'approved'/'executing'/'executed'
           // (algo realmente em andamento). Pra status já TERMINAL
-          // (rejected/cancelled/expired/failed/expired_no_reply) ela é
-          // factualmente errada — nada está "em andamento" nesses casos,
-          // e em alguns deles a mensagem original pode já ter sido
-          // enviada ou o pedido já ter sido abandonado há muito tempo.
-          const terminal = recent.status === 'rejected' || recent.status === 'cancelled' || recent.status === 'expired' || recent.status === 'failed' || recent.status === 'expired_no_reply';
+          // (rejected/cancelled/expired/failed/expired_no_reply/
+          // blocked_unauthorized) ela é factualmente errada — nada está
+          // "em andamento" nesses casos, e em alguns deles a mensagem
+          // original pode já ter sido enviada ou o pedido já ter sido
+          // abandonado há muito tempo.
+          const terminal =
+            recent.status === 'rejected' ||
+            recent.status === 'cancelled' ||
+            recent.status === 'expired' ||
+            recent.status === 'failed' ||
+            recent.status === 'expired_no_reply' ||
+            recent.status === 'blocked_unauthorized';
           if (terminal) {
             await reply(await describeStatus(supabase, recent));
           } else {
@@ -357,6 +386,31 @@ async function advanceOrAskForMissing(
     return { handled: true };
   }
 
+  // ADR 0004, Rodada 5 (15/10/2026) — gate de autorização, ANTES de
+  // armar a pergunta de conteúdo. Achado real da auditoria (ADR 0004,
+  // Rodada 4): "Doopla chama o cliente" nunca verificou autorização do
+  // DESTINATÁRIO antes do primeiro template — só a aprovação da
+  // própria profissional. Dois passos, nunca pulados:
+  const blocked = await isWhatsappOutreachBlocked(supabase, row.recipientNumber);
+  if (blocked) {
+    await markPendingDelegatedContactBlockedUnauthorized(supabase, row.id);
+    await reply(
+      `Esse número já pediu pra não ser contatado antes — não posso iniciar esse contato automaticamente. Se quiser, você pode falar com ${row.recipientName ?? 'essa pessoa'} por fora da Doopla e pedir pra ela iniciar a conversa aqui: ${await buildInviteLinkText(supabase, params.professionalId)}.`
+    );
+    return { handled: true };
+  }
+
+  const claim = await findWhatsappOutreachAuthorizationClaim(supabase, { professionalId: params.professionalId, phoneNumber: row.recipientNumber });
+  if (!claim) {
+    const authorizationQuestionBody = `Antes de eu chamar ${row.recipientName ?? 'essa pessoa'}: você já tem autorização dela pra receber mensagem sua pela Doopla (ela topou receber contato, é cliente que já conversou com você, ou pediu esse contato)? Responda sim ou não.`;
+    const authorizationQuestion = await persistAiMessage(supabase, { conversationId: params.conversationId, contentType: 'text', body: authorizationQuestionBody });
+    if (params.channel === 'whatsapp') {
+      await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: authorizationQuestionBody });
+    }
+    await preparePendingDelegatedContactAuthorizationReview(supabase, { id: row.id, confirmationMessageId: authorizationQuestion.id, draftMessageContent });
+    return { handled: true };
+  }
+
   const questionBody = `Vou iniciar o contato com ${row.recipientName ?? row.recipientNumber} e, depois que ela/ele responder, mandar esta mensagem: "${draftMessageContent}". Confirma?`;
   const question = await persistAiMessage(supabase, { conversationId: params.conversationId, contentType: 'text', body: questionBody });
   if (params.channel === 'whatsapp') {
@@ -369,6 +423,56 @@ async function advanceOrAskForMissing(
     confirmationMessageId: question.id,
   });
   return { handled: true };
+}
+
+// ADR 0004, Rodada 5 (15/10/2026) — decisão do gate de autorização
+// (requisito 3). Confirmado: grava a atestação (whatsapp_outreach_authorization_claims,
+// NUNCA consentimento do destinatário — só a declaração da
+// profissional) e segue pro gate de conteúdo de sempre, chamando
+// advanceOrAskForMissing de novo (agora com a claim já existindo, cai
+// direto na pergunta "confirma?"). Recusado: oferece a alternativa de
+// convite por link, nunca insiste num template não verificado.
+async function handleAuthorizationGateDecision(
+  supabase: AnySupabaseClient,
+  params: DelegatedContactRequestFlowParams,
+  recent: PendingDelegatedContact,
+  confirmed: boolean,
+  reply: (body: string) => Promise<void>
+): Promise<DelegatedContactRequestFlowResult> {
+  if (!recent.confirmationMessageId) return { handled: false };
+  const claim = await claimPendingDelegatedContactAuthorizationDecision(supabase, {
+    id: recent.id,
+    expectedConfirmationMessageId: recent.confirmationMessageId,
+    decisionMessageId: params.triggerMessageId,
+    confirmed,
+  });
+  if (!claim.granted) {
+    await reply('Não consegui confirmar agora. Se eu já tiver perguntado de novo, responda a pergunta mais recente.');
+    return { handled: true };
+  }
+  if (!confirmed) {
+    await reply(
+      `Entendido — sem autorização confirmada, não vou iniciar esse contato automaticamente. Se quiser, você pode falar com ${recent.recipientName ?? 'essa pessoa'} por fora da Doopla e pedir pra ela iniciar a conversa aqui: ${await buildInviteLinkText(supabase, params.professionalId)}.`
+    );
+    return { handled: true };
+  }
+
+  await createWhatsappOutreachAuthorizationClaim(supabase, {
+    professionalId: claim.requestingProfessionalId,
+    phoneNumber: claim.recipientNumber,
+    pendingDelegatedContactId: recent.id,
+    purposeSummary: claim.purposeSummary,
+    evidenceMessageId: params.triggerMessageId,
+  });
+
+  // Reconsulta a linha (status já avançou pra pending_approval via
+  // claim_pending_delegated_contact_authorization_decision) e arma a
+  // pergunta de conteúdo de sempre — a claim que acabou de nascer faz
+  // advanceOrAskForMissing pular direto pro gate de conteúdo, nunca
+  // pergunta autorização de novo.
+  const refreshed = await getMostRecentPendingDelegatedContact(supabase, { professionalId: claim.requestingProfessionalId });
+  if (!refreshed || refreshed.id !== recent.id) return { handled: true };
+  return advanceOrAskForMissing(supabase, params, refreshed, { draftMessageContent: refreshed.draftMessageContent }, reply);
 }
 
 async function handleFirstGateDecision(
@@ -408,6 +512,25 @@ async function handleFirstGateDecision(
 async function executeTemplateSend(supabase: AnySupabaseClient, params: { id: string; channel: string }): Promise<void> {
   const claim = await claimPendingDelegatedContactForTemplateExecution(supabase, { id: params.id, workerId: 'inline:professional_self' });
   if (!claim.granted) return; // outro worker já está executando/executou — nunca reenvia
+
+  // ADR 0004, Rodada 5 (15/10/2026) — requisito 7: re-checagem da
+  // blocklist no MOMENTO EFETIVO do envio, nunca só na hora de
+  // perguntar. Cobre o intervalo entre a pergunta de autorização (ou a
+  // aprovação do conteúdo) e esta execução, onde uma recusa de OUTRO
+  // pedido concorrente pro mesmo telefone pode ter chegado. Nunca cria
+  // participante/conversation/outbound_intent se bloqueado.
+  if (await isWhatsappOutreachBlocked(supabase, claim.recipientNumber)) {
+    await markPendingDelegatedContactBlockedUnauthorized(supabase, params.id);
+    await replyToProfessional(supabase, {
+      conversationId: claim.conversationId,
+      professionalId: claim.requestingProfessionalId,
+      channel: params.channel,
+      body: `Esse número pediu pra não ser contatado antes de eu conseguir iniciar esse contato — não vou enviar nada pra ${claim.recipientName ?? claim.recipientNumber}.`,
+    }).catch(() => {
+      // Nunca derruba o fluxo por falha de notificação best-effort.
+    });
+    return;
+  }
 
   try {
     const participant = await resolveOrCreateExternalParticipant(supabase, {
@@ -492,7 +615,9 @@ async function describeStatus(supabase: AnySupabaseClient, recent: PendingDelega
   const who = recent.recipientName ?? recent.recipientNumber ?? 'o contato pedido';
 
   if (recent.status === 'pending_number') return `Ainda não tenho o número de ${who}. Pode me mandar?`;
+  if (recent.status === 'pending_authorization') return `Ainda estou esperando você confirmar se já tem autorização pra eu contatar ${who}.`;
   if (recent.status === 'pending_approval') return `Ainda estou esperando sua confirmação pra começar o contato com ${who}.`;
+  if (recent.status === 'blocked_unauthorized') return `Não consegui iniciar o contato com ${who} — ou esse número já pediu pra não ser contatado antes, ou a autorização não foi confirmada. Se quiser, pode pedir pra ela/ele iniciar a conversa com você por aqui.`;
   if (recent.status === 'rejected' || recent.status === 'cancelled') return `Esse pedido foi cancelado antes de eu enviar qualquer coisa para ${who}.`;
   if (recent.status === 'expired') return `Esse pedido expirou antes de você confirmar. Se ainda quiser, pode pedir de novo.`;
   if (recent.status === 'failed') return `Não consegui iniciar o contato com ${who} por uma falha técnica. Quer que eu tente de novo?`;
@@ -631,11 +756,26 @@ export async function runDelegatedContactRecipientReplyFlow(
   if (!set) return { handled: true }; // já processado (concorrência) — nunca reprocessa
 
   if (consent.outcome === 'declined') {
+    // ADR 0004, Rodada 5 (15/10/2026) — requisito 4: registro DURÁVEL
+    // de recusa, GLOBAL por telefone (nunca só desta profissional —
+    // ver comment da migration 0116, requisito 6). Decisão deliberadamente
+    // conservadora: nunca tentamos classificar se a recusa era "só
+    // deste pedido" ou "bloqueio geral" — qualquer declined aqui
+    // bloqueia o número inteiro, pra qualquer pedido futuro de
+    // qualquer profissional.
+    if (pdc.recipientNumber) {
+      await createWhatsappOutreachBlock(supabase, {
+        phoneNumber: pdc.recipientNumber,
+        sourcePendingDelegatedContactId: pdc.id,
+        sourceMessageId: params.messageId,
+        reason: 'declined_first_reply',
+      });
+    }
     await replyToProfessional(supabase, {
       conversationId: pdc.conversationId,
       professionalId: pdc.requestingProfessionalId,
       channel: 'whatsapp',
-      body: `${pdc.recipientName ?? 'O contato'} respondeu de um jeito que parece recusa ou pedido pra não ser contatado: "${params.messageText}". Não enviei sua mensagem original.`,
+      body: `${pdc.recipientName ?? 'O contato'} respondeu de um jeito que parece recusa ou pedido pra não ser contatado: "${params.messageText}". Não enviei sua mensagem original, e não vou iniciar nenhum contato futuro com esse número automaticamente.`,
     });
     return { handled: true };
   }

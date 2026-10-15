@@ -15,6 +15,7 @@ import {
 import { sendWhatsappTemplateMessage, sendWhatsappTextMessage } from '@/lib/channels/whatsapp/client';
 import { buildColdOutreachTemplateComponents, COLD_OUTREACH_TEMPLATE_LANGUAGE, COLD_OUTREACH_TEMPLATE_NAME } from '@/lib/channels/whatsapp/cold-outreach-template';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '@/lib/supabase/env';
+import { isWhatsappOutreachBlocked } from '@/lib/runtime/whatsapp-outreach-authorization';
 
 // Doopla Intelligence Core v1 — Runtime, passo 6B: sender real. É
 // EXECUTOR de outbound_intents já autorizados pelo Post-model Gate —
@@ -119,6 +120,17 @@ async function sendOneOutboundIntent(
   if (!identity) {
     await markOutboundIntentFailed(supabase, { outboundIntentId: intent.id, sendAttemptId, permanent: true, reason: 'nenhuma identidade whatsapp encontrada pro destinatário' });
     return { outboundIntentId: intent.id, outcome: 'failed_permanent: identidade não encontrada' };
+  }
+
+  // ADR 0004, Rodada 5 (15/10/2026) — requisito 5/7: última checagem
+  // antes de QUALQUER envio real à Meta, pra QUALQUER outbound_intent
+  // (nunca só os de "Doopla chama o cliente") — cobre mensagens já
+  // enfileiradas antes de um bloqueio existir, e qualquer divergência
+  // entre o momento da criação do intent e este envio. Nunca chama a
+  // Meta se o telefone estiver bloqueado.
+  if (await isWhatsappOutreachBlocked(supabase, identity.identifier)) {
+    await markOutboundIntentFailed(supabase, { outboundIntentId: intent.id, sendAttemptId, permanent: true, reason: 'destinatário na blocklist de outreach (whatsapp_outreach_blocklist)' });
+    return { outboundIntentId: intent.id, outcome: 'failed_permanent: destinatário bloqueado' };
   }
 
   // Passo 6A+6B Fase 2 — REVALIDAÇÃO da condição legal (CSW) no momento
