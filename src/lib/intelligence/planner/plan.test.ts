@@ -98,3 +98,54 @@ describe('planResponse — contagem de tokens sob retry', () => {
     expect(result.decision.responsePlan).toBe('consult_professional');
   });
 });
+
+describe('planResponse — Playbook DJ/Música chega de fato via Competence Router (ADR 0006, 16/10/2026)', () => {
+  it('intent "orcamento" roteia comercial_negociacao -> instructions reais recebem o bloco do Playbook', async () => {
+    let capturedInstructions = '';
+    await planResponse(TOOL_CTX, CONTEXT_PACKAGE, CLASSIFICATION, {
+      maxRetries: 0,
+      modelCall: async ({ instructions }) => {
+        capturedInstructions = instructions;
+        return {
+          parsed: {
+            responsePlan: 'clarify_ambiguity',
+            commitmentNature: 'not_applicable',
+            proposedDecisionCategory: [],
+            missingInformation: [],
+            evidenceUsed: [],
+            professionalDecisionSignal: 'none',
+            proposedResponse: null,
+          },
+          inputTokens: 1,
+          outputTokens: 1,
+        };
+      },
+    });
+    expect(capturedInstructions).toMatch(/Playbook v1/);
+  });
+
+  it('intent "suporte" (sem competência comercial) -> instructions reais NUNCA recebem o bloco do Playbook', async () => {
+    let capturedInstructions = '';
+    const suporteClassification: IntentClassification = { ...CLASSIFICATION, primaryIntent: 'suporte' };
+    await planResponse(TOOL_CTX, CONTEXT_PACKAGE, suporteClassification, {
+      maxRetries: 0,
+      modelCall: async ({ instructions }) => {
+        capturedInstructions = instructions;
+        return {
+          parsed: {
+            responsePlan: 'clarify_ambiguity',
+            commitmentNature: 'not_applicable',
+            proposedDecisionCategory: [],
+            missingInformation: [],
+            evidenceUsed: [],
+            professionalDecisionSignal: 'none',
+            proposedResponse: null,
+          },
+          inputTokens: 1,
+          outputTokens: 1,
+        };
+      },
+    });
+    expect(capturedInstructions).not.toMatch(/Playbook v1/);
+  });
+});

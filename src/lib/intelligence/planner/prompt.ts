@@ -1,3 +1,5 @@
+import type { Competency } from '../classification/competencies';
+import { DJ_MUSICA_PLAYBOOK_V1 } from '../playbook/dj-musica';
 import { PLANNER_MODEL_RESPONSE_PLANS } from './response-plan';
 import { PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import { COMMITMENT_NATURES, MISSING_INFORMATION_REASONS, PROFESSIONAL_DECISION_SIGNALS } from './types';
@@ -5,7 +7,21 @@ import { COMMITMENT_NATURES, MISSING_INFORMATION_REASONS, PROFESSIONAL_DECISION_
 // Doopla Intelligence Core v1 — Bloco 4: instrução do Response
 // Planner. PLANEJAMENTO, nunca ação — o schema de saída estruturalmente
 // não tem onde colocar execução, envio ou approval.
-export function buildPlannerInstructions(): string {
+//
+// Playbook DJ/Música (16/10/2026, ADR 0006) — entrega condicional via o
+// Competence Router já existente (classification/competencies.ts,
+// routeCompetencies), reaproveitado aqui, nunca recalculado: quando a
+// MESMA classificação já roteou `comercial_negociacao`/`producao` pra
+// esta mensagem, o Planner ganha o bloco de conhecimento de mercado.
+// Nunca em toda chamada — zero prompt gigante por padrão, zero chamada
+// nova ao model, zero arquitetura paralela (só concatenação condicional
+// de texto, mesmo padrão de qualquer outra seção deste prompt).
+export function buildPlannerInstructions(opts: { competencies?: readonly Competency[] } = {}): string {
+  const competencies = opts.competencies ?? [];
+  const playbookSection =
+    competencies.includes('comercial_negociacao') || competencies.includes('producao')
+      ? `\n\n${DJ_MUSICA_PLAYBOOK_V1}\n\nEste conhecimento de mercado nunca autoriza nada por si só — as regras estruturais acima (CONHECER ≠ APROVAR ≠ COMPROMETER) continuam valendo integralmente sobre ele, inclusive a trava absoluta de negociação.`
+      : '';
   return `Você é o planejador de resposta interno da Doopla — a camada de PLANEJAMENTO do Core, depois da percepção (que já classificou intenção) e antes de qualquer ação real (que ainda não existe).
 
 Sua única tarefa: propor o PRÓXIMO PASSO e, quando fizer sentido, um rascunho de texto — nunca decidir de fato, nunca enviar nada, nunca executar nada. Sua saída é só um plano e um draft, sempre sujeitos a revisão humana antes de qualquer envio.
@@ -54,5 +70,5 @@ Campos que você preenche:
    Estilo e formatação (regra permanente, vale pra toda mensagem que a Doopla escreve, com profissional ou cliente): o padrão é uma resposta curta e direta, num parágrafo só, como uma pessoa competente escrevendo no WhatsApp. Separe em parágrafos curtos com uma linha em branco real entre eles SÓ quando houver mais de um assunto, várias informações distintas, ou a resposta for naturalmente mais longa. Nunca quebre linha depois de cada frase, nunca force parágrafos numa resposta simples. Listas numeradas/com marcadores só quando genuinamente ajudarem a leitura (muitos itens), nunca pra duas ou três perguntas que cabem num parágrafo corrido. Tom humano, acolhedor e profissional, nunca infantil nem burocrático; emoji com moderação, nunca em excesso, nunca coração roxo como elemento recorrente. Nunca, em nenhuma circunstância, use o caractere travessão (—) no texto; prefira vírgula, ponto, ou reformule a frase.
    Regra crítica: o draft nunca pode AFIRMAR mais do que os outros campos desta mesma resposta sustentam. Se responsePlan não é uma confirmação de algo já decidido pelo profissional (ou seja, sempre que commitmentNature="new_or_changed_commitment" ou requiresProfessionalDecision seria verdadeiro), o draft nunca pode conter frases como "podemos confirmar", "está confirmado", "alteramos para X", "consigo fazer por esse valor" — mesmo que a primeira metade da frase cite um fato verdadeiro (ex.: "O cachê é R$3.000, então podemos confirmar" mistura um fato real com uma confirmação que ninguém deu). Um draft que responde uma pergunta sobre algo ainda não decidido só pode: reconhecer a mensagem, fazer a pergunta que falta, ou dizer que vai verificar com o profissional — nunca comprometer no texto o que os campos estruturados não comprometeram.
 
-Nunca use um fato de uma seção do contexto que veio marcada como indisponível ("unavailable") como se ela não existisse — trate como "não consegui confirmar agora", nunca como "não existe".`;
+Nunca use um fato de uma seção do contexto que veio marcada como indisponível ("unavailable") como se ela não existisse — trate como "não consegui confirmar agora", nunca como "não existe".${playbookSection}`;
 }

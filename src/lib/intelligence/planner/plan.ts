@@ -2,6 +2,7 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import type { IntentClassification } from '../classification';
+import { routeCompetencies } from '../classification/competencies';
 import type { ContextPackage } from '../context-builder';
 import { getOpenAIClient } from '../openai-client';
 import type { ToolContext } from '../types';
@@ -117,7 +118,12 @@ export async function planResponse(
   opts: { modelCall?: PlannerModelCall; maxRetries?: number } = {}
 ): Promise<PlanResult> {
   const plannerContext = buildPlannerContext(contextPackage, toolCtx.conversation, intentClassification);
-  const instructions = buildPlannerInstructions();
+  // Playbook DJ/Música (ADR 0006) — reaproveita o MESMO Competence
+  // Router já usado em produção (classification/competencies.ts),
+  // nunca uma segunda classificação. routeCompetencies é determinístico
+  // (tabela intent→competência), nunca o model escolhendo.
+  const competencies = routeCompetencies([intentClassification.primaryIntent, ...intentClassification.secondaryIntents]);
+  const instructions = buildPlannerInstructions({ competencies });
   const input = JSON.stringify(plannerContext);
   const modelCall = opts.modelCall ?? defaultModelCall;
   const maxRetries = opts.maxRetries ?? PLANNER_MAX_RETRIES;

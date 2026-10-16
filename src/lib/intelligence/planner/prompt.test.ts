@@ -37,3 +37,30 @@ describe('buildPlannerInstructions — estilo e formatação (P1, 14/10/2026)', 
     expect(dashCount).toBe(1);
   });
 });
+
+describe('buildPlannerInstructions — Playbook DJ/Música condicional (ADR 0006, 16/10/2026)', () => {
+  it('nunca aparece sem competencies (comportamento padrão, nenhuma mudança pro resto do prompt)', () => {
+    expect(buildPlannerInstructions()).not.toMatch(/Playbook v1/);
+  });
+
+  it('nunca aparece quando a competência roteada não inclui comercial_negociacao nem producao', () => {
+    const instructions = buildPlannerInstructions({ competencies: ['suporte', 'financeiro'] });
+    expect(instructions).not.toMatch(/Playbook v1/);
+  });
+
+  it('aparece quando comercial_negociacao é roteada', () => {
+    const instructions = buildPlannerInstructions({ competencies: ['comercial_negociacao'] });
+    expect(instructions).toMatch(/Playbook v1/);
+    expect(instructions).toMatch(/TRAVA ABSOLUTA/);
+  });
+
+  it('aparece quando producao é roteada (ex.: rider)', () => {
+    const instructions = buildPlannerInstructions({ competencies: ['producao'] });
+    expect(instructions).toMatch(/RIDER NÃO É REGRA BINÁRIA/);
+  });
+
+  it('reafirma explicitamente que o conhecimento de mercado nunca autoriza nada sozinho', () => {
+    const instructions = buildPlannerInstructions({ competencies: ['comercial_negociacao'] });
+    expect(instructions).toMatch(/nunca autoriza nada por si só/);
+  });
+});
