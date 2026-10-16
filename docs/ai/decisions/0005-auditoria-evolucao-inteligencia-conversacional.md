@@ -91,5 +91,23 @@ Não é uma causa isolada — é consequência direta dos Problemas 1 e 2: sem e
 
 ## Decisão pendente da fundadora
 
-1. Religar `app_settings.delegated_contact_enabled` agora (recomendação deste autor, dado o gate de opt-in já validado em produção) ou investigar antes o motivo de tê-la deixado off.
+1. ~~Religar `app_settings.delegated_contact_enabled`~~ — feito (migration 0117, aplicada em produção pela fundadora em 16/10/2026).
 2. Aprovação pra avançar à Etapa 2 (proposta de arquitetura, priorizada em P0/P1/P2 conforme pedido) com base neste diagnóstico.
+
+## Addendum — validação real pós-correção (16/10/2026)
+
+Com `delegated_contact_enabled = true` e o gate de opt-in (0116) ativos, a fundadora testou "Doopla chama a Gabi" ao vivo no WhatsApp oficial. Achados do teste real:
+
+**Confirmado funcionando:** o recognizer isolado dispara corretamente, a orquestração determinística (`delegated-contact-flow.ts`) avança por recipient → conteúdo → execução, e `pending_delegated_contacts` chega a `status: executed` — o `outbound_intent` do template é criado e `send-outbound-intents` o envia, com a API da Meta confirmando (`delivery_state: sent_confirmed`, `providerMessageId` presente, sem erro).
+
+**Bug novo encontrado — mensagem nunca chega ao destinatário real, apesar de `sent_confirmed`.** Investigação ao vivo (query direta em `pending_delegated_contacts`/`outbound_intents` em produção + painel da Meta) isolou a causa:
+
+- Descartado: número de teste da Meta (confirmado que o número real comprado, `5511918527238`, é o que de fato envia — a profissional recebe respostas normais dele em suas próprias conversas).
+- Descartado: limite de mensagens (nível atual 250 conversas/24h, só 2 usadas nos últimos 7 dias — longe do teto).
+- Descartado: número de destino errado ou sem WhatsApp (confirmado pela fundadora).
+- Confirmado sistêmico: reenviar pra um segundo número de teste diferente também nunca chegou — não é específico da Gabi.
+- **Causa provável**: o template `doopla_primeiro_contato_v2` (`src/lib/channels/whatsapp/cold-outreach-template.ts:21-22`) está cadastrado na categoria **Marketing** no WhatsApp Manager (confirmado pela fundadora, 16/10/2026). A API da Meta aceita o envio e devolve `providerMessageId` (por isso `sent_confirmed`), mas nenhum status de `delivered`/`failed` chega depois — padrão consistente com os sistemas anti-spam da própria Meta descartando silenciosamente entregas de Marketing "frias" (destinatário sem nenhuma interação prévia com o número) de contas ainda não verificadas. Recomendação original de categorizar como Marketing partiu deste mesmo autor (Claude Code) — registrado aqui como erro de orientação anterior, não da fundadora.
+
+**Solução recomendada:** completar a verificação da empresa junto à Meta (documentos, em andamento) — afeta a confiança/qualidade atribuída aos envios, não só o limite de volume. Recategorizar o template como "Utilidade" é desaconselhado — o conteúdo (convite de primeiro contato) não se qualifica pelos critérios da Meta pra essa categoria, risco real de rejeição na resubmissão. Mesmo após verificada, abordagem "fria" (sem nenhum sinal prévio de interesse do destinatário) deve continuar tendo entrega menos confiável no WhatsApp por desenho da própria plataforma — não é um defeito corrigível só no nosso lado.
+
+**Risco/dependência:** verificação de empresa é processo externo (Meta), fora do controle de prazo deste time.
