@@ -70,10 +70,27 @@ function toMessageItem(authorType: ConversationMessageAuthorType, text: string, 
   };
 }
 
-function buildContextPackage(items: MessageContextItem[]): ContextPackage {
+// Lote P0 96+144 (16/10/2026) — converte seedBookingFacts/seedOpportunityFacts
+// (objeto simples do cenário) em ContextFact[] reais, mesmo shape que
+// context-builder/sections.ts produziria a partir do banco. sourceId
+// sintético e estável, nunca um id de registro real.
+function factsFromSeed(sourceType: 'booking' | 'opportunity', sourceId: string, seed: Record<string, string | number | boolean | undefined> | undefined): ContextFact[] {
+  if (!seed) return [];
+  const loadedAt = new Date().toISOString();
+  const facts: ContextFact[] = [];
+  for (const [field, value] of Object.entries(seed)) {
+    if (value === undefined) continue;
+    facts.push({ sourceType, sourceId, field, value, factType: 'structured', loadedAt });
+  }
+  return facts;
+}
+
+function buildContextPackage(items: MessageContextItem[], scenario: ConversationScenario): ContextPackage {
   const facts: ContextFact[] = [
     { sourceType: 'professional_profile', sourceId: SYNTHETIC_PROFESSIONAL_ID, field: 'fullName', value: SYNTHETIC_PROFESSIONAL_NAME, factType: 'structured', loadedAt: new Date().toISOString() },
   ];
+  const bookingFacts = factsFromSeed('booking', 'scenario-seed-booking', scenario.seedBookingFacts);
+  const opportunityFacts = factsFromSeed('opportunity', 'scenario-seed-opportunity', scenario.seedOpportunityFacts);
   return {
     conversationId: 'conversation-scenarios-synthetic',
     representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID,
@@ -82,8 +99,8 @@ function buildContextPackage(items: MessageContextItem[]): ContextPackage {
     professionalBusinessContext: { status: 'not_found' },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
     messages: { status: 'loaded', items, windowMessageCount: items.length, windowSince: items[0]?.createdAt ?? new Date().toISOString() },
-    opportunity: { status: 'no_link' },
-    booking: { status: 'no_link' },
+    opportunity: opportunityFacts.length > 0 ? { status: 'loaded', facts: opportunityFacts } : { status: 'no_link' },
+    booking: bookingFacts.length > 0 ? { status: 'loaded', facts: bookingFacts } : { status: 'no_link' },
     externalParticipant: { status: 'no_link' },
   };
 }
@@ -158,6 +175,15 @@ function evaluateAssertions(
     });
   }
 
+  if (turn.mustNotContain && turn.mustNotContain.length > 0) {
+    const foundWith = turn.mustNotContain.find((phrase) => lowerText.includes(phrase.toLowerCase()));
+    checks.push({
+      name: 'não promete capacidade/confirmação proibida',
+      pass: !foundWith,
+      detail: foundWith ? `a resposta contém "${foundWith}" — capacidade inexistente ou confirmação não sustentada pelos outros campos` : undefined,
+    });
+  }
+
   if (turn.mustCiteConversationEvidence) {
     checks.push({
       name: 'resposta ancorada em mensagem real da conversa',
@@ -210,7 +236,7 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     items.push(toMessageItem('professional', turn.professionalMessage, items.length));
 
     const conversation = buildSyntheticConversation();
-    const contextPackage = buildContextPackage(items);
+    const contextPackage = buildContextPackage(items, scenario);
     const toolCtx: ToolContext = { ...deps.toolCtx, representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID, conversation };
 
     const classifierStart = Date.now();

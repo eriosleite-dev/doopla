@@ -32,6 +32,13 @@ export type ScenarioTurn = {
   // Substrings esperadas no texto final — recall correto de um fato/
   // nome/número já dado, ou retomada correta de um assunto anterior.
   mustMentionAny?: string[];
+  // Lote P0 96+144 (16/10/2026) — substrings cuja presença na resposta
+  // FINAL do Planner indicam uma promessa/afirmação proibida (ex.:
+  // capacidade inexistente como "ligação"/"Instagram", ou uma
+  // confirmação que os outros campos não sustentam). Generaliza
+  // mustNotReask pra qualquer proibição textual, não só repetição de
+  // pergunta.
+  mustNotContain?: string[];
   // Exige pelo menos uma evidência do tipo conversation_message entre
   // as grounded (já validadas por invariants.ts dentro do próprio
   // planResponse real) — detecta resposta desconectada do histórico/
@@ -78,6 +85,15 @@ export type ConversationScenario = {
   // resposta da Doopla é sempre real. Omitido quando o cenário começa
   // direto com uma mensagem do profissional.
   seedHistory?: Array<{ authorType: ConversationMessageAuthorType; text: string }>;
+  // Lote P0 96+144 (16/10/2026) — fatos sintéticos de booking/
+  // oportunidade JÁ CONHECIDOS antes do 1º turno (ex.: cachê já
+  // aprovado), necessário pra testar proteção de condição comercial
+  // (CMX/PAY/NEG) sem depender de nenhuma orquestração real — mesmo
+  // princípio do seedHistory: fixo, sintético, nunca gerado pelo
+  // modelo. Chaves batem com os campos reais de
+  // context-builder/sections.ts (buildBookingSection/buildOpportunitySection).
+  seedBookingFacts?: { status?: string; cacheAmountCents?: number; commissionPercent?: number; description?: string; eventDate?: string; eventLocation?: string };
+  seedOpportunityFacts?: { status?: string; cacheAmountCents?: number; commissionPercent?: number; workType?: string; category?: string; location?: string; eventDate?: string; description?: string };
   turns: ScenarioTurn[];
 };
 

@@ -294,6 +294,47 @@ describe('runConversationScenario — reconhecedor de delegação (isolado, nunc
   });
 });
 
+describe('Lote P0 96+144 — extensões genéricas do runner', () => {
+  it('mustNotContain reprova quando a resposta final contém um termo proibido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Liga pra Nina', mustNotContain: ['vou ligar', 'ligo pra ela'] }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Claro, já vou ligar pra ela agora.'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('capacidade/confirmação proibida'));
+    expect(check?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('mustNotContain passa quando a resposta final não contém nenhum termo proibido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Liga pra Nina', mustNotContain: ['vou ligar', 'ligo pra ela'] }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Não consigo fazer ligação por aqui, só mensagem de WhatsApp. Quer que eu mande uma mensagem pra ela?'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('capacidade/confirmação proibida'));
+    expect(check?.pass).toBe(true);
+  });
+
+  it('seedBookingFacts chega de fato no input real do Planner (prova a cadeia fixture -> ContextPackage -> prompt)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      seedBookingFacts: { status: 'approved', cacheAmountCents: 240000, description: 'cachê fixo R$2.400 já aprovado' },
+      turns: [{ professionalMessage: 'O promotor quer mudar o cachê.' }],
+    };
+    let capturedInput = '';
+    const plannerCall = async (p: { instructions: string; input: string }) => {
+      capturedInput = p.input;
+      return fakePlanner('Entendi, vou confirmar com você antes de qualquer mudança.')(p);
+    };
+    await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+    expect(capturedInput).toContain('240000');
+    expect(capturedInput).toContain('cachê fixo R$2.400 já aprovado');
+  });
+});
+
 describe('runConversationScenarios — teto de execução', () => {
   it('recusa rodar acima de CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, nunca executa parcialmente', async () => {
     const hugeScenario: ConversationScenario = {
