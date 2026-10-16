@@ -1,7 +1,7 @@
 'use server';
 
 import { getAdminSession } from '../session';
-import { claimAiHarnessRunLease } from '@/lib/admin/ai-harness-lease';
+import { claimAiHarnessRunLease, releaseAiHarnessRunLease } from '@/lib/admin/ai-harness-lease';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
 import { CONVERSATION_SCENARIOS } from '@/lib/intelligence/conversation-scenarios/scenarios';
 import { CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, runConversationScenarios } from '@/lib/intelligence/conversation-scenarios/runner';
@@ -22,17 +22,22 @@ import type { ActorContext, ToolContext } from '@/lib/intelligence/types';
 // nunca o chamam de fato, ver runner.ts). Nenhuma linha de
 // conversations/conversation_messages/pending_delegated_contacts/
 // outbound_intents é lida ou escrita por esta action. A ÚNICA escrita
-// real desta action é no lease de cooldown abaixo (app_settings,
+// real desta action é no lease abaixo (ai_harness_run_leases,
 // migration 0118) — propositalmente separado de qualquer dado de
 // profissional/cliente.
 //
-// Limite de frequência real no SERVIDOR (achado da revisão da
-// fundadora, 16/10/2026): claim_ai_harness_run_lease é um UPDATE
-// atômico — só UMA chamada, entre todas as concorrentes/repetidas
-// dentro da janela de cooldown, consegue de fato "ganhar" e seguir
-// adiante. Nunca depende da confirmação de 2 passos da UI (essa
-// continua existindo só como UX, nunca como controle de verdade).
-const AI_HARNESS_RUN_COOLDOWN_SECONDS = 120;
+// Controle de concorrência real no SERVIDOR (achado da revisão da
+// fundadora, 16/10/2026, segunda rodada): LOCK DE VERDADE (claim +
+// release explícito, sempre em try/finally), nunca um cooldown por
+// timestamp — um cooldown fixo desbloquearia uma segunda execução
+// antes da primeira de fato terminar, sempre que ela demorasse mais
+// que o cooldown (comportamento comprovado contra Postgres real nesta
+// sessão, ver migration 0118). 600s é só o prazo de SEGURANÇA contra
+// o processo crashar sem liberar — o caminho normal libera na hora,
+// sucesso ou erro. Nunca depende da confirmação de 2 passos da UI
+// (essa continua existindo só como UX, nunca como controle de
+// verdade).
+const AI_HARNESS_RUN_LEASE_SECONDS = 600;
 
 export async function runConversationScenariosAction(): Promise<{ result?: HarnessRunResult; error?: string }> {
   const { supabase } = await getAdminSession();
@@ -48,14 +53,15 @@ export async function runConversationScenariosAction(): Promise<{ result?: Harne
     return { error: `turn_limit_exceeded:${totalTurns}/${CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS}` };
   }
 
-  let leaseGranted: boolean;
+  let leaseToken: string | null;
   try {
-    leaseGranted = await claimAiHarnessRunLease(supabase, AI_HARNESS_RUN_COOLDOWN_SECONDS);
+    const claim = await claimAiHarnessRunLease(supabase, AI_HARNESS_RUN_LEASE_SECONDS);
+    leaseToken = claim.granted ? claim.leaseToken : null;
   } catch (err) {
     return { error: `lease_check_failed:${err instanceof Error ? err.message : 'erro desconhecido'}` };
   }
-  if (!leaseGranted) {
-    return { error: `rate_limited:aguarde ${AI_HARNESS_RUN_COOLDOWN_SECONDS}s entre execuções (proteção no servidor, não só na interface)` };
+  if (!leaseToken) {
+    return { error: 'rate_limited:já existe uma execução em andamento (lock real no servidor, não só na interface) — aguarde ela terminar' };
   }
 
   const actorContext: ActorContext = {
@@ -90,6 +96,17 @@ export async function runConversationScenariosAction(): Promise<{ result?: Harne
     return { result };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'harness_execution_failed' };
+  } finally {
+    // Sempre libera, sucesso ou erro — nunca deixa o lock preso até o
+    // prazo de segurança de 600s só porque este caminho terminou mal.
+    // Falha ao liberar nunca derruba a resposta já calculada (o erro
+    // de release, se houver, só atrasa a PRÓXIMA execução até o
+    // lease_expires_at se autocurar — nunca perde o resultado desta).
+    try {
+      await releaseAiHarnessRunLease(supabase, leaseToken);
+    } catch {
+      // Engolido de propósito, mesmo padrão do resto do projeto.
+    }
   }
 }
 
