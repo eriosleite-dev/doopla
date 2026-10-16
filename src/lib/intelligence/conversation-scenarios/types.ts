@@ -48,6 +48,15 @@ export type ScenarioTurn = {
   delegation?: {
     activeRequest: ActiveDelegatedContactSummary | null;
     expectedSignal: DelegatedContactSignal;
+    // P0.1 (ADR 0005, 16/10/2026) — achado da primeira execução real:
+    // o Harness testava só o `signal`, nunca os campos extraídos
+    // (recipientName/recipientNumber/purposeSummary/draftMessageContent)
+    // — exatamente os campos que decidem o texto que seria de fato
+    // preparado pra envio em produção (ver delegated-contact-flow.ts).
+    // Substrings cuja presença em draftMessageContent indicam um erro
+    // de identidade/conteúdo (ex.: a Doopla se apresentando como a
+    // própria destinatária) — checado só quando o campo não é null.
+    draftMessageContentMustNotContain?: string[];
   };
 
   note?: string;
@@ -92,6 +101,15 @@ export type TurnResult = {
   delegationSignal: DelegatedContactSignal | null;
   delegationExpectedSignal: DelegatedContactSignal | null;
   delegationSignalMatches: boolean | null;
+  // P0.1 (ADR 0005, 16/10/2026) — campos extraídos pelo recognizer,
+  // antes invisíveis no resultado do Harness. São estes campos, não a
+  // resposta do Planner, que decidem o texto de fato preparado pra
+  // envio em produção (ver delegated-contact-flow.ts, P0.2) — por isso
+  // precisam ser lidos por um humano aqui, não só o signal.
+  delegationRecipientName: string | null;
+  delegationRecipientNumber: string | null;
+  delegationPurposeSummary: string | null;
+  delegationDraftMessageContent: string | null;
   // true quando este turno passou um activeRequest não-nulo pro
   // reconhecedor (ex.: status='executed', 'sent') — esse estado foi
   // ESCRITO À MÃO no cenário, nunca produzido por uma execução real da

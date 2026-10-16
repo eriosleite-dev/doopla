@@ -63,8 +63,10 @@ async function defaultModelCall({ instructions, input }: { instructions: string;
 const INSTRUCTIONS = [
   'Você reconhece, numa mensagem que uma profissional mandou pra própria Doopla (conversa professional_self, nunca o cliente), se ela está pedindo pra Doopla CONTATAR PROATIVAMENTE um terceiro (cliente/contato dela) em nome dela — a funcionalidade "Doopla chama o cliente".',
   'Isso é DIFERENTE de qualquer outro assunto da profissional com a Doopla (perguntas sobre a plataforma, sobre os próprios compromissos, etc.) — se a mensagem não tem relação alguma com pedir/confirmar/cancelar um contato proativo com terceiro, devolva signal="no_delegation_signal" e todos os outros campos null.',
-  'signal="new_request": a profissional está pedindo, por ela mesma, pra Doopla contatar alguém (ex.: "manda uma mensagem pro Fulano", "quero que você fale com a cliente tal"). Extraia o que estiver literalmente na mensagem: recipientName, recipientNumber (só se o número já veio junto), purposeSummary (um resumo curto do motivo do contato) e draftMessageContent (o texto EXATO que ela quer que seja enviado, se ela já disse — nunca invente ou reescreva, null se ela não especificou o texto ainda).',
-  'signal="provides_missing_info": só use quando já existe um pedido ativo faltando informação (activeRequest.status indica isso) e esta mensagem fornece exatamente o que faltava (número de telefone, ou o texto a enviar) — nunca um pedido novo.',
+  'PAPÉIS, sempre os mesmos nesta conversa: quem fala com você agora é a PROFISSIONAL/ARTISTA representada — é ela quem a Doopla representa, é ela a autora do pedido. "Doopla" é quem vai executar o contato em nome dela. A pessoa mencionada pelo nome (ex.: "a Gabi", "o Fulano") é sempre o DESTINATÁRIO — quem vai RECEBER a mensagem, nunca quem a envia e nunca quem fala em primeira pessoa dentro do texto. Isso vale mesmo quando a frase da profissional é ambígua sobre isso (achado real, 16/10/2026: "fala que é a Gabi" já foi mal-interpretado como "assine a mensagem como se você fosse a Gabi" — a Gabi aqui é a destinatária, nunca quem assina).',
+  'signal="new_request": a profissional está pedindo, por ela mesma, pra Doopla contatar alguém (ex.: "manda uma mensagem pro Fulano", "quero que você fale com a cliente tal"). Extraia o que estiver literalmente na mensagem: recipientName, recipientNumber (só se o número já veio junto), purposeSummary (um resumo curto do motivo do contato) e draftMessageContent — ver regra de TEXTO LITERAL x INSTRUÇÃO INFORMAL abaixo.',
+  'draftMessageContent tem dois modos, nunca confunda os dois: (1) TEXTO LITERAL — a profissional ditou o texto exato, geralmente entre aspas ou claramente palavra por palavra (ex.: manda isso: "Oi, confirma presença?"). Copie EXATAMENTE como está, character a character — nunca reescreva, resuma, parafraseie ou adicione saudação/assinatura que ela não pediu; o texto já autorizado por ela nunca pode ser alterado, nem silenciosamente. (2) INSTRUÇÃO INFORMAL — ela descreveu o que quer comunicar sem ditar o texto exato (ex.: "avisa que vou chegar atrasada", "fala que mandei beijos") — aí sim, componha um texto curto e natural que comunique isso, SEMPRE escrito como vindo da profissional/artista (nunca do destinatário, nunca invertendo quem fala com quem), e NUNCA inventando fato que ela não disse (nome de quem manda, motivo, dado novo). Em qualquer dúvida real sobre qual dos dois modos se aplica, sobre quem a mensagem deveria representar, ou sobre risco de o texto sair com a identidade errada — prefira draftMessageContent=null (equivalente a "ainda não tenho o texto definido") a arriscar um texto errado: é sempre mais seguro, porque o sistema já pergunta o texto exato pra profissional quando draftMessageContent vem null, antes de qualquer envio.',
+  'signal="provides_missing_info": só use quando já existe um pedido ativo faltando informação (activeRequest.status indica isso) e esta mensagem fornece exatamente o que faltava (número de telefone, ou o texto a enviar) — nunca um pedido novo. A mesma regra de TEXTO LITERAL x INSTRUÇÃO INFORMAL acima vale aqui pro draftMessageContent.',
   'signal="confirms_pending": só use quando activeRequest.pendingConfirmationText não é null (existe uma pergunta de confirmação pendente) E esta mensagem claramente responde "sim"/"confirmo"/"pode mandar"/"manda"/equivalente a ESSA pergunta especificamente.',
   'signal="rejects_pending": resposta negativa clara ("não", "não quero", "deixa assim", "não manda não") a uma pergunta de confirmação pendente.',
   'signal="cancels_pending": a profissional pede explicitamente pra cancelar/desistir de um pedido já em andamento (independente do estado), nunca confundir com rejects_pending (que é especificamente responder "não" à pergunta de confirmação).',
@@ -82,6 +84,36 @@ export type RecognizeDelegatedContactRequestResult = {
   inputTokens: number | null;
   outputTokens: number | null;
 };
+
+// Rede de segurança determinística (achado real, revisão 16/10/2026,
+// ADR 0005 P0.1): a instrução acima reduz o risco, mas nunca é
+// suficiente sozinha pra uma invariante de segurança — mesmo princípio
+// de stripTravessao (código nunca confia só no model pra algo que não
+// pode falhar). Nunca deixa draftMessageContent sair com a Doopla se
+// apresentando como o PRÓPRIO destinatário (ex.: "aqui é a Gabi", "sou
+// a Gabi") — se isso escapar da instrução, força draftMessageContent a
+// null, exatamente como se o model tivesse corretamente dito "ainda
+// não tenho o texto definido": o fluxo existente (advanceOrAskForMissing,
+// delegated-contact-flow.ts) já pergunta o texto exato pra profissional
+// nesse caso, sem precisar de nenhum campo/sinal novo.
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function draftMessageImpersonatesRecipient(draftMessageContent: string, recipientName: string): boolean {
+  const name = recipientName.trim();
+  if (!name) return false;
+  const escapedName = escapeRegExp(name);
+  // Só os padrões de autoapresentação mais inequívocos em português —
+  // heurística deliberadamente conservadora (poucos falsos positivos),
+  // nunca a única camada de defesa (a instrução acima é a primeira).
+  const patterns = [
+    new RegExp(`\\baqui\\s+(é|e)\\s+(a|o)?\\s*${escapedName}\\b`, 'i'),
+    new RegExp(`\\bsou\\s+(a|o)?\\s*${escapedName}\\b`, 'i'),
+    new RegExp(`\\bquem\\s+fala\\s+(é|e)\\s+(a|o)?\\s*${escapedName}\\b`, 'i'),
+  ];
+  return patterns.some((pattern) => pattern.test(draftMessageContent));
+}
 
 // Único ponto de chamada ao model deste reconhecedor. Nunca lança —
 // falha total vira signal="no_delegation_signal" (fail-closed: nunca
@@ -126,12 +158,24 @@ export async function recognizeDelegatedContactRequest(
   // sozinho (nunca aceita um draftMessageContent vindo junto de um
   // status_inquiry, por exemplo).
   const keepsExtraction = parsed.signal === 'new_request' || parsed.signal === 'provides_missing_info';
+  const recipientName = keepsExtraction ? parsed.recipientName : null;
+  let draftMessageContent = keepsExtraction ? parsed.draftMessageContent : null;
+
+  // Backstop determinístico (ver comentário acima de
+  // draftMessageImpersonatesRecipient): nunca deixa escapar um draft
+  // onde a Doopla se apresentaria como a própria destinatária, mesmo
+  // que a instrução do prompt falhe. Vira null, nunca lança — mesmo
+  // efeito de "ainda não tenho o texto definido".
+  if (draftMessageContent && recipientName && draftMessageImpersonatesRecipient(draftMessageContent, recipientName)) {
+    draftMessageContent = null;
+  }
+
   return {
     signal: parsed.signal,
-    recipientName: keepsExtraction ? parsed.recipientName : null,
+    recipientName,
     recipientNumber: keepsExtraction ? parsed.recipientNumber : null,
     purposeSummary: keepsExtraction ? parsed.purposeSummary : null,
-    draftMessageContent: keepsExtraction ? parsed.draftMessageContent : null,
+    draftMessageContent,
     inputTokens,
     outputTokens,
   };

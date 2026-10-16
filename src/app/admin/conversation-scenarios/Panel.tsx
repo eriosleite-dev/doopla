@@ -44,6 +44,16 @@ function TurnCard({ turn }: { turn: TurnResult }) {
           reconhecedor de delegação (sinal isolado, nunca execução real): esperado &quot;{turn.delegationExpectedSignal}&quot;, veio &quot;{turn.delegationSignal}&quot;
         </div>
       )}
+      {(turn.delegationRecipientName !== null || turn.delegationDraftMessageContent !== null) && (
+        <div style={{ fontSize: 12, marginBottom: 8, padding: '6px 10px', background: '#0d1b2a', border: '1px solid #2a4a6a', borderRadius: 4, whiteSpace: 'pre-wrap' }}>
+          <strong>Texto real que o recognizer prepararia pra envio (P0.1/P0.2 — nunca a resposta do Planner acima, que não é o que o destinatário recebe):</strong>
+          <br />
+          destinatário: {turn.delegationRecipientName ?? '(não extraído)'} · número: {turn.delegationRecipientNumber ?? '(não extraído)'} · motivo:{' '}
+          {turn.delegationPurposeSummary ?? '(não extraído)'}
+          <br />
+          draftMessageContent: {turn.delegationDraftMessageContent ?? '(null — recognizer pediu esclarecimento em vez de arriscar um texto)'}
+        </div>
+      )}
       {allChecks.length > 0 && (
         <ul style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
           {allChecks.map((c, i) => (

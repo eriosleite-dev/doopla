@@ -174,6 +174,124 @@ describe('runConversationScenario — reconhecedor de delegação (isolado, nunc
     expect(result.turns[0].delegationSignalMatches).toBe(false);
     expect(result.scenarioPass).toBe(false);
   });
+
+  it('TurnResult expõe recipientName/recipientNumber/purposeSummary/draftMessageContent do recognizer (P0.1/P0.2, ADR 0005) — antes descartados', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'manda pra Marina, 11999999999', delegation: { activeRequest: null, expectedSignal: 'new_request' } }],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: '11999999999', purposeSummary: 'avisar algo', draftMessageContent: 'Oi Marina, tudo bem?' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    expect(result.turns[0].delegationRecipientName).toBe('Marina');
+    expect(result.turns[0].delegationRecipientNumber).toBe('11999999999');
+    expect(result.turns[0].delegationPurposeSummary).toBe('avisar algo');
+    expect(result.turns[0].delegationDraftMessageContent).toBe('Oi Marina, tudo bem?');
+  });
+
+  it('draftMessageContentMustNotContain reprova quando o texto preparado pra envio contém um termo proibido não coberto pelo backstop de recognizer.ts', async () => {
+    // Backstop determinístico de recognizer.ts (ver recognizer.ts/
+    // recognizer.test.ts) só reconhece um conjunto específico de
+    // padrões de autoapresentação ("aqui é X", "sou X", "quem fala é
+    // X") — por isso é sempre exercitado de verdade aqui (a função é
+    // real, nunca mockada), nunca contornável via modelCall injetado.
+    // Este teste prova que o check genérico do Harness funciona
+    // independente do backstop, usando uma frase fora desse conjunto
+    // (“gabi falando”) — cobertura complementar, não redundante.
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['gabi falando'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: 'Gabi falando, mandei beijos.' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('backstop determinístico de recognizer.ts (real, nunca mockado) já neutraliza o caso clássico antes do check do Harness ver o texto', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['aqui é a gabi'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: 'Oi! Aqui é a Gabi.' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    // O backstop real já zera o campo antes de chegar no check — por
+    // isso o check nem dispara (null é válido), e o cenário passa.
+    expect(result.turns[0].delegationDraftMessageContent).toBeNull();
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck).toBeUndefined();
+  });
+
+  it('draftMessageContentMustNotContain não reprova quando o campo vem null (pediu esclarecimento, resultado válido)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['aqui é a gabi'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: null },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck).toBeUndefined();
+    expect(result.turns[0].delegationDraftMessageContent).toBeNull();
+  });
 });
 
 describe('runConversationScenarios — teto de execução', () => {

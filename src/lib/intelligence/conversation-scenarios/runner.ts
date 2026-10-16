@@ -119,7 +119,14 @@ function checkFormat(rawText: string | null, finalText: string | null): Assertio
   return checks;
 }
 
-function evaluateAssertions(turn: ScenarioTurn, finalText: string | null, primaryIntent: string, responsePlan: string, hasConversationEvidence: boolean): AssertionCheck[] {
+function evaluateAssertions(
+  turn: ScenarioTurn,
+  finalText: string | null,
+  primaryIntent: string,
+  responsePlan: string,
+  hasConversationEvidence: boolean,
+  delegationDraftMessageContent: string | null
+): AssertionCheck[] {
   const checks: AssertionCheck[] = [];
   const lowerText = (finalText ?? '').toLowerCase();
 
@@ -156,6 +163,22 @@ function evaluateAssertions(turn: ScenarioTurn, finalText: string | null, primar
       name: 'resposta ancorada em mensagem real da conversa',
       pass: hasConversationEvidence,
       detail: hasConversationEvidence ? undefined : 'nenhuma evidência do tipo conversation_message citada — risco de resposta desconectada do histórico real',
+    });
+  }
+
+  // P0.1 (ADR 0005, 16/10/2026) — checa o texto que de fato seria
+  // preparado pra envio (draftMessageContent do recognizer), nunca a
+  // resposta do Planner (que nunca é isso que o destinatário recebe —
+  // ver P0.2). Só avalia quando o campo não é null; null é um
+  // resultado VÁLIDO aqui (equivale a "pediu esclarecimento antes de
+  // arriscar"), nunca tratado como falha por ausência.
+  if (turn.delegation?.draftMessageContentMustNotContain && turn.delegation.draftMessageContentMustNotContain.length > 0 && delegationDraftMessageContent !== null) {
+    const lowerDraft = delegationDraftMessageContent.toLowerCase();
+    const foundWith = turn.delegation.draftMessageContentMustNotContain.find((phrase) => lowerDraft.includes(phrase.toLowerCase()));
+    checks.push({
+      name: 'draftMessageContent (texto real preparado pra envio) não comete erro de identidade',
+      pass: !foundWith,
+      detail: foundWith ? `o texto preparado pra envio contém "${foundWith}" — risco de identidade incorreta (ex.: Doopla se apresentando como a própria destinatária)` : undefined,
     });
   }
 
@@ -211,6 +234,15 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     let recognizerInputTokens: number | null = null;
     let recognizerOutputTokens: number | null = null;
     let recognizerLatencyMs: number | null = null;
+    // P0.1/P0.2 (ADR 0005, 16/10/2026) — antes só `signal` era
+    // capturado. São estes 4 campos, não a resposta do Planner, que
+    // decidem o texto de fato preparado pra envio em produção (ver
+    // delegated-contact-flow.ts) — precisam estar no resultado pra
+    // leitura humana, não só o sinal isolado.
+    let delegationRecipientName: string | null = null;
+    let delegationRecipientNumber: string | null = null;
+    let delegationPurposeSummary: string | null = null;
+    let delegationDraftMessageContent: string | null = null;
     if (turn.delegation) {
       const recognizerStart = Date.now();
       const result = await recognizeDelegatedContactRequest(
@@ -222,6 +254,10 @@ export async function runConversationScenario(scenario: ConversationScenario, de
       delegationSignal = result.signal;
       recognizerInputTokens = result.inputTokens;
       recognizerOutputTokens = result.outputTokens;
+      delegationRecipientName = result.recipientName;
+      delegationRecipientNumber = result.recipientNumber;
+      delegationPurposeSummary = result.purposeSummary;
+      delegationDraftMessageContent = result.draftMessageContent;
     }
 
     const proposedResponseRaw = decision.proposedResponse;
@@ -231,7 +267,7 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     }
 
     const hasConversationEvidence = decision.evidenceUsed.some((e) => e.sourceType === 'conversation_message');
-    const assertions = evaluateAssertions(turn, proposedResponseFinal, classification.primaryIntent, decision.responsePlan, hasConversationEvidence);
+    const assertions = evaluateAssertions(turn, proposedResponseFinal, classification.primaryIntent, decision.responsePlan, hasConversationEvidence, delegationDraftMessageContent);
     const formatChecks = checkFormat(proposedResponseRaw, proposedResponseFinal);
 
     const delegationExpectedSignal = turn.delegation?.expectedSignal ?? null;
@@ -288,6 +324,10 @@ export async function runConversationScenario(scenario: ConversationScenario, de
       delegationSignal,
       delegationExpectedSignal,
       delegationSignalMatches,
+      delegationRecipientName,
+      delegationRecipientNumber,
+      delegationPurposeSummary,
+      delegationDraftMessageContent,
       usesSimulatedOperationalState: turn.delegation?.activeRequest !== null && turn.delegation?.activeRequest !== undefined,
       assertions,
       formatChecks,
