@@ -29,10 +29,12 @@ export function buildPlannerContext(
   intentClassification: IntentClassification
 ): PlannerContext {
   const messages = contextPackage.messages.status === 'loaded' ? contextPackage.messages.items : [];
-  // Mesma janela do Classifier (gatilho + até 2 anteriores) — mensagens
+  // Mesma janela do Classifier (ver classification-context.ts) — todo o
+  // histórico que o Context Builder já carregou (budget.ts), nunca um
+  // corte próprio e menor (achado real, ADR 0005, 16/10/2026). Mensagens
   // vêm mais antiga primeiro, a última é o gatilho desta rodada.
   const trigger = messages.length > 0 ? messages[messages.length - 1] : null;
-  const previous = messages.length > 1 ? messages.slice(Math.max(0, messages.length - 3), messages.length - 1) : [];
+  const previous = messages.length > 1 ? messages.slice(0, messages.length - 1) : [];
 
   const toItem = (m: (typeof messages)[number]): PlannerMessageItem => ({
     messageId: m.messageId,
