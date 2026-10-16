@@ -91,10 +91,13 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
     id: 'numero-ja-informado-nao-repetir',
     name: 'Número de contato já informado não deve ser pedido de novo',
     category: 'memoria_operacional',
-    source: 'Teste real 15/10/2026 — telefone da Gabi repetido várias vezes, Doopla continuou pedindo',
+    source: 'Teste real 15/10/2026 — telefone do contato repetido várias vezes, Doopla continuou pedindo (número substituído por sintético nesta fixture — achado da revisão, 16/10/2026: a primeira versão deste arquivo continha o número real do contato usado no teste)',
     turns: [
       {
-        professionalMessage: 'Doopla, manda mensagem pro WhatsApp +55 11 99979-2343, fala que é a Gabi e que mandei beijos.',
+        // Número deliberadamente fictício (nunca um número real de
+        // ninguém) — padrão repetitivo escolhido de propósito pra
+        // nunca parecer um número real por coincidência.
+        professionalMessage: 'Doopla, manda mensagem pro WhatsApp +55 11 90000-1111, fala que é a Gabi e que mandei beijos.',
         delegation: {
           activeRequest: null,
           expectedSignal: 'new_request',

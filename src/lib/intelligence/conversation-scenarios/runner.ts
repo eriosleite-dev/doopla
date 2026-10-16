@@ -11,6 +11,7 @@ import type { DelegatedContactRecognizerModelCall } from '../delegated-contact';
 import { PLANNER_MODEL, buildPlannerInstructions, planResponse } from '../planner';
 import type { PlannerModelCall } from '../planner';
 import type { MinimalConversation, ToolContext } from '../types';
+import { SEMANTIC_CORRECTNESS_DISCLAIMER } from './types';
 import type { AssertionCheck, ConversationScenario, HarnessRunResult, ScenarioResult, ScenarioTurn, TurnResult } from './types';
 
 // Doopla Intelligence Core v1 — AI Evaluation Harness, runner (ADR
@@ -287,6 +288,7 @@ export async function runConversationScenario(scenario: ConversationScenario, de
       delegationSignal,
       delegationExpectedSignal,
       delegationSignalMatches,
+      usesSimulatedOperationalState: turn.delegation?.activeRequest !== null && turn.delegation?.activeRequest !== undefined,
       assertions,
       formatChecks,
       tokens: {
@@ -346,6 +348,7 @@ export async function runConversationScenarios(scenarios: ConversationScenario[]
       classifierInstructionsHash: instructionsHash(buildClassificationInstructions()),
       plannerInstructionsHash: instructionsHash(buildPlannerInstructions()),
     },
+    semanticDisclaimer: SEMANTIC_CORRECTNESS_DISCLAIMER,
     scenarios: scenarioResults,
     totalCostCents,
     allPass: scenarioResults.every((s) => s.scenarioPass),

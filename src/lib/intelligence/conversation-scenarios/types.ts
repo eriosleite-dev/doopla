@@ -92,6 +92,14 @@ export type TurnResult = {
   delegationSignal: DelegatedContactSignal | null;
   delegationExpectedSignal: DelegatedContactSignal | null;
   delegationSignalMatches: boolean | null;
+  // true quando este turno passou um activeRequest não-nulo pro
+  // reconhecedor (ex.: status='executed', 'sent') — esse estado foi
+  // ESCRITO À MÃO no cenário, nunca produzido por uma execução real da
+  // orquestração (delegated-contact-flow.ts). Achado da revisão da
+  // fundadora (16/10/2026): precisa estar explícito no PRÓPRIO
+  // resultado, não só em comentário de código, pra nunca ser lido como
+  // prova de continuidade operacional de verdade.
+  usesSimulatedOperationalState: boolean;
   assertions: AssertionCheck[];
   formatChecks: AssertionCheck[];
   tokens: {
@@ -133,8 +141,19 @@ export type HarnessRunMetadata = {
   plannerInstructionsHash: string;
 };
 
+// Texto fixo, sempre presente no resultado (nunca só em comentário de
+// código ou na UI) — achado da revisão da fundadora (16/10/2026):
+// passar nas verificações determinísticas (assertions/formatChecks)
+// nunca significa, por si só, que a resposta é semanticamente
+// correta/natural/boa. Essas verificações são objetivas e necessárias,
+// mas não suficientes — leitura humana do proposedResponseFinal
+// continua sendo a única forma real de avaliar qualidade conversacional.
+export const SEMANTIC_CORRECTNESS_DISCLAIMER =
+  'PASS nas verificações objetivas (assertions/formatChecks) prova só que critérios ESTRUTURAIS específicos foram atendidos (intenção/plano esperado, não repetiu uma pergunta já respondida, citou evidência real, sem travessão, parágrafos presentes). NUNCA prova que a resposta é semanticamente correta, natural ou de boa qualidade — isso exige leitura humana do texto de cada turno.';
+
 export type HarnessRunResult = {
   metadata: HarnessRunMetadata;
+  semanticDisclaimer: string;
   scenarios: ScenarioResult[];
   totalCostCents: number | null;
   allPass: boolean;

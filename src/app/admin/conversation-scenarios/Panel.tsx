@@ -19,18 +19,26 @@ function TurnCard({ turn }: { turn: TurnResult }) {
   return (
     <div style={{ ...cardStyle, background: turn.turnPass ? '#0d1117' : '#2d1114' }}>
       <div style={{ fontWeight: 600, marginBottom: 8 }}>
-        Turno {turn.turnIndex + 1} — <span style={turn.turnPass ? okStyle : failStyle}>{turn.turnPass ? 'PASS' : 'FAIL'}</span>
+        Turno {turn.turnIndex + 1} —{' '}
+        <span style={turn.turnPass ? okStyle : failStyle}>{turn.turnPass ? 'CRITÉRIOS OBJETIVOS: OK' : 'CRITÉRIOS OBJETIVOS: FALHOU'}</span>
       </div>
       <div style={{ marginBottom: 8 }}>
         <strong>Profissional:</strong> {turn.professionalMessage}
       </div>
       <div style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>
-        <strong>Doopla (texto final, pós-limpeza determinística):</strong> {turn.proposedResponseFinal ?? '(sem resposta — plano não gera texto)'}
+        <strong>Doopla (texto final, pós-limpeza determinística — leia este texto você mesma, &quot;OK&quot; acima não avalia qualidade):</strong>{' '}
+        {turn.proposedResponseFinal ?? '(sem resposta — plano não gera texto)'}
       </div>
       <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>
         intent={turn.primaryIntent} · status={turn.classificationStatus} · confiança={turn.effectiveConfidence} · plano={turn.responsePlan} ·
         natureza={turn.commitmentNature} · evidências={turn.evidenceUsed.length}
       </div>
+      {turn.usesSimulatedOperationalState && (
+        <div style={{ fontSize: 12, marginBottom: 8, padding: '6px 10px', background: '#3d2a00', border: '1px solid #8a5a00', borderRadius: 4, color: '#ffc966' }}>
+          ⚠️ este turno injeta um estado operacional (ex.: &quot;executed&quot;/&quot;sent&quot;) ESCRITO À MÃO no cenário — nunca produzido por uma execução
+          real de delegated-contact-flow.ts. Testa só se o reconhecedor interpreta esse estado corretamente, nunca prova continuidade operacional de fato.
+        </div>
+      )}
       {turn.delegationExpectedSignal !== null && (
         <div style={{ fontSize: 12, marginBottom: 8, color: turn.delegationSignalMatches ? '#3fb950' : '#ff7b72' }}>
           reconhecedor de delegação (sinal isolado, nunca execução real): esperado &quot;{turn.delegationExpectedSignal}&quot;, veio &quot;{turn.delegationSignal}&quot;
@@ -143,15 +151,25 @@ export function ConversationScenariosPanel() {
       {error === 'openai_not_configured' && (
         <pre style={{ background: '#111', color: '#ff7b72', padding: 12, borderRadius: 6 }}>OPENAI_API_KEY não configurada — nada foi executado.</pre>
       )}
-      {error && error !== 'openai_not_configured' && (
+      {error?.startsWith('rate_limited') && (
+        <pre style={{ background: '#111', color: '#ffc966', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>
+          {error.split(':')[1]} — limite aplicado no servidor (migration 0118), não contorna recarregando a página.
+        </pre>
+      )}
+      {error && !error.startsWith('rate_limited') && error !== 'openai_not_configured' && (
         <pre style={{ background: '#111', color: '#ff7b72', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>{error}</pre>
       )}
 
       {result && (
         <>
+          <div style={{ ...cardStyle, background: '#1a1300', border: '1px solid #8a5a00' }}>
+            ⚠️ <strong>{result.semanticDisclaimer}</strong>
+          </div>
           <div style={cardStyle}>
             <div>
-              <strong style={result.allPass ? okStyle : failStyle}>{result.allPass ? 'TODOS OS CENÁRIOS PASSARAM' : 'HÁ CENÁRIOS COM FALHA'}</strong>
+              <strong style={result.allPass ? okStyle : failStyle}>
+                {result.allPass ? 'TODOS OS CRITÉRIOS OBJETIVOS PASSARAM' : 'HÁ CENÁRIOS COM CRITÉRIOS OBJETIVOS FALHANDO'}
+              </strong>
             </div>
             <div style={{ fontSize: 12, color: '#999', marginTop: 8 }}>
               commit: {result.metadata.gitCommit} · classifier: {result.metadata.classifierModel} (prompt hash {result.metadata.classifierInstructionsHash})

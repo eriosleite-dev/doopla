@@ -1,6 +1,7 @@
 'use server';
 
 import { getAdminSession } from '../session';
+import { claimAiHarnessRunLease } from '@/lib/admin/ai-harness-lease';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
 import { CONVERSATION_SCENARIOS } from '@/lib/intelligence/conversation-scenarios/scenarios';
 import { CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, runConversationScenarios } from '@/lib/intelligence/conversation-scenarios/runner';
@@ -16,11 +17,22 @@ import type { ActorContext, ToolContext } from '@/lib/intelligence/types';
 // DENTRO da action (não só na page), porque uma Server Action pode em
 // tese ser invocada fora do fluxo normal da página.
 //
-// Zero gravação em banco: toolCtx.supabase existe só pra satisfazer o
-// tipo ToolContext (classifyIntent/planResponse nunca o chamam de
-// fato, ver runner.ts). Nenhuma linha de conversations/
-// conversation_messages/pending_delegated_contacts/outbound_intents é
-// lida ou escrita por esta action.
+// Zero gravação em banco de dados de PRODUTO: toolCtx.supabase existe
+// só pra satisfazer o tipo ToolContext (classifyIntent/planResponse
+// nunca o chamam de fato, ver runner.ts). Nenhuma linha de
+// conversations/conversation_messages/pending_delegated_contacts/
+// outbound_intents é lida ou escrita por esta action. A ÚNICA escrita
+// real desta action é no lease de cooldown abaixo (app_settings,
+// migration 0118) — propositalmente separado de qualquer dado de
+// profissional/cliente.
+//
+// Limite de frequência real no SERVIDOR (achado da revisão da
+// fundadora, 16/10/2026): claim_ai_harness_run_lease é um UPDATE
+// atômico — só UMA chamada, entre todas as concorrentes/repetidas
+// dentro da janela de cooldown, consegue de fato "ganhar" e seguir
+// adiante. Nunca depende da confirmação de 2 passos da UI (essa
+// continua existindo só como UX, nunca como controle de verdade).
+const AI_HARNESS_RUN_COOLDOWN_SECONDS = 120;
 
 export async function runConversationScenariosAction(): Promise<{ result?: HarnessRunResult; error?: string }> {
   const { supabase } = await getAdminSession();
@@ -34,6 +46,16 @@ export async function runConversationScenariosAction(): Promise<{ result?: Harne
   const totalTurns = CONVERSATION_SCENARIOS.reduce((sum, s) => sum + s.turns.length, 0);
   if (totalTurns > CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS) {
     return { error: `turn_limit_exceeded:${totalTurns}/${CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS}` };
+  }
+
+  let leaseGranted: boolean;
+  try {
+    leaseGranted = await claimAiHarnessRunLease(supabase, AI_HARNESS_RUN_COOLDOWN_SECONDS);
+  } catch (err) {
+    return { error: `lease_check_failed:${err instanceof Error ? err.message : 'erro desconhecido'}` };
+  }
+  if (!leaseGranted) {
+    return { error: `rate_limited:aguarde ${AI_HARNESS_RUN_COOLDOWN_SECONDS}s entre execuções (proteção no servidor, não só na interface)` };
   }
 
   const actorContext: ActorContext = {
