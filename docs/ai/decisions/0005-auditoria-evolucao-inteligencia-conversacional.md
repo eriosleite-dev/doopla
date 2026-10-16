@@ -111,3 +111,18 @@ Com `delegated_contact_enabled = true` e o gate de opt-in (0116) ativos, a funda
 **Solução recomendada:** completar a verificação da empresa junto à Meta (documentos, em andamento) — afeta a confiança/qualidade atribuída aos envios, não só o limite de volume. Recategorizar o template como "Utilidade" é desaconselhado — o conteúdo (convite de primeiro contato) não se qualifica pelos critérios da Meta pra essa categoria, risco real de rejeição na resubmissão. Mesmo após verificada, abordagem "fria" (sem nenhum sinal prévio de interesse do destinatário) deve continuar tendo entrega menos confiável no WhatsApp por desenho da própria plataforma — não é um defeito corrigível só no nosso lado.
 
 **Risco/dependência:** verificação de empresa é processo externo (Meta), fora do controle de prazo deste time.
+
+## Addendum — requisitos registrados pro bloco de personalidade/qualidade conversacional (16/10/2026)
+
+Bloco 1 (janela de histórico + identidade institucional) validado em produção pela fundadora — resposta real a "O que é a Doopla?" bateu com a definição registrada acima. Ela observou corretamente que isso valida só esse caminho, não todos os caminhos do Bloco 1.
+
+Antes de avançar, registrou requisitos pro bloco de personalidade (P2, ainda não implementado — só documentado aqui pra não perder, nenhuma mudança de arquitetura/fluxo feita agora):
+
+- Falar em primeira pessoa com o profissional (nunca descrever a Doopla na terceira pessoa/institucional numa conversa direta).
+- Evitar linguagem institucional e explicações técnicas no dia a dia da conversa — a definição institucional completa é pra quando perguntada diretamente, nunca o tom padrão de toda resposta.
+- Nunca expor informação interna sobre estágio do produto (ex.: "beta", "fase de testes") ou sobre quem é o público do beta.
+- Priorizar mensagens curtas, naturais, adequadas ao formato WhatsApp.
+- Evitar encerramentos artificiais oferecendo listas de funcionalidades (ex.: "quer que eu explique como funciona na prática, envio de mensagens, templates...").
+- Preservar integralmente as regras de aprovação/autonomia existentes — este bloco é só tom, nunca comportamento de decisão.
+
+Objetivo declarado pela fundadora: a Doopla deve parecer uma representante que trabalha com a profissional, não uma IA que conhece/explica o produto.
