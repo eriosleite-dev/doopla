@@ -1,0 +1,162 @@
+import type { ConversationMessageAuthorType } from '@/lib/supabase/types';
+import type { Intent } from '../classification';
+import type { ActiveDelegatedContactSummary, DelegatedContactSignal } from '../delegated-contact/types';
+import type { ResponsePlan } from '../planner';
+
+// Doopla Intelligence Core v1 — AI Evaluation Harness (ADR 0005,
+// 16/10/2026): avalia COMPREENSÃO CONVERSACIONAL (Classifier/Planner/
+// recognizer de delegação) contra o modelo real, nunca EXECUÇÃO
+// OPERACIONAL (nenhum outbound_intent é criado, nenhuma mensagem sai
+// pro WhatsApp, nenhum booking muda, nenhuma cobrança acontece — ver
+// runner.ts pra a garantia estrutural disso). Um "sinal de delegação
+// reconhecido" aqui é sobre a PRECISÃO DO RECONHECEDOR isolado, nunca
+// uma confirmação de que algo foi de fato enfileirado/entregue —
+// requisito explícito da fundadora (nunca confundir as duas coisas).
+
+export type ScenarioTurn = {
+  // Só o profissional fala neste harness (escopo: professional_self,
+  // onde todos os bugs relatados pela fundadora aconteceram). A
+  // resposta da Doopla é sempre GERADA pelo modelo real nesta mesma
+  // execução — nunca escrita à mão, nunca copiada de um print antigo.
+  professionalMessage: string;
+
+  // Assertivas objetivas (requisito 6 da fundadora: critérios
+  // objetivos, nunca um segundo model/LLM-judge decidindo "parece
+  // bom"). Todas avaliadas em código, contra o resultado real.
+  expectedIntentFamily?: Intent[];
+  expectedResponsePlanFamily?: ResponsePlan[];
+  // Substrings cuja presença no texto final indicam que a Doopla
+  // pediu de novo algo já fornecido num turno anterior — detecta
+  // "pergunta repetitiva" (Problema 3 do diagnóstico).
+  mustNotReask?: string[];
+  // Substrings esperadas no texto final — recall correto de um fato/
+  // nome/número já dado, ou retomada correta de um assunto anterior.
+  mustMentionAny?: string[];
+  // Exige pelo menos uma evidência do tipo conversation_message entre
+  // as grounded (já validadas por invariants.ts dentro do próprio
+  // planResponse real) — detecta resposta desconectada do histórico/
+  // assunto inventado (Problema 1/4 do diagnóstico).
+  mustCiteConversationEvidence?: boolean;
+
+  // Só em turnos relacionados a delegação — roda o recognizer isolado
+  // (recognizeDelegatedContactRequest, puro, sem I/O) EM PARALELO ao
+  // Classifier/Planner, nunca no lugar deles. O estado "ativo" é
+  // sempre fornecido pelo PRÓPRIO cenário (hand-authored, sintético) —
+  // o harness nunca deriva isso executando a orquestração real
+  // (delegated-contact-flow.ts), que grava em banco e está fora de
+  // escopo aqui.
+  delegation?: {
+    activeRequest: ActiveDelegatedContactSummary | null;
+    expectedSignal: DelegatedContactSignal;
+  };
+
+  note?: string;
+};
+
+export type ConversationScenario = {
+  id: string;
+  name: string;
+  category: string;
+  // Rastreabilidade até o caso real que motivou o cenário (print/
+  // horário da conversa relatada pela fundadora) — nunca um cenário
+  // inventado sem origem documentada nesta rodada inicial.
+  source: string;
+  // Histórico hand-authored que ANTECEDE o primeiro turno de teste —
+  // só pra ancorar um cenário que depende de algo que a PRÓPRIA
+  // Doopla já tinha dito antes (ex.: a oferta de tutorial que origina
+  // a correção testada). Nunca gerado pelo modelo (é fixo, sintético,
+  // documentado como tal) — diferente dos turnos de teste abaixo, cuja
+  // resposta da Doopla é sempre real. Omitido quando o cenário começa
+  // direto com uma mensagem do profissional.
+  seedHistory?: Array<{ authorType: ConversationMessageAuthorType; text: string }>;
+  turns: ScenarioTurn[];
+};
+
+export type AssertionCheck = { name: string; pass: boolean; detail?: string };
+
+export type TurnResult = {
+  turnIndex: number;
+  professionalMessage: string;
+  primaryIntent: string;
+  classificationStatus: string;
+  effectiveConfidence: string;
+  responsePlan: string;
+  commitmentNature: string;
+  // Texto bruto do model (antes de qualquer limpeza determinística) e
+  // o texto final (pós stripTravessao) — exatamente a mesma
+  // transformação que pipeline.ts aplica antes de qualquer envio real,
+  // pra nunca avaliar um texto que o profissional não veria de fato.
+  proposedResponseRaw: string | null;
+  proposedResponseFinal: string | null;
+  evidenceUsed: Array<{ sourceType: string; sourceId: string }>;
+  delegationSignal: DelegatedContactSignal | null;
+  delegationExpectedSignal: DelegatedContactSignal | null;
+  delegationSignalMatches: boolean | null;
+  // true quando este turno passou um activeRequest não-nulo pro
+  // reconhecedor (ex.: status='executed', 'sent') — esse estado foi
+  // ESCRITO À MÃO no cenário, nunca produzido por uma execução real da
+  // orquestração (delegated-contact-flow.ts). Achado da revisão da
+  // fundadora (16/10/2026): precisa estar explícito no PRÓPRIO
+  // resultado, não só em comentário de código, pra nunca ser lido como
+  // prova de continuidade operacional de verdade.
+  usesSimulatedOperationalState: boolean;
+  assertions: AssertionCheck[];
+  formatChecks: AssertionCheck[];
+  tokens: {
+    classifierInput: number | null;
+    classifierOutput: number | null;
+    plannerInput: number | null;
+    plannerOutput: number | null;
+    recognizerInput: number | null;
+    recognizerOutput: number | null;
+  };
+  costCents: number | null;
+  latencyMs: { classifier: number; planner: number; recognizer: number | null; total: number };
+  turnPass: boolean;
+};
+
+export type ScenarioResult = {
+  scenarioId: string;
+  name: string;
+  category: string;
+  source: string;
+  turns: TurnResult[];
+  scenarioPass: boolean;
+  totalCostCents: number | null;
+  totalLatencyMs: number;
+};
+
+export type HarnessRunMetadata = {
+  runAt: string;
+  gitCommit: string;
+  classifierModel: string;
+  plannerModel: string;
+  recognizerModel: string;
+  // Hash (sha256, 12 primeiros chars) do texto literal de cada
+  // instruction — pega mudança de prompt mesmo que ninguém lembre de
+  // anotar isso manualmente ao comparar duas rodadas (requisito 7 da
+  // fundadora: nunca comparar dois resultados sem saber qual versão
+  // de código/prompt produziu cada um).
+  classifierInstructionsHash: string;
+  plannerInstructionsHash: string;
+};
+
+// Texto fixo, sempre presente no resultado (nunca só em comentário de
+// código ou na UI) — achado da revisão da fundadora (16/10/2026):
+// passar nas verificações determinísticas (assertions/formatChecks)
+// nunca significa, por si só, que a resposta é semanticamente
+// correta/natural/boa. Essas verificações são objetivas e necessárias,
+// mas não suficientes — leitura humana do proposedResponseFinal
+// continua sendo a única forma real de avaliar qualidade conversacional.
+export const SEMANTIC_CORRECTNESS_DISCLAIMER =
+  'PASS nas verificações objetivas (assertions/formatChecks) prova só que critérios ESTRUTURAIS específicos foram atendidos (intenção/plano esperado, não repetiu uma pergunta já respondida, citou evidência real, sem travessão, parágrafos presentes). NUNCA prova que a resposta é semanticamente correta, natural ou de boa qualidade — isso exige leitura humana do texto de cada turno.';
+
+export type HarnessRunResult = {
+  metadata: HarnessRunMetadata;
+  semanticDisclaimer: string;
+  scenarios: ScenarioResult[];
+  totalCostCents: number | null;
+  allPass: boolean;
+};
+
+export type { ConversationMessageAuthorType };
