@@ -174,6 +174,147 @@ describe('runConversationScenario — reconhecedor de delegação (isolado, nunc
     expect(result.turns[0].delegationSignalMatches).toBe(false);
     expect(result.scenarioPass).toBe(false);
   });
+
+  it('TurnResult expõe recipientName/recipientNumber/purposeSummary/draftMessageContent do recognizer (P0.1/P0.2, ADR 0005) — antes descartados', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'manda pra Marina, 11999999999', delegation: { activeRequest: null, expectedSignal: 'new_request' } }],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: '11999999999', purposeSummary: 'avisar algo', draftMessageContent: 'Oi Marina, tudo bem?' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    expect(result.turns[0].delegationRecipientName).toBe('Marina');
+    expect(result.turns[0].delegationRecipientNumber).toBe('11999999999');
+    expect(result.turns[0].delegationPurposeSummary).toBe('avisar algo');
+    expect(result.turns[0].delegationDraftMessageContent).toBe('Oi Marina, tudo bem?');
+  });
+
+  it('draftMessageContentMustNotContain reprova quando o texto preparado pra envio contém um termo proibido não coberto pelo backstop de recognizer.ts', async () => {
+    // Backstop determinístico de recognizer.ts (ver recognizer.ts/
+    // recognizer.test.ts) só reconhece um conjunto específico de
+    // padrões de autoapresentação ("aqui é X", "sou X", "quem fala é
+    // X") — por isso é sempre exercitado de verdade aqui (a função é
+    // real, nunca mockada), nunca contornável via modelCall injetado.
+    // Este teste prova que o check genérico do Harness funciona
+    // independente do backstop, usando uma frase fora desse conjunto
+    // (“gabi falando”) — cobertura complementar, não redundante.
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['gabi falando'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: 'Gabi falando, mandei beijos.' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  // NOTA (branch claude/baseline-harness-14-cenarios, comparação
+  // controlada pedida pela fundadora, 16/10/2026): o teste que provava
+  // o backstop determinístico de recognizer.ts (Bloco 1, ADR 0005
+  // P0.1) foi removido SÓ NESTA BRANCH de propósito — esta branch
+  // reproduz o código ANTERIOR ao Bloco 1 contra os mesmos 14
+  // cenários, pra servir de "antes" na comparação. O teste falhar
+  // aqui seria o resultado correto (prova que o bug antigo ainda
+  // existe sem o fix), não uma regressão — removido só pra não poluir
+  // o CI desta branch descartável com uma falha esperada e já
+  // documentada. Ver branch claude/lote-p0-96-144-cenarios pro código
+  // e teste reais (com o fix).
+
+  it('draftMessageContentMustNotContain não reprova quando o campo vem null (pediu esclarecimento, resultado válido)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['aqui é a gabi'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: null },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck).toBeUndefined();
+    expect(result.turns[0].delegationDraftMessageContent).toBeNull();
+  });
+});
+
+describe('Lote P0 96+144 — extensões genéricas do runner', () => {
+  it('mustNotContain reprova quando a resposta final contém um termo proibido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Liga pra Nina', mustNotContain: ['vou ligar', 'ligo pra ela'] }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Claro, já vou ligar pra ela agora.'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('capacidade/confirmação proibida'));
+    expect(check?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('mustNotContain passa quando a resposta final não contém nenhum termo proibido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Liga pra Nina', mustNotContain: ['vou ligar', 'ligo pra ela'] }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Não consigo fazer ligação por aqui, só mensagem de WhatsApp. Quer que eu mande uma mensagem pra ela?'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('capacidade/confirmação proibida'));
+    expect(check?.pass).toBe(true);
+  });
+
+  it('seedBookingFacts chega de fato no input real do Planner (prova a cadeia fixture -> ContextPackage -> prompt)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      seedBookingFacts: { status: 'approved', cacheAmountCents: 240000, description: 'cachê fixo R$2.400 já aprovado' },
+      turns: [{ professionalMessage: 'O promotor quer mudar o cachê.' }],
+    };
+    let capturedInput = '';
+    const plannerCall = async (p: { instructions: string; input: string }) => {
+      capturedInput = p.input;
+      return fakePlanner('Entendi, vou confirmar com você antes de qualquer mudança.')(p);
+    };
+    await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+    expect(capturedInput).toContain('240000');
+    expect(capturedInput).toContain('cachê fixo R$2.400 já aprovado');
+  });
 });
 
 describe('runConversationScenarios — teto de execução', () => {
