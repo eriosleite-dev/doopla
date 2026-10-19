@@ -118,6 +118,16 @@ function checkFormat(rawText: string | null, finalText: string | null): Assertio
     name: 'nunca usa travessão (—)',
     pass: !hadTravessao,
     detail: hadTravessao ? 'o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)' : undefined,
+    // Achado real (19/10/2026): este check olha o texto BRUTO, não o
+    // que o profissional recebe — stripTravessao é aplicado de forma
+    // incondicional a toda proposedResponseFinal (ver linha de montagem
+    // do turno abaixo), então um travessão aqui nunca chega ao usuário
+    // final, sempre. Não-bloqueante de propósito: continua reportado
+    // (sinal de quão bem o model segue a instrução de estilo, útil pra
+    // acompanhar ao longo do tempo), mas nunca reprova turnPass/
+    // scenarioPass sozinho, pra não afogar sinal real de qualidade de
+    // resposta nesse ruído.
+    blocking: false,
   });
 
   // Requisito 10 da fundadora: respostas longas sem nenhuma separação
@@ -332,7 +342,7 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     const turnLatencyMs = classifierLatencyMs + plannerLatencyMs + (recognizerLatencyMs ?? 0);
     totalLatencyMs += turnLatencyMs;
 
-    const allChecks = [...assertions, ...formatChecks];
+    const allChecks = [...assertions, ...formatChecks].filter((c) => c.blocking !== false);
     const delegationCheckPass = delegationSignalMatches === null || delegationSignalMatches;
     const turnPass = allChecks.every((c) => c.pass) && delegationCheckPass;
 

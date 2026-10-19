@@ -97,7 +97,14 @@ export type ConversationScenario = {
   turns: ScenarioTurn[];
 };
 
-export type AssertionCheck = { name: string; pass: boolean; detail?: string };
+// blocking omitido/true: pass=false reprova turnPass/scenarioPass. blocking:
+// false (19/10/2026, achado real — ver "nunca usa travessão" em runner.ts):
+// o check continua sendo reportado e lido por humano, mas sozinho nunca
+// derruba turnPass — reservado pra achado que já tem correção determinística
+// garantida a jusante (aqui, stripTravessao, sempre aplicado antes do envio),
+// nunca usado pra silenciar um check que afeta o texto que o profissional
+// de fato recebe.
+export type AssertionCheck = { name: string; pass: boolean; detail?: string; blocking?: boolean };
 
 export type TurnResult = {
   turnIndex: number;

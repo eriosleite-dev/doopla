@@ -127,6 +127,19 @@ describe('runConversationScenario — avaliação de assertivas objetivas', () =
     expect(travessaoCheck?.pass).toBe(false);
     expect(result.turns[0].proposedResponseFinal).toBe('Tudo certo, já te aviso.');
   });
+
+  it('travessão no texto bruto nunca derruba turnPass sozinho (não-bloqueante, achado real 19/10/2026 — o texto final já é corrigido por stripTravessao)', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Oi' }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Tudo certo — já te aviso.'),
+    });
+    const travessaoCheck = result.turns[0].formatChecks.find((c) => c.name.includes('travessão'));
+    expect(travessaoCheck?.pass).toBe(false);
+    expect(travessaoCheck?.blocking).toBe(false);
+    expect(result.turns[0].turnPass).toBe(true);
+  });
 });
 
 describe('runConversationScenario — reconhecedor de delegação (isolado, nunca executa)', () => {
