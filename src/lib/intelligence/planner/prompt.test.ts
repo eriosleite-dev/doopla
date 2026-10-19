@@ -92,7 +92,13 @@ describe('buildPlannerInstructions — identidade e apresentação pessoal (acha
   });
 
   it('instrui a nunca repetir a apresentação inteira ao reformular/esclarecer (continuidade, não reinício)', () => {
-    expect(instructions).toMatch(/nunca repita a apresentação inteira de novo/);
+    expect(instructions).toMatch(/Regra crítica de continuidade/);
+    expect(instructions).toMatch(/NUNCA reescreva a apresentação com frases parecidas às de antes/);
+  });
+
+  it('dá um exemplo concreto do erro (achado real, 19\\/10\\/2026) pra reforçar a regra além da instrução abstrata', () => {
+    expect(instructions).toMatch(/Errado:/);
+    expect(instructions).toMatch(/Certo:/);
   });
 
   it('instrui respostas curtas (1 a 3 frases) pra essas perguntas, sem listar toda funcionalidade', () => {
