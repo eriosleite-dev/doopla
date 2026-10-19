@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deterministicFallbackResponse } from './invariants';
+import { deterministicFallbackResponse, resolveResponsePlan, type ResponsePlanFloorInput } from './invariants';
 
 // P1 UX conversacional (14/10/2026) — fix isolado do travessão literal
 // no fallback determinístico (nunca lógica, só a string). Cobre
@@ -149,5 +149,54 @@ describe('deterministicFallbackResponse — consult_professional distingue inter
     });
     expect(text).not.toMatch(/123\.456\.789-00/);
     expect(text).not.toMatch(/CPF/);
+  });
+});
+
+// Achado real (19/10/2026, validação integrada identidade+fallback,
+// golden-suite real contra o model): resolveResponsePlan forçava
+// consult_professional pra decisão comercial protegida só quando o
+// model escolhia answer_with_known_information — acknowledge e
+// clarify_ambiguity passavam direto, sem revisão exigida, mesmo com
+// requiresProfessionalDecision=true. Estes testes travam a correção
+// (mesma condição decisionNeedsReview, estendida aos 3 planos) e
+// provam que os casos que NÃO deveriam mudar continuam intocados.
+describe('resolveResponsePlan — piso de decisão protegida cobre acknowledge/clarify_ambiguity, não só answer_with_known_information (achado real, 19/10/2026)', () => {
+  const BASE: ResponsePlanFloorInput = {
+    modelPlan: 'acknowledge',
+    classificationStatus: 'classified',
+    effectiveConfidence: 'high',
+    requiresProfessionalDecision: true,
+    professionalDecisionSignal: 'none',
+    triggerHasUsableText: true,
+    evidenceUsedCount: 1,
+  };
+
+  it('acknowledge + decisão protegida -> força consult_professional (achado real: antes passava direto)', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'acknowledge' })).toBe('consult_professional');
+  });
+
+  it('clarify_ambiguity (escolha do próprio model, classificação confiável) + decisão protegida -> força consult_professional', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'clarify_ambiguity' })).toBe('consult_professional');
+  });
+
+  it('acknowledge SEM decisão protegida -> continua acknowledge (nunca superconservador à toa)', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'acknowledge', requiresProfessionalDecision: false })).toBe('acknowledge');
+  });
+
+  it('acknowledge + decisão protegida, mas professionalDecisionSignal=candidate_contextual (a própria profissional decidindo agora) -> continua acknowledge', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'acknowledge', professionalDecisionSignal: 'candidate_contextual' })).toBe('acknowledge');
+  });
+
+  it('clarify_ambiguity do PISO de classificação não confiável (nunca passa pelo model) continua intocado, independente de requiresProfessionalDecision', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'answer_with_known_information', effectiveConfidence: 'low', requiresProfessionalDecision: true })).toBe('clarify_ambiguity');
+  });
+
+  it('ask_external_participant + decisão protegida -> nunca forçado pra consult_professional (pedir dado ao cliente é ortogonal)', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'ask_external_participant' })).toBe('ask_external_participant');
+  });
+
+  it('answer_with_known_information continua caindo pelos dois motivos de sempre (sem evidência OU decisão protegida)', () => {
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'answer_with_known_information', evidenceUsedCount: 0, requiresProfessionalDecision: false })).toBe('consult_professional');
+    expect(resolveResponsePlan({ ...BASE, modelPlan: 'answer_with_known_information', evidenceUsedCount: 1, requiresProfessionalDecision: true })).toBe('consult_professional');
   });
 });

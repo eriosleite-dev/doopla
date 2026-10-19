@@ -259,8 +259,27 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
   // valida o CONTEÚDO real do texto antes de qualquer envio — esta
   // exceção só evita perguntar de novo pra quem acabou de responder,
   // nunca pula a checagem de compromisso/approval.
-  if (plan === 'answer_with_known_information') {
-    const noEvidence = input.evidenceUsedCount === 0;
+  // Achado real (19/10/2026, validação integrada identidade+fallback,
+  // golden-suite real contra o model): este piso de decisão protegida
+  // só cobria answer_with_known_information — se o model escolhesse
+  // acknowledge/clarify_ambiguity pra um turno que JÁ é decisão
+  // comercial protegida (requiresProfessionalDecision=true, ex.:
+  // estender o valor de um cliente pra outro), nada forçava revisão
+  // (resolveRequiresProfessionalReviewBeforeSend é false pros dois).
+  // Observado em produção da golden-suite: o texto do model continuou
+  // cauteloso nos dois casos reais (sempre perguntou antes de
+  // confirmar), mas depender só do bom senso do model, sem nenhuma
+  // trava de código, é exatamente o padrão que este arquivo existe pra
+  // evitar. Estende a MESMA condição (decisionNeedsReview) pros 3
+  // planos que o model escolhe livremente aqui — nunca ao
+  // clarify_ambiguity produzido pelo piso de classificação não
+  // confiável acima (esse já é o caso mais conservador por natureza,
+  // não precisa de reforço) nem a ask_external_participant (pedir
+  // informação ao cliente é ortogonal a "precisa da decisão da
+  // profissional", forçar consult_professional ali quebraria o fluxo
+  // legítimo de coleta de dado faltante).
+  if (plan === 'answer_with_known_information' || plan === 'acknowledge' || plan === 'clarify_ambiguity') {
+    const noEvidence = plan === 'answer_with_known_information' && input.evidenceUsedCount === 0;
     const decisionNeedsReview = input.requiresProfessionalDecision && input.professionalDecisionSignal !== 'candidate_contextual';
     if (noEvidence || decisionNeedsReview) {
       plan = 'consult_professional';
