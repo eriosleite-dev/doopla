@@ -39,7 +39,28 @@ import type { ActorContext, ToolContext } from '@/lib/intelligence/types';
 // verdade).
 const AI_HARNESS_RUN_LEASE_SECONDS = 600;
 
-export async function runConversationScenariosAction(): Promise<{ result?: HarnessRunResult; error?: string }> {
+// Execução em lotes (19/10/2026) — achado real em produção (Vercel
+// Preview): rodar as CONVERSATION_SCENARIOS inteiras numa Server Action
+// só estourou o limite de execução da plataforma ("Task timed out
+// after 300" segundos, confirmado no log da Vercel), matando a
+// chamada no meio e deixando a UI "pendurada" sem nunca receber
+// resposta. A causa é estrutural (soma de várias chamadas sequenciais
+// reais à OpenAI, não um bug pontual) e só cresce conforme o número de
+// cenários aumenta (14 hoje, 144 no horizonte) — por isso a correção é
+// dividir em lotes pequenos (o cliente orquestra várias chamadas
+// curtas) em vez de perseguir um maxDuration maior, que estouraria de
+// novo mais cedo ou mais tarde.
+//
+// Cada lote nunca quebra um cenário ao meio (runConversationScenario
+// precisa do histórico crescente de TODOS os turnos de um mesmo
+// cenário na mesma chamada) — o agrupamento em lotes é feito pelo
+// cliente por cenário inteiro, nunca por turno avulso.
+export async function listHarnessScenariosAction(): Promise<{ scenarios: { id: string; turnCount: number }[] }> {
+  await getAdminSession();
+  return { scenarios: CONVERSATION_SCENARIOS.map((s) => ({ id: s.id, turnCount: s.turns.length })) };
+}
+
+export async function runConversationScenariosBatchAction(scenarioIds: string[]): Promise<{ result?: HarnessRunResult; error?: string }> {
   const { supabase } = await getAdminSession();
 
   try {
@@ -48,7 +69,12 @@ export async function runConversationScenariosAction(): Promise<{ result?: Harne
     return { error: 'openai_not_configured' };
   }
 
-  const totalTurns = CONVERSATION_SCENARIOS.reduce((sum, s) => sum + s.turns.length, 0);
+  const batch = scenarioIds.map((id) => CONVERSATION_SCENARIOS.find((s) => s.id === id)).filter((s): s is (typeof CONVERSATION_SCENARIOS)[number] => s !== undefined);
+  if (batch.length !== scenarioIds.length) {
+    return { error: 'unknown_scenario_id' };
+  }
+
+  const totalTurns = batch.reduce((sum, s) => sum + s.turns.length, 0);
   if (totalTurns > CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS) {
     return { error: `turn_limit_exceeded:${totalTurns}/${CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS}` };
   }
@@ -92,7 +118,7 @@ export async function runConversationScenariosAction(): Promise<{ result?: Harne
   };
 
   try {
-    const result = await runConversationScenarios(CONVERSATION_SCENARIOS, { toolCtx });
+    const result = await runConversationScenarios(batch, { toolCtx });
     return { result };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'harness_execution_failed' };
