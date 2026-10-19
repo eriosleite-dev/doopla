@@ -2,8 +2,43 @@
 
 import { useState } from 'react';
 
-import { estimateConversationScenariosAction, runConversationScenariosAction } from './actions';
+import { estimateConversationScenariosAction, listHarnessScenariosAction, runConversationScenariosBatchAction } from './actions';
 import type { HarnessRunResult, TurnResult } from '@/lib/intelligence/conversation-scenarios/types';
+
+// Execução em lotes (19/10/2026) — ver comentário em actions.ts. Nunca
+// quebra um cenário ao meio: agrupa cenários inteiros (na ordem
+// original) até este teto de turnos por lote, nunca turnos avulsos.
+// 6 é conservador de propósito (folga grande sob o limite de 300s da
+// Vercel mesmo em dias de latência alta da OpenAI) — prioriza nunca
+// mais travar a página sobre velocidade total da rodada.
+const HARNESS_BATCH_MAX_TURNS = 6;
+
+function chunkScenarioIds(scenarios: { id: string; turnCount: number }[]): string[][] {
+  const batches: string[][] = [];
+  let current: string[] = [];
+  let currentTurns = 0;
+  for (const s of scenarios) {
+    if (current.length > 0 && currentTurns + s.turnCount > HARNESS_BATCH_MAX_TURNS) {
+      batches.push(current);
+      current = [];
+      currentTurns = 0;
+    }
+    current.push(s.id);
+    currentTurns += s.turnCount;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+function mergeHarnessResults(acc: HarnessRunResult | null, next: HarnessRunResult): HarnessRunResult {
+  if (acc === null) return next;
+  return {
+    ...acc,
+    scenarios: [...acc.scenarios, ...next.scenarios],
+    totalCostCents: acc.totalCostCents !== null && next.totalCostCents !== null ? acc.totalCostCents + next.totalCostCents : null,
+    allPass: acc.allPass && next.allPass,
+  };
+}
 
 const cardStyle: React.CSSProperties = { border: '1px solid #333', borderRadius: 8, padding: 16, marginBottom: 16 };
 const okStyle: React.CSSProperties = { color: '#3fb950' };
@@ -44,6 +79,16 @@ function TurnCard({ turn }: { turn: TurnResult }) {
           reconhecedor de delegação (sinal isolado, nunca execução real): esperado &quot;{turn.delegationExpectedSignal}&quot;, veio &quot;{turn.delegationSignal}&quot;
         </div>
       )}
+      {(turn.delegationRecipientName !== null || turn.delegationDraftMessageContent !== null) && (
+        <div style={{ fontSize: 12, marginBottom: 8, padding: '6px 10px', background: '#0d1b2a', border: '1px solid #2a4a6a', borderRadius: 4, whiteSpace: 'pre-wrap' }}>
+          <strong>Texto real que o recognizer prepararia pra envio (P0.1/P0.2 — nunca a resposta do Planner acima, que não é o que o destinatário recebe):</strong>
+          <br />
+          destinatário: {turn.delegationRecipientName ?? '(não extraído)'} · número: {turn.delegationRecipientNumber ?? '(não extraído)'} · motivo:{' '}
+          {turn.delegationPurposeSummary ?? '(não extraído)'}
+          <br />
+          draftMessageContent: {turn.delegationDraftMessageContent ?? '(null — recognizer pediu esclarecimento em vez de arriscar um texto)'}
+        </div>
+      )}
       {allChecks.length > 0 && (
         <ul style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
           {allChecks.map((c, i) => (
@@ -67,6 +112,7 @@ export function ConversationScenariosPanel() {
   const [estimate, setEstimate] = useState<{ totalTurns: number; totalModelCalls: number; scenarioCount: number } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [result, setResult] = useState<HarnessRunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compareFile, setCompareFile] = useState<HarnessRunResult | null>(null);
@@ -81,13 +127,31 @@ export function ConversationScenariosPanel() {
     setRunning(true);
     setError(null);
     setResult(null);
-    const res = await runConversationScenariosAction();
-    setRunning(false);
-    if (res.error) {
-      setError(res.error);
-      return;
+    setProgress(null);
+
+    const { scenarios } = await listHarnessScenariosAction();
+    const batches = chunkScenarioIds(scenarios);
+    let merged: HarnessRunResult | null = null;
+
+    for (let i = 0; i < batches.length; i++) {
+      setProgress({ done: i, total: batches.length });
+      const res = await runConversationScenariosBatchAction(batches[i]);
+      if (res.error) {
+        setRunning(false);
+        setProgress(null);
+        setError(res.error);
+        // Nunca descarta os lotes já rodados com sucesso só porque um
+        // lote seguinte falhou (ex.: rate_limited por um lease de uma
+        // execução anterior ainda não liberado) — mostra o que já tem.
+        setResult(merged);
+        return;
+      }
+      if (res.result) merged = mergeHarnessResults(merged, res.result);
     }
-    setResult(res.result ?? null);
+
+    setRunning(false);
+    setProgress(null);
+    setResult(merged);
   }
 
   function handleDownload() {
@@ -144,7 +208,11 @@ export function ConversationScenariosPanel() {
 
       {confirmed && (
         <button type="button" onClick={handleRun} disabled={running} style={{ padding: '8px 16px', borderRadius: 6 }}>
-          {running ? 'rodando… (chamadas reais à OpenAI, pode levar um tempo)' : '3. rodar os cenários'}
+          {running
+            ? progress
+              ? `rodando… lote ${progress.done + 1} de ${progress.total} (execução em lotes pequenos, nunca trava a página num limite de tempo da Vercel)`
+              : 'rodando… (chamadas reais à OpenAI, pode levar um tempo)'
+            : '3. rodar os cenários'}
         </button>
       )}
 

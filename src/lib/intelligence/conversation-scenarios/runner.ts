@@ -70,10 +70,27 @@ function toMessageItem(authorType: ConversationMessageAuthorType, text: string, 
   };
 }
 
-function buildContextPackage(items: MessageContextItem[]): ContextPackage {
+// Lote P0 96+144 (16/10/2026) — converte seedBookingFacts/seedOpportunityFacts
+// (objeto simples do cenário) em ContextFact[] reais, mesmo shape que
+// context-builder/sections.ts produziria a partir do banco. sourceId
+// sintético e estável, nunca um id de registro real.
+function factsFromSeed(sourceType: 'booking' | 'opportunity', sourceId: string, seed: Record<string, string | number | boolean | undefined> | undefined): ContextFact[] {
+  if (!seed) return [];
+  const loadedAt = new Date().toISOString();
+  const facts: ContextFact[] = [];
+  for (const [field, value] of Object.entries(seed)) {
+    if (value === undefined) continue;
+    facts.push({ sourceType, sourceId, field, value, factType: 'structured', loadedAt });
+  }
+  return facts;
+}
+
+function buildContextPackage(items: MessageContextItem[], scenario: ConversationScenario): ContextPackage {
   const facts: ContextFact[] = [
     { sourceType: 'professional_profile', sourceId: SYNTHETIC_PROFESSIONAL_ID, field: 'fullName', value: SYNTHETIC_PROFESSIONAL_NAME, factType: 'structured', loadedAt: new Date().toISOString() },
   ];
+  const bookingFacts = factsFromSeed('booking', 'scenario-seed-booking', scenario.seedBookingFacts);
+  const opportunityFacts = factsFromSeed('opportunity', 'scenario-seed-opportunity', scenario.seedOpportunityFacts);
   return {
     conversationId: 'conversation-scenarios-synthetic',
     representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID,
@@ -82,8 +99,8 @@ function buildContextPackage(items: MessageContextItem[]): ContextPackage {
     professionalBusinessContext: { status: 'not_found' },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
     messages: { status: 'loaded', items, windowMessageCount: items.length, windowSince: items[0]?.createdAt ?? new Date().toISOString() },
-    opportunity: { status: 'no_link' },
-    booking: { status: 'no_link' },
+    opportunity: opportunityFacts.length > 0 ? { status: 'loaded', facts: opportunityFacts } : { status: 'no_link' },
+    booking: bookingFacts.length > 0 ? { status: 'loaded', facts: bookingFacts } : { status: 'no_link' },
     externalParticipant: { status: 'no_link' },
   };
 }
@@ -119,7 +136,14 @@ function checkFormat(rawText: string | null, finalText: string | null): Assertio
   return checks;
 }
 
-function evaluateAssertions(turn: ScenarioTurn, finalText: string | null, primaryIntent: string, responsePlan: string, hasConversationEvidence: boolean): AssertionCheck[] {
+function evaluateAssertions(
+  turn: ScenarioTurn,
+  finalText: string | null,
+  primaryIntent: string,
+  responsePlan: string,
+  hasConversationEvidence: boolean,
+  delegationDraftMessageContent: string | null
+): AssertionCheck[] {
   const checks: AssertionCheck[] = [];
   const lowerText = (finalText ?? '').toLowerCase();
 
@@ -151,11 +175,36 @@ function evaluateAssertions(turn: ScenarioTurn, finalText: string | null, primar
     });
   }
 
+  if (turn.mustNotContain && turn.mustNotContain.length > 0) {
+    const foundWith = turn.mustNotContain.find((phrase) => lowerText.includes(phrase.toLowerCase()));
+    checks.push({
+      name: 'não promete capacidade/confirmação proibida',
+      pass: !foundWith,
+      detail: foundWith ? `a resposta contém "${foundWith}" — capacidade inexistente ou confirmação não sustentada pelos outros campos` : undefined,
+    });
+  }
+
   if (turn.mustCiteConversationEvidence) {
     checks.push({
       name: 'resposta ancorada em mensagem real da conversa',
       pass: hasConversationEvidence,
       detail: hasConversationEvidence ? undefined : 'nenhuma evidência do tipo conversation_message citada — risco de resposta desconectada do histórico real',
+    });
+  }
+
+  // P0.1 (ADR 0005, 16/10/2026) — checa o texto que de fato seria
+  // preparado pra envio (draftMessageContent do recognizer), nunca a
+  // resposta do Planner (que nunca é isso que o destinatário recebe —
+  // ver P0.2). Só avalia quando o campo não é null; null é um
+  // resultado VÁLIDO aqui (equivale a "pediu esclarecimento antes de
+  // arriscar"), nunca tratado como falha por ausência.
+  if (turn.delegation?.draftMessageContentMustNotContain && turn.delegation.draftMessageContentMustNotContain.length > 0 && delegationDraftMessageContent !== null) {
+    const lowerDraft = delegationDraftMessageContent.toLowerCase();
+    const foundWith = turn.delegation.draftMessageContentMustNotContain.find((phrase) => lowerDraft.includes(phrase.toLowerCase()));
+    checks.push({
+      name: 'draftMessageContent (texto real preparado pra envio) não comete erro de identidade',
+      pass: !foundWith,
+      detail: foundWith ? `o texto preparado pra envio contém "${foundWith}" — risco de identidade incorreta (ex.: Doopla se apresentando como a própria destinatária)` : undefined,
     });
   }
 
@@ -187,7 +236,7 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     items.push(toMessageItem('professional', turn.professionalMessage, items.length));
 
     const conversation = buildSyntheticConversation();
-    const contextPackage = buildContextPackage(items);
+    const contextPackage = buildContextPackage(items, scenario);
     const toolCtx: ToolContext = { ...deps.toolCtx, representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID, conversation };
 
     const classifierStart = Date.now();
@@ -211,6 +260,15 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     let recognizerInputTokens: number | null = null;
     let recognizerOutputTokens: number | null = null;
     let recognizerLatencyMs: number | null = null;
+    // P0.1/P0.2 (ADR 0005, 16/10/2026) — antes só `signal` era
+    // capturado. São estes 4 campos, não a resposta do Planner, que
+    // decidem o texto de fato preparado pra envio em produção (ver
+    // delegated-contact-flow.ts) — precisam estar no resultado pra
+    // leitura humana, não só o sinal isolado.
+    let delegationRecipientName: string | null = null;
+    let delegationRecipientNumber: string | null = null;
+    let delegationPurposeSummary: string | null = null;
+    let delegationDraftMessageContent: string | null = null;
     if (turn.delegation) {
       const recognizerStart = Date.now();
       const result = await recognizeDelegatedContactRequest(
@@ -222,6 +280,10 @@ export async function runConversationScenario(scenario: ConversationScenario, de
       delegationSignal = result.signal;
       recognizerInputTokens = result.inputTokens;
       recognizerOutputTokens = result.outputTokens;
+      delegationRecipientName = result.recipientName;
+      delegationRecipientNumber = result.recipientNumber;
+      delegationPurposeSummary = result.purposeSummary;
+      delegationDraftMessageContent = result.draftMessageContent;
     }
 
     const proposedResponseRaw = decision.proposedResponse;
@@ -231,7 +293,7 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     }
 
     const hasConversationEvidence = decision.evidenceUsed.some((e) => e.sourceType === 'conversation_message');
-    const assertions = evaluateAssertions(turn, proposedResponseFinal, classification.primaryIntent, decision.responsePlan, hasConversationEvidence);
+    const assertions = evaluateAssertions(turn, proposedResponseFinal, classification.primaryIntent, decision.responsePlan, hasConversationEvidence, delegationDraftMessageContent);
     const formatChecks = checkFormat(proposedResponseRaw, proposedResponseFinal);
 
     const delegationExpectedSignal = turn.delegation?.expectedSignal ?? null;
@@ -288,6 +350,10 @@ export async function runConversationScenario(scenario: ConversationScenario, de
       delegationSignal,
       delegationExpectedSignal,
       delegationSignalMatches,
+      delegationRecipientName,
+      delegationRecipientNumber,
+      delegationPurposeSummary,
+      delegationDraftMessageContent,
       usesSimulatedOperationalState: turn.delegation?.activeRequest !== null && turn.delegation?.activeRequest !== undefined,
       assertions,
       formatChecks,
