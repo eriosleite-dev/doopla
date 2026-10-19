@@ -213,15 +213,26 @@ export async function planResponse(
   // não cobre) ou nunca existiu (no_response_needed legitimamente não
   // escreve nada), um fallback determinístico fecha a lacuna — ver
   // comentário em deterministicFallbackResponse (invariants.ts).
+  //
+  // missingInformation calculado ANTES do fallback (achado da
+  // fundadora, 19/10/2026) pra alimentar a variação de frase do
+  // consult_professional com a MESMA lista já saneada que vai pro
+  // resultado final — nunca uma segunda leitura de parsed.missingInformation
+  // que poderia divergir.
+  const missingInformation = boundMissingInformation(parsed.missingInformation);
   const rawProposedResponse = draftStillValid ? parsed.proposedResponse : null;
-  const proposedResponse = rawProposedResponse ?? (triggerHasUsableText ? deterministicFallbackResponse(responsePlan) : null);
+  const proposedResponse =
+    rawProposedResponse ??
+    (triggerHasUsableText
+      ? deterministicFallbackResponse(responsePlan, { conversationType: plannerContext.conversationType, missingInformation })
+      : null);
 
   return {
     decision: {
       intentClassification,
       responsePlan,
       commitmentNature,
-      missingInformation: boundMissingInformation(parsed.missingInformation),
+      missingInformation,
       evidenceUsed,
       requiresProfessionalDecision,
       professionalDecisionCategory: categories,

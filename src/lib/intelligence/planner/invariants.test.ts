@@ -45,3 +45,109 @@ describe('deterministicFallbackResponse — clarify_ambiguity nunca silencioso (
     expect(text?.trim().length).toBeGreaterThan(0);
   });
 });
+
+// Achado da fundadora (19/10/2026, rodada de validação pós-deploy): a
+// frase fixa original de consult_professional dizia "antes de eu
+// responder ao cliente" incondicionalmente, mesmo numa conversa
+// professional_self — onde não existe cliente nenhum nesta troca
+// (resolveRecipientType, runtime/recipient.ts, prova que
+// consult_professional é SEMPRE endereçado ao profissional nos dois
+// tipos de conversa). Estes testes cobrem as dimensões exigidas:
+// rebaixamento (implícito — só chega aqui quando o piso já rebaixou o
+// plano), ausência de evidência (missingInformation vazio),
+// informação irrelevante (blocksProfessionalDecision=false),
+// múltiplas informações faltantes (mesma razão e razões diferentes),
+// interlocutores diferentes, e dado sensível nunca vazado.
+describe('deterministicFallbackResponse — consult_professional distingue interlocutor e razão (19/10/2026)', () => {
+  it('sem opts (comportamento padrão) preserva o texto exato de antes desta correção — nunca regride quem já chama sem o novo parâmetro', () => {
+    expect(deterministicFallbackResponse('consult_professional')).toBe(
+      'Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?'
+    );
+  });
+
+  it('professional_self nunca menciona "cliente" (não há cliente nesta troca) quando não há informação faltante confiável', () => {
+    const text = deterministicFallbackResponse('consult_professional', { conversationType: 'professional_self', missingInformation: [] });
+    expect(text).not.toBeNull();
+    expect(text?.toLowerCase()).not.toMatch(/cliente/);
+  });
+
+  it('external_inquiry continua mencionando "cliente" quando não há informação faltante confiável (comportamento já existente, preservado)', () => {
+    const text = deterministicFallbackResponse('consult_professional', { conversationType: 'external_inquiry', missingInformation: [] });
+    expect(text?.toLowerCase()).toMatch(/cliente/);
+  });
+
+  it('informação faltante que NÃO bloqueia a decisão (blocksProfessionalDecision=false) é ignorada — cai no fallback neutro, nunca vira pergunta', () => {
+    const text = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [{ field: 'cor da camisa do baterista', reason: 'not_yet_provided', blocksProfessionalDecision: false }],
+    });
+    // Mesmo texto do caso "sem informação faltante confiável" — prova
+    // que o campo irrelevante não influenciou a frase.
+    expect(text).toBe(deterministicFallbackResponse('consult_professional', { conversationType: 'professional_self', missingInformation: [] }));
+  });
+
+  it('razão "unavailable" nunca pede pra fornecer de novo algo que já existe — distingue de "not_yet_provided"', () => {
+    const text = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [{ field: 'qualquer coisa', reason: 'unavailable', blocksProfessionalDecision: true }],
+    });
+    expect(text).toMatch(/não consegui acessar/);
+    expect(text).not.toMatch(/me passe de novo|forneça novamente/i);
+  });
+
+  it('razão "not_yet_provided" varia da razão "unavailable" (textos diferentes pra razões diferentes)', () => {
+    const unavailable = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [{ field: 'x', reason: 'unavailable', blocksProfessionalDecision: true }],
+    });
+    const notYetProvided = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [{ field: 'x', reason: 'not_yet_provided', blocksProfessionalDecision: true }],
+    });
+    expect(unavailable).not.toBe(notYetProvided);
+  });
+
+  it('múltiplas informações faltantes com a MESMA razão ainda produzem a frase específica dessa razão (não degrada pro neutro só por ter mais de uma)', () => {
+    const text = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [
+        { field: 'a', reason: 'not_yet_provided', blocksProfessionalDecision: true },
+        { field: 'b', reason: 'not_yet_provided', blocksProfessionalDecision: true },
+      ],
+    });
+    expect(text).toBe(
+      deterministicFallbackResponse('consult_professional', {
+        conversationType: 'professional_self',
+        missingInformation: [{ field: 'a', reason: 'not_yet_provided', blocksProfessionalDecision: true }],
+      })
+    );
+  });
+
+  it('múltiplas informações faltantes com razões DIFERENTES caem no fallback neutro (nunca tenta combinar duas frases numa só)', () => {
+    const text = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [
+        { field: 'a', reason: 'not_yet_provided', blocksProfessionalDecision: true },
+        { field: 'b', reason: 'unavailable', blocksProfessionalDecision: true },
+      ],
+    });
+    expect(text).toBe('Preciso que você confirme esse ponto antes de eu seguir.');
+  });
+
+  it('razão "not_allowed" (falta de autorização) cai no fallback neutro — nunca expõe o motivo técnico do bloqueio', () => {
+    const text = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [{ field: 'dado restrito', reason: 'not_allowed', blocksProfessionalDecision: true }],
+    });
+    expect(text).toBe('Preciso que você confirme esse ponto antes de eu seguir.');
+  });
+
+  it('nunca interpola o valor livre de "field", mesmo quando ele contém algo que pareceria sensível', () => {
+    const text = deterministicFallbackResponse('consult_professional', {
+      conversationType: 'professional_self',
+      missingInformation: [{ field: 'CPF 123.456.789-00 do contratante', reason: 'not_yet_provided', blocksProfessionalDecision: true }],
+    });
+    expect(text).not.toMatch(/123\.456\.789-00/);
+    expect(text).not.toMatch(/CPF/);
+  });
+});

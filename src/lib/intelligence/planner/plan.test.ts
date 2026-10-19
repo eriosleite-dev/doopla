@@ -149,3 +149,78 @@ describe('planResponse — Playbook DJ/Música chega de fato via Competence Rout
     expect(capturedInstructions).not.toMatch(/Playbook v1/);
   });
 });
+
+describe('planResponse — fallback de consult_professional distingue interlocutor de ponta a ponta (achado da fundadora, 19/10/2026)', () => {
+  // Fallback só entra quando há texto humano real no gatilho
+  // (triggerHasUsableText, plan.ts) — CONTEXT_PACKAGE padrão deste
+  // arquivo tem messages:'unavailable', então precisa de uma
+  // mensagem real aqui pra exercitar o caminho de verdade.
+  const CONTEXT_PACKAGE_WITH_TRIGGER: ContextPackage = {
+    ...CONTEXT_PACKAGE,
+    messages: {
+      status: 'loaded',
+      items: [
+        {
+          messageId: 'msg-1',
+          createdAt: '2026-10-19T12:00:00Z',
+          authorType: 'professional',
+          direction: 'inbound',
+          contentType: 'text',
+          text: 'Quando é o show mesmo?',
+          truncated: false,
+          provenance: { sourceType: 'conversation_message', sourceId: 'msg-1' },
+        },
+      ],
+      windowMessageCount: 1,
+      windowSince: '2026-10-19T12:00:00Z',
+    },
+  };
+
+  it('professional_self + piso rebaixa answer_with_known_information (sem evidência) -> fallback final nunca menciona "cliente"', async () => {
+    const selfToolCtx: ToolContext = { ...TOOL_CTX, conversation: { ...TOOL_CTX.conversation, conversation_type: 'professional_self' } };
+    const result = await planResponse(selfToolCtx, CONTEXT_PACKAGE_WITH_TRIGGER, CLASSIFICATION, {
+      maxRetries: 0,
+      modelCall: async () => ({
+        parsed: {
+          responsePlan: 'answer_with_known_information',
+          commitmentNature: 'not_applicable',
+          proposedDecisionCategory: [],
+          // Sem evidenceUsed -> resolveResponsePlan rebaixa pra
+          // consult_professional (invariants.ts) -> draft descartado
+          // (draftStillValid=false) -> fallback determinístico entra.
+          missingInformation: [{ field: 'data exata do show', reason: 'not_yet_provided', blocksProfessionalDecision: true }],
+          evidenceUsed: [],
+          professionalDecisionSignal: 'none',
+          proposedResponse: 'Rascunho que será descartado porque o plano mudou.',
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+      }),
+    });
+    expect(result.decision.responsePlan).toBe('consult_professional');
+    expect(result.decision.proposedResponse).not.toBeNull();
+    expect(result.decision.proposedResponse?.toLowerCase()).not.toMatch(/cliente/);
+    expect(result.decision.proposedResponse).not.toMatch(/Rascunho que será descartado/);
+  });
+
+  it('external_inquiry no mesmo cenário mantém a menção a "cliente" (comportamento já existente, preservado)', async () => {
+    const result = await planResponse(TOOL_CTX, CONTEXT_PACKAGE_WITH_TRIGGER, CLASSIFICATION, {
+      maxRetries: 0,
+      modelCall: async () => ({
+        parsed: {
+          responsePlan: 'answer_with_known_information',
+          commitmentNature: 'not_applicable',
+          proposedDecisionCategory: [],
+          missingInformation: [],
+          evidenceUsed: [],
+          professionalDecisionSignal: 'none',
+          proposedResponse: 'Rascunho que será descartado porque o plano mudou.',
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+      }),
+    });
+    expect(result.decision.responsePlan).toBe('consult_professional');
+    expect(result.decision.proposedResponse?.toLowerCase()).toMatch(/cliente/);
+  });
+});
