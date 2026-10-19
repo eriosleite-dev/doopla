@@ -230,3 +230,47 @@ Minha recomendação de prioridade, por impacto em confiabilidade da representa�
 Confirmo a lista de 10 categorias da fundadora como o escopo certo pra próxima rodada de cenários, priorizando os que já têm evidência real nesta execução: (1) confusão remetente/destinatário — já evidenciado (P0.1); (3) capacidades inexistentes — já evidenciado (P0.4); (8) não reconhece correções/confirmações — parcialmente evidenciado, tom ainda problemático mesmo com conteúdo correto (P0.3); (9) respostas longas sem espaçamento — já evidenciado, contagem exata registrada acima. As demais (2, 4, 5, 6, 7, 10) ainda não têm cenário dedicado — proponho escrevê-los como bloco de trabalho separado, sempre a partir de casos reais ou hipóteses de falha plausíveis e documentadas (nunca buscando só palavra-chave, como já é a disciplina do Harness hoje), antes de qualquer mudança de prompt que dependa deles pra ser medida.
 
 **Nenhuma mudança de prompt/modelo/Classifier/Planner/recognizer foi implementada nesta etapa — só leitura de código e documentação, conforme pedido.** Aguardando aprovação da fundadora sobre a ordem acima antes de abrir o primeiro bloco de implementação.
+
+## Addendum — validação integrada antes/depois (Bloco 1 + Playbook DJ/Música, 19/10/2026)
+
+Rodada pedida pela fundadora após aprovar a direção técnica (Bloco 1 identidade + Playbook ADR 0006 + 10 novos cenários): ambiente de avaliação isolado (preview Vercel), mesmo conjunto de 15 cenários golden-suite nas duas versões, sem nenhum envio real nem dado comercial de produção tocado.
+
+### Ficha técnica
+
+- Modelo: `gpt-5-mini` (classifier, planner, recognizer) nas duas versões.
+- **Antes**: commit `0769092` (branch `claude/baseline-harness-14-cenarios`) — código pré-Bloco1/Playbook (`recognizer.ts`/`planner/prompt.ts`/`planner/plan.ts` no estado de `bcbc63e`), com a infraestrutura do Harness (cenários, captura de campos, execução em lotes) já sincronizada da branch "depois" para permitir comparação apples-to-apples.
+- **Depois**: commit `20c627c` (branch `claude/lote-p0-96-144-cenarios`) — Bloco 1 (identidade na delegação) + Playbook DJ/Música (ADR 0006) + os 10 novos cenários.
+- Hash do prompt do Planner idêntico nas duas versões (`fe01472b4d8b`) — **esperado, não é falha de medição**: o hash registrado em `metadata` é calculado sem nenhuma competência roteada, e o bloco do Playbook só é anexado condicionalmente quando a competência roteada é `comercial_negociacao`/`producao` (ver `prompt.test.ts`). A diferença real só aparece no texto de cada turno, nunca nesse hash agregado — registrado aqui para não induzir a uma leitura equivocada de "prompts idênticos = nenhuma mudança".
+- Execuções: 3 rodadas "antes" (commit `0769092`, 14:18/14:30/14:43) e 1 rodada "depois" (commit `20c627c`, 15:03) — a diferença no número de rodadas "antes" foi um efeito colateral de confusão na navegação entre deployments de preview na Vercel, não um desenho intencional, mas acabou dando um sinal útil de variação natural do modelo na mesma versão.
+- JSONs completos arquivados em `docs/ai/decisions/evidence/0005-antes-0769092-run{1,2,3}-*.json` e `docs/ai/decisions/evidence/0006-depois-20c627c-run1-15h03.json` — checados por PII antes do arquivamento (só o número sintético já estabelecido `+55 11 90000-1111`/`-2222` e o nome sintético `Duda`, nenhum dado real).
+
+### Segurança da delegação (`draftMessageContent`, caminho real de execução)
+
+Em nenhuma das 4 rodadas (3 antes, 1 depois) o `draftMessageContent` produziu uma mensagem se autoapresentando como a destinatária — o bug original do P0.1 (commit `bcbc63e`) não se reproduziu nesta rodada em nenhuma versão. Isso significa que **não é possível afirmar, com esta rodada, que o Bloco 1 corrigiu uma falha observada agora** — ela simplesmente não ocorreu, nem antes nem depois. O backstop determinístico do Bloco 1 continua existindo como rede de segurança para quando isso acontecer (prova estrutural já coberta por `recognizer.test.ts`), mas esta validação não exercitou esse caminho. Em 2 das 4 rodadas, o recognizer devolveu o texto da instrução ambígua quase sem alteração em vez de um rascunho limpo — não é inseguro (nunca chega a assinar como a destinatária), mas é uma oportunidade de melhoria de qualidade, não de segurança.
+
+### Comercial DJ/Música (Playbook, ADR 0006)
+
+Sinal qualitativo favorável ao Playbook em 2 dos cenários de proteção comercial:
+
+- **`protecao-condicao-comercial-bilheteria`**: a resposta "depois" estrutura a decisão em 3 opções (recusar / negociar garantia mínima + % / aceitar só % com piso definido), nomeia a urgência (36h) e propõe formalizar por escrito com o promotor antes de qualquer resposta — mais estruturado que 2 das 3 rodadas "antes".
+- **`memoria-nao-e-permissao-sinal`**: a resposta "depois" questiona explicitamente o precedente citado pelo profissional ("igual rolou uma vez") antes de tratá-lo como regra, e lista alternativas concretas — a regra "memória não é permissão" do Playbook em ação direta. Em 2 das 3 rodadas "antes", a resposta foi o fallback genérico (ver abaixo), sem engajar com o conteúdo.
+
+Amostra pequena (1 "depois" contra 3 "antes") — sinal sugestivo, não prova estatística. Nos demais cenários comerciais (`cancelamento-com-clausula-contratual`, `autorizacao-nao-se-estende-a-outro-cliente`) o comportamento já era correto antes do Playbook e não regrediu.
+
+### Achado novo, fora do escopo desta rodada (P1 real de produção)
+
+Em várias rodadas (antes e depois igualmente) a resposta final foi a frase fixa do fallback determinístico (`deterministicFallbackResponse`, `invariants.ts`) — ex.: *"Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?"* — em vez de uma resposta específica. Isso acontece quando o plano final diverge do que o modelo propôs e o rascunho é descartado (comportamento documentado em `plan.ts`). Afeta as duas versões igualmente, não é efeito do Playbook, e reduz a qualidade real de respostas comerciais onde um rascunho específico seria claramente melhor. Recomendo investigação dedicada como próximo item, de prioridade real.
+
+### Achado de calibração do Harness (não da IA)
+
+A assertiva `mustNotContain` do cenário `escopo-divulgacao-nao-combinada` reprovou nas **4 rodadas** (antes e depois) só por a resposta conter a palavra "combinado" — em todos os casos a IA está perguntando "o que foi combinado originalmente?", nunca confirmando nada por conta própria. Falso positivo consistente do próprio teste; recomendo ajustar a lista de frases proibidas desse cenário em `scenarios.ts` (baixa prioridade).
+
+### Taxa de PASS objetivo (contexto, não conclusão isolada)
+
+Antes: 7/15, 6/15, 8/15. Depois: 5/15. A diferença é quase inteiramente formatação (travessão no texto bruto / parágrafo ausente — P1 já registrado acima, nunca chega ao profissional por causa de `stripTravessao`), não conteúdo ou segurança. Não há regressão de conteúdo/segurança entre antes e depois nesta rodada.
+
+### Recomendação
+
+Recomendo seguir com o merge do Bloco 1 + Playbook para produção — nenhuma regressão de segurança/conteúdo identificada em 4 execuções, com sinal qualitativo favorável em 2 cenários comerciais-chave. Os dois achados novos (fallback genérico e calibração do teste "combinado") não bloqueiam este deploy; ficam registrados como próximos itens de trabalho, o fallback genérico com prioridade real por afetar qualidade de resposta em produção.
+
+**Nenhuma mudança em produção foi feita a partir desta rodada além deste registro em documentação — merge e push para a branch de produção aguardam confirmação explícita separada da fundadora**, conforme o Charter.

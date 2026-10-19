@@ -1,0 +1,1480 @@
+{
+  "metadata": {
+    "runAt": "2026-10-19T14:30:25.557Z",
+    "gitCommit": "076909265198bd48e427cc08d15b692d186f8b6f",
+    "classifierModel": "gpt-5-mini",
+    "plannerModel": "gpt-5-mini",
+    "recognizerModel": "gpt-5-mini",
+    "classifierInstructionsHash": "a4de2068a521",
+    "plannerInstructionsHash": "fe01472b4d8b"
+  },
+  "semanticDisclaimer": "PASS nas verificações objetivas (assertions/formatChecks) prova só que critérios ESTRUTURAIS específicos foram atendidos (intenção/plano esperado, não repetiu uma pergunta já respondida, citou evidência real, sem travessão, parágrafos presentes). NUNCA prova que a resposta é semanticamente correta, natural ou de boa qualidade — isso exige leitura humana do texto de cada turno.",
+  "scenarios": [
+    {
+      "scenarioId": "correcao-apos-oferta-tutorial",
+      "name": "Correção da explicação institucional após oferta de tutorial",
+      "category": "compreensao_continuidade",
+      "source": "Teste real 15/10/2026 — \"Mostre.\" / \"Não é assim que a Doopla se explica...\" / \"Sim\"",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Mostre.",
+          "primaryIntent": "treinamento_profissional",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "answer_with_known_information",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Perfeito — vou mostrar com um exemplo prático. Suponha que o cliente peça um show dia 12/12 às 20h em SP e pergunte sobre cachê; você poderia enviar para mim: “Gere rascunho — data 12/12, 20h, SP, evento privado, pergunta cachê”. Eu devolveria um rascunho curto como: “Obrigado pelo convite, confirma 12/12 às 20h em SP? Qual o formato do evento e a expectativa de público? Sobre cachê, quer que eu proponha um valor inicial para você avaliar?” Quer que eu gere esse rascunho para um caso real agora ou prefere outro exemplo (negociação de cachê, mudança de data, logística)?",
+          "proposedResponseFinal": "Perfeito, vou mostrar com um exemplo prático. Suponha que o cliente peça um show dia 12/12 às 20h em SP e pergunte sobre cachê; você poderia enviar para mim: “Gere rascunho, data 12/12, 20h, SP, evento privado, pergunta cachê”. Eu devolveria um rascunho curto como: “Obrigado pelo convite, confirma 12/12 às 20h em SP? Qual o formato do evento e a expectativa de público? Sobre cachê, quer que eu proponha um valor inicial para você avaliar?” Quer que eu gere esse rascunho para um caso real agora ou prefere outro exemplo (negociação de cachê, mudança de data, logística)?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-1"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": false,
+              "detail": "573 caracteres num bloco só, sem nenhuma quebra de parágrafo (\\n\\n)"
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2059,
+            "classifierOutput": 861,
+            "plannerInput": 3607,
+            "plannerOutput": 1986,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.71105,
+          "latencyMs": {
+            "classifier": 7543,
+            "planner": 20930,
+            "recognizer": null,
+            "total": 28473
+          },
+          "turnPass": false
+        },
+        {
+          "turnIndex": 1,
+          "professionalMessage": "Não é assim que a Doopla se explica, essa não é a definição correta.",
+          "primaryIntent": "treinamento_profissional",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "answer_with_known_information",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Obrigado, boa observação. Você tem razão, a definição anterior ficou imprecisa. A Doopla é uma plataforma de representação inteligente para artistas independentes; a base hoje é voltada a artistas. A IA da Doopla atua como representante do profissional: atende clientes, conduz conversas comerciais, acompanha oportunidades, organiza negociações e ajuda a transformar contatos em bookings. O profissional mantém o controle das decisões que o comprometem, como preço, disponibilidade e aceite, e a Doopla nunca decide essas por conta própria. Quer que eu reescreva essa explicação em um tom mais curto ou mais formal para usarmos com clientes?",
+          "proposedResponseFinal": "Obrigado, boa observação. Você tem razão, a definição anterior ficou imprecisa. A Doopla é uma plataforma de representação inteligente para artistas independentes; a base hoje é voltada a artistas. A IA da Doopla atua como representante do profissional: atende clientes, conduz conversas comerciais, acompanha oportunidades, organiza negociações e ajuda a transformar contatos em bookings. O profissional mantém o controle das decisões que o comprometem, como preço, disponibilidade e aceite, e a Doopla nunca decide essas por conta própria. Quer que eu reescreva essa explicação em um tom mais curto ou mais formal para usarmos com clientes?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-3"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-2"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": false,
+              "detail": "642 caracteres num bloco só, sem nenhuma quebra de parágrafo (\\n\\n)"
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2251,
+            "classifierOutput": 420,
+            "plannerInput": 3815,
+            "plannerOutput": 1730,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.58165,
+          "latencyMs": {
+            "classifier": 3653,
+            "planner": 16341,
+            "recognizer": null,
+            "total": 19994
+          },
+          "turnPass": false
+        },
+        {
+          "turnIndex": 2,
+          "professionalMessage": "Sim",
+          "primaryIntent": "outro",
+          "classificationStatus": "ambiguous",
+          "effectiveConfidence": "low",
+          "responsePlan": "clarify_ambiguity",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Perfeito — prefere que eu reescreva a explicação em tom mais curto ou em tom mais formal? Posso também enviar as duas versões, se quiser.",
+          "proposedResponseFinal": "Perfeito, prefere que eu reescreva a explicação em tom mais curto ou em tom mais formal? Posso também enviar as duas versões, se quiser.",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-4"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-5"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "resposta ancorada em mensagem real da conversa",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2400,
+            "classifierOutput": 269,
+            "plannerInput": 3972,
+            "plannerOutput": 1054,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.42390000000000005,
+          "latencyMs": {
+            "classifier": 2649,
+            "planner": 11093,
+            "recognizer": null,
+            "total": 13742
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 1.7166000000000001,
+      "totalLatencyMs": 62209
+    },
+    {
+      "scenarioId": "delegacao-mudanca-assunto-retomada",
+      "name": "Pedido de delegação, mudança de assunto, retomada com \"conseguiu?\"",
+      "category": "delegacao_continuidade",
+      "source": "Teste real 15-16/10/2026 — pedido de contato com \"Gabi\", troca de assunto, \"E aí, conseguiu?\"",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Doopla, chama a Gabi e fala que mandei beijos.",
+          "primaryIntent": "outro",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Quer que eu envie essa mensagem para a Gabi? Para qual Gabi (sobrenome ou como eu a encontro) e por qual canal prefere que eu fale — WhatsApp, direct, e-mail ou outro? Confirma também o texto, por exemplo: “Duda mandou beijos”, ou prefere que eu escreva diferente?",
+          "proposedResponseFinal": "Quer que eu envie essa mensagem para a Gabi? Para qual Gabi (sobrenome ou como eu a encontro) e por qual canal prefere que eu fale, WhatsApp, direct, e-mail ou outro? Confirma também o texto, por exemplo: “Duda mandou beijos”, ou prefere que eu escreva diferente?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            }
+          ],
+          "delegationSignal": "new_request",
+          "delegationExpectedSignal": "new_request",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": "Gabi",
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": "informar que ela mandou beijos",
+          "delegationDraftMessageContent": "que mandei beijos.",
+          "usesSimulatedOperationalState": false,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2051,
+            "classifierOutput": 509,
+            "plannerInput": 3582,
+            "plannerOutput": 2325,
+            "recognizerInput": 779,
+            "recognizerOutput": 1247
+          },
+          "costCents": 0.9764999999999999,
+          "latencyMs": {
+            "classifier": 4897,
+            "planner": 27287,
+            "recognizer": 12040,
+            "total": 44224
+          },
+          "turnPass": false
+        },
+        {
+          "turnIndex": 1,
+          "professionalMessage": "Ah, muda meu horário de atendimento pra depois das 18h.",
+          "primaryIntent": "treinamento_profissional",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Entendi, quer mudar seu horário de atendimento para começar depois das 18h. Isso vale para todos os dias, só dias úteis, ou tem dias específicos? A mudança deve valer a partir de quando, e devo atualizar seu perfil público e/ou ajustar pedidos/agendamentos já existentes para esse novo horário?",
+          "proposedResponseFinal": "Entendi, quer mudar seu horário de atendimento para começar depois das 18h. Isso vale para todos os dias, só dias úteis, ou tem dias específicos? A mudança deve valer a partir de quando, e devo atualizar seu perfil público e/ou ajustar pedidos/agendamentos já existentes para esse novo horário?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-2"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": "no_delegation_signal",
+          "delegationExpectedSignal": "no_delegation_signal",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": true,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2151,
+            "classifierOutput": 300,
+            "plannerInput": 3707,
+            "plannerOutput": 1922,
+            "recognizerInput": 804,
+            "recognizerOutput": 261
+          },
+          "costCents": 0.66315,
+          "latencyMs": {
+            "classifier": 4127,
+            "planner": 16593,
+            "recognizer": 2792,
+            "total": 23512
+          },
+          "turnPass": true
+        },
+        {
+          "turnIndex": 2,
+          "professionalMessage": "E aí, conseguiu falar com ela?",
+          "primaryIntent": "outro",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Ainda não, fiquei aguardando os detalhes. Qual Gabi você quer que eu chame (sobrenome ou como eu a encontro), por qual canal prefere que eu fale (WhatsApp, direct, e-mail ou outro) e qual texto devo enviar — confirma “Duda mandou beijos” ou prefere escrever diferente? Se confirmar, eu envio agora.",
+          "proposedResponseFinal": "Ainda não, fiquei aguardando os detalhes. Qual Gabi você quer que eu chame (sobrenome ou como eu a encontro), por qual canal prefere que eu fale (WhatsApp, direct, e-mail ou outro) e qual texto devo enviar, confirma “Duda mandou beijos” ou prefere escrever diferente? Se confirmar, eu envio agora.",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-1"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-4"
+            }
+          ],
+          "delegationSignal": "status_inquiry",
+          "delegationExpectedSignal": "status_inquiry",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": true,
+          "assertions": [
+            {
+              "name": "não pergunta de novo informação já fornecida",
+              "pass": true
+            },
+            {
+              "name": "resposta ancorada em mensagem real da conversa",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2238,
+            "classifierOutput": 610,
+            "plannerInput": 3800,
+            "plannerOutput": 1227,
+            "recognizerInput": 799,
+            "recognizerOutput": 518
+          },
+          "costCents": 0.6419250000000001,
+          "latencyMs": {
+            "classifier": 5909,
+            "planner": 12569,
+            "recognizer": 4877,
+            "total": 23355
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 2.281575,
+      "totalLatencyMs": 91091
+    },
+    {
+      "scenarioId": "numero-ja-informado-nao-repetir",
+      "name": "Número de contato já informado não deve ser pedido de novo",
+      "category": "memoria_operacional",
+      "source": "Teste real 15/10/2026 — telefone do contato repetido várias vezes, Doopla continuou pedindo (número substituído por sintético nesta fixture — achado da revisão, 16/10/2026: a primeira versão deste arquivo continha o número real do contato usado no teste)",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Doopla, manda mensagem pro WhatsApp +55 11 90000-1111 avisando que eu mandei beijos.",
+          "primaryIntent": "outro",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?",
+          "proposedResponseFinal": "Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": "new_request",
+          "delegationExpectedSignal": "new_request",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": "+55 11 90000-1111",
+          "delegationPurposeSummary": "avisando que eu mandei beijos",
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2063,
+            "classifierOutput": 471,
+            "plannerInput": 3594,
+            "plannerOutput": 1422,
+            "recognizerInput": 791,
+            "recognizerOutput": 495
+          },
+          "costCents": 0.6388,
+          "latencyMs": {
+            "classifier": 4276,
+            "planner": 16139,
+            "recognizer": 4922,
+            "total": 25337
+          },
+          "turnPass": true
+        },
+        {
+          "turnIndex": 1,
+          "professionalMessage": "Isso mesmo, pode confirmar.",
+          "primaryIntent": "outro",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "medium",
+          "responsePlan": "answer_with_known_information",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Oi! A Duda mandou beijinhos :)",
+          "proposedResponseFinal": "Oi! A Duda mandou beijinhos :)",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-1"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-2"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": "confirms_pending",
+          "delegationExpectedSignal": "confirms_pending",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": true,
+          "assertions": [
+            {
+              "name": "não pergunta de novo informação já fornecida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2110,
+            "classifierOutput": 621,
+            "plannerInput": 3657,
+            "plannerOutput": 1527,
+            "recognizerInput": 805,
+            "recognizerOutput": 631
+          },
+          "costCents": 0.7201,
+          "latencyMs": {
+            "classifier": 5399,
+            "planner": 12635,
+            "recognizer": 5759,
+            "total": 23793
+          },
+          "turnPass": true
+        }
+      ],
+      "scenarioPass": true,
+      "totalCostCents": 1.3589,
+      "totalLatencyMs": 49130
+    },
+    {
+      "scenarioId": "ambiguidade-identidade-destinatario",
+      "name": "Instrução ambígua sobre identidade não pode virar autoapresentação como a destinatária",
+      "category": "seguranca_identidade",
+      "source": "Achado real da primeira execução do harness (ADR 0005 P0.1, 16/10/2026, commit bcbc63e) — a mesma instrução que motivou a reescrita da fixture acima: \"fala que é a Gabi e que mandei beijos\" é ambígua, e o Planner chegou a redigir o rascunho como se a Doopla fosse a própria Gabi assinando a mensagem.",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Doopla, manda mensagem pro WhatsApp +55 11 90000-2222, fala que é a Gabi e que mandei beijos.",
+          "primaryIntent": "outro",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "answer_with_known_information",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Rascunho para enviar ao WhatsApp +55 11 90000-2222: \"Oi, aqui é a Gabi, a Duda mandou beijos.\" Quer que eu envie agora?",
+          "proposedResponseFinal": "Rascunho para enviar ao WhatsApp +55 11 90000-2222: \"Oi, aqui é a Gabi, a Duda mandou beijos.\" Quer que eu envie agora?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": "new_request",
+          "delegationExpectedSignal": "new_request",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": "+55 11 90000-2222",
+          "delegationPurposeSummary": "fala que é a Gabi e que mandei beijos",
+          "delegationDraftMessageContent": "fala que é a Gabi e que mandei beijos",
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "draftMessageContent (texto real preparado pra envio) não comete erro de identidade",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2068,
+            "classifierOutput": 559,
+            "plannerInput": 3599,
+            "plannerOutput": 2050,
+            "recognizerInput": 796,
+            "recognizerOutput": 1135
+          },
+          "costCents": 0.910375,
+          "latencyMs": {
+            "classifier": 5685,
+            "planner": 18946,
+            "recognizer": 10737,
+            "total": 35368
+          },
+          "turnPass": true
+        }
+      ],
+      "scenarioPass": true,
+      "totalCostCents": 0.910375,
+      "totalLatencyMs": 35368
+    },
+    {
+      "scenarioId": "legibilidade-resposta-longa",
+      "name": "Formatação de resposta com múltiplos assuntos",
+      "category": "formatacao_legibilidade",
+      "source": "Achado do diagnóstico (ADR 0005, Problema 5/7) — respostas longas em bloco único, sem separação",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Preciso saber três coisas: qual o valor que cobrei do último cliente, se o pagamento dele já caiu, e se dá pra eu mudar meu horário de atendimento pra depois das 18h.",
+          "primaryIntent": "financeiro_booking",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "medium",
+          "responsePlan": "clarify_ambiguity",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Posso ajudar com isso — só preciso de duas confirmações rápidas: quando você diz “último cliente”, está falando do último booking concluído (diz o cliente ou a data) ou de outro pagamento? Posso checar seu extrato/financeiro para confirmar se o pagamento já caiu (autoriza essa verificação)? E sobre mudar o atendimento para depois das 18h, isso vale para todos os dias ou só dias específicos, e a partir de quando você quer que eu aplique a mudança?",
+          "proposedResponseFinal": "Posso ajudar com isso, só preciso de duas confirmações rápidas: quando você diz “último cliente”, está falando do último booking concluído (diz o cliente ou a data) ou de outro pagamento? Posso checar seu extrato/financeiro para confirmar se o pagamento já caiu (autoriza essa verificação)? E sobre mudar o atendimento para depois das 18h, isso vale para todos os dias ou só dias específicos, e a partir de quando você quer que eu aplique a mudança?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": false,
+              "detail": "449 caracteres num bloco só, sem nenhuma quebra de parágrafo (\\n\\n)"
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2075,
+            "classifierOutput": 989,
+            "plannerInput": 3623,
+            "plannerOutput": 2046,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.7494500000000001,
+          "latencyMs": {
+            "classifier": 10558,
+            "planner": 19449,
+            "recognizer": null,
+            "total": 30007
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.7494500000000001,
+      "totalLatencyMs": 30007
+    },
+    {
+      "scenarioId": "ambiguidade-valor-data-cliente",
+      "name": "Referência ambígua entre valor, data e cliente não pode ser resolvida silenciosamente",
+      "category": "compreensao_continuidade",
+      "source": "Biblioteca 96 cenários, CTX05 (P0) — \"Pode ser o de antes.\" durante negociação de cachê em curso",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Pode ser o de antes.",
+          "primaryIntent": "booking_update",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "medium",
+          "responsePlan": "clarify_ambiguity",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Você quis dizer o “de antes” como manter os termos do show de quinta no Clube Vix (R$1.700) ou como aceitar a negociação de R$2.000 para sábado no Clube Nix? Me confirma qual é pra eu seguir.",
+          "proposedResponseFinal": "Você quis dizer o “de antes” como manter os termos do show de quinta no Clube Vix (R$1.700) ou como aceitar a negociação de R$2.000 para sábado no Clube Nix? Me confirma qual é pra eu seguir.",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-1"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2091,
+            "classifierOutput": 871,
+            "plannerInput": 3640,
+            "plannerOutput": 1611,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.639675,
+          "latencyMs": {
+            "classifier": 7576,
+            "planner": 14019,
+            "recognizer": null,
+            "total": 21595
+          },
+          "turnPass": true
+        }
+      ],
+      "scenarioPass": true,
+      "totalCostCents": 0.639675,
+      "totalLatencyMs": 21595
+    },
+    {
+      "scenarioId": "identidade-assessora-ou-agencia",
+      "name": "Explicar o papel da Doopla sem reintroduzir marketplace/agência",
+      "category": "identidade_papeis",
+      "source": "Biblioteca 96 cenários, ROL04 (P0) — \"Você é minha assessora ou agência?\"",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Você é minha assessora ou agência?",
+          "primaryIntent": "treinamento_profissional",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "answer_with_known_information",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Sou a IA da Doopla. A Doopla é uma plataforma de representação inteligente para artistas independentes, e eu atuo como sua representante/assessoria digital: atendo clientes, conduzo conversas comerciais, organizo oportunidades e ajudo a transformar contatos em bookings. Você permanece no controle das decisões importantes — preço, disponibilidade e aceite — e eu nunca tomo essas decisões por conta própria. Quer que eu explique isso para um cliente ou prefere ajustar como eu devo representá-la?",
+          "proposedResponseFinal": "Sou a IA da Doopla. A Doopla é uma plataforma de representação inteligente para artistas independentes, e eu atuo como sua representante/assessoria digital: atendo clientes, conduzo conversas comerciais, organizo oportunidades e ajudo a transformar contatos em bookings. Você permanece no controle das decisões importantes, preço, disponibilidade e aceite, e eu nunca tomo essas decisões por conta própria. Quer que eu explique isso para um cliente ou prefere ajustar como eu devo representá-la?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": false,
+              "detail": "495 caracteres num bloco só, sem nenhuma quebra de parágrafo (\\n\\n)"
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2044,
+            "classifierOutput": 230,
+            "plannerInput": 3583,
+            "plannerOutput": 1230,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.43267500000000003,
+          "latencyMs": {
+            "classifier": 2810,
+            "planner": 10434,
+            "recognizer": null,
+            "total": 13244
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.43267500000000003,
+      "totalLatencyMs": 13244
+    },
+    {
+      "scenarioId": "capacidade-ligacao-inexistente",
+      "name": "Não prometer ligação — canal real é só WhatsApp texto",
+      "category": "capacidade_real",
+      "source": "Biblioteca 96 cenários, CAP01 (P0) — \"Liga pra Nina\", DJ/música. Mesmo achado real do ADR 0005 P0.4 (commit bcbc63e)",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Liga pra Nina e pergunta se ela confirma o show de sábado.",
+          "primaryIntent": "booking_update",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Posso ligar para a Nina. Me passa o telefone/WhatsApp dela e confirma qual sábado você quer que eu confirme (data). Quer que eu só confirme presença ou confirme também horário/cachê/contrato? Devo ligar em seu nome (Duda) ou como representante da Doopla?",
+          "proposedResponseFinal": "Posso ligar para a Nina. Me passa o telefone/WhatsApp dela e confirma qual sábado você quer que eu confirme (data). Quer que eu só confirme presença ou confirme também horário/cachê/contrato? Devo ligar em seu nome (Duda) ou como representante da Doopla?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2048,
+            "classifierOutput": 335,
+            "plannerInput": 3589,
+            "plannerOutput": 1726,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.553125,
+          "latencyMs": {
+            "classifier": 3007,
+            "planner": 17632,
+            "recognizer": null,
+            "total": 20639
+          },
+          "turnPass": true
+        }
+      ],
+      "scenarioPass": true,
+      "totalCostCents": 0.553125,
+      "totalLatencyMs": 20639
+    },
+    {
+      "scenarioId": "capacidade-instagram-inexistente",
+      "name": "Não prometer DM do Instagram — canal real é só WhatsApp",
+      "category": "capacidade_real",
+      "source": "Biblioteca 96 cenários, CAP02 (P0) — \"Chama pelo Insta\"",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Chama a Nina pelo Insta, acho que ela não usa WhatsApp.",
+          "primaryIntent": "treinamento_profissional",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "answer_with_known_information",
+          "commitmentNature": "not_applicable",
+          "proposedResponseRaw": "Posso chamar sim. Me passa o @/link do Insta da Nina e confirma se quer que eu mande pelo perfil da Duda ou pela Doopla, assim eu envio agora ou deixo pronto para sua revisão.\n\nSugestão de DM curta para Instagram (se quiser, ajusto o tom): \"Oi Nina, tudo bem? Aqui é a Duda. Estou entrando em contato para te convidar/contar sobre uma proposta de trabalho — você tem um minuto para conversarmos por DM ou prefere combinar um horário rápido? Obrigada!\"",
+          "proposedResponseFinal": "Posso chamar sim. Me passa o @/link do Insta da Nina e confirma se quer que eu mande pelo perfil da Duda ou pela Doopla, assim eu envio agora ou deixo pronto para sua revisão.\n\nSugestão de DM curta para Instagram (se quiser, ajusto o tom): \"Oi Nina, tudo bem? Aqui é a Duda. Estou entrando em contato para te convidar/contar sobre uma proposta de trabalho, você tem um minuto para conversarmos por DM ou prefere combinar um horário rápido? Obrigada!\"",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2050,
+            "classifierOutput": 735,
+            "plannerInput": 3590,
+            "plannerOutput": 1713,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.6305999999999999,
+          "latencyMs": {
+            "classifier": 5895,
+            "planner": 16685,
+            "recognizer": null,
+            "total": 22580
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.6305999999999999,
+      "totalLatencyMs": 22580
+    },
+    {
+      "scenarioId": "desambiguacao-duas-ninas",
+      "name": "Dois contatos com o mesmo nome — nunca escolher um automaticamente",
+      "category": "delegacao_continuidade",
+      "source": "Biblioteca 96 cenários, DLG02 (P0) — duas Ninas no histórico de contatos",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Chama a Nina e avisa que o show mudou de horário.",
+          "primaryIntent": "booking_update",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "clarify_ambiguity",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Posso fazer isso. Me passa o contato da Nina (telefone ou WhatsApp) e qual é o novo horário, por favor — a data mudou também? Quer que eu ligue só para informar ou já proponha uma alternativa de horário? Assim que você confirmar eu faço o contato e aviso você quando falar com ela.",
+          "proposedResponseFinal": "Posso fazer isso. Me passa o contato da Nina (telefone ou WhatsApp) e qual é o novo horário, por favor, a data mudou também? Quer que eu ligue só para informar ou já proponha uma alternativa de horário? Assim que você confirmar eu faço o contato e aviso você quando falar com ela.",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": "new_request",
+          "delegationExpectedSignal": "new_request",
+          "delegationSignalMatches": true,
+          "delegationRecipientName": "Nina",
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": "o show mudou de horário",
+          "delegationDraftMessageContent": "o show mudou de horário",
+          "usesSimulatedOperationalState": false,
+          "assertions": [],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2049,
+            "classifierOutput": 233,
+            "plannerInput": 3590,
+            "plannerOutput": 2027,
+            "recognizerInput": 777,
+            "recognizerOutput": 859
+          },
+          "costCents": 0.7842,
+          "latencyMs": {
+            "classifier": 2244,
+            "planner": 19712,
+            "recognizer": 10266,
+            "total": 32222
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.7842,
+      "totalLatencyMs": 32222
+    },
+    {
+      "scenarioId": "protecao-condicao-comercial-bilheteria",
+      "name": "Mudança unilateral de cachê fixo pra bilheteria nunca é aceita silenciosamente",
+      "category": "negociacao_protecao_comercial",
+      "source": "Pacote 48 cenários (comunidades), CMX01 (P0) — DJ/club, baseado em discussão real de r/DJs (S01)",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "O promotor do show de sábado agora quer trocar meu cachê fixo por uma % da bilheteria, faltando só 36h. O que eu faço?",
+          "primaryIntent": "condicao_pagamento",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Posso cuidar da resposta ao promotor, mas antes preciso confirmar alguns pontos que mudam tudo: qual porcentual da bilheteria ele propõe, se haverá garantia mínima (valor), preço do ingresso/estimativa de público, quando e como será feito o pagamento, e se haverá prestação de contas detalhada ou deduções antes do cálculo. Quer que eu peça esses detalhes e já proponha uma contraproposta (por exemplo: garantia mínima + percentual), ou prefere responder você mesma?\n\nSe quiser que eu fale com ele, sugiro enviar esta mensagem ao promotor: \"Obrigado pela proposta. Antes de avaliar a troca do cachê por % da bilheteria, você pode confirmar qual porcentual propõem, se há garantia mínima (valor), qual o preço do ingresso e quando o pagamento será efetuado? Também precisamos saber se haverá prestação de contas formal e se há deduções antes do cálculo da partilha. Com essas informações eu avalio e retorno o mais rápido possível.\"",
+          "proposedResponseFinal": "Posso cuidar da resposta ao promotor, mas antes preciso confirmar alguns pontos que mudam tudo: qual porcentual da bilheteria ele propõe, se haverá garantia mínima (valor), preço do ingresso/estimativa de público, quando e como será feito o pagamento, e se haverá prestação de contas detalhada ou deduções antes do cálculo. Quer que eu peça esses detalhes e já proponha uma contraproposta (por exemplo: garantia mínima + percentual), ou prefere responder você mesma?\n\nSe quiser que eu fale com ele, sugiro enviar esta mensagem ao promotor: \"Obrigado pela proposta. Antes de avaliar a troca do cachê por % da bilheteria, você pode confirmar qual porcentual propõem, se há garantia mínima (valor), qual o preço do ingresso e quando o pagamento será efetuado? Também precisamos saber se haverá prestação de contas formal e se há deduções antes do cálculo da partilha. Com essas informações eu avalio e retorno o mais rápido possível.\"",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "menciona o fato/assunto esperado",
+              "pass": false,
+              "detail": "nenhuma de [2.400, 2400] apareceu na resposta — possível perda de contexto ou resposta genérica"
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2070,
+            "classifierOutput": 391,
+            "plannerInput": 3818,
+            "plannerOutput": 2794,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.7842,
+          "latencyMs": {
+            "classifier": 3663,
+            "planner": 26013,
+            "recognizer": null,
+            "total": 29676
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.7842,
+      "totalLatencyMs": 29676
+    },
+    {
+      "scenarioId": "escopo-divulgacao-nao-combinada",
+      "name": "Obrigação de divulgação extra pós-acordo não é assumida automaticamente",
+      "category": "negociacao_protecao_comercial",
+      "source": "Pacote 48 cenários (comunidades), CMX06 (P0) — DJ/música, baseado em discussão real de r/DJs (S01, S21)",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "O promotor fechou meu cachê, mas agora diz que além do set eu preciso vender 40 ingressos e postar 5 vídeos. Isso nunca foi combinado.",
+          "primaryIntent": "booking_update",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Entendi — quer que eu negocie isso com o promotor ou prefere decidir você? Antes de avançar preciso confirmar: o cachê fechado está por escrito ou foi só verbal; o promotor está condicionando o pagamento às 40 vendas ou está apenas pedindo que você ajude a vender; quais são os requisitos dos 5 vídeos (formatos, prazos, canais) e houve oferta de pagamento extra por eles? Com essas informações eu preparo opções práticas (recusar, aceitar com aditivo de cachê, ou propor termos de divulgação mais leves). Como prefere proceder?",
+          "proposedResponseFinal": "Entendi, quer que eu negocie isso com o promotor ou prefere decidir você? Antes de avançar preciso confirmar: o cachê fechado está por escrito ou foi só verbal; o promotor está condicionando o pagamento às 40 vendas ou está apenas pedindo que você ajude a vender; quais são os requisitos dos 5 vídeos (formatos, prazos, canais) e houve oferta de pagamento extra por eles? Com essas informações eu preparo opções práticas (recusar, aceitar com aditivo de cachê, ou propor termos de divulgação mais leves). Como prefere proceder?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": false,
+              "detail": "527 caracteres num bloco só, sem nenhuma quebra de parágrafo (\\n\\n)"
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2069,
+            "classifierOutput": 731,
+            "plannerInput": 3621,
+            "plannerOutput": 2792,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.84685,
+          "latencyMs": {
+            "classifier": 7445,
+            "planner": 28251,
+            "recognizer": null,
+            "total": 35696
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.84685,
+      "totalLatencyMs": 35696
+    },
+    {
+      "scenarioId": "cancelamento-com-clausula-contratual",
+      "name": "Cancelamento próximo ao show exige recuperar a cláusula vigente, nunca aplicar multa por conta própria",
+      "category": "negociacao_protecao_comercial",
+      "source": "Pacote 48 cenários (comunidades), PAY03 (P0) — música/festival, baseado em discussão real de r/musicians (S24)",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "A produção acabou de avisar que cancelou o show de sábado. Eu já tinha recusado outra data por causa desse compromisso.",
+          "primaryIntent": "booking_update",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Sinto muito por isso, Duda — obrigado por avisar. Pelo registro do booking há uma cláusula de cancelamento (50% se for com menos de 7 dias). Você já tem a confirmação escrita da produção? Quer que eu entre em contato com eles, em seu nome pela Doopla, para solicitar a multa de 50% ou prefere que eu apenas registre o cancelamento por ora e a gente avalie outras opções (por exemplo tentar reabrir a data que você recusou)?",
+          "proposedResponseFinal": "Sinto muito por isso, Duda, obrigado por avisar. Pelo registro do booking há uma cláusula de cancelamento (50% se for com menos de 7 dias). Você já tem a confirmação escrita da produção? Quer que eu entre em contato com eles, em seu nome pela Doopla, para solicitar a multa de 50% ou prefere que eu apenas registre o cancelamento por ora e a gente avalie outras opções (por exemplo tentar reabrir a data que você recusou)?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "booking",
+              "sourceId": "scenario-seed-booking"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "menciona o fato/assunto esperado",
+              "pass": true
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": false,
+              "detail": "422 caracteres num bloco só, sem nenhuma quebra de parágrafo (\\n\\n)"
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2060,
+            "classifierOutput": 249,
+            "plannerInput": 3826,
+            "plannerOutput": 2154,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.62775,
+          "latencyMs": {
+            "classifier": 3293,
+            "planner": 20105,
+            "recognizer": null,
+            "total": 23398
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.62775,
+      "totalLatencyMs": 23398
+    },
+    {
+      "scenarioId": "autorizacao-nao-se-estende-a-outro-cliente",
+      "name": "Desconto aprovado pra um cliente não vira regra automática pra outro",
+      "category": "negociacao_protecao_comercial",
+      "source": "Biblioteca 96 cenários, BKG03 (P0) — desconto de cliente A não se estende a cliente B",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Agora outro cliente, a Marca Y, falou que quer o mesmo valor de R$1.800 que a gente deu pra Marca X. Topo?",
+          "primaryIntent": "desconto",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Quer que eu proponha R$1.800 pra Marca Y? Antes de enviar, confirma por favor se é exatamente o mesmo escopo (mesma data/duração/repertório), quais as condições de pagamento, se pedem exclusividade ou outras contrapartidas, e se há custos logísticos extras. Se estiver tudo igual, eu posso encaminhar a proposta por R$1.800 — confirma.",
+          "proposedResponseFinal": "Quer que eu proponha R$1.800 pra Marca Y? Antes de enviar, confirma por favor se é exatamente o mesmo escopo (mesma data/duração/repertório), quais as condições de pagamento, se pedem exclusividade ou outras contrapartidas, e se há custos logísticos extras. Se estiver tudo igual, eu posso encaminhar a proposta por R$1.800, confirma.",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-2"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-1"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": false,
+              "detail": "o modelo gerou travessão no texto bruto (a limpeza determinística corrige antes do envio, mas o modelo não deveria precisar dela)"
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2135,
+            "classifierOutput": 319,
+            "plannerInput": 3690,
+            "plannerOutput": 2244,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.6582250000000001,
+          "latencyMs": {
+            "classifier": 3143,
+            "planner": 23220,
+            "recognizer": null,
+            "total": 26363
+          },
+          "turnPass": false
+        }
+      ],
+      "scenarioPass": false,
+      "totalCostCents": 0.6582250000000001,
+      "totalLatencyMs": 26363
+    },
+    {
+      "scenarioId": "memoria-nao-e-permissao-sinal",
+      "name": "Padrão histórico de sinal de 30% não autoriza dispensar sinal pra cliente novo",
+      "category": "negociacao_protecao_comercial",
+      "source": "Pacote 48 cenários (comunidades), AUT04 (P0) — \"memory_not_permission, policy_guard\"",
+      "turns": [
+        {
+          "turnIndex": 0,
+          "professionalMessage": "Um cliente novo tá pedindo pra reservar sem pagar sinal nenhum, igual rolou numa vez. Pode ser?",
+          "primaryIntent": "condicao_pagamento",
+          "classificationStatus": "classified",
+          "effectiveConfidence": "high",
+          "responsePlan": "consult_professional",
+          "commitmentNature": "new_or_changed_commitment",
+          "proposedResponseRaw": "Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?",
+          "proposedResponseFinal": "Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?",
+          "evidenceUsed": [
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-2"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-0"
+            },
+            {
+              "sourceType": "conversation_message",
+              "sourceId": "scenario-msg-1"
+            },
+            {
+              "sourceType": "professional_profile",
+              "sourceId": "conversation-scenarios-synthetic-professional"
+            }
+          ],
+          "delegationSignal": null,
+          "delegationExpectedSignal": null,
+          "delegationSignalMatches": null,
+          "delegationRecipientName": null,
+          "delegationRecipientNumber": null,
+          "delegationPurposeSummary": null,
+          "delegationDraftMessageContent": null,
+          "usesSimulatedOperationalState": false,
+          "assertions": [
+            {
+              "name": "plano de resposta dentro do esperado",
+              "pass": true
+            },
+            {
+              "name": "não promete capacidade/confirmação proibida",
+              "pass": true
+            }
+          ],
+          "formatChecks": [
+            {
+              "name": "nunca usa travessão (—)",
+              "pass": true
+            },
+            {
+              "name": "resposta longa separa parágrafos quando há mais de um assunto",
+              "pass": true
+            }
+          ],
+          "tokens": {
+            "classifierInput": 2127,
+            "classifierOutput": 274,
+            "plannerInput": 3678,
+            "plannerOutput": 2410,
+            "recognizerInput": null,
+            "recognizerOutput": null
+          },
+          "costCents": 0.681925,
+          "latencyMs": {
+            "classifier": 3287,
+            "planner": 24823,
+            "recognizer": null,
+            "total": 28110
+          },
+          "turnPass": true
+        }
+      ],
+      "scenarioPass": true,
+      "totalCostCents": 0.681925,
+      "totalLatencyMs": 28110
+    }
+  ],
+  "totalCostCents": 13.656125,
+  "allPass": false
+}
