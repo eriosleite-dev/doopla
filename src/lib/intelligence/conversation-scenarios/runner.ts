@@ -184,6 +184,20 @@ function evaluateAssertions(
     });
   }
 
+  // Identidade/apresentação pessoal (achado da fundadora, 19/10/2026)
+  // — verificação AUXILIAR, nunca a única medida de qualidade (pedido
+  // explícito dela). Só reprova blocos claramente inchados; a leitura
+  // humana continua sendo quem avalia tom/naturalidade/adequação de
+  // verdade.
+  if (turn.maxConciseChars !== undefined && finalText !== null) {
+    const pass = finalText.length <= turn.maxConciseChars;
+    checks.push({
+      name: 'resposta de identidade concisa (verificação auxiliar, nunca prova sozinha de boa representação)',
+      pass,
+      detail: pass ? undefined : `${finalText.length} caracteres — teto auxiliar de ${turn.maxConciseChars} pra uma pergunta simples de identidade; releia o texto, pode ser uma resposta legitimamente mais longa ou um sinal real de prolixidade`,
+    });
+  }
+
   if (turn.mustCiteConversationEvidence) {
     checks.push({
       name: 'resposta ancorada em mensagem real da conversa',
