@@ -64,3 +64,58 @@ describe('buildPlannerInstructions — Playbook DJ/Música condicional (ADR 0006
     expect(instructions).toMatch(/nunca autoriza nada por si só/);
   });
 });
+
+// Achado da fundadora (19/10/2026) — o texto institucional anterior
+// nunca refletia a identidade aprovada por ela; substituído pelo texto
+// definitivo. Estes testes cobrem só o CONTEÚDO da instrução (nunca a
+// qualidade real da resposta do model — isso só a leitura humana da
+// golden-suite comprova).
+describe('buildPlannerInstructions — identidade e apresentação pessoal (achado da fundadora, 19/10/2026)', () => {
+  const instructions = buildPlannerInstructions();
+
+  it('contém o texto de referência aprovado pela fundadora, verbatim', () => {
+    expect(instructions).toMatch(
+      /Sou sua representante com IA! Converso com clientes, acompanho negociações, organizo seus bookings e cuido de todo o operacional, como um booker, mas sem a comissão :\) Você cuida da sua carreira e eu te ajudo com o resto\./
+    );
+  });
+
+  it('instrui a tratar o texto como referência de tom, nunca como resposta fixa decorada', () => {
+    expect(instructions).toMatch(/REFERÊNCIA/);
+    expect(instructions).toMatch(/nunca uma resposta fixa pra decorar/);
+    expect(instructions).toMatch(/não existe um catálogo de respostas por pergunta/);
+  });
+
+  it('cobre explicitamente as variações de pergunta de identidade pedidas', () => {
+    for (const variação of ['Quem é você?', 'o que você faz?', 'como funciona?', 'como pode me ajudar?', 'você é uma agência?', 'você é um booker?', 'o que é a Doopla?']) {
+      expect(instructions).toContain(variação);
+    }
+  });
+
+  it('instrui a nunca repetir a apresentação inteira ao reformular/esclarecer (continuidade, não reinício)', () => {
+    expect(instructions).toMatch(/Regra crítica de continuidade/);
+    expect(instructions).toMatch(/NUNCA reescreva a apresentação com frases parecidas às de antes/);
+  });
+
+  it('dá um exemplo concreto do erro (achado real, 19\\/10\\/2026) pra reforçar a regra além da instrução abstrata', () => {
+    expect(instructions).toMatch(/Errado:/);
+    expect(instructions).toMatch(/Certo:/);
+  });
+
+  it('instrui respostas curtas (1 a 3 frases) pra essas perguntas, sem listar toda funcionalidade', () => {
+    expect(instructions).toMatch(/1 a 3 frases/);
+  });
+
+  it('esclarece que "sem comissão" é sobre o cachê, nunca insinua serviço gratuito/sem assinatura', () => {
+    expect(instructions).toMatch(/comissão sobre o cachê/);
+    expect(instructions).toMatch(/nunca insinue que o serviço da Doopla em si é de graça ou sem assinatura/);
+  });
+
+  it('não proíbe terceira pessoa de forma absoluta (permite ao representar o profissional perante cliente externo, ou descrição formal pedida)', () => {
+    expect(instructions).toMatch(/não é uma proibição absoluta de terceira pessoa/);
+  });
+
+  it('reforça não prometer funcionalidade inexistente nem afirmar execução sem confirmação', () => {
+    expect(instructions).toMatch(/Nunca prometa uma funcionalidade que ainda não existe/);
+    expect(instructions).toMatch(/nem afirme ter executado algo sem confirmação real/);
+  });
+});

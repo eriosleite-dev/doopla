@@ -218,7 +218,117 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
         professionalMessage: 'Você é minha assessora ou agência?',
         expectedResponsePlanFamily: ['answer_with_known_information'],
         mustNotContain: ['marketplace', 'agência de representação', 'somos uma agência'],
+        maxConciseChars: 320,
         note: 'ADR 0006 — não reintroduzir hipótese de produto já descartada (marketplace/agência como camada central).',
+      },
+    ],
+  },
+  {
+    id: 'identidade-quem-e-voce',
+    name: 'Pergunta direta de identidade merece resposta curta, em primeira pessoa',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — correção do texto institucional, 1 das 7 variações de identidade pedidas',
+    turns: [
+      {
+        professionalMessage: 'Quem é você?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        mustNotContain: ['a doopla é uma plataforma que oferece', 'somos uma empresa'],
+        maxConciseChars: 220,
+        note: 'Pergunta mais simples das 7 variações — deveria ser a resposta mais curta de todas, 1 frase já basta. Leitura humana: primeira pessoa, nunca "a Doopla é/faz".',
+      },
+    ],
+  },
+  {
+    id: 'identidade-o-que-voce-faz',
+    name: '"O que você faz" explicado em primeira pessoa, sem listar toda funcionalidade',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — correção do texto institucional, 2 das 7 variações',
+    turns: [
+      {
+        professionalMessage: 'O que você faz?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        mustNotContain: ['a doopla é uma plataforma que oferece'],
+        maxConciseChars: 320,
+        note: 'Leitura humana: adequação ao verbo "fazer" (ação, não definição de produto) — não devia soar com a mesma resposta de "quem é você".',
+      },
+    ],
+  },
+  {
+    id: 'identidade-como-funciona',
+    name: '"Como funciona" explica o processo de forma simples, sem repetir a apresentação',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — correção do texto institucional, 3 das 7 variações',
+    turns: [
+      {
+        professionalMessage: 'Como funciona isso aqui?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        mustNotContain: ['a doopla é uma plataforma que oferece'],
+        maxConciseChars: 380,
+        note: 'Única das 7 variações que legitimamente pede uma explicação de processo (não só identidade) — teto um pouco mais generoso, mas ainda sem recitar a apresentação inteira.',
+      },
+    ],
+  },
+  {
+    id: 'identidade-como-pode-ajudar',
+    name: '"Como você pode me ajudar" adapta a resposta ao pedido, sem listar tudo',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — correção do texto institucional, 4 das 7 variações',
+    turns: [
+      {
+        professionalMessage: 'Como você pode me ajudar?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        mustNotContain: ['a doopla é uma plataforma que oferece'],
+        maxConciseChars: 320,
+        note: 'Leitura humana: deve soar como oferta de ajuda real (próximo passo possível), não um catálogo de funcionalidades.',
+      },
+    ],
+  },
+  {
+    id: 'identidade-e-um-booker',
+    name: '"Você é um booker?" preserva a comparação sem insinuar serviço gratuito',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — correção do texto institucional, 5 das 7 variações',
+    turns: [
+      {
+        professionalMessage: 'Você é tipo um booker?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        mustNotContain: ['é de graça', 'sem custo nenhum', 'não tem assinatura'],
+        maxConciseChars: 280,
+        note: 'A comparação "como um booker, mas sem a comissão" é sobre o cachê, nunca sobre o preço do serviço da Doopla — leitura humana confirma que não soa como "é grátis".',
+      },
+    ],
+  },
+  {
+    id: 'identidade-o-que-e-a-doopla-informal',
+    name: '"O que é a Doopla" em fraseado informal recebe a mesma qualidade de resposta',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — correção do texto institucional, 6 das 7 variações (fraseado informal)',
+    turns: [
+      {
+        professionalMessage: 'E aí, o que é essa Doopla afinal?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        mustNotContain: ['a doopla é uma plataforma que oferece'],
+        maxConciseChars: 280,
+        note: 'Mesma pergunta de fundo que "o que é a Doopla", só informal — não deveria receber uma resposta mais robótica por isso.',
+      },
+    ],
+  },
+  {
+    id: 'identidade-reformulacao-nao-repete-apresentacao',
+    name: 'Reformular/pedir esclarecimento não reinicia a apresentação do zero',
+    category: 'identidade_apresentacao',
+    source: 'Pedido da fundadora, 19/10/2026 — 7ª variação (reformulação) + teste multiturno de continuidade',
+    turns: [
+      {
+        professionalMessage: 'O que é a Doopla?',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+        maxConciseChars: 280,
+        note: 'Primeiro turno — resposta normal, estabelece o que já foi dito.',
+      },
+      {
+        professionalMessage: 'Não entendi direito, pode explicar de outro jeito?',
+        mustNotContain: ['sou sua representante com ia'],
+        note: 'Reformulação/esclarecimento — nunca deveria repetir a frase de abertura da apresentação inteira de novo, como se a conversa estivesse recomeçando. Leitura humana: a resposta deveria continuar a partir do que já foi dito, com outro ângulo/mais simples, não um replay do primeiro turno.',
       },
     ],
   },

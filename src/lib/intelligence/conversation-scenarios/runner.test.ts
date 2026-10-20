@@ -346,6 +346,38 @@ describe('Lote P0 96+144 — extensões genéricas do runner', () => {
     expect(capturedInput).toContain('240000');
     expect(capturedInput).toContain('cachê fixo R$2.400 já aprovado');
   });
+
+  // Identidade/apresentação pessoal (achado da fundadora, 19/10/2026)
+  // — maxConciseChars é AUXILIAR, nunca a única medida de qualidade
+  // (ela pediu explicitamente pra não depender só de caracteres).
+  it('maxConciseChars reprova um bloco claramente acima do teto, mas o turno pode falhar só por isso (nunca silencia o texto real pra leitura humana)', async () => {
+    const longText = 'Sou sua representante com IA. '.repeat(20);
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Quem é você?', maxConciseChars: 100 }] };
+    const result = await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner(longText) });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
+    expect(check?.pass).toBe(false);
+    // Reprovar o check nunca apaga o texto real — continua disponível
+    // pra leitura humana, só marcado como falho no critério objetivo.
+    expect(result.turns[0].proposedResponseFinal).not.toBeNull();
+    expect(result.turns[0].proposedResponseFinal).toContain('Sou sua representante com IA.');
+  });
+
+  it('maxConciseChars passa quando a resposta está dentro do teto', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Quem é você?', maxConciseChars: 220 }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Sou sua representante com IA! Converso com clientes e cuido do operacional pra você.'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
+    expect(check?.pass).toBe(true);
+  });
+
+  it('sem maxConciseChars no turno, nenhuma assertiva de concisão é adicionada (nunca um teto implícito pros demais 20+ cenários)', async () => {
+    const result = await runConversationScenario(SIMPLE_SCENARIO, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('Oi, tudo bem!') });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
+    expect(check).toBeUndefined();
+  });
 });
 
 describe('runConversationScenarios — teto de execução', () => {

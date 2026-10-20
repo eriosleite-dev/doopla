@@ -3,7 +3,7 @@ import type { ContextFact, ContextSection } from '../context-builder';
 import { INTENT_MANDATORY_DECISION_CATEGORIES, PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import type { ProfessionalDecisionCategory } from './decision-categories';
 import type { PlannerModelResponsePlan, ResponsePlan } from './response-plan';
-import type { CommitmentNature, EvidenceUsed, MissingInformationItem, PlannerContext, ProfessionalDecisionSignal } from './types';
+import type { CommitmentNature, EvidenceUsed, MissingInformationItem, MissingInformationReason, PlannerContext, ProfessionalDecisionSignal } from './types';
 
 // Doopla Intelligence Core v1 — Bloco 4: invariantes determinísticas
 // do Response Planner.
@@ -259,8 +259,27 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
   // valida o CONTEÚDO real do texto antes de qualquer envio — esta
   // exceção só evita perguntar de novo pra quem acabou de responder,
   // nunca pula a checagem de compromisso/approval.
-  if (plan === 'answer_with_known_information') {
-    const noEvidence = input.evidenceUsedCount === 0;
+  // Achado real (19/10/2026, validação integrada identidade+fallback,
+  // golden-suite real contra o model): este piso de decisão protegida
+  // só cobria answer_with_known_information — se o model escolhesse
+  // acknowledge/clarify_ambiguity pra um turno que JÁ é decisão
+  // comercial protegida (requiresProfessionalDecision=true, ex.:
+  // estender o valor de um cliente pra outro), nada forçava revisão
+  // (resolveRequiresProfessionalReviewBeforeSend é false pros dois).
+  // Observado em produção da golden-suite: o texto do model continuou
+  // cauteloso nos dois casos reais (sempre perguntou antes de
+  // confirmar), mas depender só do bom senso do model, sem nenhuma
+  // trava de código, é exatamente o padrão que este arquivo existe pra
+  // evitar. Estende a MESMA condição (decisionNeedsReview) pros 3
+  // planos que o model escolhe livremente aqui — nunca ao
+  // clarify_ambiguity produzido pelo piso de classificação não
+  // confiável acima (esse já é o caso mais conservador por natureza,
+  // não precisa de reforço) nem a ask_external_participant (pedir
+  // informação ao cliente é ortogonal a "precisa da decisão da
+  // profissional", forçar consult_professional ali quebraria o fluxo
+  // legítimo de coleta de dado faltante).
+  if (plan === 'answer_with_known_information' || plan === 'acknowledge' || plan === 'clarify_ambiguity') {
+    const noEvidence = plan === 'answer_with_known_information' && input.evidenceUsedCount === 0;
     const decisionNeedsReview = input.requiresProfessionalDecision && input.professionalDecisionSignal !== 'candidate_contextual';
     if (noEvidence || decisionNeedsReview) {
       plan = 'consult_professional';
@@ -277,6 +296,59 @@ export function resolveResponsePlan(input: ResponsePlanFloorInput): PlannerModel
 
 export function missingInformationFallback(field: string): MissingInformationItem[] {
   return [{ field, reason: 'unavailable', blocksProfessionalDecision: true }];
+}
+
+// Fallback do consult_professional (achado da fundadora, 19/10/2026,
+// rodada de validação pós-deploy do Bloco1+Playbook): a frase fixa
+// original mencionava "antes de eu responder ao cliente"
+// incondicionalmente, mesmo em conversas professional_self — onde não
+// existe cliente nenhum nesta troca (resolveRecipientType,
+// runtime/recipient.ts, prova que consult_professional é SEMPRE
+// endereçado ao profissional, nos dois tipos de conversa; a diferença
+// é só se há um cliente esperando resposta em segundo plano ou não).
+//
+// `missingInformation[].field` é rótulo livre do MODEL, nunca
+// validado contra nada — nunca interpolado aqui (viraria uma pergunta
+// automática não-auditada, podendo expor um dado sensível ou citar
+// algo irrelevante). Só `reason` (enum fechado) e
+// `blocksProfessionalDecision` (boolean, já existente) decidem a
+// variação de frase — ambos deterministicamente verificáveis, nunca
+// texto do model chegando ao usuário sem passar por este arquivo.
+function relevantMissingReason(missingInformation: readonly MissingInformationItem[]): MissingInformationReason | 'none' | 'mixed' {
+  const relevant = missingInformation.filter((m) => m.blocksProfessionalDecision);
+  if (relevant.length === 0) return 'none';
+  const reasons = new Set(relevant.map((m) => m.reason));
+  return reasons.size === 1 ? relevant[0].reason : 'mixed';
+}
+
+function consultProfessionalFallback(conversationType: string, missingInformation: readonly MissingInformationItem[]): string {
+  const isSelfConversation = conversationType === 'professional_self';
+  const reason = relevantMissingReason(missingInformation);
+
+  // 'unavailable': o dado EXISTE, só não foi possível acessar agora —
+  // nunca tratar como se faltasse fornecer de novo (distinção pedida
+  // explicitamente: indisponibilidade técnica ≠ falta de informação).
+  if (reason === 'unavailable') {
+    return isSelfConversation
+      ? 'Preciso checar uma informação que já deveria estar disponível, mas não consegui acessar agora. Pode me ajudar ou aguardar um instante que eu tento de novo?'
+      : 'Preciso confirmar uma informação que já existe no sistema, mas não consegui acessar agora, antes de responder ao cliente. Me dá um instante?';
+  }
+  // 'not_yet_provided': de fato falta alguém fornecer — aqui sim faz
+  // sentido pedir, mas sem nomear o campo livre do model.
+  if (reason === 'not_yet_provided') {
+    return isSelfConversation
+      ? 'Antes de eu seguir com isso, preciso de uma informação sua. Pode me passar?'
+      : 'Preciso de uma informação que só você tem antes de responder ao cliente. Pode me passar?';
+  }
+  // 'not_found'/'not_allowed'/razões mistas/nenhuma informação
+  // faltante confiável pra ESTA decisão: fallback neutro e seguro —
+  // nunca expõe o motivo técnico do bloqueio (pode ser uma restrição
+  // de autorização, informação interna) nem inventa valor/data/
+  // aprovação que não existe. Mesmo texto de antes desta correção,
+  // preservado pra não regredir o caso já coberto.
+  return isSelfConversation
+    ? 'Preciso que você confirme esse ponto antes de eu seguir.'
+    : 'Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?';
 }
 
 // Fallback determinístico — nunca um segundo model call, nunca um
@@ -309,9 +381,12 @@ export function missingInformationFallback(field: string): MissingInformationIte
 // texto pra manter nem um fallback pra cobrir — silêncio total,
 // mesmo com triggerHasUsableText=true. Texto fixo e neutro, nunca
 // assume quem é o destinatário (professional_self ou cliente).
-export function deterministicFallbackResponse(plan: ResponsePlan): string | null {
+export function deterministicFallbackResponse(
+  plan: ResponsePlan,
+  opts: { conversationType?: string; missingInformation?: readonly MissingInformationItem[] } = {}
+): string | null {
   if (plan === 'consult_professional') {
-    return 'Preciso que você confirme esse ponto antes de eu responder ao cliente, pode revisar a conversa e me dar uma posição?';
+    return consultProfessionalFallback(opts.conversationType ?? 'external_inquiry', opts.missingInformation ?? []);
   }
   if (plan === 'acknowledge') {
     return 'Combinado, obrigado por avisar!';

@@ -66,6 +66,17 @@ export type ScenarioTurn = {
     draftMessageContentMustNotContain?: string[];
   };
 
+  // Identidade/apresentação pessoal (achado da fundadora, 19/10/2026)
+  // — verificação AUXILIAR de concisão, nunca a única medida de
+  // qualidade (pedido explícito dela: "sem fazer a qualidade depender
+  // apenas de quantidade de caracteres"). Teto generoso pra perguntas
+  // simples de identidade (1 a 3 frases, não um parágrafo cobrindo
+  // toda funcionalidade) — reprova só blocos claramente inchados,
+  // nunca penaliza uma resposta de 2-3 frases um pouco mais longa.
+  // Sempre complementar à leitura humana (PASS aqui não prova boa
+  // representação, só que o texto não ficou gigante).
+  maxConciseChars?: number;
+
   note?: string;
 };
 
