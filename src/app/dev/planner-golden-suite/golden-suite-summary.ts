@@ -6,6 +6,8 @@
 // por isso esta agregação pura precisa viver fora de actions.ts pra
 // ser importável direto no client.
 
+import type { IntentClassification } from '@/lib/intelligence/classification';
+
 export type PlannerGoldenSuiteCaseResult = {
   name: string;
   category: string;
@@ -25,6 +27,26 @@ export type PlannerGoldenSuiteCaseResult = {
   plannerCachedInputTokens: number;
   plannerCostCents: number | null;
   plannerLatencyMs: number;
+  // Task "Próxima etapa da avaliação do cérebro Doopla" (20/10/2026),
+  // requisito 3: registrar a saída do Classifier junto de cada
+  // repetição — nunca só o resultado final do Planner — pra dar pra
+  // diferenciar "o Classifier variou" de "o Planner variou". `classification`
+  // é o objeto completo (serializável), reusável como `fixedClassifications`
+  // numa chamada seguinte pra isolar o Planner. `classificationSource`
+  // diz se esta repetição chamou o Classifier de verdade ou reusou uma
+  // classificação já fixada por uma repetição anterior.
+  classification: IntentClassification;
+  classificationSource: 'computed' | 'fixed';
+  // reasoning.effort/context EFETIVOS, lidos de volta da resposta da
+  // própria API (nunca só da documentação do SDK) — requisito
+  // explícito: "não quero atribuir diferenças de qualidade ou latência
+  // a uma configuração ainda não comprovada". null quando o model não
+  // devolve o campo (ou quando a classificação foi reusada/fixada,
+  // caso em que o Classifier nem foi chamado nesta repetição).
+  plannerReasoningEffort: string | null;
+  plannerReasoningContext: string | null;
+  classifierReasoningEffort: string | null;
+  classifierReasoningContext: string | null;
 };
 
 export type PlannerGoldenSuiteRunSummary = {

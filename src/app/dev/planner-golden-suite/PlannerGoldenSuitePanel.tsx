@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { checkModelAvailabilityAction, listPlannerGoldenSuiteCasesAction, runPlannerGoldenSuiteBatchAction } from './actions';
 import { buildRunSummary, type PlannerGoldenSuiteCaseResult, type PlannerGoldenSuiteRunSummary } from './golden-suite-summary';
 import { PLANNER_PROMPT_VARIANT_TERRA_V1 } from '@/lib/intelligence/planner/prompt-variants';
+import type { IntentClassification } from '@/lib/intelligence/classification';
 
 // ADR 0007 item 5 (comparação de modelos, 20/10/2026) — input de texto
 // livre em vez de dropdown fechado: nunca sabemos de antemão todo
@@ -91,16 +92,31 @@ type StabilityRunOutcome = {
   responsePlan: string;
   commitmentNature: string;
   professionalDecisionSignal: string;
+  // Requisito 3 ("Próxima etapa"): registrar a saída do Classifier em
+  // CADA repetição, nunca só o resultado final do Planner — dá pra
+  // diferenciar variação do Classifier de variação do Planner.
+  classificationPrimaryIntent: string;
+  classificationStatus: string;
+  classificationSource: 'computed' | 'fixed';
+  // reasoning.effort/context EFETIVOS, lidos de volta da própria API
+  // (requisito explícito: nunca atribuir diferença de qualidade/latência
+  // a uma configuração não comprovada).
+  plannerReasoningEffort: string | null;
+  plannerReasoningContext: string | null;
   error?: string;
 };
 
 type StabilityModelTally = {
   model: string;
   variantLabel: string | null;
+  fixedClassification: boolean;
   passCount: number;
   total: number;
   distinctResponsePlans: string[];
   distinctSignals: string[];
+  distinctClassifications: string[];
+  distinctReasoningEfforts: string[];
+  distinctReasoningContexts: string[];
   runs: StabilityRunOutcome[];
 };
 
@@ -111,8 +127,15 @@ type StabilityCaseResult = {
 };
 
 function formatTally(tally: StabilityModelTally): string {
-  const flags = tally.distinctResponsePlans.length > 1 ? ' ⚠ variou entre as repetições' : '';
+  const flags = tally.distinctResponsePlans.length > 1 ? ' ⚠ responsePlan variou' : '';
   return `${tally.passCount}/${tally.total} PASS${flags}`;
+}
+
+function formatClassifierVariance(tally: StabilityModelTally): string {
+  if (tally.fixedClassification) return 'fixada (repetição 1) — Classifier não chamado nas demais';
+  return tally.distinctClassifications.length > 1
+    ? `⚠ Classifier variou: ${tally.distinctClassifications.join(', ')}`
+    : `estável: ${tally.distinctClassifications[0] ?? '—'}`;
 }
 
 export function PlannerGoldenSuitePanel() {
@@ -136,6 +159,13 @@ export function PlannerGoldenSuitePanel() {
   const [stabilityProgress, setStabilityProgress] = useState<{ done: number; total: number } | null>(null);
   const [stabilityError, setStabilityError] = useState<string | null>(null);
   const [stabilityResults, setStabilityResults] = useState<StabilityCaseResult[] | null>(null);
+  // Requisito explícito: "se houver variação no Classifier, precisamos
+  // conseguir executar uma comparação posterior mantendo sua saída
+  // fixa, para isolar o comportamento do Planner". Sempre uma rodada
+  // SEPARADA — nunca automática: a profissional roda primeiro sem
+  // fixar (pra ver se o Classifier varia de verdade) e só então, se
+  // quiser, liga isto e roda de novo.
+  const [fixedClassification, setFixedClassification] = useState(false);
 
   async function handleCheckAvailability() {
     setAvailability({ checking: true, result: null });
@@ -198,25 +228,69 @@ export function PlannerGoldenSuitePanel() {
     caseName: string,
     times: number,
     variant: string | null,
+    useFixedClassification: boolean,
     onTick: () => void
   ): Promise<StabilityModelTally> {
     const runs: StabilityRunOutcome[] = [];
+    // Classificação fixa (requisito explícito): a repetição 1 SEMPRE
+    // chama o Classifier de verdade; se useFixedClassification estiver
+    // ligado, as repetições 2..N reusam a classificação obtida na
+    // repetição 1 (via fixedClassifications da Server Action), nunca
+    // chamando o Classifier de novo — isola 100% a variação ao Planner.
+    let frozenClassification: IntentClassification | null = null;
+
     for (let i = 0; i < times; i++) {
       let outcome: StabilityRunOutcome;
       try {
-        const res = await withTimeout(
-          runPlannerGoldenSuiteBatchAction(modelId, [caseName], variant),
+        const fixedClassifications: Record<string, IntentClassification> | null =
+          useFixedClassification && frozenClassification ? { [caseName]: frozenClassification } : null;
+        const res: { results?: PlannerGoldenSuiteCaseResult[]; error?: string } = await withTimeout(
+          runPlannerGoldenSuiteBatchAction(modelId, [caseName], variant, fixedClassifications),
           BATCH_TIMEOUT_MS,
           `${modelId} / ${caseName} (${i + 1}/${times})`
         );
         const r = res.results?.[0];
         if (res.error || !r) {
-          outcome = { pass: false, responsePlan: 'erro', commitmentNature: 'erro', professionalDecisionSignal: 'erro', error: res.error ?? 'sem resultado' };
+          outcome = {
+            pass: false,
+            responsePlan: 'erro',
+            commitmentNature: 'erro',
+            professionalDecisionSignal: 'erro',
+            classificationPrimaryIntent: 'erro',
+            classificationStatus: 'erro',
+            classificationSource: 'computed',
+            plannerReasoningEffort: null,
+            plannerReasoningContext: null,
+            error: res.error ?? 'sem resultado',
+          };
         } else {
-          outcome = { pass: r.pass, responsePlan: r.responsePlan, commitmentNature: r.commitmentNature, professionalDecisionSignal: r.professionalDecisionSignal, error: r.error };
+          outcome = {
+            pass: r.pass,
+            responsePlan: r.responsePlan,
+            commitmentNature: r.commitmentNature,
+            professionalDecisionSignal: r.professionalDecisionSignal,
+            classificationPrimaryIntent: r.classification.primaryIntent,
+            classificationStatus: r.classification.classificationStatus,
+            classificationSource: r.classificationSource,
+            plannerReasoningEffort: r.plannerReasoningEffort,
+            plannerReasoningContext: r.plannerReasoningContext,
+            error: r.error,
+          };
+          if (!frozenClassification) frozenClassification = r.classification;
         }
       } catch (err) {
-        outcome = { pass: false, responsePlan: 'erro', commitmentNature: 'erro', professionalDecisionSignal: 'erro', error: err instanceof Error ? err.message : 'erro desconhecido' };
+        outcome = {
+          pass: false,
+          responsePlan: 'erro',
+          commitmentNature: 'erro',
+          professionalDecisionSignal: 'erro',
+          classificationPrimaryIntent: 'erro',
+          classificationStatus: 'erro',
+          classificationSource: 'computed',
+          plannerReasoningEffort: null,
+          plannerReasoningContext: null,
+          error: err instanceof Error ? err.message : 'erro desconhecido',
+        };
       }
       runs.push(outcome);
       onTick();
@@ -224,10 +298,14 @@ export function PlannerGoldenSuitePanel() {
     return {
       model: modelId,
       variantLabel: variant,
+      fixedClassification: useFixedClassification,
       passCount: runs.filter((r) => r.pass).length,
       total: times,
       distinctResponsePlans: Array.from(new Set(runs.map((r) => r.responsePlan))),
       distinctSignals: Array.from(new Set(runs.map((r) => r.professionalDecisionSignal))),
+      distinctClassifications: Array.from(new Set(runs.map((r) => r.classificationPrimaryIntent))),
+      distinctReasoningEfforts: Array.from(new Set(runs.map((r) => r.plannerReasoningEffort ?? '—'))),
+      distinctReasoningContexts: Array.from(new Set(runs.map((r) => r.plannerReasoningContext ?? '—'))),
       runs,
     };
   }
@@ -255,8 +333,8 @@ export function PlannerGoldenSuitePanel() {
 
     try {
       for (const caseName of casesToRun) {
-        const baseline = await runRepeatedForModel(DEFAULT_MODEL, caseName, repeatCount, null, onTick);
-        const comparison = await runRepeatedForModel(model, caseName, repeatCount, comparisonVariant, onTick);
+        const baseline = await runRepeatedForModel(DEFAULT_MODEL, caseName, repeatCount, null, fixedClassification, onTick);
+        const comparison = await runRepeatedForModel(model, caseName, repeatCount, comparisonVariant, fixedClassification, onTick);
         out.push({ caseName, baseline, comparison });
         setStabilityResults([...out]);
       }
@@ -363,6 +441,11 @@ export function PlannerGoldenSuitePanel() {
             . Latência total do Planner: {formatMs(summary.totalLatencyMs)} — média por caso: {formatMs(summary.averageLatencyMs)}. Não inclui o Classifier
             (roda sempre no model de produção, fixo, pra não distorcer o que está sendo comparado).
           </div>
+          <div style={{ color: '#aaa' }}>
+            reasoning.effort/context EFETIVOS devolvidos pela API nesta rodada (nunca só o default documentado):{' '}
+            <code>effort={Array.from(new Set(results.map((r) => r.plannerReasoningEffort ?? '—'))).join(', ')}</code>,{' '}
+            <code>context={Array.from(new Set(results.map((r) => r.plannerReasoningContext ?? '—'))).join(', ')}</code>.
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
               <thead>
@@ -446,7 +529,7 @@ export function PlannerGoldenSuitePanel() {
             </label>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <label htmlFor="repeat-count" style={{ color: '#aaa' }}>
             repetições por model:
           </label>
@@ -460,6 +543,10 @@ export function PlannerGoldenSuitePanel() {
             onChange={(e) => setRepeatCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
             style={{ fontFamily: 'monospace', fontSize: 13, padding: '6px 8px', width: 70 }}
           />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#aaa', cursor: 'pointer' }}>
+            <input type="checkbox" checked={fixedClassification} onChange={(e) => setFixedClassification(e.target.checked)} disabled={stabilityRunning} />
+            classificação fixa (congela a saída do Classifier da 1ª repetição nas demais — isola o Planner)
+          </label>
           <button type="button" onClick={handleRunStability} disabled={stabilityRunning || stabilitySelectedCases.length === 0} style={buttonStyle}>
             {stabilityRunning
               ? stabilityProgress
@@ -467,6 +554,12 @@ export function PlannerGoldenSuitePanel() {
                 : 'preparando…'
               : 'rodar diagnóstico de estabilidade'}
           </button>
+        </div>
+        <div style={{ color: '#888', fontSize: 11 }}>
+          Rode primeiro SEM &ldquo;classificação fixa&rdquo; pra ver se o Classifier varia de verdade entre repetições. Se variar, marque a
+          opção e rode de novo — a partir daí qualquer variação do responsePlan só pode vir do Planner, nunca do Classifier (que passa a ser
+          reusado, não chamado de novo). Pra comparar a variante terra-v1 isoladamente (etapa 2 da avaliação), marque &ldquo;usar variante
+          otimizada&rdquo; acima e rode esta seção de novo — nunca ao mesmo tempo que a etapa 1 (gpt-5-mini vs. gpt-5.6-terra sem variante).
         </div>
 
         {stabilityError && (
@@ -489,20 +582,19 @@ export function PlannerGoldenSuitePanel() {
                 {stabilityResults.map((r) => (
                   <tr key={r.caseName}>
                     <td style={tdStyle}>{r.caseName}</td>
-                    <td style={tdStyle}>
-                      <div>{formatTally(r.baseline)}</div>
-                      <div style={{ color: '#888', fontSize: 11 }}>
-                        responsePlan: {r.baseline.distinctResponsePlans.join(', ')}
-                        {r.baseline.distinctSignals.length > 1 && <> · signal: {r.baseline.distinctSignals.join(', ')}</>}
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <div>{formatTally(r.comparison)}</div>
-                      <div style={{ color: '#888', fontSize: 11 }}>
-                        responsePlan: {r.comparison.distinctResponsePlans.join(', ')}
-                        {r.comparison.distinctSignals.length > 1 && <> · signal: {r.comparison.distinctSignals.join(', ')}</>}
-                      </div>
-                    </td>
+                    {[r.baseline, r.comparison].map((tally, colIdx) => (
+                      <td key={colIdx} style={tdStyle}>
+                        <div>{formatTally(tally)}</div>
+                        <div style={{ color: '#888', fontSize: 11 }}>
+                          responsePlan: {tally.distinctResponsePlans.join(', ')}
+                          {tally.distinctSignals.length > 1 && <> · signal: {tally.distinctSignals.join(', ')}</>}
+                        </div>
+                        <div style={{ color: '#888', fontSize: 11 }}>Classifier: {formatClassifierVariance(tally)}</div>
+                        <div style={{ color: '#888', fontSize: 11 }}>
+                          reasoning: effort=[{tally.distinctReasoningEfforts.join(', ')}] context=[{tally.distinctReasoningContexts.join(', ')}]
+                        </div>
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

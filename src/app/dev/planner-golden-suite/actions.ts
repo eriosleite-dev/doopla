@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation';
 import { zodTextFormat } from 'openai/helpers/zod';
 
 import { createClient } from '@/lib/supabase/server';
-import { classifyIntent } from '@/lib/intelligence/classification';
+import { classifyIntent, classifierModelOutputSchema, CLASSIFIER_MODEL } from '@/lib/intelligence/classification';
+import type { ClassifierModelCall, IntentClassification } from '@/lib/intelligence/classification';
 import type { ContextFact, ContextPackage, MessageContextItem } from '@/lib/intelligence/context-builder';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
 import { planResponse, plannerModelOutputSchema, resolveRequiresProfessionalReviewBeforeSend, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
@@ -40,7 +41,31 @@ import type { PlannerGoldenSuiteCaseResult } from './golden-suite-summary';
 // tipo de produção pra isto. Soma de TODAS as tentativas (planResponse
 // pode chamar modelCall mais de uma vez num retry), mesmo princípio já
 // usado pra tokens no resto do projeto.
-type ModelCallMetrics = { cachedInputTokens: number; latencyMs: number };
+// Mesmo valor que classify.ts usa internamente quando o Classifier
+// falha em parsear — nunca inventa uma leitura real, só documenta "não
+// sei classificar" quando o erro nesta ferramenta ocorreu antes de
+// qualquer classificação real (ex.: erro de rede no próprio Classifier).
+const ERROR_CLASSIFICATION_FALLBACK: IntentClassification = {
+  classificationStatus: 'invalid',
+  primaryIntent: 'outro',
+  secondaryIntents: [],
+  modelConfidence: 'low',
+  effectiveConfidence: 'low',
+  contextCompleteness: 'partial_unavailable',
+  relevantCompetencies: [],
+};
+
+type ModelCallMetrics = {
+  cachedInputTokens: number;
+  latencyMs: number;
+  // reasoning.effort/context EFETIVOS, lidos de volta de
+  // response.reasoning (campo documentado pelo SDK como "quando
+  // devolvido numa resposta, é o modo efetivamente usado" — nunca só
+  // o default documentado). Sobrescrito a cada tentativa real, nunca
+  // acumulado (não é uma soma, é o último valor observado).
+  reasoningEffort: string | null;
+  reasoningContext: string | null;
+};
 
 // Task "Otimização do Planner para gpt-5.6-terra" (20/10/2026) — a
 // variante nunca toca prompt.ts/plan.ts: o modelCall aqui já recebe
@@ -62,6 +87,35 @@ function buildModelCallForModel(model: string, metrics: ModelCallMetrics, prompt
     });
     metrics.latencyMs += Date.now() - startedAt;
     metrics.cachedInputTokens += response.usage?.input_tokens_details?.cached_tokens ?? 0;
+    metrics.reasoningEffort = response.reasoning?.effort ?? null;
+    metrics.reasoningContext = response.reasoning?.context ?? null;
+    return {
+      parsed: response.output_parsed ?? null,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    };
+  };
+}
+
+// Mesmo princípio de buildModelCallForModel, mas pro Classifier —
+// SEMPRE no model de produção fixo (CLASSIFIER_MODEL), nunca
+// parametrizável por esta ferramenta: a comparação é sobre o Planner,
+// o Classifier nunca deveria ser uma variável nesta avaliação (mesmo
+// comentário já existente no resto do arquivo). Única razão de injetar
+// um modelCall aqui em vez de deixar classifyIntent usar o default é
+// capturar reasoning.effort/context efetivos — requisito explícito de
+// nunca atribuir diferenças a uma configuração não comprovada.
+function buildClassifierModelCall(metrics: ModelCallMetrics): ClassifierModelCall {
+  return async ({ instructions, input }) => {
+    const client = getOpenAIClient();
+    const response = await client.responses.parse({
+      model: CLASSIFIER_MODEL,
+      instructions,
+      input,
+      text: { format: zodTextFormat(classifierModelOutputSchema, 'intent_classification') },
+    });
+    metrics.reasoningEffort = response.reasoning?.effort ?? null;
+    metrics.reasoningContext = response.reasoning?.context ?? null;
     return {
       parsed: response.output_parsed ?? null,
       inputTokens: response.usage?.input_tokens ?? null,
@@ -196,7 +250,16 @@ function buildSyntheticContext(
 export async function runPlannerGoldenSuiteBatchAction(
   model: string,
   caseNames: string[],
-  promptVariant: string | null = null
+  promptVariant: string | null = null,
+  // Requisito explícito (20/10/2026): "se houver variação no
+  // Classifier, precisamos conseguir executar uma comparação
+  // posterior mantendo sua saída fixa, para isolar o comportamento do
+  // Planner". Mapa name->classificação: quando um caso aparece aqui,
+  // esta chamada NUNCA invoca o Classifier pra ele — reusa o objeto
+  // dado direto, serializável de ida e volta entre cliente/Server
+  // Action porque IntentClassification é dado puro (zod-parsed), nunca
+  // uma instância de classe.
+  fixedClassifications: Record<string, IntentClassification> | null = null
 ): Promise<{ results?: PlannerGoldenSuiteCaseResult[]; error?: string }> {
   const { supabase, user } = await requireProfessional();
 
@@ -233,9 +296,20 @@ export async function runPlannerGoldenSuiteBatchAction(
       supabase,
     };
 
-    const metrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0 };
+    const metrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0, reasoningEffort: null, reasoningContext: null };
+    const classifierMetrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0, reasoningEffort: null, reasoningContext: null };
+    let classification: IntentClassification | null = null;
+    let classificationSource: 'computed' | 'fixed' = 'computed';
     try {
-      const { classification } = await classifyIntent(toolCtx, contextPackage);
+      const fixed = fixedClassifications?.[goldenCase.name] ?? null;
+      if (fixed) {
+        classification = fixed;
+        classificationSource = 'fixed';
+      } else {
+        const result = await classifyIntent(toolCtx, contextPackage, { modelCall: buildClassifierModelCall(classifierMetrics) });
+        classification = result.classification;
+        classificationSource = 'computed';
+      }
       const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall: buildModelCallForModel(trimmedModel, metrics, promptVariant) });
 
       let plannerCostCents: number | null = null;
@@ -288,6 +362,12 @@ export async function runPlannerGoldenSuiteBatchAction(
         plannerCachedInputTokens: metrics.cachedInputTokens,
         plannerCostCents,
         plannerLatencyMs: metrics.latencyMs,
+        classification,
+        classificationSource,
+        plannerReasoningEffort: metrics.reasoningEffort,
+        plannerReasoningContext: metrics.reasoningContext,
+        classifierReasoningEffort: classificationSource === 'computed' ? classifierMetrics.reasoningEffort : null,
+        classifierReasoningContext: classificationSource === 'computed' ? classifierMetrics.reasoningContext : null,
       });
     } catch (err) {
       // Latência/cache registrados mesmo em erro — uma tentativa real
@@ -312,6 +392,17 @@ export async function runPlannerGoldenSuiteBatchAction(
         plannerCachedInputTokens: metrics.cachedInputTokens,
         plannerCostCents: null,
         plannerLatencyMs: metrics.latencyMs,
+        // classification pode nunca ter sido obtida (erro pode ter
+        // ocorrido antes mesmo do Classifier responder) — fallback
+        // nunca inventa uma leitura real, só marca 'invalid'/'outro'
+        // (mesmo valor que classify.ts usa internamente quando o
+        // próprio Classifier falha em parsear).
+        classification: classification ?? ERROR_CLASSIFICATION_FALLBACK,
+        classificationSource,
+        plannerReasoningEffort: metrics.reasoningEffort,
+        plannerReasoningContext: metrics.reasoningContext,
+        classifierReasoningEffort: classifierMetrics.reasoningEffort,
+        classifierReasoningContext: classifierMetrics.reasoningContext,
       });
     }
   }
