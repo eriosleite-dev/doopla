@@ -1,7 +1,7 @@
 # ADR 0011 — Sistema de evolução contínua da Doopla: diagnóstico técnico (Entrega 1)
 
 - **Data:** 2026-10-20
-- **Status:** **Fase A implementada e em produção** (feedback semântico no WhatsApp — recognizer isolado + `conversation_feedback` + confirmação só pra negativo, reaproveitando os gates já existentes de ADR 0008/0009). Fases B-E seguem como diagnóstico/proposta, aguardando dado real da Fase A antes de desenhar.
+- **Status:** **Fase A implementada e em produção** (feedback semântico no WhatsApp — recognizer isolado + `conversation_feedback` + confirmação só pra negativo, reaproveitando os gates já existentes de ADR 0008/0009). Seção 11 (20/10/2026, mesmo dia): a fundadora pediu explicitamente pra o laboratório de avaliação avançar SEM esperar volume de dados reais — juiz isolado (`src/lib/intelligence/evaluation/`) + dataset de ground truth a partir de incidentes documentados já implementados e testados (offline, zero dado de produção). Fases C-E continuam aguardando a Fase B rodar de verdade.
 - **Autor:** Claude Code (Principal AI Engineer), em resposta ao pedido "CODE | Sistema de evolução contínua da inteligência Doopla"
 - **Relacionado:** ADR 0007 (causas P0 da inteligência conversacional, já em correção), ADR 0010 (incidente real que se encaixa neste sistema como caso de teste permanente).
 
@@ -97,3 +97,36 @@ Começar pela Fase A (feedback no WhatsApp) isolada — é a peça mais barata, 
 ## Restrições respeitadas
 
 Nenhum código escrito. Nenhum enum, tool, regra comercial, modelo ou política de aprovação alterados. Nenhum deploy. Este documento é só o diagnóstico pedido — aguardando sua aprovação pra iniciar a Fase A.
+
+---
+
+## 11. Laboratório de avaliação offline — o que avança SEM esperar dados reais (20/10/2026)
+
+Você pediu explicitamente pra separar o que depende de volume acumulado em produção do que pode ser desenhado e validado agora, usando golden-suite existente, conversas de teste anteriores, incidentes documentados e cenários sintéticos — sem esperar a Fase A acumular dado real, e sem um painel complexo.
+
+### 11.1 O que é genuinamente dependente de dado real (Fase C-E, continuam esperando)
+
+- **Calibrar o juiz contra o volume real de produção** — saber se as categorias de falha (11.3) cobrem bem o que REALMENTE acontece em conversas reais só se descobre vendo conversas reais sinalizadas (Fase A, `conversation_feedback`, já em produção coletando).
+- **Agrupamento/clusterização de falhas recorrentes** (sua seção 5 original) — "recorrente" exige um volume mínimo pra enxergar padrão; zero sentido em cima de 5 fixtures sintéticas.
+- **Ciclo automático de melhoria** (detectar → agrupar → propor → testar → aprovar, Fase D) — depende das duas peças acima já existirem rodando de verdade.
+- **Painel de qualidade** — explicitamente não construído agora, a seu pedido.
+
+### 11.2 O que NÃO depende de dado real — já implementado, testado, zero deploy/schema/flag
+
+**Juiz isolado de avaliação** (`src/lib/intelligence/evaluation/`, novo): mesma disciplina de todo recognizer do projeto — model call pequeno e dedicado, schema fechado, nunca decide ação nenhuma por si só (só produz um veredito pra revisão humana, "veredito nunca é autorização" espelhando "memória nunca é autorização"). `evaluateConversationOutcome(transcript, finalAiAction)` devolve `verdict: 'ok'|'failure'|'inconclusive'` + categoria de falha quando aplicável.
+
+Diferença de desenho importante em relação aos outros recognizers: um recognizer de AÇÃO falha seguro fazendo nada; um JUIZ falhar seguro fazendo nada seria classificar tudo como `'ok'` por default — o resultado mais perigoso possível (esconderia falhas reais atrás de "sem problema"). Por isso existe um terceiro veredito, `'inconclusive'`, que é o fail-closed real daqui: falha total do model, parse inválido, ou um `'failure'` sem categoria válida caem SEMPRE em `inconclusive`, nunca em `'ok'`.
+
+**Taxonomia de 7 categorias de falha** (`types.ts`) — nunca inventada do zero: cada uma mapeia direto pra um incidente real já documentado (`context_loss` = ADR 0010, `queue_or_delivery_failure` = ADR 0008, `wrong_intent_or_plan`/`identity_or_tone_mismatch` = ADR 0007, `policy_violation`, `unanswered`, `other`).
+
+**Dataset de ground truth** (`incident-fixtures.ts`) — 5 fixtures com o texto REAL reproduzido dos próprios incidentes (a mensagem exata da Gabi/72h, a correção explícita da fundadora, o caso de regressão que precisa continuar funcionando, o loop do WhatsApp, a assinatura errada como "Gabi") + o veredito que a investigação real já confirmou. Isto é literalmente "validação offline usando incidentes documentados", como você pediu.
+
+**11 testes** (`judge.test.ts`) comprovam a MECÂNICA do juiz (parsing, guardas estruturais, fail-closed) contra as 5 fixtures — com `modelCall` injetado simulando que o model respondeu certo, porque este sandbox não tem acesso real à OpenAI pra rodar a chamada de verdade.
+
+### 11.3 O que falta pra "validação offline" ficar completa — precisa de você
+
+O que eu NÃO posso fazer sozinho aqui: rodar o juiz de verdade (modelo real da OpenAI) contra as 5 fixtures e ver se ele CHEGA ao veredito certo sozinho — isso exige acesso real à API, que este sandbox não tem. Minha recomendação, sem construir o painel que você pediu pra não fazer agora: um comando/script simples (não uma página) que você roda localmente ou que eu rodo numa sessão com acesso real, imprime cada fixture + veredito do model + se bateu ou não com o ground truth — texto puro, sem UI. Me diz se quer isso como próximo passo, ou se prefere já estender o golden-suite dos cenários conversacionais (`conversation-scenarios/`) pra também alimentar este juiz (reaproveitando os 26 cenários que já existem como fixtures adicionais, em vez de só os 5 incidentes).
+
+### Restrições respeitadas (seção 11)
+
+Nenhum schema novo, nenhuma migration, nenhuma flag nova, nenhum deploy que mude comportamento de produção — módulo isolado, só código + testes, nada wired a `pipeline.ts` nem a dado real.
