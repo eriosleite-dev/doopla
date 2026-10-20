@@ -107,6 +107,23 @@ describe('buildPlannerInstructions — conhecimento institucional da Doopla (ADR
 // definitivo. Estes testes cobrem só o CONTEÚDO da instrução (nunca a
 // qualidade real da resposta do model — isso só a leitura humana da
 // golden-suite comprova).
+// ADR 0007/0009 (20/10/2026, seção 3) — causa raiz P1 confirmada:
+// secondaryIntents já chegava no input JSON do model, mas nenhuma
+// instrução explícita dizia pra endereçar cada assunto — nunca forçado
+// estruturalmente, só dependia de iniciativa do model.
+describe('buildPlannerInstructions — cobertura de múltiplos assuntos (ADR 0007/0009, 20/10/2026)', () => {
+  it('instrui explicitamente a endereçar TODOS os assuntos via secondaryIntents, sempre presente', () => {
+    const instructions = buildPlannerInstructions();
+    expect(instructions).toMatch(/secondaryIntents/);
+    expect(instructions).toMatch(/endereçar TODOS os assuntos/);
+  });
+
+  it('instrui a nunca deixar um assunto sem resposta silenciosamente', () => {
+    const instructions = buildPlannerInstructions();
+    expect(instructions).toMatch(/nunca deixe a pessoa sem saber que parte da mensagem ainda não foi respondida/);
+  });
+});
+
 describe('buildPlannerInstructions — identidade e apresentação pessoal (achado da fundadora, 19/10/2026)', () => {
   const instructions = buildPlannerInstructions();
 
