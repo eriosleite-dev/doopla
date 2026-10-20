@@ -45,6 +45,7 @@ import {
 } from './pending-delegated-contacts';
 import { persistAiMessage } from './professional-message';
 import { resolveProfessionalDisplayName } from './professional-identity';
+import { fetchRecentConversationMessages } from './recent-conversation-messages';
 import { sendProfessionalSelfReplyViaWhatsapp } from './professional-whatsapp-reply';
 import { createWhatsappOutreachBlock, findWhatsappOutreachAuthorizationClaim, isWhatsappOutreachBlocked, createWhatsappOutreachAuthorizationClaim } from './whatsapp-outreach-authorization';
 import { DOOPLA_ORCAMENTO_LINK_BASE } from '../channels/whatsapp/intake-routing';
@@ -159,9 +160,25 @@ export async function runDelegatedContactRequestFlow(
   }
 
   const recent = await getMostRecentPendingDelegatedContact(supabase, { professionalId: params.professionalId });
+  // ADR 0010 (20/10/2026) — correção de causa raiz confirmada: sem
+  // isto, o recognizer não tinha como saber que a mensagem atual (ex.:
+  // "?") pode ser sobre uma pergunta sua recente sem resposta, nunca
+  // sobre uma delegação antiga que `recent` pode trazer de semanas
+  // atrás (get_most_recent_pending_delegated_contact nunca filtra por
+  // recência, de propósito). Best-effort: uma falha aqui NUNCA derruba
+  // o reconhecimento — cai pra lista vazia, mesmo comportamento de
+  // antes desta correção.
+  let recentMessages: Array<{ authorType: string; text: string | null }> = [];
+  try {
+    recentMessages = await fetchRecentConversationMessages(supabase, { conversationId: params.conversationId, excludeMessageId: params.triggerMessageId });
+  } catch {
+    // Engolido de propósito — nunca bloqueia o recognizer por uma
+    // falha nesta consulta auxiliar.
+  }
   const recognized = await recognizeDelegatedContactRequest(params.messageText, buildActiveSummary(recent), {
     modelCall: opts.recognizerModelCall,
     maxRetries: opts.recognizerMaxRetries,
+    recentMessages,
   });
   // Head of AI (15/10/2026) — achado de auditoria: AI_FEATURE_DELEGATED_CONTACT_RECOGNITION
   // já existia em config.ts desde a Etapa 2.1, mas nunca foi conectada

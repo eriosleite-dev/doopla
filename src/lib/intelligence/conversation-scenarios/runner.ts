@@ -258,6 +258,11 @@ export async function runConversationScenario(scenario: ConversationScenario, de
 
   for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
     const turn = scenario.turns[turnIndex];
+    // ADR 0010 (20/10/2026) — capturado ANTES do push da mensagem-
+    // gatilho deste turno, mesma convenção de recentMessages real
+    // (fetchRecentConversationMessages, runtime/recent-conversation-messages.ts):
+    // só o que já existia na conversa antes desta mensagem.
+    const priorItemsForDelegation = [...items];
     items.push(toMessageItem('professional', turn.professionalMessage, items.length));
 
     const conversation = buildSyntheticConversation();
@@ -296,11 +301,10 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     let delegationDraftMessageContent: string | null = null;
     if (turn.delegation) {
       const recognizerStart = Date.now();
-      const result = await recognizeDelegatedContactRequest(
-        turn.professionalMessage,
-        turn.delegation.activeRequest,
-        deps.recognizerModelCall ? { modelCall: deps.recognizerModelCall } : {}
-      );
+      const result = await recognizeDelegatedContactRequest(turn.professionalMessage, turn.delegation.activeRequest, {
+        ...(deps.recognizerModelCall ? { modelCall: deps.recognizerModelCall } : {}),
+        recentMessages: priorItemsForDelegation.map((m) => ({ authorType: m.authorType, text: m.text })),
+      });
       recognizerLatencyMs = Date.now() - recognizerStart;
       delegationSignal = result.signal;
       recognizerInputTokens = result.inputTokens;

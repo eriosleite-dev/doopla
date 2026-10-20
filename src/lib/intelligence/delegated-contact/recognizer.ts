@@ -17,11 +17,22 @@ import { DELEGATED_CONTACT_SIGNALS, type ActiveDelegatedContactSummary, type Del
 // inventa uma ação de delegação; pior caso é "não reconheceu o pedido
 // desta vez", nunca "executou algo sem pedido real".
 //
-// Input DELIBERADAMENTE mínimo: só o texto da mensagem-gatilho + um
+// Input deliberadamente pequeno: o texto da mensagem-gatilho + um
 // resumo do pedido ativo/recente desta MESMA profissional (nunca
-// histórico de conversa, nunca contexto comercial, nunca dado de outra
-// profissional) — mesmo princípio de provenance estrita de
-// detectInboundProposal.
+// contexto comercial, nunca dado de outra profissional) — mesmo
+// princípio de provenance estrita de detectInboundProposal.
+//
+// ADR 0010 (20/10/2026) — correção de causa raiz confirmada num
+// incidente real: recentMessages (últimas poucas mensagens da
+// conversa ATUAL, só author_type+texto) foi adicionado porque sem
+// isso o recognizer não tinha como distinguir "?" perguntando sobre
+// uma delegação antiga de "?" cobrando uma resposta a uma pergunta
+// institucional recente sem resposta — activeRequest sozinho pode vir
+// de SEMANAS atrás (get_most_recent_pending_delegated_contact nunca
+// filtra por recência, de propósito, pra "enviou?" continuar
+// funcionando dias depois), então sem o histórico IMEDIATO o
+// recognizer não tinha nenhum jeito de saber se o pedido antigo era
+// realmente o assunto da mensagem atual.
 
 const modelOutputSchema = z.object({
   signal: z.enum(DELEGATED_CONTACT_SIGNALS),
@@ -70,7 +81,7 @@ const INSTRUCTIONS = [
   'signal="confirms_pending": só use quando activeRequest.pendingConfirmationText não é null (existe uma pergunta de confirmação pendente) E esta mensagem claramente responde "sim"/"confirmo"/"pode mandar"/"manda"/equivalente a ESSA pergunta especificamente.',
   'signal="rejects_pending": resposta negativa clara ("não", "não quero", "deixa assim", "não manda não") a uma pergunta de confirmação pendente.',
   'signal="cancels_pending": a profissional pede explicitamente pra cancelar/desistir de um pedido já em andamento (independente do estado), nunca confundir com rejects_pending (que é especificamente responder "não" à pergunta de confirmação).',
-  'signal="status_inquiry": a profissional está perguntando sobre o PROGRESSO/RESULTADO de um pedido que já existe (ex.: "enviou?", "já mandou?", "ela respondeu?", "e aí, foi?", "cadê a resposta?") — nunca confundir com confirms_pending (que é responder sim/não a uma pergunta ainda aberta). Só use quando activeRequest não é null.',
+  'signal="status_inquiry": a profissional está perguntando sobre o PROGRESSO/RESULTADO de um pedido que já existe (ex.: "enviou?", "já mandou?", "ela respondeu?", "e aí, foi?", "cadê a resposta?") — nunca confundir com confirms_pending (que é responder sim/não a uma pergunta ainda aberta). Só use quando activeRequest não é null E (a mensagem ou o histórico recente — recentMessages — mencionam de algum jeito o pedido/destinatário de activeRequest) OU (não há, em recentMessages, nenhuma pergunta sua recente sem resposta que a mensagem atual explique melhor). Achado real (20/10/2026): um "?" isolado, sozinho, NUNCA é o bastante pra status_inquiry quando recentMessages mostra uma pergunta sua recente (ex.: institucional, sobre a própria Doopla) que ainda não foi respondida — nesse caso a leitura mais provável é que "?" está cobrando ESSA pergunta, não o pedido de delegação antigo, mesmo que activeRequest exista. Na dúvida real entre as duas leituras, prefira no_delegation_signal — nunca escolha status_inquiry só porque activeRequest não é null.',
   'Na dúvida genuína entre no_delegation_signal e qualquer outro signal, prefira no_delegation_signal — é sempre mais seguro deixar a mensagem seguir pelo fluxo normal do que reconhecer uma ação de delegação que não foi claramente pedida.',
   'Nunca invente recipientNumber, purposeSummary ou draftMessageContent que não estejam literalmente na mensagem — campo ausente é null, nunca um valor inferido ou parafraseado.',
 ].join('\n');
@@ -121,11 +132,19 @@ function draftMessageImpersonatesRecipient(draftMessageContent: string, recipien
 export async function recognizeDelegatedContactRequest(
   messageText: string,
   activeRequest: ActiveDelegatedContactSummary | null,
-  opts: { modelCall?: DelegatedContactRecognizerModelCall; maxRetries?: number } = {}
+  opts: {
+    modelCall?: DelegatedContactRecognizerModelCall;
+    maxRetries?: number;
+    // ADR 0010 (20/10/2026) — últimas poucas mensagens da conversa
+    // ATUAL (mais antiga primeiro), só author_type+texto. Opcional de
+    // propósito: nunca obrigatório, nunca derruba quem chama sem isso
+    // (compatibilidade com qualquer chamador que ainda não o monte).
+    recentMessages?: Array<{ authorType: string; text: string | null }>;
+  } = {}
 ): Promise<RecognizeDelegatedContactRequestResult> {
   const modelCall = opts.modelCall ?? defaultModelCall;
   const maxRetries = opts.maxRetries ?? DELEGATED_CONTACT_RECOGNIZER_MAX_RETRIES;
-  const input = JSON.stringify({ messageText, activeRequest });
+  const input = JSON.stringify({ messageText, activeRequest, recentMessages: opts.recentMessages ?? [] });
 
   let parsed: DelegatedContactRecognizerModelOutput | null = null;
   let inputTokens: number | null = null;

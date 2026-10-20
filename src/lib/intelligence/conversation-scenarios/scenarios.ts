@@ -534,4 +534,41 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       },
     ],
   },
+  {
+    id: 'delegacao-antiga-nunca-invade-pergunta-atual',
+    name: '"?" isolado após pergunta sem resposta nunca é lido como status de delegação antiga',
+    category: 'continuidade_prioridade_contexto',
+    source: 'Incidente real 20/10/2026, 12h45-14h28 (ADR 0010) — "O que a Doopla faz?" sem resposta, depois "?" recebeu "Gabi nunca respondeu ao contato inicial e o prazo de 72h passou" (describeStatus, status_inquiry mal reconhecido a partir de uma delegação de semanas atrás).',
+    seedHistory: [{ authorType: 'professional', text: 'O que a Doopla faz?' }],
+    turns: [
+      {
+        professionalMessage: '?',
+        delegation: {
+          activeRequest: { status: 'expired_no_reply', literalContentGate: 'not_applicable', recipientName: 'Gabi', recipientNumberKnown: true, pendingConfirmationText: null },
+          expectedSignal: 'no_delegation_signal',
+        },
+        note: 'Causa raiz confirmada no ADR 0010: get_most_recent_pending_delegated_contact nunca filtra por recência (de propósito, "enviou?" precisa funcionar dias depois) — sem ver o histórico recente, o recognizer não tinha como saber que "?" cobra a pergunta institucional de cima, nunca o pedido de contato com a Gabi. recentMessages (passado pelo harness desde esta correção) precisa fazer o recognizer preferir no_delegation_signal aqui.',
+      },
+    ],
+  },
+  {
+    id: 'status-inquiry-recente-continua-funcionando',
+    name: '"?" isolado continua reconhecido como status_inquiry quando é mesmo sobre um pedido recente (regressão)',
+    category: 'continuidade_prioridade_contexto',
+    source: 'ADR 0010 — regressão: a correção de recentMessages nunca pode quebrar "enviou?"/"?" funcionando quando o pedido de delegação É o assunto recente da conversa.',
+    seedHistory: [
+      { authorType: 'professional', text: 'Manda uma mensagem pra Gabi perguntando se ela confirma o show de sábado.' },
+      { authorType: 'ai', text: 'Coloquei o contato inicial com Gabi na fila de envio. Como ela nunca falou com a Doopla, o primeiro contato é uma mensagem de apresentação padrão. Vou te avisar quando ela responder.' },
+    ],
+    turns: [
+      {
+        professionalMessage: '?',
+        delegation: {
+          activeRequest: { status: 'executed', literalContentGate: 'awaiting_recipient_reply', recipientName: 'Gabi', recipientNumberKnown: true, pendingConfirmationText: null },
+          expectedSignal: 'status_inquiry',
+        },
+        note: 'Regressão: quando o histórico recente da própria conversa já é sobre a Gabi, "?" continua sendo reconhecido como status_inquiry normalmente — a correção do ADR 0010 nunca deve quebrar este caso, só o caso onde activeRequest é de um assunto não relacionado à conversa recente.',
+      },
+    ],
+  },
 ];

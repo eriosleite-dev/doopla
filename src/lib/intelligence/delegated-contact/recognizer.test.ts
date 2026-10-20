@@ -178,4 +178,44 @@ describe('recognizeDelegatedContactRequest', () => {
     });
     expect(reject.signal).toBe('rejects_pending');
   });
+
+  // ADR 0010 (20/10/2026) — correção de causa raiz do incidente real
+  // "Gabi"/72h: recentMessages precisa chegar de verdade no input do
+  // model, pra ele distinguir "?" sobre uma delegação antiga de "?"
+  // cobrando uma pergunta recente sem resposta.
+  describe('recentMessages (ADR 0010, 20/10/2026)', () => {
+    it('chega no input do model quando passado', async () => {
+      let capturedInput = '';
+      await recognizeDelegatedContactRequest(
+        '?',
+        { status: 'expired_no_reply', literalContentGate: 'not_applicable', recipientName: 'Gabi', recipientNumberKnown: true, pendingConfirmationText: null },
+        {
+          recentMessages: [
+            { authorType: 'professional', text: 'O que a Doopla faz?' },
+            { authorType: 'ai', text: null },
+          ],
+          modelCall: async ({ input }) => {
+            capturedInput = input;
+            return { parsed: { signal: 'no_delegation_signal', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null }, inputTokens: 1, outputTokens: 1 };
+          },
+        }
+      );
+      const parsedInput = JSON.parse(capturedInput);
+      expect(parsedInput.recentMessages).toEqual([
+        { authorType: 'professional', text: 'O que a Doopla faz?' },
+        { authorType: 'ai', text: null },
+      ]);
+    });
+
+    it('nunca obrigatório — omitido vira array vazio no input, nunca quebra o chamador', async () => {
+      let capturedInput = '';
+      await recognizeDelegatedContactRequest('?', null, {
+        modelCall: async ({ input }) => {
+          capturedInput = input;
+          return { parsed: { signal: 'no_delegation_signal', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null }, inputTokens: 1, outputTokens: 1 };
+        },
+      });
+      expect(JSON.parse(capturedInput).recentMessages).toEqual([]);
+    });
+  });
 });
