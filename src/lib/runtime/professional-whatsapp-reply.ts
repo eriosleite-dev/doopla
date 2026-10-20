@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { readAppSettingFlag } from './app-settings';
 import { sendWhatsappTextMessage } from '../channels/whatsapp/client';
 import { isLatestInboundProfessionalMessage } from './conversation-freshness';
+import { isReplyLoopDetected } from './reply-loop-detection';
 import { claimProfessionalSelfWhatsappSend } from './professional-self-whatsapp-sends';
 import { isProfessionalSelfReplyPaused } from './professional-self-reply-pause';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '../supabase/env';
@@ -84,6 +85,9 @@ export const PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG = 'professional_self_auto
 // NOVO que triggerMessageId nesta conversation enquanto o ciclo
 // rodava, a resposta já está obsoleta — o envio é descartado (nunca a
 // mensagem de IA em si, que já está persistida no painel).
+//
+// ADR 0009 (20/10/2026) — Mecanismo C do incidente P0 (ADR 0008):
+// detecção de loop (rede de segurança adicional, ver reply-loop-detection.ts).
 export async function sendProfessionalSelfReplyViaWhatsapp(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
@@ -127,6 +131,24 @@ export async function sendProfessionalSelfReplyViaWhatsapp(
         });
         return;
       }
+    }
+
+    // ADR 0009 (20/10/2026) — Mecanismo C do incidente P0 (ADR 0008):
+    // rede de segurança adicional, nunca a correção da causa raiz
+    // (essa é A/B acima). Suprime só quando as últimas 3 respostas de
+    // IA nesta conversation já são quase-idênticas à que está pra
+    // sair — nunca bloqueia uma resposta parecida só uma vez. A
+    // mensagem de IA já está persistida no painel; só o envio físico é
+    // suprimido, nunca uma mensagem automática de "não consegui
+    // resolver" é mandada no lugar (decisão de produto: alertar via
+    // log, nunca decidir um novo texto sem revisão).
+    if (await isReplyLoopDetected(supabase, { conversationId: params.conversationId, aiMessageId: params.aiMessageId, body: params.body })) {
+      console.error('[professional-self] envio suprimido — padrão de repetição detectado (Mecanismo C, ADR 0009)', {
+        professionalId: params.professionalId,
+        conversationId: params.conversationId,
+        aiMessageId: params.aiMessageId,
+      });
+      return;
     }
 
     const claimed = await claimProfessionalSelfWhatsappSend(supabase, { aiMessageId: params.aiMessageId });

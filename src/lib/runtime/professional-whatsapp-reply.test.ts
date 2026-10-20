@@ -14,6 +14,7 @@ const readAppSettingFlag = vi.fn();
 const claimProfessionalSelfWhatsappSend = vi.fn();
 const isLatestInboundProfessionalMessage = vi.fn();
 const isProfessionalSelfReplyPaused = vi.fn();
+const isReplyLoopDetected = vi.fn();
 
 vi.mock('../whatsapp-identity/data', () => ({
   getWhatsappIdentitySnapshot: (...args: unknown[]) => getWhatsappIdentitySnapshot(...args),
@@ -44,6 +45,10 @@ vi.mock('./professional-self-reply-pause', () => ({
   isProfessionalSelfReplyPaused: (...args: unknown[]) => isProfessionalSelfReplyPaused(...args),
 }));
 
+vi.mock('./reply-loop-detection', () => ({
+  isReplyLoopDetected: (...args: unknown[]) => isReplyLoopDetected(...args),
+}));
+
 const fakeSupabase = {} as never;
 
 describe('sendProfessionalSelfReplyViaWhatsapp', () => {
@@ -54,14 +59,16 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     claimProfessionalSelfWhatsappSend.mockReset();
     isLatestInboundProfessionalMessage.mockReset();
     isProfessionalSelfReplyPaused.mockReset();
+    isReplyLoopDetected.mockReset();
     // Default: contenção DESLIGADA (comportamento de hoje), idempotência
-    // SEMPRE concede (primeira vez), atualidade SEMPRE confirma e
-    // conversa NUNCA pausada — só os testes dos próprios gates
-    // (ADR 0008/0009) sobrescrevem isto.
+    // SEMPRE concede (primeira vez), atualidade SEMPRE confirma, conversa
+    // NUNCA pausada e NUNCA loop detectado — só os testes dos próprios
+    // gates (ADR 0008/0009) sobrescrevem isto.
     readAppSettingFlag.mockResolvedValue(true);
     claimProfessionalSelfWhatsappSend.mockResolvedValue(true);
     isLatestInboundProfessionalMessage.mockResolvedValue(true);
     isProfessionalSelfReplyPaused.mockResolvedValue(false);
+    isReplyLoopDetected.mockResolvedValue(false);
   });
 
   it('envia pro número verificado quando status é verified', async () => {
@@ -290,6 +297,46 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
       await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
       expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ADR 0009 (20/10/2026) — Mecanismo C do incidente P0 (ADR 0008):
+  // detecção de loop, checada antes da idempotência.
+  describe('detecção de loop (ADR 0009 — reply-loop-detection)', () => {
+    it('NUNCA envia quando um padrão de repetição é detectado', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      isReplyLoopDetected.mockResolvedValue(true);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
+
+      expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+      expect(claimProfessionalSelfWhatsappSend).not.toHaveBeenCalled();
+      expect(getWhatsappIdentitySnapshot).not.toHaveBeenCalled();
+    });
+
+    it('sem loop detectado, envia normalmente (regressão)', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      isReplyLoopDetected.mockResolvedValue(false);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+      sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
+
+      expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
+      expect(isReplyLoopDetected).toHaveBeenCalledWith(fakeSupabase, { conversationId: 'conv-1', aiMessageId: 'msg-1', body: 'oi!' });
     });
   });
 
