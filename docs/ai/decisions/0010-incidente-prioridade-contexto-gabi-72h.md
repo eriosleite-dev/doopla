@@ -1,7 +1,7 @@
 # ADR 0010 — Incidente real 20/10: delegação antiga ("Gabi", 72h) invade pergunta atual sobre a Doopla
 
 - **Data:** 2026-10-20
-- **Status:** **Diagnóstico entregue. Nenhum código escrito, nenhuma mudança em produção.** Aguardando aprovação explícita antes de qualquer implementação, exatamente como pedido.
+- **Status:** **Resolvido.** Correção implementada e em produção (seção 4): recentMessages conectado ao recognizer de delegação, instrução de status_inquiry exige continuidade real, 2 cenários novos na golden-suite (correção + regressão). A causa das 12h45 (seção 2) continua não confirmada — depende de log real.
 - **Autor:** Claude Code (Principal AI Engineer), em resposta ao incidente relatado pela fundadora (conversa real, professional_self, 12h45–14h28, 20/10/2026)
 - **Relacionado:** ADR 0007 (auditoria de inteligência conversacional), ADR 0008/0009 (incidente de loop de mensagens — mecanismo diferente, mas mesma família de causa: estado operacional antigo/assíncrono vazando pra dentro da conversa sem conexão com a intenção atual).
 

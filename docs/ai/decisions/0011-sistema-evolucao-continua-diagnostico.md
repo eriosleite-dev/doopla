@@ -1,7 +1,7 @@
 # ADR 0011 — Sistema de evolução contínua da Doopla: diagnóstico técnico (Entrega 1)
 
 - **Data:** 2026-10-20
-- **Status:** **Diagnóstico entregue, conforme pedido explicitamente ("antes de implementar, quero um diagnóstico técnico"). Nenhum código escrito.** Aguardando sua aprovação pra iniciar qualquer Fase.
+- **Status:** **Fase A implementada e em produção** (feedback semântico no WhatsApp — recognizer isolado + `conversation_feedback` + confirmação só pra negativo, reaproveitando os gates já existentes de ADR 0008/0009). Fases B-E seguem como diagnóstico/proposta, aguardando dado real da Fase A antes de desenhar.
 - **Autor:** Claude Code (Principal AI Engineer), em resposta ao pedido "CODE | Sistema de evolução contínua da inteligência Doopla"
 - **Relacionado:** ADR 0007 (causas P0 da inteligência conversacional, já em correção), ADR 0010 (incidente real que se encaixa neste sistema como caso de teste permanente).
 
