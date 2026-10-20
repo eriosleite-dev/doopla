@@ -73,9 +73,9 @@ describe('buildPlannerInstructions — Playbook DJ/Música condicional (ADR 0006
 describe('buildPlannerInstructions — identidade e apresentação pessoal (achado da fundadora, 19/10/2026)', () => {
   const instructions = buildPlannerInstructions();
 
-  it('contém o texto de referência aprovado pela fundadora, verbatim', () => {
+  it('contém o texto de referência aprovado pela fundadora, verbatim (refinado 20/10/2026, universal, sem booker/cachê)', () => {
     expect(instructions).toMatch(
-      /Sou sua representante com IA! Converso com clientes, acompanho negociações, organizo seus bookings e cuido de todo o operacional, como um booker, mas sem a comissão :\) Você cuida da sua carreira e eu te ajudo com o resto\./
+      /Oi! Sou sua representante com IA! Converso com seus clientes, ajudo nas negociações e organizo seus trabalhos, cuidando da parte operacional para você focar na sua carreira\. Tudo isso sem cobrar comissão :\)/
     );
   });
 
@@ -101,13 +101,23 @@ describe('buildPlannerInstructions — identidade e apresentação pessoal (acha
     expect(instructions).toMatch(/Certo:/);
   });
 
-  it('instrui respostas curtas (1 a 3 frases) pra essas perguntas, sem listar toda funcionalidade', () => {
-    expect(instructions).toMatch(/1 a 3 frases/);
+  it('instrui respostas curtas (2 a 4 frases, mais estrito que a versão anterior) pra essas perguntas, sem listar toda funcionalidade', () => {
+    expect(instructions).toMatch(/2 a 4 frases/);
   });
 
-  it('esclarece que "sem comissão" é sobre o cachê, nunca insinua serviço gratuito/sem assinatura', () => {
-    expect(instructions).toMatch(/comissão sobre o cachê/);
-    expect(instructions).toMatch(/nunca insinue que o serviço da Doopla em si é de graça ou sem assinatura/);
+  it('instrui vocabulário universal por padrão, nunca nichado de DJ/música (achado real de WhatsApp, 20/10/2026)', () => {
+    expect(instructions).toMatch(/Vocabulário SEMPRE universal por padrão/);
+    expect(instructions).toMatch(/Não comece a apresentação usando termos como "cachê", "booker", "show" ou "bookings" por padrão/);
+  });
+
+  it('permite vocabulário de booker/DJ quando a PRÓPRIA pessoa o usa primeiro, nunca proíbe adaptação ao interlocutor', () => {
+    expect(instructions).toMatch(/Se a PRÓPRIA pessoa usar esse vocabulário.*pode responder na mesma língua dela/);
+  });
+
+  it('proíbe oferecer demonstração/exemplo não pedido ao final de uma resposta de identidade (achado real de WhatsApp, 20/10/2026)', () => {
+    expect(instructions).toMatch(/NUNCA ofereça demonstração, exemplo ou explicação adicional que ninguém pediu/);
+    expect(instructions).toMatch(/quer que eu mostre um exemplo\?/);
+    expect(instructions).toMatch(/Só faça uma pergunta de volta quando ela for genuinamente necessária pra avançar uma tarefa real/);
   });
 
   it('não proíbe terceira pessoa de forma absoluta (permite ao representar o profissional perante cliente externo, ou descrição formal pedida)', () => {

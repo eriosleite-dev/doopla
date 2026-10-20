@@ -77,6 +77,16 @@ export type ScenarioTurn = {
   // representação, só que o texto não ficou gigante).
   maxConciseChars?: number;
 
+  // Achado real de WhatsApp (fundadora + Head de IA, 20/10/2026): a
+  // Doopla vinha encerrando quase toda resposta de identidade com uma
+  // oferta de demonstração que ninguém pediu ("Quer que eu mostre um
+  // exemplo prático da mensagem que eu enviaria a um cliente?"),
+  // tornando a conversa artificial. Checa contra uma lista FIXA de
+  // frases de oferta não solicitada (runner.ts) — nunca bloqueante
+  // sozinho de uma regra de produto nova, só desta regressão específica
+  // já observada em produção.
+  mustNotOfferUnrequestedExample?: boolean;
+
   note?: string;
 };
 

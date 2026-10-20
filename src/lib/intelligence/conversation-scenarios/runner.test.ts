@@ -378,6 +378,37 @@ describe('Lote P0 96+144 — extensões genéricas do runner', () => {
     const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
     expect(check).toBeUndefined();
   });
+
+  // Achado real de WhatsApp (fundadora + Head de IA, 20/10/2026) — a
+  // Doopla vinha encerrando respostas de identidade com uma oferta de
+  // demonstração não pedida. mustNotOfferUnrequestedExample trava isso.
+  it('mustNotOfferUnrequestedExample reprova quando a resposta oferece uma demonstração não pedida', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'O que é a Doopla?', mustNotOfferUnrequestedExample: true }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Sou sua representante com IA. Quer que eu mostre um exemplo prático da mensagem que eu enviaria a um cliente?'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('demonstração/exemplo não pedido'));
+    expect(check?.pass).toBe(false);
+  });
+
+  it('mustNotOfferUnrequestedExample passa quando a resposta não oferece nada não pedido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'O que é a Doopla?', mustNotOfferUnrequestedExample: true }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Sou sua representante com IA. Converso com seus clientes e cuido do operacional.'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('demonstração/exemplo não pedido'));
+    expect(check?.pass).toBe(true);
+  });
+
+  it('sem mustNotOfferUnrequestedExample no turno, nenhuma assertiva correspondente é adicionada', async () => {
+    const result = await runConversationScenario(SIMPLE_SCENARIO, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('Oi, tudo bem!') });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('demonstração/exemplo não pedido'));
+    expect(check).toBeUndefined();
+  });
 });
 
 describe('runConversationScenarios — teto de execução', () => {

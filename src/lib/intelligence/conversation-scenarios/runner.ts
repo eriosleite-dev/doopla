@@ -208,6 +208,32 @@ function evaluateAssertions(
     });
   }
 
+  // Achado real de WhatsApp (fundadora + Head de IA, 20/10/2026) — lista
+  // FIXA de frases de oferta de demonstração não solicitada, nunca
+  // específica de um cenário (a regressão observada foi genérica,
+  // sempre a mesma classe de frase ao final de respostas de
+  // identidade). Nunca confundir com um `mustNotContain` do cenário
+  // (esse é por cenário, este é uma regra fixa reaproveitável).
+  if (turn.mustNotOfferUnrequestedExample) {
+    const offerPhrases = [
+      'quer que eu mostre um exemplo',
+      'quer que eu te mostre um exemplo',
+      'quer ver um exemplo',
+      'posso te mostrar um exemplo',
+      'quer um exemplo',
+      'posso te explicar melhor',
+      'quer saber mais',
+      'quer que eu explique melhor',
+      'quer ver como eu responderia',
+    ];
+    const foundWith = offerPhrases.find((phrase) => lowerText.includes(phrase));
+    checks.push({
+      name: 'nunca oferece demonstração/exemplo não pedido',
+      pass: !foundWith,
+      detail: foundWith ? `a resposta contém "${foundWith}" — oferta de demonstração que ninguém pediu (achado real de WhatsApp, 20/10/2026)` : undefined,
+    });
+  }
+
   if (turn.mustCiteConversationEvidence) {
     checks.push({
       name: 'resposta ancorada em mensagem real da conversa',
