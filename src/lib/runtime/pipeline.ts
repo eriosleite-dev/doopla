@@ -13,11 +13,13 @@ import '../intelligence/tools';
 import type { ActorContext, MinimalConversation, ToolContext } from '../intelligence/types';
 import { ensureOpportunityForConversation, resolveEffectiveCommercialRoot } from './commercial-root';
 import { acquireConversationLease, releaseConversationLease } from './conversation-lease';
+import { recordConversationFeedback } from './conversation-feedback';
 import { getLastWhatsappInboundAt, shouldSendColdOutreachTemplate } from './cold-outreach';
 import { resolveRuntimeDisposition } from './disposition';
 import { claimInboundEvent, finishInboundEvent } from './inbound-events';
 import { persistInboundMessage, resolveOrCreateExternalParticipant } from './intake';
 import { createOutboundIntent } from './outbound';
+import { fetchLastAiMessage } from './recent-conversation-messages';
 import { createRuntimePendingReply, fetchPolicyGateDecisionChecks, listPendingRuntimeReplies } from './pending-replies';
 import { shouldCreatePendingReply, shouldSupersedeOnCreation } from './pending-replies-matching';
 import { persistAiMessage } from './professional-message';
@@ -29,6 +31,11 @@ import {
   AI_FEATURE_PROFESSIONAL_SELF_PAUSE_RECOGNITION,
   PROFESSIONAL_SELF_PAUSE_RECOGNIZER_MODEL,
 } from '../intelligence/professional-self-pause';
+import {
+  recognizeConversationFeedback,
+  AI_FEATURE_CONVERSATION_FEEDBACK_RECOGNITION,
+  CONVERSATION_FEEDBACK_RECOGNIZER_MODEL,
+} from '../intelligence/conversation-feedback';
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { runDelegatedContactRecipientReplyFlow, runDelegatedContactRequestFlow } from './delegated-contact-flow';
@@ -268,6 +275,61 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       }
     } catch (err) {
       console.error('[professional-self-pause] falha ao reconhecer/aplicar pedido de pausa', err);
+    }
+  }
+
+  // ADR 0011 (20/10/2026) — Fase A do sistema de evolução contínua:
+  // reconhece feedback semântico ("Erro"/"Perfeito!") em paralelo ao
+  // ciclo normal, nunca dependente do Planner nem da fila de retry de
+  // professional_self (professional_self_pending_messages) — grava
+  // direto, fora desse caminho. Best-effort: falha aqui NUNCA derruba
+  // o ciclo principal nem impede a resposta normal de ser gerada ou
+  // enviada.
+  if (event.authorType === 'professional' && conversation.conversation_type === 'professional_self') {
+    try {
+      const lastAiMessage = await fetchLastAiMessage(supabase, event.conversationId);
+      const feedbackRecognition = await recognizeConversationFeedback(event.body, lastAiMessage?.text ?? null);
+      await logAiUsageEvent(supabase, {
+        feature: AI_FEATURE_CONVERSATION_FEEDBACK_RECOGNITION,
+        model: CONVERSATION_FEEDBACK_RECOGNIZER_MODEL,
+        status: 'success',
+        conversationId: event.conversationId,
+        inputTokens: feedbackRecognition.inputTokens,
+        outputTokens: feedbackRecognition.outputTokens,
+        runId: null,
+        professionalId: actorContext.representedProfessionalId,
+      });
+      if (feedbackRecognition.signal === 'negative' || feedbackRecognition.signal === 'positive') {
+        const recorded = await recordConversationFeedback(supabase, {
+          conversationId: event.conversationId,
+          triggerMessageId: message.id,
+          flaggedMessageId: lastAiMessage?.id ?? null,
+          signal: feedbackRecognition.signal,
+          comment: event.body,
+          modelUsed: CONVERSATION_FEEDBACK_RECOGNIZER_MODEL,
+        });
+        // Confirmação só pra feedback NEGATIVO (requisito explícito:
+        // elogio nunca precisa virar outra conversa) — nunca antes de
+        // confirmado que o registro foi persistido (recorded !== null).
+        // Reaproveita o MESMO choke point de sempre
+        // (sendProfessionalSelfReplyViaWhatsapp): contenção, pausa,
+        // atualidade, idempotência e detecção de loop já se aplicam
+        // aqui, de graça — nunca um caminho de envio novo e paralelo.
+        if (recorded && feedbackRecognition.signal === 'negative') {
+          const confirmationBody = 'Registrei esse erro para análise.';
+          const confirmation = await persistAiMessage(supabase, { conversationId: event.conversationId, contentType: 'text', body: confirmationBody });
+          if (event.channel === 'whatsapp') {
+            await sendProfessionalSelfReplyViaWhatsapp(supabase, {
+              professionalId: actorContext.representedProfessionalId,
+              conversationId: event.conversationId,
+              body: confirmationBody,
+              aiMessageId: confirmation.id,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[conversation-feedback] falha ao reconhecer/registrar feedback', err);
     }
   }
 

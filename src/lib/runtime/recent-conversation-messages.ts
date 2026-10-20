@@ -30,3 +30,26 @@ export async function fetchRecentConversationMessages(
   // convenção já usada em PlannerMessageItem/MessageContextItem.
   return rows.reverse().map((r) => ({ authorType: r.author_type, text: r.body }));
 }
+
+// ADR 0011 (20/10/2026) — Fase A do sistema de evolução contínua:
+// identifica a última mensagem de IA desta conversation, pra associar
+// um feedback ("Erro"/"Perfeito!") à resposta que ele provavelmente se
+// refere. Mesma limitação de fetchRecentConversationMessages (só
+// body, nunca transcript).
+export async function fetchLastAiMessage(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  conversationId: string
+): Promise<{ id: string; text: string | null } | null> {
+  const { data, error } = await supabase
+    .from('conversation_messages')
+    .select('id, body')
+    .eq('conversation_id', conversationId)
+    .eq('author_type', 'ai')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ id: string; body: string | null }>();
+  if (error) throw new Error(`fetchLastAiMessage falhou: ${error.message}`);
+  if (!data) return null;
+  return { id: data.id, text: data.body };
+}

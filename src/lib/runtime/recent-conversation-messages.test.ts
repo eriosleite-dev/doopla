@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { fetchRecentConversationMessages } from './recent-conversation-messages';
+import { fetchLastAiMessage, fetchRecentConversationMessages } from './recent-conversation-messages';
 
 // ADR 0010 (20/10/2026) — wrapper fino sobre o histórico recente da
 // conversa. Cobre só o contrato: filtros certos, ordem cronológica
@@ -73,5 +73,42 @@ describe('fetchRecentConversationMessages', () => {
   it('nenhuma mensagem anterior -> array vazio, nunca lança', async () => {
     const supabase = fakeSupabase([]);
     expect(await fetchRecentConversationMessages(supabase, { conversationId: 'conv-1' })).toEqual([]);
+  });
+});
+
+// ADR 0011 (20/10/2026) — Fase A.
+describe('fetchLastAiMessage', () => {
+  function fakeSupabaseSingle(row: { id: string; body: string | null } | null) {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
+    const limit = vi.fn(() => ({ maybeSingle }));
+    const order = vi.fn(() => ({ limit }));
+    const eq2 = vi.fn(() => ({ order }));
+    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const select = vi.fn(() => ({ eq: eq1 }));
+    const from = vi.fn(() => ({ select }));
+    return { from } as never;
+  }
+
+  it('devolve a última mensagem de IA encontrada', async () => {
+    const supabase = fakeSupabaseSingle({ id: 'msg-ai-1', body: 'Já confirmei o show de sábado.' });
+    expect(await fetchLastAiMessage(supabase, 'conv-1')).toEqual({ id: 'msg-ai-1', text: 'Já confirmei o show de sábado.' });
+  });
+
+  it('nenhuma mensagem de IA ainda -> null, nunca lança', async () => {
+    const supabase = fakeSupabaseSingle(null);
+    expect(await fetchLastAiMessage(supabase, 'conv-1')).toBeNull();
+  });
+
+  it('nunca engole um erro real da query — propaga como exceção', async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'falha simulada' } });
+    const limit = vi.fn(() => ({ maybeSingle }));
+    const order = vi.fn(() => ({ limit }));
+    const eq2 = vi.fn(() => ({ order }));
+    const eq1 = vi.fn(() => ({ eq: eq2 }));
+    const select = vi.fn(() => ({ eq: eq1 }));
+    const from = vi.fn(() => ({ select }));
+    const supabase = { from } as never;
+
+    await expect(fetchLastAiMessage(supabase, 'conv-1')).rejects.toThrow('falha simulada');
   });
 });
