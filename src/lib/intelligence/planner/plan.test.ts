@@ -58,6 +58,16 @@ const CLASSIFICATION: IntentClassification = {
   relevantCompetencies: [],
 };
 
+// 'outro' nunca mandata nenhuma categoria de decisão (INTENT_MANDATORY_DECISION_CATEGORIES,
+// decision-categories.ts) — usado nos testes do Mecanismo de não-repetição
+// de pergunta (abaixo) pra isolar esse mecanismo do piso de decisão
+// protegida já existente (que também força consult_professional, por
+// um motivo diferente, pra intents como 'orcamento').
+const CLASSIFICATION_NO_MANDATORY_DECISION: IntentClassification = {
+  ...CLASSIFICATION,
+  primaryIntent: 'outro',
+};
+
 describe('planResponse — contagem de tokens sob retry', () => {
   it('soma os tokens de TODAS as tentativas, nunca só a última (achado real, 15/10/2026)', async () => {
     let call = 0;
@@ -223,5 +233,126 @@ describe('planResponse — fallback de consult_professional distingue interlocut
     });
     expect(result.decision.responsePlan).toBe('consult_professional');
     expect(result.decision.proposedResponse?.toLowerCase()).toMatch(/cliente/);
+  });
+});
+
+// ADR 0007/0009 (20/10/2026, seção 2.3) — causa raiz P0 confirmada:
+// nenhum mecanismo determinístico impedia repetir a MESMA pergunta de
+// esclarecimento turno após turno (achado real: "mensal, anual ou
+// ambos?" repetida até 10:06 sem avançar).
+describe('planResponse — nunca repete a mesma pergunta de esclarecimento (ADR 0007/0009, 20/10/2026)', () => {
+  function contextWithPriorAiMessage(priorAiText: string): ContextPackage {
+    return {
+      ...CONTEXT_PACKAGE,
+      messages: {
+        status: 'loaded',
+        items: [
+          {
+            messageId: 'msg-ai-prior',
+            createdAt: '2026-10-20T10:00:00Z',
+            authorType: 'ai',
+            direction: 'outbound',
+            contentType: 'text',
+            text: priorAiText,
+            truncated: false,
+            provenance: { sourceType: 'conversation_message', sourceId: 'msg-ai-prior' },
+          },
+          {
+            messageId: 'msg-prof-trigger',
+            createdAt: '2026-10-20T10:03:00Z',
+            authorType: 'professional',
+            direction: 'inbound',
+            contentType: 'text',
+            text: 'Mensal',
+            truncated: false,
+            provenance: { sourceType: 'conversation_message', sourceId: 'msg-prof-trigger' },
+          },
+        ],
+        windowMessageCount: 2,
+        windowSince: '2026-10-20T10:00:00Z',
+      },
+    };
+  }
+
+  it('clarify_ambiguity quase-idêntico à última pergunta de IA -> escala pra consult_professional', async () => {
+    const result = await planResponse(TOOL_CTX, contextWithPriorAiMessage('É mensal, anual ou ambos?'), CLASSIFICATION_NO_MANDATORY_DECISION, {
+      maxRetries: 0,
+      modelCall: async () => ({
+        parsed: {
+          responsePlan: 'clarify_ambiguity',
+          commitmentNature: 'not_applicable',
+          proposedDecisionCategory: [],
+          missingInformation: [],
+          evidenceUsed: [],
+          professionalDecisionSignal: 'none',
+          proposedResponse: 'É mensal, anual ou ambos?',
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+      }),
+    });
+    expect(result.decision.responsePlan).toBe('consult_professional');
+    expect(result.decision.proposedResponse).not.toMatch(/mensal, anual ou ambos/i);
+  });
+
+  it('acknowledge quase-idêntico à última mensagem de IA também escala (mesma família de repetição)', async () => {
+    const result = await planResponse(TOOL_CTX, contextWithPriorAiMessage('Entendi, só um instante que eu confirmo.'), CLASSIFICATION_NO_MANDATORY_DECISION, {
+      maxRetries: 0,
+      modelCall: async () => ({
+        parsed: {
+          responsePlan: 'acknowledge',
+          commitmentNature: 'not_applicable',
+          proposedDecisionCategory: [],
+          missingInformation: [],
+          evidenceUsed: [],
+          professionalDecisionSignal: 'none',
+          proposedResponse: 'Entendi, só um instante que eu confirmo.',
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+      }),
+    });
+    expect(result.decision.responsePlan).toBe('consult_professional');
+  });
+
+  it('clarify_ambiguity claramente DIFERENTE da última pergunta de IA NUNCA escala (pergunta nova e legítima)', async () => {
+    const result = await planResponse(TOOL_CTX, contextWithPriorAiMessage('É mensal, anual ou ambos?'), CLASSIFICATION_NO_MANDATORY_DECISION, {
+      maxRetries: 0,
+      modelCall: async () => ({
+        parsed: {
+          responsePlan: 'clarify_ambiguity',
+          commitmentNature: 'not_applicable',
+          proposedDecisionCategory: [],
+          missingInformation: [],
+          evidenceUsed: [],
+          professionalDecisionSignal: 'none',
+          proposedResponse: 'Pra qual data você precisa da proposta?',
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+      }),
+    });
+    expect(result.decision.responsePlan).toBe('clarify_ambiguity');
+    expect(result.decision.proposedResponse).toMatch(/Pra qual data/);
+  });
+
+  it('sem nenhuma mensagem de IA anterior nesta conversation, nunca escala (nada pra comparar)', async () => {
+    const result = await planResponse(TOOL_CTX, CONTEXT_PACKAGE, CLASSIFICATION_NO_MANDATORY_DECISION, {
+      maxRetries: 0,
+      modelCall: async () => ({
+        parsed: {
+          responsePlan: 'clarify_ambiguity',
+          commitmentNature: 'not_applicable',
+          proposedDecisionCategory: [],
+          missingInformation: [],
+          evidenceUsed: [],
+          professionalDecisionSignal: 'none',
+          proposedResponse: 'É mensal, anual ou ambos?',
+        },
+        inputTokens: 1,
+        outputTokens: 1,
+      }),
+    });
+    expect(result.decision.responsePlan).toBe('clarify_ambiguity');
   });
 });

@@ -1,6 +1,7 @@
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
+import { jaccardWordSimilarity } from '@/lib/runtime/text-similarity';
 import type { IntentClassification } from '../classification';
 import { routeCompetencies } from '../classification/competencies';
 import type { ContextPackage } from '../context-builder';
@@ -25,6 +26,11 @@ import { buildPlannerInstructions } from './prompt';
 import { PLANNER_MODEL_RESPONSE_PLANS } from './response-plan';
 import { COMMITMENT_NATURES, MISSING_INFORMATION_REASONS, PROFESSIONAL_DECISION_SIGNALS } from './types';
 import type { PlannerDecision } from './types';
+
+// ADR 0007/0009 (20/10/2026, seção 2.3) — mesmo limiar do Mecanismo C
+// (reply-loop-detection.ts), por consistência: 85% de similaridade de
+// Jaccard sobre palavras normalizadas.
+const REPEAT_CLARIFICATION_SIMILARITY_THRESHOLD = 0.85;
 
 // Doopla Intelligence Core v1 — Bloco 4: Response Planner.
 //
@@ -195,7 +201,7 @@ export async function planResponse(
     plannerContext.triggerMessage?.authorType,
     commitmentEvidence
   );
-  const responsePlan = resolveResponsePlan({
+  let responsePlan = resolveResponsePlan({
     modelPlan: parsed.responsePlan,
     classificationStatus: intentClassification.classificationStatus,
     effectiveConfidence: intentClassification.effectiveConfidence,
@@ -204,6 +210,25 @@ export async function planResponse(
     triggerHasUsableText,
     evidenceUsedCount: commitmentEvidence.length,
   });
+
+  // ADR 0007/0009 (20/10/2026, seção 2.3) — causa raiz P0 confirmada:
+  // nenhum mecanismo determinístico impedia a Doopla de repetir a
+  // MESMA pergunta de esclarecimento turno após turno (achado real:
+  // "mensal, anual ou ambos?" repetida até 10:06 sem nunca avançar).
+  // Compara o draft contra a ÚLTIMA mensagem de IA já enviada nesta
+  // conversation (mesma similaridade de Jaccard do Mecanismo C,
+  // reply-loop-detection.ts — nunca uma chamada de IA extra) — se for
+  // quase-idêntica (>=85%), nunca deixa o model tentar de novo com as
+  // mesmas palavras: escala pra consult_professional, mesmo destino já
+  // usado pelo piso de decisão protegida acima (ver resolveResponsePlan).
+  // Aplica pra clarify_ambiguity E acknowledge — as duas famílias onde
+  // "fazer a mesma pergunta de novo" é o padrão observado.
+  if ((responsePlan === 'clarify_ambiguity' || responsePlan === 'acknowledge') && parsed.proposedResponse) {
+    const lastAiMessage = [...plannerContext.recentMessages].reverse().find((m) => m.authorType === 'ai' && m.text);
+    if (lastAiMessage?.text && jaccardWordSimilarity(parsed.proposedResponse, lastAiMessage.text) >= REPEAT_CLARIFICATION_SIMILARITY_THRESHOLD) {
+      responsePlan = 'consult_professional';
+    }
+  }
 
   // O draft do model foi escrito pensando no plano QUE ELE propôs — se
   // o código rebaixou o plano por um piso que ele não previu (ex.:
