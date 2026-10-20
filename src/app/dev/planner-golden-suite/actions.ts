@@ -7,16 +7,11 @@ import { createClient } from '@/lib/supabase/server';
 import { classifyIntent } from '@/lib/intelligence/classification';
 import type { ContextFact, ContextPackage, MessageContextItem } from '@/lib/intelligence/context-builder';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
-import {
-  planResponse,
-  plannerModelOutputSchema,
-  resolveRequiresProfessionalReviewBeforeSend,
-  PLANNER_GOLDEN_SUITE_CASES,
-  PLANNER_MODEL,
-} from '@/lib/intelligence/planner';
+import { planResponse, plannerModelOutputSchema, resolveRequiresProfessionalReviewBeforeSend, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
 import type { PlannerGoldenSuiteCase, PlannerModelCall } from '@/lib/intelligence/planner';
 import type { ActorContext, MinimalConversation, ToolContext } from '@/lib/intelligence/types';
 import { estimateAiCostCents } from '@/lib/admin/ai-pricing';
+import type { PlannerGoldenSuiteCaseResult } from './golden-suite-summary';
 
 // Ferramenta de desenvolvimento/teste — não é parte do produto. Mesmo
 // padrão de /dev/classification-golden-suite: checagem de sessão
@@ -86,37 +81,19 @@ export async function checkModelAvailabilityAction(model: string): Promise<{ ava
   }
 }
 
-export type PlannerGoldenSuiteCaseResult = {
-  name: string;
-  category: string;
-  input: string;
-  responsePlan: string;
-  commitmentNature: string;
-  requiresProfessionalDecision: boolean;
-  professionalDecisionCategory: string[];
-  professionalDecisionSignal: string;
-  requiresProfessionalReviewBeforeSend: boolean;
-  proposedResponse: string | null;
-  pass: boolean;
-  note?: string;
-  error?: string;
-  plannerInputTokens: number | null;
-  plannerOutputTokens: number | null;
-  plannerCachedInputTokens: number;
-  plannerCostCents: number | null;
-  plannerLatencyMs: number;
-};
-
-export type PlannerGoldenSuiteRunSummary = {
-  model: string;
-  totalPlannerInputTokens: number;
-  totalPlannerOutputTokens: number;
-  totalPlannerCachedInputTokens: number;
-  totalPlannerCostCents: number | null;
-  costConfigured: boolean;
-  totalLatencyMs: number;
-  averageLatencyMs: number;
-};
+// Execução em lotes (20/10/2026) — achado real em produção nesta
+// MESMA sessão (ver admin/conversation-scenarios/actions.ts pro
+// precedente exato): rodar os 26 casos reais numa Server Action só
+// trava a página sem nunca voltar, estourando o limite de execução da
+// plataforma (mesma causa estrutural já documentada ali — soma de
+// chamadas sequenciais reais à OpenAI, cresce com o número de casos).
+// listPlannerGoldenSuiteCasesAction devolve só os nomes (leve, sem
+// chamada ao model) pra o cliente montar os lotes; cada lote roda os
+// casos que o cliente escolher, nunca a suite inteira de uma vez.
+export async function listPlannerGoldenSuiteCasesAction(): Promise<{ cases: { name: string }[] }> {
+  await requireProfessional();
+  return { cases: PLANNER_GOLDEN_SUITE_CASES.map((c) => ({ name: c.name })) };
+}
 
 async function requireProfessional() {
   const supabase = await createClient();
@@ -203,9 +180,14 @@ function buildSyntheticContext(
   return { contextPackage, conversation };
 }
 
-export async function runPlannerGoldenSuiteAction(
-  model: string = PLANNER_MODEL
-): Promise<{ results?: PlannerGoldenSuiteCaseResult[]; summary?: PlannerGoldenSuiteRunSummary; error?: string }> {
+// Roda só os casos cujo `name` está em caseNames, na ordem de
+// PLANNER_GOLDEN_SUITE_CASES — nunca a suite inteira (ver comentário
+// de listPlannerGoldenSuiteCasesAction acima). O cliente é quem decide
+// o tamanho do lote e agrega os resultados entre chamadas.
+export async function runPlannerGoldenSuiteBatchAction(
+  model: string,
+  caseNames: string[]
+): Promise<{ results?: PlannerGoldenSuiteCaseResult[]; error?: string }> {
   const { supabase, user } = await requireProfessional();
 
   try {
@@ -217,6 +199,10 @@ export async function runPlannerGoldenSuiteAction(
   const trimmedModel = model.trim();
   if (trimmedModel.length === 0) return { error: 'model_required' };
 
+  const caseNameSet = new Set(caseNames);
+  const casesToRun = PLANNER_GOLDEN_SUITE_CASES.filter((c) => caseNameSet.has(c.name));
+  if (casesToRun.length !== caseNames.length) return { error: 'unknown_case_name' };
+
   const actorContext: ActorContext = {
     representedProfessionalId: user.id,
     actorType: 'professional',
@@ -226,15 +212,9 @@ export async function runPlannerGoldenSuiteAction(
   };
 
   const results: PlannerGoldenSuiteCaseResult[] = [];
-  let totalPlannerInputTokens = 0;
-  let totalPlannerOutputTokens = 0;
-  let totalPlannerCachedInputTokens = 0;
-  let totalPlannerCostCents = 0;
-  let costConfigured = true;
-  let totalLatencyMs = 0;
   const usageDate = new Date().toISOString().slice(0, 10);
 
-  for (const goldenCase of PLANNER_GOLDEN_SUITE_CASES) {
+  for (const goldenCase of casesToRun) {
     const { contextPackage, conversation } = buildSyntheticContext(goldenCase, user.id);
     const toolCtx: ToolContext = {
       representedProfessionalId: user.id,
@@ -248,22 +228,17 @@ export async function runPlannerGoldenSuiteAction(
       const { classification } = await classifyIntent(toolCtx, contextPackage);
       const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall: buildModelCallForModel(trimmedModel, metrics) });
 
-      totalLatencyMs += metrics.latencyMs;
-      totalPlannerCachedInputTokens += metrics.cachedInputTokens;
-
       let plannerCostCents: number | null = null;
       if (inputTokens !== null && outputTokens !== null) {
         const estimate = estimateAiCostCents({ model: trimmedModel, usageDate, inputTokens, outputTokens, cachedInputTokens: metrics.cachedInputTokens });
         if (estimate.configured) {
           plannerCostCents = estimate.costCents;
-          totalPlannerCostCents += estimate.costCents;
         } else {
-          costConfigured = false;
+          // Sem preço cadastrado — nunca inventa um valor;
+          // buildRunSummary (golden-suite-summary.ts, cliente) agrega
+          // costConfigured=false quando QUALQUER caso vier com
+          // plannerCostCents=null.
         }
-        totalPlannerInputTokens += inputTokens;
-        totalPlannerOutputTokens += outputTokens;
-      } else {
-        costConfigured = false;
       }
 
       const planMatches = (goldenCase.expectedResponsePlanFamily as string[]).includes(decision.responsePlan);
@@ -308,8 +283,6 @@ export async function runPlannerGoldenSuiteAction(
       // Latência/cache registrados mesmo em erro — uma tentativa real
       // pode ter chegado a sair (e demorar) antes de o ciclo falhar
       // por outro motivo (ex.: guarda de invariante).
-      totalLatencyMs += metrics.latencyMs;
-      totalPlannerCachedInputTokens += metrics.cachedInputTokens;
       results.push({
         name: goldenCase.name,
         category: goldenCase.category,
@@ -333,16 +306,5 @@ export async function runPlannerGoldenSuiteAction(
     }
   }
 
-  const summary: PlannerGoldenSuiteRunSummary = {
-    model: trimmedModel,
-    totalPlannerInputTokens,
-    totalPlannerOutputTokens,
-    totalPlannerCachedInputTokens,
-    totalPlannerCostCents: costConfigured ? totalPlannerCostCents : null,
-    costConfigured,
-    totalLatencyMs,
-    averageLatencyMs: results.length > 0 ? totalLatencyMs / results.length : 0,
-  };
-
-  return { results, summary };
+  return { results };
 }

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 
-import { checkModelAvailabilityAction, runPlannerGoldenSuiteAction, type PlannerGoldenSuiteCaseResult, type PlannerGoldenSuiteRunSummary } from './actions';
+import { checkModelAvailabilityAction, listPlannerGoldenSuiteCasesAction, runPlannerGoldenSuiteBatchAction } from './actions';
+import { buildRunSummary, type PlannerGoldenSuiteCaseResult, type PlannerGoldenSuiteRunSummary } from './golden-suite-summary';
 
 // ADR 0007 item 5 (comparação de modelos, 20/10/2026) — input de texto
 // livre em vez de dropdown fechado: nunca sabemos de antemão todo
@@ -10,6 +11,20 @@ import { checkModelAvailabilityAction, runPlannerGoldenSuiteAction, type Planner
 // exigiria deploy pra adicionar cada opção nova. gpt-5-mini é o
 // default (= comportamento de produção hoje).
 const DEFAULT_MODEL = 'gpt-5-mini';
+
+// Execução em lotes (20/10/2026) — ver comentário em actions.ts e em
+// admin/conversation-scenarios/Panel.tsx (mesmo achado real:
+// "Task timed out", UI pendurada sem nunca voltar). Cada caso aqui
+// custa ~2 chamadas reais (classifyIntent + planResponse) — 4 casos
+// por lote é conservador de propósito, mesma prioridade de "nunca
+// travar de novo" sobre velocidade total.
+const BATCH_SIZE = 4;
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size));
+  return batches;
+}
 
 function formatCents(cents: number | null): string {
   if (cents === null) return 'sem preço cadastrado';
@@ -25,6 +40,7 @@ type AvailabilityState = { checking: boolean; result: { available: boolean; erro
 export function PlannerGoldenSuitePanel() {
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<PlannerGoldenSuiteCaseResult[] | null>(null);
   const [summary, setSummary] = useState<PlannerGoldenSuiteRunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +57,32 @@ export function PlannerGoldenSuitePanel() {
     setError(null);
     setResults(null);
     setSummary(null);
-    const res = await runPlannerGoldenSuiteAction(model);
-    setRunning(false);
-    if (res.error) {
-      setError(res.error);
-      return;
+    setProgress(null);
+
+    const { cases } = await listPlannerGoldenSuiteCasesAction();
+    const batches = chunk(cases.map((c) => c.name), BATCH_SIZE);
+    let merged: PlannerGoldenSuiteCaseResult[] = [];
+
+    for (let i = 0; i < batches.length; i++) {
+      setProgress({ done: i, total: batches.length });
+      const res = await runPlannerGoldenSuiteBatchAction(model, batches[i]);
+      if (res.error) {
+        setRunning(false);
+        setProgress(null);
+        setError(res.error);
+        // Nunca descarta os lotes que já rodaram com sucesso só
+        // porque um lote seguinte falhou — mostra o que já tem.
+        setResults(merged.length > 0 ? merged : null);
+        if (merged.length > 0) setSummary(buildRunSummary(model, merged));
+        return;
+      }
+      merged = [...merged, ...(res.results ?? [])];
     }
-    setResults(res.results ?? []);
-    setSummary(res.summary ?? null);
+
+    setRunning(false);
+    setProgress(null);
+    setResults(merged);
+    setSummary(buildRunSummary(model, merged));
   }
 
   const passCount = results?.filter((r) => r.pass).length ?? 0;
@@ -74,7 +108,11 @@ export function PlannerGoldenSuitePanel() {
           {availability.checking ? 'verificando…' : 'verificar disponibilidade na conta'}
         </button>
         <button type="button" onClick={handleRun} disabled={running} style={buttonStyle}>
-          {running ? `rodando ${'…'} (chamadas reais à OpenAI, pode levar um tempo)` : `rodar golden suite do Planner contra ${model || '?'}`}
+          {running
+            ? progress
+              ? `rodando lote ${progress.done + 1}/${progress.total} (chamadas reais à OpenAI)…`
+              : 'preparando…'
+            : `rodar golden suite do Planner contra ${model || '?'}`}
         </button>
       </div>
 
@@ -102,6 +140,11 @@ export function PlannerGoldenSuitePanel() {
       {error === 'model_required' && (
         <pre style={{ background: '#111', color: '#ff7b72', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>
           Digite um model id antes de rodar.
+        </pre>
+      )}
+      {error && error !== 'openai_not_configured' && error !== 'model_required' && (
+        <pre style={{ background: '#111', color: '#ff7b72', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>
+          Um lote falhou: {error}. {results ? 'Os lotes anteriores aparecem abaixo.' : 'Nenhum resultado foi obtido ainda.'}
         </pre>
       )}
 
