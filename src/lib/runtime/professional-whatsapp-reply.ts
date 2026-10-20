@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { readAppSettingFlag } from './app-settings';
 import { sendWhatsappTextMessage } from '../channels/whatsapp/client';
+import { claimProfessionalSelfWhatsappSend } from './professional-self-whatsapp-sends';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '../supabase/env';
 import { getWhatsappIdentitySnapshot } from '../whatsapp-identity/data';
 import { stripTravessao } from './message-style';
@@ -59,10 +60,20 @@ export const PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG = 'professional_self_auto
 // Defesa em profundidade: só envia quando o número é realmente
 // VERIFICADO (nunca 'candidate'/pendente) — nunca confia no conteúdo
 // da mensagem, só no estado real de professional_whatsapp_identities.
+//
+// ADR 0009 (20/10/2026) — Mecanismo D do incidente P0 (ADR 0008):
+// aiMessageId é o id real já persistido em conversation_messages
+// (nunca um identificador novo inventado) — reivindicado via
+// claim_professional_self_whatsapp_send (migration 0122) ANTES de
+// qualquer envio real. Um retry do drain pra uma linha cujo envio
+// anterior teve sucesso do lado do provider (ex.: timeout de rede na
+// resposta, mas a mensagem chegou) nunca manda duas vezes a mesma
+// mensagem — a segunda tentativa encontra a reivindicação já feita e
+// retorna sem chamar o provider.
 export async function sendProfessionalSelfReplyViaWhatsapp(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
-  params: { professionalId: string; body: string }
+  params: { professionalId: string; body: string; aiMessageId: string }
 ): Promise<void> {
   const enabled = await readAppSettingFlag(supabase, PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG);
   if (!enabled) {
@@ -76,6 +87,17 @@ export async function sendProfessionalSelfReplyViaWhatsapp(
   }
 
   try {
+    const claimed = await claimProfessionalSelfWhatsappSend(supabase, { aiMessageId: params.aiMessageId });
+    if (!claimed) {
+      // Já reivindicada antes (enviada ou em voo nesse exato instante)
+      // — nunca um segundo envio físico da mesma mensagem de IA.
+      console.error('[professional-self] envio ignorado — aiMessageId já reivindicado antes (idempotência, ADR 0009)', {
+        professionalId: params.professionalId,
+        aiMessageId: params.aiMessageId,
+      });
+      return;
+    }
+
     const identity = await getWhatsappIdentitySnapshot(supabase, params.professionalId);
     if (!identity || identity.status !== 'verified' || !identity.verifiedNumber) return;
 

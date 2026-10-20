@@ -609,6 +609,7 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         await sendProfessionalSelfReplyViaWhatsapp(supabase, {
           professionalId: conversation.represented_professional_id,
           body: decision.proposedResponse,
+          aiMessageId: aiMessage.id,
         });
       }
     }

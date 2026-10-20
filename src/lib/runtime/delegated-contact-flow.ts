@@ -69,9 +69,9 @@ type AnySupabaseClient = SupabaseClient<any>;
 // a fazer aqui — o chamador cai no pipeline normal, inalterado.
 
 async function replyToProfessional(supabase: AnySupabaseClient, params: { conversationId: string; professionalId: string; channel: string; body: string }): Promise<void> {
-  await persistAiMessage(supabase, { conversationId: params.conversationId, contentType: 'text', body: params.body });
+  const aiMessage = await persistAiMessage(supabase, { conversationId: params.conversationId, contentType: 'text', body: params.body });
   if (params.channel === 'whatsapp') {
-    await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: params.body });
+    await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: params.body, aiMessageId: aiMessage.id });
   }
 }
 
@@ -405,7 +405,7 @@ async function advanceOrAskForMissing(
     const authorizationQuestionBody = `Antes de eu chamar ${row.recipientName ?? 'essa pessoa'}: você já tem autorização dela pra receber mensagem sua pela Doopla (ela topou receber contato, é cliente que já conversou com você, ou pediu esse contato)? Responda sim ou não.`;
     const authorizationQuestion = await persistAiMessage(supabase, { conversationId: params.conversationId, contentType: 'text', body: authorizationQuestionBody });
     if (params.channel === 'whatsapp') {
-      await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: authorizationQuestionBody });
+      await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: authorizationQuestionBody, aiMessageId: authorizationQuestion.id });
     }
     await preparePendingDelegatedContactAuthorizationReview(supabase, { id: row.id, confirmationMessageId: authorizationQuestion.id, draftMessageContent });
     return { handled: true };
@@ -414,7 +414,7 @@ async function advanceOrAskForMissing(
   const questionBody = `Vou iniciar o contato com ${row.recipientName ?? row.recipientNumber} e, depois que ela/ele responder, mandar esta mensagem: "${draftMessageContent}". Confirma?`;
   const question = await persistAiMessage(supabase, { conversationId: params.conversationId, contentType: 'text', body: questionBody });
   if (params.channel === 'whatsapp') {
-    await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: questionBody });
+    await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: params.professionalId, body: questionBody, aiMessageId: question.id });
   }
   await preparePendingDelegatedContactApproval(supabase, {
     id: row.id,
@@ -783,7 +783,7 @@ export async function runDelegatedContactRecipientReplyFlow(
   if (consent.outcome === 'ambiguous') {
     const questionBody = `${pdc.recipientName ?? 'O contato'} respondeu: "${params.messageText}". Não ficou claro se posso seguir com sua mensagem original. Posso enviar mesmo assim?`;
     const question = await persistAiMessage(supabase, { conversationId: pdc.conversationId, contentType: 'text', body: questionBody });
-    await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: pdc.requestingProfessionalId, body: questionBody });
+    await sendProfessionalSelfReplyViaWhatsapp(supabase, { professionalId: pdc.requestingProfessionalId, body: questionBody, aiMessageId: question.id });
     await preparePendingDelegatedContactLiteralContentReview(supabase, { id: pdc.id, confirmationMessageId: question.id });
     return { handled: true };
   }
