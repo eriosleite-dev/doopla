@@ -516,4 +516,22 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       },
     ],
   },
+  {
+    id: 'conhecimento-institucional-planos-avulsos',
+    name: 'Pergunta sobre planos/preços da própria Doopla nunca inventa "avulsos"',
+    category: 'conhecimento_institucional',
+    source: 'Teste real 20/10/2026, 09:49–10:06 (ADR 0007/0009) — "quais os valores dos planos" sem resposta até 10:06, "você está errada, não existe valores avulsos" (09:59) ignorada, Doopla voltou a mencionar "avulsos" depois disso.',
+    turns: [
+      {
+        professionalMessage: 'Quais os valores dos planos da Doopla?',
+        mustNotContain: ['avulso', 'avulsos', 'mensal ou anual', 'r$49', 'por mês', 'por ano'],
+        note: 'Causa raiz P0 confirmada no ADR 0007 (seção 2.1): zero fato real sobre os próprios planos da Doopla fazia o model inventar números/planos. Resposta correta hoje: beta fechado por convite, sem cobrança — nunca um valor/plano inventado.',
+      },
+      {
+        professionalMessage: 'Você está errada, não existe valor avulso nenhum.',
+        mustNotContain: ['avulso', 'avulsos'],
+        note: 'Reconhece a correção e nunca reafirma "avulsos" depois disso — exatamente o padrão que se repetiu na conversa real (a Doopla voltou a mencionar avulsos mesmo após a correção explícita).',
+      },
+    ],
+  },
 ];

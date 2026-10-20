@@ -127,7 +127,7 @@ export async function planResponse(
   // nunca uma segunda classificação. routeCompetencies é determinístico
   // (tabela intent→competência), nunca o model escolhendo.
   const competencies = routeCompetencies([intentClassification.primaryIntent, ...intentClassification.secondaryIntents]);
-  const instructions = buildPlannerInstructions({ competencies });
+  const instructions = buildPlannerInstructions({ competencies, conversationType: plannerContext.conversationType });
   const input = JSON.stringify(plannerContext);
   const modelCall = opts.modelCall ?? defaultModelCall;
   const maxRetries = opts.maxRetries ?? PLANNER_MAX_RETRIES;

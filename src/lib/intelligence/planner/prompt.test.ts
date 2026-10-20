@@ -65,6 +65,43 @@ describe('buildPlannerInstructions — Playbook DJ/Música condicional (ADR 0006
   });
 });
 
+// ADR 0007/0009 (20/10/2026) — causa raiz P0 da invenção de "avulsos"/
+// planos: zero fato real sobre a própria Doopla no prompt. Bloco
+// institucional entregue condicionalmente por conversationType, nunca
+// por Intent/Competency (ver comentário em buildPlannerInstructions).
+describe('buildPlannerInstructions — conhecimento institucional da Doopla (ADR 0007/0009, 20/10/2026)', () => {
+  it('nunca aparece sem conversationType (comportamento padrão)', () => {
+    expect(buildPlannerInstructions()).not.toMatch(/BETA FECHADO POR CONVITE/);
+  });
+
+  it('nunca aparece em external_inquiry (cliente externo nunca pergunta sobre o modelo comercial da Doopla)', () => {
+    const instructions = buildPlannerInstructions({ conversationType: 'external_inquiry' });
+    expect(instructions).not.toMatch(/BETA FECHADO POR CONVITE/);
+  });
+
+  it('aparece em professional_self', () => {
+    const instructions = buildPlannerInstructions({ conversationType: 'professional_self' });
+    expect(instructions).toMatch(/BETA FECHADO POR CONVITE/);
+    expect(instructions).toMatch(/NÃO COBRA NADA/);
+  });
+
+  it('afirma explicitamente que "avulso"/"avulsos" não existe (causa raiz real da invenção corrigida)', () => {
+    const instructions = buildPlannerInstructions({ conversationType: 'professional_self' });
+    expect(instructions).toMatch(/NÃO EXISTE "atendimento avulso"\/"avulsos"/);
+  });
+
+  it('instrui explicitamente a nunca inventar o que não está coberto (data/valor/plano futuro)', () => {
+    const instructions = buildPlannerInstructions({ conversationType: 'professional_self' });
+    expect(instructions).toMatch(/NUNCA invente um valor, prazo ou nome de plano/);
+  });
+
+  it('coexiste com o Playbook DJ/Música quando ambas as condições se aplicam', () => {
+    const instructions = buildPlannerInstructions({ competencies: ['comercial_negociacao'], conversationType: 'professional_self' });
+    expect(instructions).toMatch(/Playbook v1/);
+    expect(instructions).toMatch(/BETA FECHADO POR CONVITE/);
+  });
+});
+
 // Achado da fundadora (19/10/2026) — o texto institucional anterior
 // nunca refletia a identidade aprovada por ela; substituído pelo texto
 // definitivo. Estes testes cobrem só o CONTEÚDO da instrução (nunca a
