@@ -1,7 +1,7 @@
 # ADR 0008 — Incidente P0: loop de mensagens no WhatsApp + não respeita "pare de me escrever"
 
 - **Data:** 2026-10-20
-- **Status:** Diagnóstico entregue. **Nenhuma mudança em produção feita.** Procedimento de contenção proposto, aguardando aprovação explícita antes de qualquer ação.
+- **Status:** **Resolvido.** Contenção (A, flag `professional_self_auto_reply_enabled`) e os 4 mecanismos estruturais (D idempotência, A atualidade, B pausa real, C detecção de loop — desenho detalhado no ADR 0009) implementados, validados (tsc/eslint/vitest/build) e em produção, com aprovação da fundadora em cada passo que exigia migration/deploy.
 - **Autor:** Claude Code (Principal AI Engineer), em resposta ao incidente relatado pela fundadora/Head de IA (10h05–10h16, 20/10/2026)
 - **Relacionado:** ADR 0007 (auditoria de inteligência conversacional) — este é um incidente de **segurança operacional** (a Doopla envia quando não deveria), diferente e mais urgente que a qualidade das respostas em si.
 
