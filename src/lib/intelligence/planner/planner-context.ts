@@ -55,6 +55,7 @@ export function buildPlannerContext(
     professional: contextPackage.professional,
     professionalBusinessContext: contextPackage.professionalBusinessContext,
     professionalCommercialHistory: toGenericSection(contextPackage.professionalCommercialHistory),
+    professionalLearnedPreferences: contextPackage.professionalLearnedPreferences,
     opportunity: contextPackage.opportunity,
     booking: contextPackage.booking,
     externalParticipant: contextPackage.externalParticipant,

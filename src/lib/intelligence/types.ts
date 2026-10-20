@@ -36,7 +36,8 @@ export type Capability =
   | 'read_booking'
   | 'read_external_participant'
   | 'read_professional_business_context'
-  | 'read_professional_commercial_history';
+  | 'read_professional_commercial_history'
+  | 'read_professional_learned_preferences';
 
 export type ActorContext = {
   representedProfessionalId: string;
@@ -95,7 +96,8 @@ export type ContextSource =
   | 'booking'
   | 'external_participant'
   | 'professional_business_context'
-  | 'professional_commercial_history';
+  | 'professional_commercial_history'
+  | 'professional_learned_preferences';
 
 export type ToolContext = {
   representedProfessionalId: string;

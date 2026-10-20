@@ -6,6 +6,7 @@ import {
   buildOpportunitySection,
   buildProfessionalBusinessContextSection,
   buildProfessionalCommercialHistorySection,
+  buildProfessionalLearnedPreferencesSection,
   buildProfessionalSection,
 } from './sections';
 import type { ContextBuildResult, ContextPackageSectionName, UnavailableSource } from './types';
@@ -51,6 +52,10 @@ export async function buildContextPackage(
     professionalCommercialHistory.unavailableReason
   );
 
+  const professionalLearnedPreferences = await buildProfessionalLearnedPreferencesSection(toolCtx, gate, now);
+  if (professionalLearnedPreferences.calledTool) calledTools.push(professionalLearnedPreferences.calledTool);
+  noteIfUnavailable('professionalLearnedPreferences', professionalLearnedPreferences.section.status, professionalLearnedPreferences.unavailableReason);
+
   const opportunity = await buildOpportunitySection(toolCtx, gate, now);
   if (opportunity.calledTool) calledTools.push(opportunity.calledTool);
   noteIfUnavailable('opportunity', opportunity.section.status, opportunity.unavailableReason);
@@ -76,6 +81,7 @@ export async function buildContextPackage(
       professional: professional.section,
       professionalBusinessContext: professionalBusinessContext.section,
       professionalCommercialHistory: professionalCommercialHistory.section,
+      professionalLearnedPreferences: professionalLearnedPreferences.section,
       messages,
       opportunity: opportunity.section,
       booking: booking.section,

@@ -98,6 +98,7 @@ function buildSyntheticContext(
     professional: { status: 'loaded', facts: [] },
     professionalBusinessContext: { status: 'loaded', facts: [] },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
+    professionalLearnedPreferences: { status: 'loaded', facts: [] },
     messages: {
       status: 'loaded',
       items,

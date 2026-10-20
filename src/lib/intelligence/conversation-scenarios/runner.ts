@@ -98,6 +98,7 @@ function buildContextPackage(items: MessageContextItem[], scenario: Conversation
     professional: { status: 'loaded', facts },
     professionalBusinessContext: { status: 'not_found' },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
+    professionalLearnedPreferences: { status: 'loaded', facts: [] },
     messages: { status: 'loaded', items, windowMessageCount: items.length, windowSince: items[0]?.createdAt ?? new Date().toISOString() },
     opportunity: opportunityFacts.length > 0 ? { status: 'loaded', facts: opportunityFacts } : { status: 'no_link' },
     booking: bookingFacts.length > 0 ? { status: 'loaded', facts: bookingFacts } : { status: 'no_link' },

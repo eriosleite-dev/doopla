@@ -60,6 +60,8 @@ function factSection(ctx: PlannerContext, sourceType: EvidenceUsed['sourceType']
       return ctx.professionalBusinessContext;
     case 'professional_commercial_history':
       return ctx.professionalCommercialHistory;
+    case 'professional_learned_preference':
+      return ctx.professionalLearnedPreferences;
     case 'conversation_message':
       return null;
   }

@@ -159,6 +159,39 @@ function pushJoinedListFact(facts: ContextFact[], sourceId: string, field: strin
 // gate das outras seções: nunca dependente de link de conversa (a
 // fonte já está sempre em allowedContextSources pro representado, ver
 // policy-gate.ts), só checa allowedContextSources/eligibleTools.
+// Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — nunca
+// confundidas com buildProfessionalBusinessContextSection (dado
+// digitado no painel). Zero preferências aprovadas é um estado normal
+// (profissional nova, ou nenhuma correção ainda) — 'loaded' com
+// facts:[], nunca 'not_found' (mesmo padrão de professionalCommercialHistory).
+export async function buildProfessionalLearnedPreferencesSection(toolCtx: ToolContext, gate: Gate, now: Date): Promise<SectionOutcome> {
+  const toolName = 'get_professional_learned_preferences';
+  if (!gate.allowedContextSources.includes('professional_learned_preferences') || !gate.eligibleTools.includes(toolName)) {
+    return { section: { status: 'not_allowed' }, calledTool: null };
+  }
+
+  const outcome = await executeTool<{
+    found: true;
+    preferences: Array<{ id: string; kind: string; value: string; confidence: number; contextOnly: true }>;
+  }>(toolName, {}, toolCtx, gate.eligibleTools);
+
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+
+  const loadedAt = now.toISOString();
+  const facts: ContextFact[] = outcome.output.preferences.map((pref) => ({
+    sourceType: 'professional_learned_preference',
+    sourceId: pref.id,
+    field: pref.kind,
+    value: pref.value,
+    factType: 'structured',
+    loadedAt,
+  }));
+
+  return { section: { status: 'loaded', facts }, calledTool: toolName };
+}
+
 export async function buildProfessionalBusinessContextSection(toolCtx: ToolContext, gate: Gate, now: Date): Promise<SectionOutcome> {
   const toolName = 'get_professional_business_context';
   if (!gate.allowedContextSources.includes('professional_business_context') || !gate.eligibleTools.includes(toolName)) {

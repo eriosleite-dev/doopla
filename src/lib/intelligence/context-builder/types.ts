@@ -27,7 +27,13 @@ export type ContextFactSourceType =
   // COMMITMENT_AUTHORIZING_SOURCE_TYPES) — preferência declarada não
   // autoriza nada, precedente histórico não autoriza repeti-lo.
   | 'professional_business_context'
-  | 'professional_commercial_history';
+  | 'professional_commercial_history'
+  // ADR 0004, Rodadas 4/5 — preferência APRENDIDA em conversa (nunca
+  // digitada no painel, nunca restrição comercial obrigatória).
+  // Proveniência deliberadamente separada de professional_business_context
+  // (dado digitado) — nunca a mesma fonte, mesmo os dois sendo
+  // conhecimento-nunca-autorização.
+  | 'professional_learned_preference';
 
 // structured: veio direto de uma READ tool/banco, sem cálculo.
 // derived: calculado/resumido a partir de fatos estruturados — o
@@ -135,6 +141,11 @@ export type ContextPackage = {
   // Histórico comercial real do próprio profissional (bookings
   // passados), retrieval V1 por recência — ver CommercialHistorySection.
   professionalCommercialHistory: CommercialHistorySection;
+  // Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — nunca
+  // confundidas com professionalBusinessContext (dado digitado no
+  // painel). CONHECIMENTO, nunca AUTORIZAÇÃO — ver comentário em
+  // ContextFactSourceType.
+  professionalLearnedPreferences: ContextSection<ContextFact>;
   messages: MessagesSection;
   opportunity: ContextSection<ContextFact>;
   booking: ContextSection<ContextFact>;
@@ -147,6 +158,7 @@ export type ContextPackageSectionName =
   | 'professional'
   | 'professionalBusinessContext'
   | 'professionalCommercialHistory'
+  | 'professionalLearnedPreferences'
   | 'opportunity'
   | 'booking'
   | 'externalParticipant'

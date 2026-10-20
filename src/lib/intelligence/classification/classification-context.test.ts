@@ -37,6 +37,7 @@ function contextPackageWithMessages(items: MessageContextItem[]): ContextPackage
     professional: { status: 'loaded', facts: [] },
     professionalBusinessContext: { status: 'not_found' },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
+    professionalLearnedPreferences: { status: 'loaded', facts: [] },
     messages: { status: 'loaded', items, windowMessageCount: items.length, windowSince: new Date().toISOString() },
     opportunity: { status: 'no_link' },
     booking: { status: 'no_link' },

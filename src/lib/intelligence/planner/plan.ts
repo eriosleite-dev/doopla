@@ -47,6 +47,10 @@ const evidenceUsedSchema = z.discriminatedUnion('sourceType', [
   // compromisso) — filterCommitmentAuthorizingEvidence exclui as duas.
   z.object({ sourceType: z.literal('professional_business_context'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('professional_commercial_history'), sourceId: z.string(), field: z.string() }),
+  // Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — mesma
+  // camada A das duas acima, nunca camada B (ver
+  // COMMITMENT_AUTHORIZING_SOURCE_TYPES, invariants.ts).
+  z.object({ sourceType: z.literal('professional_learned_preference'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('conversation_message'), sourceId: z.string() }),
 ]);
 

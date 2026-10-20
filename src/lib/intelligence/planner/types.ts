@@ -113,6 +113,11 @@ export type PlannerContext = {
   // precedente histórico não autoriza repeti-lo.
   professionalBusinessContext: ContextSection<ContextFact>;
   professionalCommercialHistory: ContextSection<ContextFact>;
+  // Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — mesma
+  // disciplina das duas acima: CONHECIMENTO, nunca AUTORIZAÇÃO. Citável
+  // em evidenceUsed (camada A), EXCLUÍDA do whitelist de evidência que
+  // autoriza compromisso (camada B, invariants.ts).
+  professionalLearnedPreferences: ContextSection<ContextFact>;
   opportunity: ContextSection<ContextFact>;
   booking: ContextSection<ContextFact>;
   externalParticipant: ContextSection<ContextFact>;

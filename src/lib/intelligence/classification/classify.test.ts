@@ -44,6 +44,7 @@ const CONTEXT_PACKAGE: ContextPackage = {
   professional: { status: 'unavailable' },
   professionalBusinessContext: { status: 'unavailable' },
   professionalCommercialHistory: { status: 'unavailable' },
+  professionalLearnedPreferences: { status: 'unavailable' },
   messages: { status: 'unavailable' },
   opportunity: { status: 'unavailable' },
   booking: { status: 'unavailable' },

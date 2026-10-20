@@ -45,6 +45,7 @@ export function resolveCapabilities(actorType: ActorType): Capability[] {
         'read_external_participant',
         'read_professional_business_context',
         'read_professional_commercial_history',
+        'read_professional_learned_preferences',
       ];
     case 'authorized_collaborator':
       // Nenhum caminho real chega aqui em v1 (ver resolveActorContext) —
@@ -59,6 +60,7 @@ export function resolveCapabilities(actorType: ActorType): Capability[] {
         'read_external_participant',
         'read_professional_business_context',
         'read_professional_commercial_history',
+        'read_professional_learned_preferences',
       ];
   }
 }
