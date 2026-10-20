@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { runPlannerGoldenSuiteAction, type PlannerGoldenSuiteCaseResult, type PlannerGoldenSuiteRunSummary } from './actions';
+import { checkModelAvailabilityAction, runPlannerGoldenSuiteAction, type PlannerGoldenSuiteCaseResult, type PlannerGoldenSuiteRunSummary } from './actions';
 
 // ADR 0007 item 5 (comparação de modelos, 20/10/2026) — input de texto
 // livre em vez de dropdown fechado: nunca sabemos de antemão todo
@@ -16,12 +16,25 @@ function formatCents(cents: number | null): string {
   return `US$ ${(cents / 100).toFixed(4)}`;
 }
 
+function formatMs(ms: number): string {
+  return `${Math.round(ms)}ms`;
+}
+
+type AvailabilityState = { checking: boolean; result: { available: boolean; error?: string } | null };
+
 export function PlannerGoldenSuitePanel() {
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<PlannerGoldenSuiteCaseResult[] | null>(null);
   const [summary, setSummary] = useState<PlannerGoldenSuiteRunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<AvailabilityState>({ checking: false, result: null });
+
+  async function handleCheckAvailability() {
+    setAvailability({ checking: true, result: null });
+    const res = await checkModelAvailabilityAction(model);
+    setAvailability({ checking: false, result: res });
+  }
 
   async function handleRun() {
     setRunning(true);
@@ -42,7 +55,7 @@ export function PlannerGoldenSuitePanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <label htmlFor="golden-suite-model" style={{ color: '#aaa' }}>
           model:
         </label>
@@ -50,14 +63,36 @@ export function PlannerGoldenSuitePanel() {
           id="golden-suite-model"
           type="text"
           value={model}
-          onChange={(e) => setModel(e.target.value)}
+          onChange={(e) => {
+            setModel(e.target.value);
+            setAvailability({ checking: false, result: null });
+          }}
           disabled={running}
           style={{ fontFamily: 'monospace', fontSize: 13, padding: '6px 8px', width: 220 }}
         />
+        <button type="button" onClick={handleCheckAvailability} disabled={running || availability.checking} style={buttonStyle}>
+          {availability.checking ? 'verificando…' : 'verificar disponibilidade na conta'}
+        </button>
         <button type="button" onClick={handleRun} disabled={running} style={buttonStyle}>
           {running ? `rodando ${'…'} (chamadas reais à OpenAI, pode levar um tempo)` : `rodar golden suite do Planner contra ${model || '?'}`}
         </button>
       </div>
+
+      {availability.result && (
+        <pre
+          style={{
+            background: '#111',
+            color: availability.result.available ? '#7ee787' : '#ff7b72',
+            padding: 12,
+            borderRadius: 6,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {availability.result.available
+            ? `"${model}" está disponível nesta conta da OpenAI.`
+            : `"${model}" NÃO está disponível, ou não foi possível verificar: ${availability.result.error ?? 'erro desconhecido'}`}
+        </pre>
+      )}
 
       {error === 'openai_not_configured' && (
         <pre style={{ background: '#111', color: '#ff7b72', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>
@@ -81,8 +116,8 @@ export function PlannerGoldenSuitePanel() {
             <code>{summary.model}</code>.
           </div>
           <div style={{ color: '#aaa' }}>
-            Tokens do Planner nesta rodada: {summary.totalPlannerInputTokens} in / {summary.totalPlannerOutputTokens} out — custo estimado:{' '}
-            <strong>{formatCents(summary.totalPlannerCostCents)}</strong>
+            Tokens do Planner nesta rodada: {summary.totalPlannerInputTokens} in ({summary.totalPlannerCachedInputTokens} do cache) / {summary.totalPlannerOutputTokens} out
+            — custo estimado: <strong>{formatCents(summary.totalPlannerCostCents)}</strong>
             {!summary.costConfigured && (
               <span style={{ color: '#d4a72c' }}>
                 {' '}
@@ -90,7 +125,8 @@ export function PlannerGoldenSuitePanel() {
                 entraram sem custo contabilizado; peça pra eu adicionar a linha de preço real desse model antes de comparar custo)
               </span>
             )}
-            . Não inclui o Classifier (roda sempre no model de produção, fixo, pra não distorcer o que está sendo comparado).
+            . Latência total do Planner: {formatMs(summary.totalLatencyMs)} — média por caso: {formatMs(summary.averageLatencyMs)}. Não inclui o Classifier
+            (roda sempre no model de produção, fixo, pra não distorcer o que está sendo comparado).
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
@@ -107,8 +143,9 @@ export function PlannerGoldenSuitePanel() {
                     'signal',
                     'reviewBeforeSend',
                     'draft',
-                    'tokens (in/out)',
+                    'tokens (in/out, cache)',
                     'custo',
+                    'latência',
                     'pass',
                   ].map((h) => (
                     <th key={h} style={thStyle}>
@@ -135,9 +172,10 @@ export function PlannerGoldenSuitePanel() {
                     <td style={tdStyle}>{String(r.requiresProfessionalReviewBeforeSend)}</td>
                     <td style={{ ...tdStyle, maxWidth: 260 }}>{r.proposedResponse ?? '—'}</td>
                     <td style={tdStyle}>
-                      {r.plannerInputTokens ?? '—'}/{r.plannerOutputTokens ?? '—'}
+                      {r.plannerInputTokens ?? '—'}/{r.plannerOutputTokens ?? '—'} ({r.plannerCachedInputTokens})
                     </td>
                     <td style={tdStyle}>{formatCents(r.plannerCostCents)}</td>
+                    <td style={tdStyle}>{formatMs(r.plannerLatencyMs)}</td>
                     <td style={{ ...tdStyle, color: r.pass ? '#7ee787' : '#ff7b72', fontWeight: 700 }}>{r.pass ? 'PASS' : 'FAIL'}</td>
                   </tr>
                 ))}

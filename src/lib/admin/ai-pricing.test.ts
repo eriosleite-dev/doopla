@@ -52,13 +52,31 @@ describe('estimateAiCostCents', () => {
     expect(result).toEqual({ configured: true, costCents: rule!.inputCentsPerMillionTokens });
   });
 
-  it('nunca aplica desconto de cached input (projeto não lê/grava cached_tokens) -- o preço de input usado é sempre o cheio sobre o total informado', () => {
-    // Trava a garantia documentada no cabeçalho do arquivo: não existe
-    // nenhum parâmetro de "tokens em cache" em AiCostEstimate/estimateAiCostCents.
-    const result = estimateAiCostCents({ model: 'gpt-5-mini', usageDate: '2026-10-15', inputTokens: 1_000_000, outputTokens: 0 });
+  it('gpt-5-mini nunca aplica desconto de cached input, mesmo se cachedInputTokens for passado -- esse modelo não tem cachedInputCentsPerMillionTokens cadastrado', () => {
+    const result = estimateAiCostCents({ model: 'gpt-5-mini', usageDate: '2026-10-15', inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 500_000 });
     expect(result).toEqual({ configured: true, costCents: 25 });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((result as any).cachedTokens).toBeUndefined();
+  });
+
+  it('calcula o custo real do gpt-5.6-terra (ADR 0007 item 5, comparação de modelos): $2,00/1M input, $12,00/1M output', () => {
+    const result = estimateAiCostCents({ model: 'gpt-5.6-terra', usageDate: '2026-10-20', inputTokens: 1_000_000, outputTokens: 1_000_000 });
+    expect(result).toEqual({ configured: true, costCents: 200 + 1200 });
+  });
+
+  it('gpt-5.6-terra: tokens de input servidos do cache usam o preço de cache ($0,20/1M), nunca o preço cheio pra essa parte', () => {
+    const result = estimateAiCostCents({
+      model: 'gpt-5.6-terra',
+      usageDate: '2026-10-20',
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+      cachedInputTokens: 400_000,
+    });
+    // 600k não-cache a $2,00/1M + 400k cache a $0,20/1M
+    expect(result).toEqual({ configured: true, costCents: (600_000 / 1_000_000) * 200 + (400_000 / 1_000_000) * 20 });
+  });
+
+  it('cachedInputTokens=0 (ou omitido) nunca aplica o preço de cache, mesmo quando o modelo tem a taxa cadastrada', () => {
+    const result = estimateAiCostCents({ model: 'gpt-5.6-terra', usageDate: '2026-10-20', inputTokens: 1_000_000, outputTokens: 0 });
+    expect(result).toEqual({ configured: true, costCents: 200 });
   });
 });
 

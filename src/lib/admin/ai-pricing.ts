@@ -36,10 +36,23 @@ export type ModelPriceRule = {
   effectiveFrom: string;
   inputCentsPerMillionTokens: number;
   outputCentsPerMillionTokens: number;
+  // ADR 0007 item 5 (comparação de modelos, 20/10/2026) — opcional,
+  // omitido pro gpt-5-mini de propósito (mantém a garantia documentada
+  // acima: nenhum desconto de cache aplicado pra ele, porque
+  // ai_usage_events nunca grava cached_tokens pra começo). Só
+  // preenchido quando quem cadastrar o preço tiver o número real da
+  // OpenAI E uma fonte real de cachedInputTokens pra usar (o painel de
+  // comparação de modelos, que lê isso direto da resposta da API, é
+  // hoje o único consumidor).
+  cachedInputCentsPerMillionTokens?: number;
 };
 
 export const MODEL_PRICE_TABLE: ModelPriceRule[] = [
   { model: 'gpt-5-mini', effectiveFrom: '2025-01-01', inputCentsPerMillionTokens: 25, outputCentsPerMillionTokens: 200 },
+  // Preço informado pela fundadora (20/10/2026), pra comparação no
+  // golden-suite — nunca o modelo de produção (continua gpt-5-mini,
+  // PLANNER_MODEL/CLASSIFIER_MODEL inalterados).
+  { model: 'gpt-5.6-terra', effectiveFrom: '2026-10-20', inputCentsPerMillionTokens: 200, outputCentsPerMillionTokens: 1200, cachedInputCentsPerMillionTokens: 20 },
 ];
 
 export type AiCostEstimate = { configured: true; costCents: number } | { configured: false };
@@ -55,9 +68,25 @@ export function estimateAiCostCents(params: {
   usageDate: string;
   inputTokens: number;
   outputTokens: number;
+  // Opcional — tokens de input servidos do cache da própria OpenAI
+  // (response.usage.input_tokens_details.cached_tokens), SEMPRE um
+  // SUBCONJUNTO de inputTokens, nunca somado a ele. Default 0 (mesma
+  // garantia de sempre: sem esse dado, usa o preço de input cheio
+  // sobre o total, nunca inventa um desconto).
+  cachedInputTokens?: number;
 }): AiCostEstimate {
   const rule = findEffectiveRule(params.model, params.usageDate);
   if (!rule) return { configured: false };
+
+  const cachedInputTokens = params.cachedInputTokens ?? 0;
+  if (cachedInputTokens > 0 && rule.cachedInputCentsPerMillionTokens !== undefined) {
+    const nonCachedInputTokens = params.inputTokens - cachedInputTokens;
+    const costCents =
+      (nonCachedInputTokens / 1_000_000) * rule.inputCentsPerMillionTokens +
+      (cachedInputTokens / 1_000_000) * rule.cachedInputCentsPerMillionTokens +
+      (params.outputTokens / 1_000_000) * rule.outputCentsPerMillionTokens;
+    return { configured: true, costCents };
+  }
 
   const costCents =
     (params.inputTokens / 1_000_000) * rule.inputCentsPerMillionTokens +

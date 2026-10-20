@@ -37,21 +37,53 @@ import { estimateAiCostCents } from '@/lib/admin/ai-pricing';
 // model; um model sem linha em MODEL_PRICE_TABLE devolve
 // costCents=null, nunca inventa um preço.
 
-function buildModelCallForModel(model: string): PlannerModelCall {
+// ADR 0007 item 5 — métricas que PlannerModelCallResult (contrato
+// fixo de plan.ts, produção) não carrega: latência real e tokens
+// servidos do cache da própria OpenAI. Acumuladas num objeto
+// mutável passado por fora, nunca no retorno — nunca precisou mudar o
+// tipo de produção pra isto. Soma de TODAS as tentativas (planResponse
+// pode chamar modelCall mais de uma vez num retry), mesmo princípio já
+// usado pra tokens no resto do projeto.
+type ModelCallMetrics = { cachedInputTokens: number; latencyMs: number };
+
+function buildModelCallForModel(model: string, metrics: ModelCallMetrics): PlannerModelCall {
   return async ({ instructions, input }) => {
     const client = getOpenAIClient();
+    const startedAt = Date.now();
     const response = await client.responses.parse({
       model,
       instructions,
       input,
       text: { format: zodTextFormat(plannerModelOutputSchema, 'response_plan') },
     });
+    metrics.latencyMs += Date.now() - startedAt;
+    metrics.cachedInputTokens += response.usage?.input_tokens_details?.cached_tokens ?? 0;
     return {
       parsed: response.output_parsed ?? null,
       inputTokens: response.usage?.input_tokens ?? null,
       outputTokens: response.usage?.output_tokens ?? null,
     };
   };
+}
+
+// ADR 0007 item 5 — "verificar disponibilidade do model na conta antes
+// de executar" (requisito explícito da fundadora): GET real na API da
+// OpenAI (models.retrieve), nunca uma suposição a partir do nome. Erro
+// de rede/chave/qualquer coisa também vira available:false — quem usa
+// isto nunca deve rodar a suite inteira (26 casos reais) achando que
+// um erro de disponibilidade era só uma falha pontual.
+export async function checkModelAvailabilityAction(model: string): Promise<{ available: boolean; error?: string }> {
+  await requireProfessional();
+  const trimmedModel = model.trim();
+  if (trimmedModel.length === 0) return { available: false, error: 'model_required' };
+
+  try {
+    const client = getOpenAIClient();
+    await client.models.retrieve(trimmedModel);
+    return { available: true };
+  } catch (err) {
+    return { available: false, error: err instanceof Error ? err.message : 'erro desconhecido ao verificar disponibilidade' };
+  }
 }
 
 export type PlannerGoldenSuiteCaseResult = {
@@ -70,15 +102,20 @@ export type PlannerGoldenSuiteCaseResult = {
   error?: string;
   plannerInputTokens: number | null;
   plannerOutputTokens: number | null;
+  plannerCachedInputTokens: number;
   plannerCostCents: number | null;
+  plannerLatencyMs: number;
 };
 
 export type PlannerGoldenSuiteRunSummary = {
   model: string;
   totalPlannerInputTokens: number;
   totalPlannerOutputTokens: number;
+  totalPlannerCachedInputTokens: number;
   totalPlannerCostCents: number | null;
   costConfigured: boolean;
+  totalLatencyMs: number;
+  averageLatencyMs: number;
 };
 
 async function requireProfessional() {
@@ -179,7 +216,6 @@ export async function runPlannerGoldenSuiteAction(
 
   const trimmedModel = model.trim();
   if (trimmedModel.length === 0) return { error: 'model_required' };
-  const modelCall = buildModelCallForModel(trimmedModel);
 
   const actorContext: ActorContext = {
     representedProfessionalId: user.id,
@@ -192,8 +228,10 @@ export async function runPlannerGoldenSuiteAction(
   const results: PlannerGoldenSuiteCaseResult[] = [];
   let totalPlannerInputTokens = 0;
   let totalPlannerOutputTokens = 0;
+  let totalPlannerCachedInputTokens = 0;
   let totalPlannerCostCents = 0;
   let costConfigured = true;
+  let totalLatencyMs = 0;
   const usageDate = new Date().toISOString().slice(0, 10);
 
   for (const goldenCase of PLANNER_GOLDEN_SUITE_CASES) {
@@ -205,13 +243,17 @@ export async function runPlannerGoldenSuiteAction(
       supabase,
     };
 
+    const metrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0 };
     try {
       const { classification } = await classifyIntent(toolCtx, contextPackage);
-      const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall });
+      const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall: buildModelCallForModel(trimmedModel, metrics) });
+
+      totalLatencyMs += metrics.latencyMs;
+      totalPlannerCachedInputTokens += metrics.cachedInputTokens;
 
       let plannerCostCents: number | null = null;
       if (inputTokens !== null && outputTokens !== null) {
-        const estimate = estimateAiCostCents({ model: trimmedModel, usageDate, inputTokens, outputTokens });
+        const estimate = estimateAiCostCents({ model: trimmedModel, usageDate, inputTokens, outputTokens, cachedInputTokens: metrics.cachedInputTokens });
         if (estimate.configured) {
           plannerCostCents = estimate.costCents;
           totalPlannerCostCents += estimate.costCents;
@@ -258,9 +300,16 @@ export async function runPlannerGoldenSuiteAction(
         note: goldenCase.note,
         plannerInputTokens: inputTokens,
         plannerOutputTokens: outputTokens,
+        plannerCachedInputTokens: metrics.cachedInputTokens,
         plannerCostCents,
+        plannerLatencyMs: metrics.latencyMs,
       });
     } catch (err) {
+      // Latência/cache registrados mesmo em erro — uma tentativa real
+      // pode ter chegado a sair (e demorar) antes de o ciclo falhar
+      // por outro motivo (ex.: guarda de invariante).
+      totalLatencyMs += metrics.latencyMs;
+      totalPlannerCachedInputTokens += metrics.cachedInputTokens;
       results.push({
         name: goldenCase.name,
         category: goldenCase.category,
@@ -277,7 +326,9 @@ export async function runPlannerGoldenSuiteAction(
         error: err instanceof Error ? err.message : 'erro desconhecido',
         plannerInputTokens: null,
         plannerOutputTokens: null,
+        plannerCachedInputTokens: metrics.cachedInputTokens,
         plannerCostCents: null,
+        plannerLatencyMs: metrics.latencyMs,
       });
     }
   }
@@ -286,8 +337,11 @@ export async function runPlannerGoldenSuiteAction(
     model: trimmedModel,
     totalPlannerInputTokens,
     totalPlannerOutputTokens,
+    totalPlannerCachedInputTokens,
     totalPlannerCostCents: costConfigured ? totalPlannerCostCents : null,
     costConfigured,
+    totalLatencyMs,
+    averageLatencyMs: results.length > 0 ? totalLatencyMs / results.length : 0,
   };
 
   return { results, summary };
