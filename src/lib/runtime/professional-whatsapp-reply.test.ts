@@ -13,6 +13,7 @@ const sendWhatsappTextMessage = vi.fn();
 const readAppSettingFlag = vi.fn();
 const claimProfessionalSelfWhatsappSend = vi.fn();
 const isLatestInboundProfessionalMessage = vi.fn();
+const isProfessionalSelfReplyPaused = vi.fn();
 
 vi.mock('../whatsapp-identity/data', () => ({
   getWhatsappIdentitySnapshot: (...args: unknown[]) => getWhatsappIdentitySnapshot(...args),
@@ -39,6 +40,10 @@ vi.mock('./conversation-freshness', () => ({
   isLatestInboundProfessionalMessage: (...args: unknown[]) => isLatestInboundProfessionalMessage(...args),
 }));
 
+vi.mock('./professional-self-reply-pause', () => ({
+  isProfessionalSelfReplyPaused: (...args: unknown[]) => isProfessionalSelfReplyPaused(...args),
+}));
+
 const fakeSupabase = {} as never;
 
 describe('sendProfessionalSelfReplyViaWhatsapp', () => {
@@ -48,12 +53,15 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     readAppSettingFlag.mockReset();
     claimProfessionalSelfWhatsappSend.mockReset();
     isLatestInboundProfessionalMessage.mockReset();
+    isProfessionalSelfReplyPaused.mockReset();
     // Default: contenção DESLIGADA (comportamento de hoje), idempotência
-    // SEMPRE concede (primeira vez) e atualidade SEMPRE confirma — só os
-    // testes dos próprios gates (ADR 0008/0009) sobrescrevem isto.
+    // SEMPRE concede (primeira vez), atualidade SEMPRE confirma e
+    // conversa NUNCA pausada — só os testes dos próprios gates
+    // (ADR 0008/0009) sobrescrevem isto.
     readAppSettingFlag.mockResolvedValue(true);
     claimProfessionalSelfWhatsappSend.mockResolvedValue(true);
     isLatestInboundProfessionalMessage.mockResolvedValue(true);
+    isProfessionalSelfReplyPaused.mockResolvedValue(false);
   });
 
   it('envia pro número verificado quando status é verified', async () => {
@@ -243,6 +251,45 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
       await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-42' });
 
       expect(claimProfessionalSelfWhatsappSend).not.toHaveBeenCalled();
+    });
+  });
+
+  // ADR 0009 (20/10/2026) — Mecanismo B do incidente P0 (ADR 0008):
+  // pausa real ("pare de me escrever"), checada no envio.
+  describe('pausa real (ADR 0009 — professional_self_reply_paused_at)', () => {
+    it('NUNCA envia quando a conversa está pausada, mesmo com tudo mais ok', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      isProfessionalSelfReplyPaused.mockResolvedValue(true);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
+
+      expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+      expect(claimProfessionalSelfWhatsappSend).not.toHaveBeenCalled();
+      expect(getWhatsappIdentitySnapshot).not.toHaveBeenCalled();
+    });
+
+    it('com a conversa não pausada, envia normalmente (regressão)', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      isProfessionalSelfReplyPaused.mockResolvedValue(false);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+      sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
+
+      expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
     });
   });
 

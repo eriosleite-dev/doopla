@@ -23,6 +23,12 @@ import { shouldCreatePendingReply, shouldSupersedeOnCreation } from './pending-r
 import { persistAiMessage } from './professional-message';
 import { resolveProfessionalDisplayName } from './professional-identity';
 import { sendProfessionalSelfReplyViaWhatsapp } from './professional-whatsapp-reply';
+import { setProfessionalSelfReplyPaused } from './professional-self-reply-pause';
+import {
+  recognizeProfessionalSelfPauseRequest,
+  AI_FEATURE_PROFESSIONAL_SELF_PAUSE_RECOGNITION,
+  PROFESSIONAL_SELF_PAUSE_RECOGNIZER_MODEL,
+} from '../intelligence/professional-self-pause';
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { runDelegatedContactRecipientReplyFlow, runDelegatedContactRequestFlow } from './delegated-contact-flow';
@@ -227,6 +233,41 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
         actorType: 'external_participant',
         source: 'runtime',
       });
+    }
+  }
+
+  // ADR 0009 (20/10/2026) — Mecanismo B do incidente P0 (ADR 0008):
+  // reconhece pedido de pausa real EM TODA mensagem nova da
+  // profissional em professional_self, ANTES de qualquer outra coisa
+  // neste ciclo — nunca espera a fila/drain (requisito explícito:
+  // reconhecimento imediato, sem atraso entre "pare de me escrever" e
+  // o estado realmente pausar). Best-effort: falha aqui NUNCA derruba
+  // o ciclo principal. signal=null (falha total do recognizer) NUNCA
+  // muda o estado de pausa existente — ver recognizer.ts pro porquê
+  // (nunca interpreta uma falha técnica como "ela não pediu pausa").
+  if (event.authorType === 'professional' && conversation.conversation_type === 'professional_self') {
+    try {
+      const pauseRecognition = await recognizeProfessionalSelfPauseRequest(event.body);
+      await logAiUsageEvent(supabase, {
+        feature: AI_FEATURE_PROFESSIONAL_SELF_PAUSE_RECOGNITION,
+        model: PROFESSIONAL_SELF_PAUSE_RECOGNIZER_MODEL,
+        status: 'success',
+        conversationId: event.conversationId,
+        inputTokens: pauseRecognition.inputTokens,
+        outputTokens: pauseRecognition.outputTokens,
+        runId: null,
+        professionalId: actorContext.representedProfessionalId,
+      });
+      if (pauseRecognition.signal === 'pause_requested') {
+        await setProfessionalSelfReplyPaused(supabase, { conversationId: event.conversationId, paused: true });
+      } else if (pauseRecognition.signal === 'no_signal') {
+        // Retomada automática: qualquer mensagem nova que o recognizer
+        // confirma NÃO ser um pedido de pausa já reabre, sem precisar
+        // de um comando explícito de "voltar"/"pode continuar".
+        await setProfessionalSelfReplyPaused(supabase, { conversationId: event.conversationId, paused: false });
+      }
+    } catch (err) {
+      console.error('[professional-self-pause] falha ao reconhecer/aplicar pedido de pausa', err);
     }
   }
 

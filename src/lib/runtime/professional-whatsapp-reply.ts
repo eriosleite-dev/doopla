@@ -4,6 +4,7 @@ import { readAppSettingFlag } from './app-settings';
 import { sendWhatsappTextMessage } from '../channels/whatsapp/client';
 import { isLatestInboundProfessionalMessage } from './conversation-freshness';
 import { claimProfessionalSelfWhatsappSend } from './professional-self-whatsapp-sends';
+import { isProfessionalSelfReplyPaused } from './professional-self-reply-pause';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '../supabase/env';
 import { getWhatsappIdentitySnapshot } from '../whatsapp-identity/data';
 import { stripTravessao } from './message-style';
@@ -100,6 +101,20 @@ export async function sendProfessionalSelfReplyViaWhatsapp(
   }
 
   try {
+    // ADR 0009 (20/10/2026) — Mecanismo B do incidente P0 (ADR 0008):
+    // pausa real, reconhecida semanticamente pelo recognizer isolado em
+    // intelligence/professional-self-pause e setada por pipeline.ts.
+    // Checada aqui, nunca no Policy Gate (ver migration 0123 pro
+    // porquê) — a mensagem de IA já está persistida no painel; só o
+    // envio físico é suprimido enquanto pausado.
+    if (await isProfessionalSelfReplyPaused(supabase, params.conversationId)) {
+      console.error('[professional-self] envio suprimido — conversa pausada a pedido da profissional (Mecanismo B, ADR 0009)', {
+        professionalId: params.professionalId,
+        conversationId: params.conversationId,
+      });
+      return;
+    }
+
     if (params.triggerMessageId) {
       const fresh = await isLatestInboundProfessionalMessage(supabase, { conversationId: params.conversationId, triggerMessageId: params.triggerMessageId });
       if (!fresh) {
