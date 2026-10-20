@@ -5,9 +5,12 @@ import {
   reviewMemory,
   revokeMemory,
   selectContextMemories,
+  resolveMemorySupersessionCandidate,
+  buildMemorySupersessionQuestion,
   MAX_CONTEXT_MEMORIES,
   MAX_MEMORY_VALUE_CHARS,
   type ProfessionalMemory,
+  type ScopedMemoryCandidate,
 } from './memory-policy';
 
 // Doopla — Fundação de Memória Profissional (Etapa B, Head of AI +
@@ -321,5 +324,62 @@ describe('selectContextMemories', () => {
   it('array de memórias vazio -> seleção vazia, nunca lança', () => {
     const selected = selectContextMemories([], { professionalId: 'prof-1', now: NOW });
     expect(selected).toEqual([]);
+  });
+});
+
+// Task #76 (ADR 0012) — função pura de decisão, preparada sem tocar
+// schema/pipeline ainda (ver comentário em memory-policy.ts).
+describe('resolveMemorySupersessionCandidate', () => {
+  function candidate(id: string, overrides: Partial<ScopedMemoryCandidate> = {}): ScopedMemoryCandidate {
+    return { id, kind: 'operational_preference', subjectKey: null, value: 'valor', ...overrides };
+  }
+
+  it('nenhuma aprovada do mesmo kind: coexist (nada a decidir)', () => {
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: null }, []);
+    expect(result).toEqual({ kind: 'coexist' });
+  });
+
+  it('mesmo kind, escopos DIFERENTES ("bar" vs "casamento"): coexist — nunca substitui por kind sozinho', () => {
+    const existing = [candidate('m-bar', { subjectKey: 'bar', value: 'faz 2h em bares' })];
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: 'casamento' }, existing);
+    expect(result).toEqual({ kind: 'coexist' });
+  });
+
+  it('mesmo kind, AMBOS sem escopo (regra geral "sempre 2h" -> "sempre 4h"): supersede_candidate', () => {
+    const existing = [candidate('m-geral', { subjectKey: null, value: 'sempre faz 2h' })];
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: null }, existing);
+    expect(result).toEqual({ kind: 'supersede_candidate', existing: existing[0] });
+  });
+
+  it('mesmo kind, MESMO escopo explícito ("bar" -> "bar"): supersede_candidate', () => {
+    const existing = [candidate('m-bar', { subjectKey: 'bar', value: 'faz 2h em bares' })];
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: 'bar' }, existing);
+    expect(result).toEqual({ kind: 'supersede_candidate', existing: existing[0] });
+  });
+
+  it('normaliza subjectKey (espaço/caixa) antes de comparar — "Bar " e "bar" são o mesmo escopo', () => {
+    const existing = [candidate('m-bar', { subjectKey: 'Bar ', value: 'faz 2h em bares' })];
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: ' bar' }, existing);
+    expect(result).toEqual({ kind: 'supersede_candidate', existing: existing[0] });
+  });
+
+  it('kind diferente nunca conta como match, mesmo com o mesmo subjectKey', () => {
+    const existing = [candidate('m-comm', { kind: 'communication_style', subjectKey: 'bar' })];
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: 'bar' }, existing);
+    expect(result).toEqual({ kind: 'coexist' });
+  });
+
+  it('duas ou mais aprovadas do mesmo kind+subjectKey (dado legado/ambíguo): ambiguous, nunca escolhe uma arbitrariamente', () => {
+    const existing = [candidate('m-1', { subjectKey: 'bar' }), candidate('m-2', { subjectKey: 'bar' })];
+    const result = resolveMemorySupersessionCandidate({ kind: 'operational_preference', subjectKey: 'bar' }, existing);
+    expect(result).toEqual({ kind: 'ambiguous', matches: existing });
+  });
+});
+
+describe('buildMemorySupersessionQuestion', () => {
+  it('menciona explicitamente a preferência antiga — nunca substitui silenciosamente', () => {
+    const question = buildMemorySupersessionQuestion('sempre faz 4h', 'sempre faz 2h');
+    expect(question).toContain('sempre faz 4h');
+    expect(question).toContain('sempre faz 2h');
   });
 });

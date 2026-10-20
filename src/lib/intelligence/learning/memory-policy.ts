@@ -316,6 +316,79 @@ export function buildMemoryConfirmationQuestion(value: string): string {
   return `Anotei que você disse: "${value}". Posso guardar isso como uma preferência sua, pra eu levar em conta daqui pra frente?`;
 }
 
+// ============================================================
+// Task #76 (ADR 0012) — DESENHO/PREPARAÇÃO, nunca wiring ainda.
+//
+// resolveMemorySupersessionCandidate: decide se uma declaração nova
+// contradiz (mesmo kind, mesmo escopo) uma memória JÁ APROVADA, ou
+// coexiste com ela (mesmo kind, escopo diferente) — distinção exigida
+// explicitamente pela fundadora ("sempre 2h" -> "sempre 4h" substitui;
+// "2h em bares" e "4h em casamentos" convivem). Nunca decide por
+// `kind` sozinho (isso seria substituição indiscriminada, rejeitada
+// por ela) — mesmo raciocínio de subjectKey já validado em
+// policy-gate-post/matcher.ts (resolveSubjectKey): o model PROPÕE um
+// rótulo livre curto de escopo (ex. "bar", "casamento"), nunca decide
+// ele mesmo o que fazer com isso — só esta function pura, 100% código,
+// é autoridade sobre supersede/coexist/ambiguous.
+//
+// Tipos próprios (ScopedMemoryCandidate), DELIBERADAMENTE não
+// integrados a ProfessionalMemory/professional_memories ainda — a
+// coluna subjectKey não existe no schema real (migration 0119 não
+// previu isto). Função pura primeiro, schema depois, só com aprovação
+// explícita (ver ADR 0012) — mesma ordem de sempre neste projeto.
+// ============================================================
+
+export type ScopedMemoryCandidate = {
+  id: string;
+  kind: MemoryKind;
+  // null = regra geral, sem escopo específico (ex.: "sempre faço 2h").
+  // Normalizado (trim + lowercase) na comparação, nunca no dado
+  // guardado — o valor original, como o model propôs, é preservado.
+  subjectKey: string | null;
+  value: string;
+};
+
+export type MemorySupersessionResolution =
+  | { kind: 'coexist' }
+  | { kind: 'supersede_candidate'; existing: ScopedMemoryCandidate }
+  // Duas ou mais aprovadas do mesmo kind+subjectKey (nunca deveria
+  // existir se esta mesma function sempre decidiu a entrada de cada
+  // uma — mas dado legado ou um subjectKey ambíguo que não desempatou
+  // claramente também cai aqui) — NUNCA escolhe uma candidata
+  // arbitrariamente, mesmo princípio de resolveSubjectKey (policy-gate-post).
+  | { kind: 'ambiguous'; matches: ScopedMemoryCandidate[] };
+
+function normalizeSubjectKey(subjectKey: string | null): string | null {
+  const trimmed = subjectKey?.trim().toLowerCase() ?? '';
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+export function resolveMemorySupersessionCandidate(
+  declaration: { kind: MemoryKind; subjectKey: string | null },
+  existingApproved: readonly ScopedMemoryCandidate[]
+): MemorySupersessionResolution {
+  const declaredSubjectKey = normalizeSubjectKey(declaration.subjectKey);
+
+  const sameSubject = existingApproved.filter((m) => m.kind === declaration.kind && normalizeSubjectKey(m.subjectKey) === declaredSubjectKey);
+
+  if (sameSubject.length === 0) return { kind: 'coexist' };
+  if (sameSubject.length === 1) return { kind: 'supersede_candidate', existing: sameSubject[0] };
+  return { kind: 'ambiguous', matches: sameSubject };
+}
+
+// ============================================================
+// buildMemorySupersessionQuestion — pergunta determinística quando
+// resolveMemorySupersessionCandidate devolve 'supersede_candidate'.
+// Mesmo motivo estrutural de buildMemoryConfirmationQuestion: gerada
+// uma única vez, nunca duas formulações divergentes pro mesmo caso.
+// Menciona a preferência antiga EXPLICITAMENTE — nunca substitui
+// silenciosamente sem a profissional saber o que está sendo trocado.
+// ============================================================
+
+export function buildMemorySupersessionQuestion(newValue: string, oldValue: string): string {
+  return `Anotei que você disse: "${newValue}". Isso substitui a preferência anterior ("${oldValue}"), certo? Se sim, vou atualizar.`;
+}
+
 function isMoreRecent(a: ProfessionalMemory, b: ProfessionalMemory): boolean {
   const byDate = a.createdAt.localeCompare(b.createdAt);
   if (byDate !== 0) return byDate > 0;
