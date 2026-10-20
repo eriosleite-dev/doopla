@@ -171,4 +171,33 @@ describe('runMemoryConfirmationFlow', () => {
     expect(persistMemoryReview).not.toHaveBeenCalled();
     expect(result.handled).toBe(false);
   });
+
+  it('nova declaração chega com uma proposta antiga ainda sem resposta (continuidade não bate): supersede a antiga como rejected, nunca deixa orfanada', async () => {
+    pendingProposalState.value = {
+      id: 'mem-antiga',
+      professionalId: 'prof-1',
+      kind: 'communication_style',
+      value: 'prefere tom informal',
+      status: 'proposed',
+      createdAt: '2026-10-19T10:00:00.000Z',
+      evidence: { sourceType: 'professional_message', sourceId: 'msg-0' },
+      confidence: 0.8,
+      reviewedAt: null,
+      reviewedBy: null,
+      expiresAt: null,
+    };
+    // Última mensagem de IA NÃO é a pergunta desta proposta antiga —
+    // conversa seguiu pra outra coisa, Ramo 1 nunca a reconhece.
+    lastAiMessageState.value = { id: 'ai-999', text: 'Perfeito, já confirmei o booking de sábado.' };
+
+    const result = await runMemoryConfirmationFlow(
+      supabase,
+      { ...baseParams, messageText: 'Eu sempre prefiro contratos de 2h.' },
+      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: true, kind: 'operational_preference', value: 'prefere contratos de 2h', confidence: 0.9 }, inputTokens: 1, outputTokens: 1 }) }
+    );
+
+    expect(result.handled).toBe(true);
+    expect(persistMemoryReview).toHaveBeenCalledWith(supabase, expect.objectContaining({ id: 'mem-antiga', decision: 'rejected' }));
+    expect(persistProposedMemory).toHaveBeenCalledTimes(1);
+  });
 });

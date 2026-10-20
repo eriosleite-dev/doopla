@@ -153,6 +153,29 @@ export async function runMemoryConfirmationFlow(
   });
   if (!proposeResult.ok) return { handled: false };
 
+  // Supersessão de HIGIENE (task #72/#76) — nunca deixa uma pergunta de
+  // confirmação antiga orfanada em 'proposed' pra sempre quando uma
+  // declaração nova chega antes de ela ser respondida: a proposta
+  // anterior é encerrada como 'rejected' (auditável, nunca apagada),
+  // mesmo princípio já usado em runtime_pending_replies
+  // (supersedeIds/shouldSupersedeOnCreation, pipeline.ts) — "a mais
+  // nova substitui a pendência antiga que ainda não foi resolvida".
+  // Isto NUNCA resolve contradição semântica entre duas memórias já
+  // APROVADAS de valores diferentes do mesmo kind — essa decisão de
+  // política é um problema distinto, deliberadamente fora de escopo
+  // aqui (task #76, aguardando aprovação da fundadora).
+  if (pendingProposal) {
+    const supersedeResult = reviewMemory({ memory: pendingProposal, reviewerId: params.professionalId, decision: 'rejected' });
+    if (supersedeResult.ok) {
+      await persistMemoryReview(supabase, {
+        id: supersedeResult.memory.id,
+        reviewerId: params.professionalId,
+        decision: 'rejected',
+        reviewedAt: supersedeResult.memory.reviewedAt as string,
+      });
+    }
+  }
+
   await persistProposedMemory(supabase, proposeResult.memory);
   await replyToProfessional(supabase, {
     conversationId: params.conversationId,
