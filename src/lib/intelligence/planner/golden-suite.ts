@@ -321,4 +321,78 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     expectedResponsePlanFamily: ['acknowledge', 'consult_professional', 'clarify_ambiguity'],
     note: '"Manda" respondendo um pedido de suporte não é confirmação de proposta comercial nenhuma — professionalDecisionSignal nunca deveria virar candidate_contextual aqui',
   },
+
+  // ============================================================
+  // Rodada de generalização — "CODE | Otimização do Planner para
+  // gpt-5.6-terra" (20/10/2026). Mesmos PRINCÍPIOS dos casos 8/14/25
+  // (que motivaram a variante terra-v1), mas com enunciados/assuntos
+  // DIFERENTES de propósito — requisito explícito da fundadora: "não
+  // otimizar somente para as frases literais dos testes existentes".
+  // ============================================================
+  {
+    name: 'generalização — recall de data (nunca pedir confirmação do que já se sabe)',
+    category: 'report_existing_fact',
+    input: 'Em que dia mesmo é o show?',
+    bookingFacts: { status: 'confirmed', cacheAmountCents: 450000, eventDate: '2026-11-03', eventLocation: 'Clube XYZ, Curitiba' },
+    expectedCommitmentNature: 'report_existing_fact',
+    expectedRequiresProfessionalDecision: false,
+    expectedResponsePlanFamily: ['answer_with_known_information'],
+    note: 'generalização do caso 14 (horário) — mesmo princípio: fato já confirmado, responder direto, nunca empurrar de volta pra profissional confirmar o que o Planner já sabe',
+  },
+  {
+    name: 'generalização — informação genuinamente indisponível (nunca inventar, nunca tratar como decisão nova)',
+    category: 'unavailable',
+    input: 'Qual foi o rider técnico que a gente tinha combinado mesmo?',
+    expectedRequiresProfessionalDecision: false,
+    expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant', 'clarify_ambiguity'],
+    note: 'generalização do caso 25 (valor sem fonte) com assunto diferente (rider técnico) — sem fato disponível, nunca inventa, e nunca classifica uma pergunta de recordação como decisão comercial nova só por faltar o dado',
+  },
+  {
+    name: 'generalização — confirmação contextual curta com palavra diferente ("Pode ser")',
+    category: 'professionalDecisionSignal',
+    input: 'Pode ser',
+    triggerAuthorType: 'professional',
+    previousMessages: [
+      { authorType: 'external_participant', text: 'Vocês topam um desconto de 10% se eu fechar hoje mesmo?' },
+      { authorType: 'ai', text: 'O cliente perguntou se você topa 10% de desconto fechando hoje. Você decide?' },
+    ],
+    bookingFacts: {},
+    expectedProfessionalDecisionSignal: 'candidate_contextual',
+    expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge', 'consult_professional'],
+    note: 'generalização do caso 8 (palco próprio) — confirmação curta e decisiva referenciando uma pergunta pendente específica no histórico, nunca tratada como mensagem isolada sem contexto',
+  },
+  {
+    name: 'generalização — mudança comercial real (duração), nunca confundida com relato',
+    category: 'new_or_changed_commitment',
+    input: 'Dá pra estender o set em mais 1 hora?',
+    bookingFacts: { status: 'confirmed', cacheAmountCents: 300000, eventDate: '2026-09-12', durationMinutes: 120 },
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant'],
+    note: 'mudança real de escopo (duração), nunca resolvida sozinha mesmo com o booking já confirmado — garante que a variante terra não "corrigiu" os casos 14/25 custando confiança nos casos em que uma decisão nova de verdade precisa ser escalada',
+  },
+  {
+    name: 'generalização — mensagem informativa sem pedido de ação, assunto diferente',
+    category: 'acknowledge',
+    input: 'Cheguei bem em casa depois do show, foi tudo tranquilo.',
+    triggerAuthorType: 'professional',
+    expectedResponsePlanFamily: ['acknowledge'],
+    note: 'generalização do caso "Fechei um trabalho sábado" — notícia tranquila, reação curta, nunca um interrogatório sobre o que aconteceu',
+  },
+  {
+    name: 'generalização — múltiplos assuntos na mesma mensagem',
+    category: 'multiplos_assuntos',
+    input: 'Quanto custa pra tocar no meu aniversário, e vocês também atendem banda ao vivo ou só DJ?',
+    // Suite estrutural (responsePlan/commitmentNature/signal) não
+    // verifica COBERTURA de conteúdo — só o julgamento humano lendo o
+    // draft consegue confirmar se os DOIS assuntos foram endereçados
+    // (ADR 0007/0009 P1, prompt.ts: "nunca só o primeiro assunto").
+    // Caso existe pra leitura qualitativa, não pra um PASS/FAIL automático
+    // de cobertura — note isto explicitamente no relatório, nunca finja
+    // que o check estrutural cobre isso.
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+    note: 'PASS/FAIL aqui mede só os campos estruturados — a cobertura real dos dois assuntos (preço E tipo de formação) só é verificável lendo o draft à mão',
+  },
 ];

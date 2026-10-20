@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { checkModelAvailabilityAction, listPlannerGoldenSuiteCasesAction, runPlannerGoldenSuiteBatchAction } from './actions';
 import { buildRunSummary, type PlannerGoldenSuiteCaseResult, type PlannerGoldenSuiteRunSummary } from './golden-suite-summary';
+import { PLANNER_PROMPT_VARIANT_TERRA_V1 } from '@/lib/intelligence/planner/prompt-variants';
 
 // ADR 0007 item 5 (comparação de modelos, 20/10/2026) — input de texto
 // livre em vez de dropdown fechado: nunca sabemos de antemão todo
@@ -69,6 +70,12 @@ export function PlannerGoldenSuitePanel() {
   const [summary, setSummary] = useState<PlannerGoldenSuiteRunSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<AvailabilityState>({ checking: false, result: null });
+  const [useTerraVariant, setUseTerraVariant] = useState(false);
+  // Capturado no início de CADA rodada (nunca lido ao vivo do
+  // checkbox na hora de exibir) — se a profissional mudar o checkbox
+  // depois de rodar, o resumo de uma rodada já concluída precisa
+  // continuar dizendo a verdade sobre o que foi usado NAQUELA rodada.
+  const [lastRunVariant, setLastRunVariant] = useState<string | null>(null);
 
   async function handleCheckAvailability() {
     setAvailability({ checking: true, result: null });
@@ -84,6 +91,8 @@ export function PlannerGoldenSuitePanel() {
     setProgress(null);
 
     let merged: PlannerGoldenSuiteCaseResult[] = [];
+    const runVariant = useTerraVariant ? PLANNER_PROMPT_VARIANT_TERRA_V1 : null;
+    setLastRunVariant(runVariant);
 
     // try/finally é a parte que importa aqui: NENHUM caminho (sucesso,
     // erro de lote, exceção/timeout) pode deixar running=true parado
@@ -97,7 +106,7 @@ export function PlannerGoldenSuitePanel() {
 
       for (let i = 0; i < batches.length; i++) {
         setProgress({ done: i, total: batches.length });
-        const res = await withTimeout(runPlannerGoldenSuiteBatchAction(model, batches[i]), BATCH_TIMEOUT_MS, `lote ${i + 1}/${batches.length}`);
+        const res = await withTimeout(runPlannerGoldenSuiteBatchAction(model, batches[i], runVariant), BATCH_TIMEOUT_MS, `lote ${i + 1}/${batches.length}`);
         if (res.error) {
           setError(res.error);
           return;
@@ -138,6 +147,10 @@ export function PlannerGoldenSuitePanel() {
         <button type="button" onClick={handleCheckAvailability} disabled={running || availability.checking} style={buttonStyle}>
           {availability.checking ? 'verificando…' : 'verificar disponibilidade na conta'}
         </button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#aaa', cursor: 'pointer' }}>
+          <input type="checkbox" checked={useTerraVariant} onChange={(e) => setUseTerraVariant(e.target.checked)} disabled={running} />
+          usar variante otimizada (prompt-variants.ts, terra-v1)
+        </label>
         <button type="button" onClick={handleRun} disabled={running} style={buttonStyle}>
           {running
             ? progress
@@ -187,7 +200,14 @@ export function PlannerGoldenSuitePanel() {
             </strong>{' '}
             casos dentro do esperado (responsePlan + commitmentNature + requiresProfessionalDecision +
             professionalDecisionSignal + requiresProfessionalReviewBeforeSend, conforme cada caso define) — model{' '}
-            <code>{summary.model}</code>.
+            <code>{summary.model}</code>
+            {lastRunVariant && (
+              <>
+                {' '}
+                + variante <code>{lastRunVariant}</code>
+              </>
+            )}
+            .
           </div>
           <div style={{ color: '#aaa' }}>
             Tokens do Planner nesta rodada: {summary.totalPlannerInputTokens} in ({summary.totalPlannerCachedInputTokens} do cache) / {summary.totalPlannerOutputTokens} out

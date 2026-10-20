@@ -9,6 +9,7 @@ import type { ContextFact, ContextPackage, MessageContextItem } from '@/lib/inte
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
 import { planResponse, plannerModelOutputSchema, resolveRequiresProfessionalReviewBeforeSend, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
 import type { PlannerGoldenSuiteCase, PlannerModelCall } from '@/lib/intelligence/planner';
+import { applyTerraVariantAddendum, PLANNER_PROMPT_VARIANT_TERRA_V1 } from '@/lib/intelligence/planner/prompt-variants';
 import type { ActorContext, MinimalConversation, ToolContext } from '@/lib/intelligence/types';
 import { estimateAiCostCents } from '@/lib/admin/ai-pricing';
 import type { PlannerGoldenSuiteCaseResult } from './golden-suite-summary';
@@ -41,13 +42,21 @@ import type { PlannerGoldenSuiteCaseResult } from './golden-suite-summary';
 // usado pra tokens no resto do projeto.
 type ModelCallMetrics = { cachedInputTokens: number; latencyMs: number };
 
-function buildModelCallForModel(model: string, metrics: ModelCallMetrics): PlannerModelCall {
+// Task "Otimização do Planner para gpt-5.6-terra" (20/10/2026) — a
+// variante nunca toca prompt.ts/plan.ts: o modelCall aqui já recebe
+// `instructions` EXATAMENTE como buildPlannerInstructions (produção)
+// as monta, e só então, nesta camada de teste, aplica o addendum por
+// cima — gpt-5-mini nunca vê este texto a menos que promptVariant seja
+// pedido explicitamente pra ele também (comparação justa continua
+// possível, mas o default pra mini continua o prompt original).
+function buildModelCallForModel(model: string, metrics: ModelCallMetrics, promptVariant: string | null): PlannerModelCall {
   return async ({ instructions, input }) => {
     const client = getOpenAIClient();
+    const finalInstructions = promptVariant === PLANNER_PROMPT_VARIANT_TERRA_V1 ? applyTerraVariantAddendum(instructions) : instructions;
     const startedAt = Date.now();
     const response = await client.responses.parse({
       model,
-      instructions,
+      instructions: finalInstructions,
       input,
       text: { format: zodTextFormat(plannerModelOutputSchema, 'response_plan') },
     });
@@ -186,7 +195,8 @@ function buildSyntheticContext(
 // o tamanho do lote e agrega os resultados entre chamadas.
 export async function runPlannerGoldenSuiteBatchAction(
   model: string,
-  caseNames: string[]
+  caseNames: string[],
+  promptVariant: string | null = null
 ): Promise<{ results?: PlannerGoldenSuiteCaseResult[]; error?: string }> {
   const { supabase, user } = await requireProfessional();
 
@@ -226,7 +236,7 @@ export async function runPlannerGoldenSuiteBatchAction(
     const metrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0 };
     try {
       const { classification } = await classifyIntent(toolCtx, contextPackage);
-      const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall: buildModelCallForModel(trimmedModel, metrics) });
+      const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall: buildModelCallForModel(trimmedModel, metrics, promptVariant) });
 
       let plannerCostCents: number | null = null;
       if (inputTokens !== null && outputTokens !== null) {
