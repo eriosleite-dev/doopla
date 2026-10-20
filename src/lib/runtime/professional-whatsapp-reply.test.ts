@@ -5,13 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // WhatsApp quando o número é realmente VERIFICADO (defesa em
 // profundidade — nunca confia em nada além do estado real de
 // professional_whatsapp_identities). Nunca manda mensagem real nem
-// toca produção: os dois únicos pontos de I/O (identidade + envio)
-// são mockados.
+// toca produção: os pontos de I/O (identidade + envio + gates) são
+// mockados.
 
 const getWhatsappIdentitySnapshot = vi.fn();
 const sendWhatsappTextMessage = vi.fn();
 const readAppSettingFlag = vi.fn();
 const claimProfessionalSelfWhatsappSend = vi.fn();
+const isLatestInboundProfessionalMessage = vi.fn();
 
 vi.mock('../whatsapp-identity/data', () => ({
   getWhatsappIdentitySnapshot: (...args: unknown[]) => getWhatsappIdentitySnapshot(...args),
@@ -34,6 +35,10 @@ vi.mock('./professional-self-whatsapp-sends', () => ({
   claimProfessionalSelfWhatsappSend: (...args: unknown[]) => claimProfessionalSelfWhatsappSend(...args),
 }));
 
+vi.mock('./conversation-freshness', () => ({
+  isLatestInboundProfessionalMessage: (...args: unknown[]) => isLatestInboundProfessionalMessage(...args),
+}));
+
 const fakeSupabase = {} as never;
 
 describe('sendProfessionalSelfReplyViaWhatsapp', () => {
@@ -42,11 +47,13 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     sendWhatsappTextMessage.mockReset();
     readAppSettingFlag.mockReset();
     claimProfessionalSelfWhatsappSend.mockReset();
-    // Default: contenção DESLIGADA (comportamento de hoje) e
-    // idempotência SEMPRE concede (primeira vez) — só os testes dos
-    // próprios gates (ADR 0008/0009) sobrescrevem isto.
+    isLatestInboundProfessionalMessage.mockReset();
+    // Default: contenção DESLIGADA (comportamento de hoje), idempotência
+    // SEMPRE concede (primeira vez) e atualidade SEMPRE confirma — só os
+    // testes dos próprios gates (ADR 0008/0009) sobrescrevem isto.
     readAppSettingFlag.mockResolvedValue(true);
     claimProfessionalSelfWhatsappSend.mockResolvedValue(true);
+    isLatestInboundProfessionalMessage.mockResolvedValue(true);
   });
 
   it('envia pro número verificado quando status é verified', async () => {
@@ -60,7 +67,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     });
     sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
 
-    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' });
+    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
     expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
     expect(sendWhatsappTextMessage).toHaveBeenCalledWith(
@@ -80,7 +87,12 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     });
     sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
 
-    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'Posso ajudar — só preciso de um detalhe.', aiMessageId: 'msg-1' });
+    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, {
+      professionalId: 'eduarda',
+      conversationId: 'conv-1',
+      body: 'Posso ajudar — só preciso de um detalhe.',
+      aiMessageId: 'msg-1',
+    });
 
     expect(sendWhatsappTextMessage).toHaveBeenCalledWith(
       { accessToken: 'test-token', phoneNumberId: 'test-phone-id' },
@@ -92,7 +104,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
     getWhatsappIdentitySnapshot.mockResolvedValue(null);
 
-    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' });
+    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
     expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
   });
@@ -107,7 +119,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
       candidateRequestedAt: '2026-10-01T00:00:00Z',
     });
 
-    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' });
+    await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
     expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
   });
@@ -124,7 +136,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     sendWhatsappTextMessage.mockRejectedValue(new Error('falha de rede simulada'));
 
     await expect(
-      sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' })
+      sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' })
     ).resolves.toBeUndefined();
   });
 
@@ -142,7 +154,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
         candidateRequestedAt: null,
       });
 
-      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' });
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
       expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
       expect(getWhatsappIdentitySnapshot).not.toHaveBeenCalled();
@@ -164,7 +176,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
         candidateRequestedAt: null,
       });
 
-      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' });
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
       expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
       expect(readAppSettingFlag).toHaveBeenCalledWith(fakeSupabase, PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG);
@@ -182,7 +194,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
       });
       sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
 
-      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-1' });
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
 
       expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
     });
@@ -202,7 +214,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
       });
       sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
 
-      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-42' });
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-42' });
 
       expect(claimProfessionalSelfWhatsappSend).toHaveBeenCalledWith(fakeSupabase, { aiMessageId: 'msg-42' });
     });
@@ -218,7 +230,7 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
         candidateRequestedAt: null,
       });
 
-      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-42' });
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-42' });
 
       expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
       expect(getWhatsappIdentitySnapshot).not.toHaveBeenCalled();
@@ -228,9 +240,78 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
       const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
       readAppSettingFlag.mockResolvedValue(false);
 
-      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!', aiMessageId: 'msg-42' });
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-42' });
 
       expect(claimProfessionalSelfWhatsappSend).not.toHaveBeenCalled();
+    });
+  });
+
+  // ADR 0009 (20/10/2026) — Mecanismo A do incidente P0 (ADR 0008):
+  // atualidade antes de enviar (triggerMessageId opcional).
+  describe('atualidade (ADR 0009 — triggerMessageId)', () => {
+    it('sem triggerMessageId, nunca checa atualidade e envia normalmente (fluxos sem mensagem-gatilho natural)', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+      sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', conversationId: 'conv-1', body: 'oi!', aiMessageId: 'msg-1' });
+
+      expect(isLatestInboundProfessionalMessage).not.toHaveBeenCalled();
+      expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('com triggerMessageId e resposta ainda atual, envia normalmente', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      isLatestInboundProfessionalMessage.mockResolvedValue(true);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+      sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, {
+        professionalId: 'eduarda',
+        conversationId: 'conv-1',
+        body: 'oi!',
+        aiMessageId: 'msg-1',
+        triggerMessageId: 'msg-trigger',
+      });
+
+      expect(isLatestInboundProfessionalMessage).toHaveBeenCalledWith(fakeSupabase, { conversationId: 'conv-1', triggerMessageId: 'msg-trigger' });
+      expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('com triggerMessageId e resposta obsoleta, NUNCA envia (nem chega a reivindicar idempotência)', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      isLatestInboundProfessionalMessage.mockResolvedValue(false);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, {
+        professionalId: 'eduarda',
+        conversationId: 'conv-1',
+        body: 'oi!',
+        aiMessageId: 'msg-1',
+        triggerMessageId: 'msg-trigger',
+      });
+
+      expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+      expect(claimProfessionalSelfWhatsappSend).not.toHaveBeenCalled();
+      expect(getWhatsappIdentitySnapshot).not.toHaveBeenCalled();
     });
   });
 });

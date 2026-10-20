@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { readAppSettingFlag } from './app-settings';
 import { sendWhatsappTextMessage } from '../channels/whatsapp/client';
+import { isLatestInboundProfessionalMessage } from './conversation-freshness';
 import { claimProfessionalSelfWhatsappSend } from './professional-self-whatsapp-sends';
 import { whatsappAccessToken, whatsappPhoneNumberId } from '../supabase/env';
 import { getWhatsappIdentitySnapshot } from '../whatsapp-identity/data';
@@ -70,10 +71,22 @@ export const PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG = 'professional_self_auto
 // resposta, mas a mensagem chegou) nunca manda duas vezes a mesma
 // mensagem — a segunda tentativa encontra a reivindicação já feita e
 // retorna sem chamar o provider.
+//
+// ADR 0009 (20/10/2026) — Mecanismo A do incidente P0 (ADR 0008):
+// triggerMessageId é OPCIONAL de propósito — só os fluxos onde existe
+// uma mensagem INBOUND real da profissional por trás desta resposta
+// (ciclo principal do pipeline.ts, pedido de delegação em
+// delegated-contact-flow.ts) passam ele; fluxos sem uma mensagem
+// "gatilho" natural (ex.: resposta a uma reply do DESTINATÁRIO externo)
+// omitem e nunca sofrem a checagem — nunca forçado onde o conceito não
+// se aplica. Quando presente: se a profissional já escreveu algo MAIS
+// NOVO que triggerMessageId nesta conversation enquanto o ciclo
+// rodava, a resposta já está obsoleta — o envio é descartado (nunca a
+// mensagem de IA em si, que já está persistida no painel).
 export async function sendProfessionalSelfReplyViaWhatsapp(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>,
-  params: { professionalId: string; body: string; aiMessageId: string }
+  params: { professionalId: string; conversationId: string; body: string; aiMessageId: string; triggerMessageId?: string | null }
 ): Promise<void> {
   const enabled = await readAppSettingFlag(supabase, PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG);
   if (!enabled) {
@@ -87,6 +100,20 @@ export async function sendProfessionalSelfReplyViaWhatsapp(
   }
 
   try {
+    if (params.triggerMessageId) {
+      const fresh = await isLatestInboundProfessionalMessage(supabase, { conversationId: params.conversationId, triggerMessageId: params.triggerMessageId });
+      if (!fresh) {
+        // Resposta obsoleta — a profissional já escreveu algo mais novo.
+        // A mensagem de IA já está persistida no painel (nunca
+        // descartada); só o envio físico pelo WhatsApp é suprimido.
+        console.error('[professional-self] envio descartado — resposta obsoleta (atualidade, ADR 0009)', {
+          professionalId: params.professionalId,
+          triggerMessageId: params.triggerMessageId,
+        });
+        return;
+      }
+    }
+
     const claimed = await claimProfessionalSelfWhatsappSend(supabase, { aiMessageId: params.aiMessageId });
     if (!claimed) {
       // Já reivindicada antes (enviada ou em voo nesse exato instante)

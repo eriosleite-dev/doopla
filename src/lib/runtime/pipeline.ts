@@ -608,8 +608,10 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
       if (event.channel === 'whatsapp') {
         await sendProfessionalSelfReplyViaWhatsapp(supabase, {
           professionalId: conversation.represented_professional_id,
+          conversationId: event.conversationId,
           body: decision.proposedResponse,
           aiMessageId: aiMessage.id,
+          triggerMessageId: message.id,
         });
       }
     }
