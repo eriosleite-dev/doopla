@@ -62,6 +62,59 @@ function formatMs(ms: number): string {
 
 type AvailabilityState = { checking: boolean; result: { available: boolean; error?: string } | null };
 
+// Diagnóstico de estabilidade — task "CODE | Próxima etapa da
+// avaliação do cérebro Doopla" (20/10/2026), requisito 1: rodar os
+// casos críticos N>=5 vezes por model e contar quantas vezes CADA
+// model acerta, não só um PASS/FAIL único. Nunca precisou de uma
+// Server Action nova: reusa runPlannerGoldenSuiteBatchAction com um
+// único caso por chamada, N vezes em sequência (mesma disciplina de
+// timeout/try-catch do restante do painel) — zero mudança em
+// actions.ts.
+//
+// Casos: os 6 citados pela fundadora (8, 11, 14, 25, 26, 28, pela
+// numeração da tabela que ela colou) + os 2 novos pares de
+// generalização adicionados agora pra fechar a lacuna (11 e 26 ainda
+// não tinham uma segunda variação testando o mesmo princípio).
+const STABILITY_CASE_NAMES = [
+  'profissional responde decisivamente a pergunta interna da Doopla sobre logística', // caso 8
+  'pergunta de coleta em turno de decisão fica elegível a auto-send', // caso 11
+  'relato de fato existente — horário', // caso 14
+  'fonte unavailable — nunca responder como se fosse inexistente', // caso 25
+  'sinal de decisão em tópico errado — não confundir suporte com confirmação comercial', // caso 26
+  'generalização — informação genuinamente indisponível (nunca inventar, nunca tratar como decisão nova)', // caso 28
+  'generalização — pergunta de preço sem booking existente, assunto diferente', // par novo do caso 11
+  'generalização — sinal de decisão em tópico errado, palavra diferente', // par novo do caso 26
+] as const;
+
+type StabilityRunOutcome = {
+  pass: boolean;
+  responsePlan: string;
+  commitmentNature: string;
+  professionalDecisionSignal: string;
+  error?: string;
+};
+
+type StabilityModelTally = {
+  model: string;
+  variantLabel: string | null;
+  passCount: number;
+  total: number;
+  distinctResponsePlans: string[];
+  distinctSignals: string[];
+  runs: StabilityRunOutcome[];
+};
+
+type StabilityCaseResult = {
+  caseName: string;
+  baseline: StabilityModelTally;
+  comparison: StabilityModelTally;
+};
+
+function formatTally(tally: StabilityModelTally): string {
+  const flags = tally.distinctResponsePlans.length > 1 ? ' ⚠ variou entre as repetições' : '';
+  return `${tally.passCount}/${tally.total} PASS${flags}`;
+}
+
 export function PlannerGoldenSuitePanel() {
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [running, setRunning] = useState(false);
@@ -76,6 +129,13 @@ export function PlannerGoldenSuitePanel() {
   // depois de rodar, o resumo de uma rodada já concluída precisa
   // continuar dizendo a verdade sobre o que foi usado NAQUELA rodada.
   const [lastRunVariant, setLastRunVariant] = useState<string | null>(null);
+
+  const [stabilitySelectedCases, setStabilitySelectedCases] = useState<string[]>([...STABILITY_CASE_NAMES]);
+  const [repeatCount, setRepeatCount] = useState(5);
+  const [stabilityRunning, setStabilityRunning] = useState(false);
+  const [stabilityProgress, setStabilityProgress] = useState<{ done: number; total: number } | null>(null);
+  const [stabilityError, setStabilityError] = useState<string | null>(null);
+  const [stabilityResults, setStabilityResults] = useState<StabilityCaseResult[] | null>(null);
 
   async function handleCheckAvailability() {
     setAvailability({ checking: true, result: null });
@@ -126,6 +186,87 @@ export function PlannerGoldenSuitePanel() {
   }
 
   const passCount = results?.filter((r) => r.pass).length ?? 0;
+
+  // Uma repetição = 1 chamada a runPlannerGoldenSuiteBatchAction com
+  // um único caso (classifyIntent + planResponse reais) — sequencial
+  // de propósito, nunca em paralelo: mantém o mesmo limite de
+  // concorrência já validado no resto do painel, e cada chamada tem
+  // seu próprio timeout/try-catch (BATCH_TIMEOUT_MS), então uma
+  // repetição travada nunca prende o diagnóstico inteiro sem sinal.
+  async function runRepeatedForModel(
+    modelId: string,
+    caseName: string,
+    times: number,
+    variant: string | null,
+    onTick: () => void
+  ): Promise<StabilityModelTally> {
+    const runs: StabilityRunOutcome[] = [];
+    for (let i = 0; i < times; i++) {
+      let outcome: StabilityRunOutcome;
+      try {
+        const res = await withTimeout(
+          runPlannerGoldenSuiteBatchAction(modelId, [caseName], variant),
+          BATCH_TIMEOUT_MS,
+          `${modelId} / ${caseName} (${i + 1}/${times})`
+        );
+        const r = res.results?.[0];
+        if (res.error || !r) {
+          outcome = { pass: false, responsePlan: 'erro', commitmentNature: 'erro', professionalDecisionSignal: 'erro', error: res.error ?? 'sem resultado' };
+        } else {
+          outcome = { pass: r.pass, responsePlan: r.responsePlan, commitmentNature: r.commitmentNature, professionalDecisionSignal: r.professionalDecisionSignal, error: r.error };
+        }
+      } catch (err) {
+        outcome = { pass: false, responsePlan: 'erro', commitmentNature: 'erro', professionalDecisionSignal: 'erro', error: err instanceof Error ? err.message : 'erro desconhecido' };
+      }
+      runs.push(outcome);
+      onTick();
+    }
+    return {
+      model: modelId,
+      variantLabel: variant,
+      passCount: runs.filter((r) => r.pass).length,
+      total: times,
+      distinctResponsePlans: Array.from(new Set(runs.map((r) => r.responsePlan))),
+      distinctSignals: Array.from(new Set(runs.map((r) => r.professionalDecisionSignal))),
+      runs,
+    };
+  }
+
+  // baseline = gpt-5-mini sem variante, SEMPRE (= produção hoje) —
+  // comparison = o model/variante escolhidos acima no painel. Assim
+  // a mesma dupla de controles já usada na suite estrutural também
+  // define a comparação deste diagnóstico, nunca um terceiro conjunto
+  // de inputs separado.
+  async function handleRunStability() {
+    setStabilityRunning(true);
+    setStabilityError(null);
+    setStabilityResults(null);
+    setStabilityProgress(null);
+
+    const casesToRun = stabilitySelectedCases;
+    const comparisonVariant = useTerraVariant ? PLANNER_PROMPT_VARIANT_TERRA_V1 : null;
+    const totalCalls = casesToRun.length * repeatCount * 2;
+    let done = 0;
+    const out: StabilityCaseResult[] = [];
+    const onTick = () => {
+      done += 1;
+      setStabilityProgress({ done, total: totalCalls });
+    };
+
+    try {
+      for (const caseName of casesToRun) {
+        const baseline = await runRepeatedForModel(DEFAULT_MODEL, caseName, repeatCount, null, onTick);
+        const comparison = await runRepeatedForModel(model, caseName, repeatCount, comparisonVariant, onTick);
+        out.push({ caseName, baseline, comparison });
+        setStabilityResults([...out]);
+      }
+    } catch (err) {
+      setStabilityError(err instanceof Error ? err.message : 'erro desconhecido');
+    } finally {
+      setStabilityRunning(false);
+      setStabilityProgress(null);
+    }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13 }}>
@@ -278,6 +419,97 @@ export function PlannerGoldenSuitePanel() {
           </div>
         </>
       )}
+
+      <hr style={{ borderColor: '#333', width: '100%' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <strong>Diagnóstico de estabilidade (repetição)</strong>
+        <div style={{ color: '#aaa' }}>
+          Roda cada caso selecionado <code>repetições</code> vezes pra <code>gpt-5-mini</code> (baseline, sem variante — comportamento de
+          produção hoje) e pra <code>{model || '?'}</code>
+          {useTerraVariant && <> + variante terra-v1</>}, contando quantas vezes cada model acerta — não um PASS/FAIL único. Usa os mesmos ~2
+          chamadas reais por execução da suite acima; com os defaults (8 casos × 5 repetições × 2 models) isso é ~160 chamadas reais à OpenAI,
+          pode levar vários minutos.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {STABILITY_CASE_NAMES.map((name) => (
+            <label key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={stabilitySelectedCases.includes(name)}
+                disabled={stabilityRunning}
+                onChange={(e) =>
+                  setStabilitySelectedCases((prev) => (e.target.checked ? [...prev, name] : prev.filter((n) => n !== name)))
+                }
+              />
+              {name}
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label htmlFor="repeat-count" style={{ color: '#aaa' }}>
+            repetições por model:
+          </label>
+          <input
+            id="repeat-count"
+            type="number"
+            min={1}
+            max={20}
+            value={repeatCount}
+            disabled={stabilityRunning}
+            onChange={(e) => setRepeatCount(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+            style={{ fontFamily: 'monospace', fontSize: 13, padding: '6px 8px', width: 70 }}
+          />
+          <button type="button" onClick={handleRunStability} disabled={stabilityRunning || stabilitySelectedCases.length === 0} style={buttonStyle}>
+            {stabilityRunning
+              ? stabilityProgress
+                ? `rodando (${stabilityProgress.done}/${stabilityProgress.total} chamadas)…`
+                : 'preparando…'
+              : 'rodar diagnóstico de estabilidade'}
+          </button>
+        </div>
+
+        {stabilityError && (
+          <pre style={{ background: '#111', color: '#ff7b72', padding: 12, borderRadius: 6, whiteSpace: 'pre-wrap' }}>{stabilityError}</pre>
+        )}
+
+        {stabilityResults && stabilityResults.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
+              <thead>
+                <tr>
+                  {['caso', `baseline (gpt-5-mini)`, `comparação (${model})`].map((h) => (
+                    <th key={h} style={thStyle}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stabilityResults.map((r) => (
+                  <tr key={r.caseName}>
+                    <td style={tdStyle}>{r.caseName}</td>
+                    <td style={tdStyle}>
+                      <div>{formatTally(r.baseline)}</div>
+                      <div style={{ color: '#888', fontSize: 11 }}>
+                        responsePlan: {r.baseline.distinctResponsePlans.join(', ')}
+                        {r.baseline.distinctSignals.length > 1 && <> · signal: {r.baseline.distinctSignals.join(', ')}</>}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      <div>{formatTally(r.comparison)}</div>
+                      <div style={{ color: '#888', fontSize: 11 }}>
+                        responsePlan: {r.comparison.distinctResponsePlans.join(', ')}
+                        {r.comparison.distinctSignals.length > 1 && <> · signal: {r.comparison.distinctSignals.join(', ')}</>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

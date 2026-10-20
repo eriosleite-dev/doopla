@@ -395,4 +395,32 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
     note: 'PASS/FAIL aqui mede só os campos estruturados — a cobertura real dos dois assuntos (preço E tipo de formação) só é verificável lendo o draft à mão',
   },
+
+  // ============================================================
+  // Rodada de generalização #2 — "CODE | Próxima etapa da avaliação
+  // do cérebro Doopla" (20/10/2026). Fecha a lacuna: casos 11 e 26
+  // (críticos citados pela fundadora) ainda não tinham uma segunda
+  // variação testando o MESMO princípio com enunciado/assunto
+  // diferente (ao contrário de 8→29, 14→27, 25→28). Mesmo requisito
+  // de sempre: nunca otimizar pra frase literal, só pro princípio.
+  // ============================================================
+  {
+    name: 'generalização — pergunta de preço sem booking existente, assunto diferente',
+    category: 'requiresProfessionalReviewBeforeSend',
+    input: 'Olá, gostaria de saber o valor pra uma festa de 15 anos em dezembro.',
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+    note: 'generalização do caso 11 (pergunta de preço pro casamento) com evento/mês diferentes — mesmo princípio: pedir preço sem booking existente é sempre new_or_changed_commitment, mas um responsePlan de coleta (ask_external_participant) continua elegível a auto-send sem exigir revisão',
+  },
+  {
+    name: 'generalização — sinal de decisão em tópico errado, palavra diferente',
+    category: 'professionalDecisionSignal',
+    input: 'Pode',
+    triggerAuthorType: 'professional',
+    previousMessages: [{ authorType: 'external_participant', text: 'O link de pagamento que vocês mandaram não está funcionando, pode verificar?' }],
+    expectedProfessionalDecisionSignal: 'none',
+    expectedResponsePlanFamily: ['acknowledge', 'consult_professional', 'clarify_ambiguity'],
+    note: 'generalização do caso 26 ("Manda" respondendo suporte de painel) com palavra de confirmação e tópico diferentes (link de pagamento com problema técnico) — confirma que "suporte ≠ confirmação comercial" não depende da palavra "Manda" nem do tópico "painel" especificamente',
+  },
 ];
