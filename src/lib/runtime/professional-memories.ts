@@ -119,3 +119,17 @@ export async function listApprovedProfessionalMemories(supabase: AnySupabaseClie
   if (error) throw new Error(`list_approved_professional_memories falhou: ${error.message}`);
   return ((data as RawRow[] | null) ?? []).map(mapRow);
 }
+
+// Task #72 (migration 0125) — leitura pro fluxo de confirmação em
+// pipeline.ts. Devolve null quando não há nenhuma proposta pendente
+// (estado normal, nunca erro). Quem chama NUNCA deve tratar o
+// resultado como "confirmação pendente relevante" sem primeiro
+// verificar que a última mensagem de IA da conversa é literalmente
+// buildMemoryConfirmationQuestion(resultado.value) — ver comentário da
+// function SQL.
+export async function getMostRecentProposedMemory(supabase: AnySupabaseClient, professionalId: string): Promise<ProfessionalMemory | null> {
+  const { data, error } = await supabase.rpc('get_most_recent_proposed_memory', { p_professional_id: professionalId }).maybeSingle();
+  if (error) throw new Error(`get_most_recent_proposed_memory falhou: ${error.message}`);
+  if (!data) return null;
+  return mapRow(data as RawRow);
+}

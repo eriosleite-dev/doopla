@@ -39,6 +39,7 @@ import {
 import { registerInboundProposal } from './proposal-classification';
 import { resolveOutboundAction, resolveRecipientType, shouldRunApprovalEngine } from './recipient';
 import { runDelegatedContactRecipientReplyFlow, runDelegatedContactRequestFlow } from './delegated-contact-flow';
+import { runMemoryConfirmationFlow } from './memory-confirmation-flow';
 import { attemptResumptionsAfterApproval, type ResumptionOutcome } from './resumption';
 import { evaluateDecisionPrepared, evaluateMeaningfulClientAction, recordOrchestratorRunContextEvidence, recordProductEvent } from '../beta-instrumentation';
 import { buildStructuralFacts } from './structural-facts';
@@ -331,6 +332,28 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
     } catch (err) {
       console.error('[conversation-feedback] falha ao reconhecer/registrar feedback', err);
     }
+  }
+
+  // Task #72 — fluxo de confirmação de memória de preferências
+  // (proposed->approved/rejected, ou reconhecimento de uma nova
+  // declaração). Mesma posição/mesmo raciocínio do ramo de delegação
+  // logo abaixo: decidido ANTES de qualquer chamada a classifyIntent/
+  // planResponse, porque os dois ramos internos
+  // (memory-confirmation-flow.ts) podem mandar uma resposta
+  // determinística própria — se o Classifier/Planner normal também
+  // gerasse uma resposta pra esta MESMA mensagem, a profissional veria
+  // duas respostas pra um só turno (mesma classe de bug já corrigida
+  // em outro mecanismo nesta sessão). handled=false (inclui o caso da
+  // flag desligada) -> cai 100% no pipeline normal, inalterado.
+  if (event.authorType === 'professional' && conversation.conversation_type === 'professional_self') {
+    const memoryResult = await runMemoryConfirmationFlow(supabase, {
+      professionalId: actorContext.representedProfessionalId,
+      conversationId: event.conversationId,
+      triggerMessageId: message.id,
+      messageText: event.body,
+      channel: event.channel,
+    });
+    if (memoryResult.handled) return await finishMemoryConfirmationBranch(supabase, event, inboundEventId, actorContext, conversation, message.id);
   }
 
   // Etapa 2.1 "Doopla chama o cliente" (14/10/2026) — dois ramos
@@ -819,6 +842,37 @@ async function finishDelegatedContactBranch(
   await finishInboundEvent(supabase, { eventId: inboundEventId, status: 'processed', conversationMessageId: triggerMessageId, error: null });
 
   return { kind: 'delegated_contact_handled', conversationMessageId: triggerMessageId, runId: run?.id ?? null };
+}
+
+// Task #72 — espelha finishDelegatedContactBranch acima (mesmo
+// raciocínio: start/finish de um orchestrator_run "vazio" só pra
+// manter a mesma trilha de auditoria de todo ciclo, sem chamar
+// classifyIntent/planResponse) — outcome próprio (memory_confirmation_handled)
+// em vez de reaproveitar delegated_contact_handled, que descreveria
+// errado o que realmente aconteceu neste ciclo.
+async function finishMemoryConfirmationBranch(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+  event: InboundEvent,
+  inboundEventId: string,
+  actorContext: ActorContext,
+  conversation: MinimalConversation,
+  triggerMessageId: string
+): Promise<RuntimeCycleOutcome> {
+  const run = await startOrchestratorRun(supabase, {
+    conversationId: event.conversationId,
+    representedProfessionalId: actorContext.representedProfessionalId,
+    actorType: actorContext.actorType,
+    actorProfileId: actorContext.actorProfileId,
+    externalParticipantId: conversation.external_participant_id,
+    triggerSource: actorContext.triggerSource,
+    eligibleTools: [],
+  });
+
+  await finishOrchestratorRun(supabase, { runId: run?.id ?? '', status: 'completed', calledTools: [], error: null, fallbackUsed: false });
+  await finishInboundEvent(supabase, { eventId: inboundEventId, status: 'processed', conversationMessageId: triggerMessageId, error: null });
+
+  return { kind: 'memory_confirmation_handled', conversationMessageId: triggerMessageId, runId: run?.id ?? null };
 }
 
 // Passo 6A+6B Fase 2 — extraído de runCycle pra deixar o early-return

@@ -42,6 +42,12 @@ const modelOutputSchema = z.object({
   // resto abaixo, mesmo padrão de recognizeDelegatedContactRequest).
   kind: z.enum(PREFERENCE_MEMORY_KINDS).nullable(),
   value: z.string().nullable(),
+  // Autoavaliação do model (0..1) — preenche ProfessionalMemory.confidence
+  // (memory-policy.ts), NUNCA uma autorização: mesmo recognized=true
+  // com confidence alta ainda passa por reviewMemory (decisão humana
+  // explícita) antes de qualquer uso. Task #72 (fluxo de confirmação)
+  // é o primeiro consumidor real deste campo.
+  confidence: z.number().min(0).max(1).nullable(),
 });
 export type PreferenceRecognizerModelOutput = z.infer<typeof modelOutputSchema>;
 export { modelOutputSchema as preferenceRecognizerModelOutputSchema };
@@ -76,6 +82,7 @@ const INSTRUCTIONS = [
   'REGRA CRÍTICA, nunca relaxe: só reconheça quando a profissional está declarando algo como SUA PRÓPRIA regra, em primeira pessoa ("eu prefiro...", "sempre faço...", "não aceito...", "costumo..."). NUNCA reconheça quando ela está RELATANDO ou CITANDO um pedido/instrução de um TERCEIRO, mesmo dentro de professional_self — ex.: "o cliente pediu 20% de desconto, pode considerar isso pra próxima vez" é um RELATO do que o cliente disse, nunca uma preferência da própria profissional, mesmo que pareça estar propondo adotar aquilo como prática. Na dúvida real entre declaração própria e relato de terceiro, SEMPRE prefira recognized=false.',
   'Também nunca reconheça uma decisão PONTUAL sobre um caso específico (ex.: "pode aceitar esse desconto pra esse cliente", "deixa eu responder com R$2.000 dessa vez") — isso é uma instrução sobre UM booking/conversa, nunca uma regra geral pro futuro. Só reconheça quando a frase tem cara de regra permanente (presença de palavras como "sempre", "nunca", "costumo", "prefiro", "normalmente", ou equivalente), nunca uma instrução datada/específica.',
   `value: um resumo curto (até ${MAX_MEMORY_VALUE_CHARS} caracteres) da preferência, na própria formulação da profissional quando possível — nunca invente detalhe que ela não disse, nunca expanda além do que foi declarado.`,
+  'confidence: de 0 a 1, sua autoavaliação de quão claramente a mensagem expressa uma regra permanente e própria (não uma autorização — só uma estimativa sua). Uma frase explícita com "sempre"/"nunca"/"prefiro" é confidence alta; uma formulação mais implícita é confidence mais baixa, mesmo quando ainda reconhecida.',
   'Na dúvida genuína entre reconhecer ou não, prefira recognized=false — é sempre mais seguro deixar a mensagem seguir pelo fluxo normal do que propor uma memória que a profissional não declarou de verdade como regra sua.',
 ].join('\n');
 
@@ -83,6 +90,7 @@ export type RecognizePreferenceDeclarationResult = {
   recognized: boolean;
   kind: PreferenceMemoryKind | null;
   value: string | null;
+  confidence: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
 };
@@ -120,16 +128,16 @@ export async function recognizePreferenceDeclaration(
   }
 
   if (!parsed || !parsed.recognized) {
-    return { recognized: false, kind: null, value: null, inputTokens, outputTokens };
+    return { recognized: false, kind: null, value: null, confidence: null, inputTokens, outputTokens };
   }
 
-  // Guarda estrutural: kind/value só sobrevivem quando ambos vieram
-  // preenchidos e kind é um dos 3 válidos — nunca confia no model pra
-  // "não preencher" sozinho nem pra um valor vazio.
+  // Guarda estrutural: kind/value/confidence só sobrevivem quando os
+  // três vieram preenchidos e kind é um dos 3 válidos — nunca confia
+  // no model pra "não preencher" sozinho nem pra um valor vazio.
   const trimmedValue = parsed.value?.trim() ?? '';
-  if (!parsed.kind || trimmedValue.length === 0) {
-    return { recognized: false, kind: null, value: null, inputTokens, outputTokens };
+  if (!parsed.kind || trimmedValue.length === 0 || parsed.confidence === null) {
+    return { recognized: false, kind: null, value: null, confidence: null, inputTokens, outputTokens };
   }
 
-  return { recognized: true, kind: parsed.kind, value: trimmedValue, inputTokens, outputTokens };
+  return { recognized: true, kind: parsed.kind, value: trimmedValue, confidence: parsed.confidence, inputTokens, outputTokens };
 }

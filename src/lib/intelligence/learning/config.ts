@@ -9,3 +9,12 @@
 export const PREFERENCE_RECOGNIZER_MODEL = 'gpt-5-mini';
 export const AI_FEATURE_PREFERENCE_RECOGNITION = 'professional_preference_recognition';
 export const PREFERENCE_RECOGNIZER_MAX_RETRIES = 1;
+
+// Task #72 — confirmação da memória proposta (proposed -> approved/
+// rejected). Módulo e contrato próprios (decision: 'confirms'/
+// 'rejects'/'ambiguous', nunca reaproveita um recognizer de
+// sim/não de outro domínio, mesmo princípio de nunca compartilhar
+// recognizer entre fluxos com perguntas diferentes).
+export const MEMORY_CONFIRMATION_RECOGNIZER_MODEL = 'gpt-5-mini';
+export const AI_FEATURE_MEMORY_CONFIRMATION_RECOGNITION = 'professional_memory_confirmation_recognition';
+export const MEMORY_CONFIRMATION_RECOGNIZER_MAX_RETRIES = 1;

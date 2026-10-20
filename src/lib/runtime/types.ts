@@ -135,4 +135,14 @@ export type RuntimeCycleOutcome =
       conversationMessageId: string;
       runId: string | null;
     }
+  // Task #72 — fluxo de confirmação de memória de preferências
+  // (memory-confirmation-flow.ts). Mesmo raciocínio de
+  // 'delegated_contact_handled': nenhuma chamada a classifyIntent/
+  // planResponse aconteceu neste ciclo, um outcome próprio em vez de
+  // forçar os campos de 'completed' a null.
+  | {
+      kind: 'memory_confirmation_handled';
+      conversationMessageId: string;
+      runId: string | null;
+    }
   | { kind: 'failed'; error: string };

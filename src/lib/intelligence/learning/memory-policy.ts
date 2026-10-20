@@ -297,6 +297,25 @@ export function selectContextMemories(memories: readonly ProfessionalMemory[], p
   }));
 }
 
+// ============================================================
+// buildMemoryConfirmationQuestion — pergunta determinística enviada
+// depois de propor uma memória (task #72). Pura, sem I/O, por um
+// motivo estrutural específico: o pipeline precisa COMPARAR a última
+// mensagem de IA da conversa contra o resultado desta function (pra
+// ESTA linha específica) antes de tratar a próxima mensagem da
+// profissional como resposta à confirmação — nunca aceitar "existe
+// uma proposta pendente" como prova suficiente de continuidade (mesma
+// lição estrutural do ADR 0010: estado antigo nunca decide por si só,
+// sem verificar que é realmente sobre o que está sendo perguntado
+// agora). Gerar isto em dois lugares diferentes (ao propor, ao
+// comparar) com a MESMA function pura elimina o risco de os dois
+// textos divergirem por acidente.
+// ============================================================
+
+export function buildMemoryConfirmationQuestion(value: string): string {
+  return `Anotei que você disse: "${value}". Posso guardar isso como uma preferência sua, pra eu levar em conta daqui pra frente?`;
+}
+
 function isMoreRecent(a: ProfessionalMemory, b: ProfessionalMemory): boolean {
   const byDate = a.createdAt.localeCompare(b.createdAt);
   if (byDate !== 0) return byDate > 0;
