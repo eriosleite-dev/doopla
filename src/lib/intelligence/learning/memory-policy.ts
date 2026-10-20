@@ -82,6 +82,11 @@ export type ProfessionalMemory = {
   reviewedAt: string | null;
   reviewedBy: string | null;
   expiresAt: string | null;
+  // Task #76 (ADR 0012, migration 0126) — escopo livre curto (ex.
+  // "bar", "casamento"); null = regra geral, sem escopo específico.
+  // Usado só por resolveMemorySupersessionCandidate (abaixo) — nunca
+  // lido por selectContextMemories/nenhum gate comercial.
+  subjectKey: string | null;
 };
 
 export type MemoryPolicyError =
@@ -124,6 +129,11 @@ export type ProposeMemoryInput = {
   evidence: MemoryEvidence;
   confidence: number;
   expiresAt?: string | null;
+  // Task #76 — opcional, default null (regra geral). Nunca validado
+  // contra uma taxonomia aqui (o espaço de escopos é aberto, decisão
+  // do model em preference-recognizer.ts) — só normalizado (trim) na
+  // hora de comparar, em resolveMemorySupersessionCandidate.
+  subjectKey?: string | null;
   now?: Date;
 };
 
@@ -166,6 +176,7 @@ export function proposeMemory(input: ProposeMemoryInput): MemoryPolicyResult<Pro
     reviewedAt: null,
     reviewedBy: null,
     expiresAt,
+    subjectKey: input.subjectKey?.trim() ? input.subjectKey.trim() : null,
   };
   return { ok: true, memory };
 }

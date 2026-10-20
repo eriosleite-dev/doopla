@@ -34,6 +34,11 @@ type RawRow = {
   reviewed_at: string | null;
   reviewed_by: string | null;
   expires_at: string | null;
+  // Task #76 (migration 0126) — opcional na linha real (coluna
+  // nullable); ausente só é possível se alguém ler uma linha
+  // persistida ANTES da migration rodar, nunca em uso normal daqui
+  // pra frente.
+  subject_key: string | null;
 };
 
 function mapRow(row: RawRow): ProfessionalMemory {
@@ -49,6 +54,7 @@ function mapRow(row: RawRow): ProfessionalMemory {
     reviewedAt: row.reviewed_at,
     reviewedBy: row.reviewed_by,
     expiresAt: row.expires_at,
+    subjectKey: row.subject_key ?? null,
   };
 }
 
@@ -67,6 +73,7 @@ export async function persistProposedMemory(supabase: AnySupabaseClient, memory:
       p_confidence: memory.confidence,
       p_created_at: memory.createdAt,
       p_expires_at: memory.expiresAt,
+      p_subject_key: memory.subjectKey,
     })
     .single();
   if (error || !data) throw new Error(`propose_professional_memory falhou: ${error?.message ?? 'sem dado'}`);

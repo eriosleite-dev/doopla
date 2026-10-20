@@ -1,7 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { readAppSettingFlag } from './app-settings';
-import { buildMemoryConfirmationQuestion, proposeMemory, reviewMemory } from '../intelligence/learning/memory-policy';
+import {
+  buildMemoryConfirmationQuestion,
+  buildMemorySupersessionQuestion,
+  proposeMemory,
+  resolveMemorySupersessionCandidate,
+  reviewMemory,
+  type ProfessionalMemory,
+  type ScopedMemoryCandidate,
+} from '../intelligence/learning/memory-policy';
 import {
   AI_FEATURE_MEMORY_CONFIRMATION_RECOGNITION,
   AI_FEATURE_PREFERENCE_RECOGNITION,
@@ -12,7 +20,7 @@ import { recognizeMemoryConfirmationReply, type MemoryConfirmationRecognizerMode
 import { recognizePreferenceDeclaration, type PreferenceRecognizerModelCall } from '../intelligence/learning/preference-recognizer';
 import { logAiUsageEvent } from '../intelligence/observability';
 import { fetchLastAiMessage } from './recent-conversation-messages';
-import { getMostRecentProposedMemory, persistMemoryReview, persistProposedMemory } from './professional-memories';
+import { getMostRecentProposedMemory, listApprovedProfessionalMemories, persistMemoryReview, persistMemoryRevocation, persistProposedMemory } from './professional-memories';
 import { persistAiMessage } from './professional-message';
 import { sendProfessionalSelfReplyViaWhatsapp } from './professional-whatsapp-reply';
 
@@ -58,6 +66,40 @@ export type MemoryConfirmationFlowOpts = {
 
 export type MemoryConfirmationFlowResult = { handled: boolean };
 
+function toScopedCandidate(memory: ProfessionalMemory): ScopedMemoryCandidate {
+  return { id: memory.id, kind: memory.kind, subjectKey: memory.subjectKey, value: memory.value };
+}
+
+// Task #76 (ADR 0012) — ÚNICO ponto que decide a pergunta de uma
+// proposta e se ela, ao ser confirmada, substitui uma memória já
+// aprovada. Usado tanto no Ramo 2 (decidir o que perguntar ao propor)
+// quanto no Ramo 1 (recalcular, no momento da resposta, qual pergunta
+// foi realmente enviada — nunca confia num ponteiro salvo na hora da
+// proposta). Recalcular aqui em vez de guardar "supersede this id" na
+// linha é deliberado: se o estado aprovado mudar entre propor e
+// confirmar (outra revisão concorrente, por exemplo), a pergunta
+// esperada muda junto — e a checagem de continuidade do Ramo 1
+// (comparar contra a última mensagem de IA real) nunca mais casa,
+// então a mensagem cai pro fluxo normal em vez de revogar a memória
+// errada. Nunca confia em "existe uma pendência" sozinho, mesma lição
+// do ADR 0010.
+async function resolveQuestionForDeclaration(
+  supabase: AnySupabaseClient,
+  memory: Pick<ProfessionalMemory, 'professionalId' | 'kind' | 'subjectKey' | 'value'>
+): Promise<{ question: string; supersedes: ScopedMemoryCandidate | null }> {
+  const approved = await listApprovedProfessionalMemories(supabase, memory.professionalId);
+  const resolution = resolveMemorySupersessionCandidate({ kind: memory.kind, subjectKey: memory.subjectKey }, approved.map(toScopedCandidate));
+
+  if (resolution.kind === 'supersede_candidate') {
+    return { question: buildMemorySupersessionQuestion(memory.value, resolution.existing.value), supersedes: resolution.existing };
+  }
+  // 'coexist' e 'ambiguous' tratados igual nesta v1 (ADR 0012, seção
+  // 4.4) — o ciclo de esclarecimento pra ambiguidade genuína é
+  // entrega separada, recomendada mas não implementada ainda. Nunca
+  // substitui nada quando não há exatamente uma candidata clara.
+  return { question: buildMemoryConfirmationQuestion(memory.value), supersedes: null };
+}
+
 async function replyToProfessional(
   supabase: AnySupabaseClient,
   params: { conversationId: string; professionalId: string; channel: string; body: string }
@@ -86,7 +128,10 @@ export async function runMemoryConfirmationFlow(
   const pendingProposal = await getMostRecentProposedMemory(supabase, params.professionalId);
   if (pendingProposal) {
     const lastAiMessage = await fetchLastAiMessage(supabase, params.conversationId);
-    const expectedQuestion = buildMemoryConfirmationQuestion(pendingProposal.value);
+    // Recalculado AGORA, nunca lido de um ponteiro salvo na proposta —
+    // ver comentário de resolveQuestionForDeclaration. Também resolve
+    // SE a confirmação, caso vier, revoga uma memória aprovada.
+    const { question: expectedQuestion, supersedes } = await resolveQuestionForDeclaration(supabase, pendingProposal);
     if (lastAiMessage?.text === expectedQuestion) {
       const recognition = await recognizeMemoryConfirmationReply(params.messageText, { modelCall: opts.confirmationRecognizerModelCall });
       await logAiUsageEvent(supabase, {
@@ -114,8 +159,32 @@ export async function runMemoryConfirmationFlow(
             decision,
             reviewedAt: reviewResult.memory.reviewedAt as string,
           });
+
+          // Task #76 — só revoga a antiga quando a NOVA foi de fato
+          // aprovada (nunca em 'rejects': rejeitar a proposta nova
+          // nunca deve tocar a memória antiga, que continua válida).
+          // A guarda atômica real é a da RPC (revoke_professional_memory,
+          // WHERE status='approved') — nunca reconstrói um
+          // ProfessionalMemory falso aqui só pra reusar revokeMemory
+          // (puro) de novo; se a linha já saiu de 'approved' por outro
+          // caminho entre o cálculo de `supersedes` e agora, a RPC
+          // lança, e isto é engolido de propósito: a memória nova já
+          // foi aprovada de qualquer forma, nunca quebra o ciclo por
+          // uma corrida concorrente numa limpeza secundária.
+          if (decision === 'approved' && supersedes) {
+            try {
+              await persistMemoryRevocation(supabase, { id: supersedes.id, revokedBy: params.professionalId, revokedAt: reviewResult.memory.reviewedAt as string });
+            } catch (err) {
+              console.error('[memory-confirmation] falha ao revogar memória substituída (corrida concorrente ou já revogada)', err);
+            }
+          }
+
           const ackBody =
-            decision === 'approved' ? 'Combinado, vou levar isso em conta daqui pra frente.' : 'Sem problema, não vou guardar isso.';
+            decision === 'approved'
+              ? supersedes
+                ? 'Combinado, atualizei — a preferência anterior foi substituída por essa.'
+                : 'Combinado, vou levar isso em conta daqui pra frente.'
+              : 'Sem problema, não vou guardar isso.';
           await replyToProfessional(supabase, { conversationId: params.conversationId, professionalId: params.professionalId, channel: params.channel, body: ackBody });
           return { handled: true };
         }
@@ -150,20 +219,20 @@ export async function runMemoryConfirmationFlow(
     value: declaration.value,
     evidence: { sourceType: 'professional_message', sourceId: params.triggerMessageId },
     confidence: declaration.confidence,
+    subjectKey: declaration.subjectKey,
   });
   if (!proposeResult.ok) return { handled: false };
 
-  // Supersessão de HIGIENE (task #72/#76) — nunca deixa uma pergunta de
-  // confirmação antiga orfanada em 'proposed' pra sempre quando uma
-  // declaração nova chega antes de ela ser respondida: a proposta
-  // anterior é encerrada como 'rejected' (auditável, nunca apagada),
-  // mesmo princípio já usado em runtime_pending_replies
-  // (supersedeIds/shouldSupersedeOnCreation, pipeline.ts) — "a mais
-  // nova substitui a pendência antiga que ainda não foi resolvida".
-  // Isto NUNCA resolve contradição semântica entre duas memórias já
-  // APROVADAS de valores diferentes do mesmo kind — essa decisão de
-  // política é um problema distinto, deliberadamente fora de escopo
-  // aqui (task #76, aguardando aprovação da fundadora).
+  // Supersessão de HIGIENE da PROPOSTA pendente (task #72) — nunca
+  // deixa uma pergunta de confirmação antiga orfanada em 'proposed'
+  // pra sempre quando uma declaração nova chega antes de ela ser
+  // respondida: a proposta anterior é encerrada como 'rejected'
+  // (auditável, nunca apagada), mesmo princípio já usado em
+  // runtime_pending_replies (supersedeIds/shouldSupersedeOnCreation,
+  // pipeline.ts). DIFERENTE da supersessão de CONTRADIÇÃO entre
+  // memórias já APROVADAS (task #76, resolveQuestionForDeclaration
+  // abaixo) — aqui é só limpeza de uma pergunta nunca respondida,
+  // nunca uma decisão sobre qual preferência está certa.
   if (pendingProposal) {
     const supersedeResult = reviewMemory({ memory: pendingProposal, reviewerId: params.professionalId, decision: 'rejected' });
     if (supersedeResult.ok) {
@@ -177,11 +246,15 @@ export async function runMemoryConfirmationFlow(
   }
 
   await persistProposedMemory(supabase, proposeResult.memory);
+  // Task #76 — a pergunta já nasce vinculada à contradição real
+  // (mesma function usada no Ramo 1 pra recalcular, nunca duas
+  // formulações divergentes pro mesmo caso).
+  const { question } = await resolveQuestionForDeclaration(supabase, proposeResult.memory);
   await replyToProfessional(supabase, {
     conversationId: params.conversationId,
     professionalId: params.professionalId,
     channel: params.channel,
-    body: buildMemoryConfirmationQuestion(proposeResult.memory.value),
+    body: question,
   });
   return { handled: true };
 }
