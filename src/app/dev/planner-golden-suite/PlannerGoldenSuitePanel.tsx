@@ -26,6 +26,30 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return batches;
 }
 
+// 90s por lote — uma Server Action travada (rede/OpenAI sem resposta)
+// nunca deve deixar o botão preso em "rodando" pra sempre sem
+// explicação. 90s é folgado pra 4 casos reais (~8 chamadas) em
+// operação normal, mas finito — achado real (20/10/2026): sem isto, um
+// handleRun sem try/catch ao redor de um await que trava vira uma
+// promise pendurada, e a UI nunca volta a dar sinal de vida.
+const BATCH_TIMEOUT_MS = 90_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timeout: ${label} não respondeu em ${ms / 1000}s`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 function formatCents(cents: number | null): string {
   if (cents === null) return 'sem preço cadastrado';
   return `US$ ${(cents / 100).toFixed(4)}`;
@@ -59,30 +83,37 @@ export function PlannerGoldenSuitePanel() {
     setSummary(null);
     setProgress(null);
 
-    const { cases } = await listPlannerGoldenSuiteCasesAction();
-    const batches = chunk(cases.map((c) => c.name), BATCH_SIZE);
     let merged: PlannerGoldenSuiteCaseResult[] = [];
 
-    for (let i = 0; i < batches.length; i++) {
-      setProgress({ done: i, total: batches.length });
-      const res = await runPlannerGoldenSuiteBatchAction(model, batches[i]);
-      if (res.error) {
-        setRunning(false);
-        setProgress(null);
-        setError(res.error);
-        // Nunca descarta os lotes que já rodaram com sucesso só
-        // porque um lote seguinte falhou — mostra o que já tem.
-        setResults(merged.length > 0 ? merged : null);
-        if (merged.length > 0) setSummary(buildRunSummary(model, merged));
-        return;
-      }
-      merged = [...merged, ...(res.results ?? [])];
-    }
+    // try/finally é a parte que importa aqui: NENHUM caminho (sucesso,
+    // erro de lote, exceção/timeout) pode deixar running=true parado
+    // pra sempre sem explicação — achado real (20/10/2026): a versão
+    // anterior não tinha isto, e uma Server Action travada deixava o
+    // botão preso em "rodando" indefinidamente, sem nenhum sinal de
+    // erro na tela.
+    try {
+      const { cases } = await withTimeout(listPlannerGoldenSuiteCasesAction(), BATCH_TIMEOUT_MS, 'listar casos');
+      const batches = chunk(cases.map((c) => c.name), BATCH_SIZE);
 
-    setRunning(false);
-    setProgress(null);
-    setResults(merged);
-    setSummary(buildRunSummary(model, merged));
+      for (let i = 0; i < batches.length; i++) {
+        setProgress({ done: i, total: batches.length });
+        const res = await withTimeout(runPlannerGoldenSuiteBatchAction(model, batches[i]), BATCH_TIMEOUT_MS, `lote ${i + 1}/${batches.length}`);
+        if (res.error) {
+          setError(res.error);
+          return;
+        }
+        merged = [...merged, ...(res.results ?? [])];
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'erro desconhecido');
+    } finally {
+      setRunning(false);
+      setProgress(null);
+      // Nunca descarta os lotes que já rodaram com sucesso só porque
+      // um lote seguinte falhou/estourou o tempo — mostra o que já tem.
+      setResults(merged.length > 0 ? merged : null);
+      if (merged.length > 0) setSummary(buildRunSummary(model, merged));
+    }
   }
 
   const passCount = results?.filter((r) => r.pass).length ?? 0;
