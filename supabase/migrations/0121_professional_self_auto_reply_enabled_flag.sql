@@ -1,0 +1,19 @@
+-- ADR 0008 (20/10/2026) — cria a flag de contenção do incidente P0 de
+-- loop de mensagens no WhatsApp (sendProfessionalSelfReplyViaWhatsapp,
+-- src/lib/runtime/professional-whatsapp-reply.ts). Mesmo padrão já
+-- estabelecido pra billing_enabled (migration 0099) e
+-- delegated_contact_enabled (migration 0109/0117): fonte de verdade
+-- no banco, lida só por client service_role (sem policy de
+-- select/update pra anon/authenticated), reversível por UPDATE — mas
+-- daqui pra frente sempre via migration versionada, nunca um UPDATE
+-- solto fora de controle de versão (lição registrada na 0117).
+--
+-- Valor inicial 'true' (= comportamento de hoje, sem mudança
+-- funcional nenhuma até a fundadora decidir ativamente pausar). Nunca
+-- aplicar esta migration em produção DEPOIS do deploy do código que
+-- lê esta flag sem ela existir ainda: enquanto a linha não existe,
+-- readAppSettingFlag (app-settings.ts) devolve false pra qualquer
+-- leitura — o código de envio ficaria bloqueado por padrão até a
+-- linha existir. Aplicar esta migration ANTES (ou junto) do deploy do
+-- código do gate, nunca depois.
+insert into public.app_settings (key, value) values ('professional_self_auto_reply_enabled', 'true');

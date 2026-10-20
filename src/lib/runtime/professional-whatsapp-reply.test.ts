@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getWhatsappIdentitySnapshot = vi.fn();
 const sendWhatsappTextMessage = vi.fn();
+const readAppSettingFlag = vi.fn();
 
 vi.mock('../whatsapp-identity/data', () => ({
   getWhatsappIdentitySnapshot: (...args: unknown[]) => getWhatsappIdentitySnapshot(...args),
@@ -24,12 +25,20 @@ vi.mock('../supabase/env', () => ({
   whatsappPhoneNumberId: () => 'test-phone-id',
 }));
 
+vi.mock('./app-settings', () => ({
+  readAppSettingFlag: (...args: unknown[]) => readAppSettingFlag(...args),
+}));
+
 const fakeSupabase = {} as never;
 
 describe('sendProfessionalSelfReplyViaWhatsapp', () => {
   beforeEach(() => {
     getWhatsappIdentitySnapshot.mockReset();
     sendWhatsappTextMessage.mockReset();
+    readAppSettingFlag.mockReset();
+    // Default: contenção DESLIGADA (comportamento de hoje) — só os
+    // testes do próprio gate (ADR 0008) sobrescrevem isto.
+    readAppSettingFlag.mockResolvedValue(true);
   });
 
   it('envia pro número verificado quando status é verified', async () => {
@@ -109,5 +118,65 @@ describe('sendProfessionalSelfReplyViaWhatsapp', () => {
     await expect(
       sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!' })
     ).resolves.toBeUndefined();
+  });
+
+  // ADR 0008 (20/10/2026) — contenção do incidente P0 de loop de
+  // mensagens: gate de app_settings antes de qualquer envio.
+  describe('contenção (ADR 0008 — app_settings.professional_self_auto_reply_enabled)', () => {
+    it('NUNCA envia quando a flag está desligada (\'false\'), mesmo com identidade verificada', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      readAppSettingFlag.mockResolvedValue(false);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!' });
+
+      expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+      expect(getWhatsappIdentitySnapshot).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: se a leitura da flag falhar (ou a linha não existir), NUNCA envia', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp, PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG } = await import(
+        './professional-whatsapp-reply'
+      );
+      // readAppSettingFlag (app-settings.ts) já devolve `false` tanto se
+      // a linha não existir quanto se a query falhar — aqui simulamos o
+      // próprio contrato dela (nunca propaga erro, só devolve false).
+      readAppSettingFlag.mockResolvedValue(false);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!' });
+
+      expect(sendWhatsappTextMessage).not.toHaveBeenCalled();
+      expect(readAppSettingFlag).toHaveBeenCalledWith(fakeSupabase, PROFESSIONAL_SELF_AUTO_REPLY_ENABLED_FLAG);
+    });
+
+    it('com a flag ligada (\'true\'), envia normalmente (regressão: contenção não afeta o fluxo padrão)', async () => {
+      const { sendProfessionalSelfReplyViaWhatsapp } = await import('./professional-whatsapp-reply');
+      readAppSettingFlag.mockResolvedValue(true);
+      getWhatsappIdentitySnapshot.mockResolvedValue({
+        status: 'verified',
+        verifiedNumber: '+5511999999999',
+        verifiedAt: '2026-10-01T00:00:00Z',
+        candidateNumber: null,
+        candidateRequestedAt: null,
+      });
+      sendWhatsappTextMessage.mockResolvedValue({ kind: 'sent_confirmed', providerMessageId: 'wamid.1' });
+
+      await sendProfessionalSelfReplyViaWhatsapp(fakeSupabase, { professionalId: 'eduarda', body: 'oi!' });
+
+      expect(sendWhatsappTextMessage).toHaveBeenCalledTimes(1);
+    });
   });
 });
