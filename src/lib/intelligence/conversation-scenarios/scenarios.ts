@@ -463,4 +463,57 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       },
     ],
   },
+
+  // Expansão do golden-suite (20/10/2026, item 3 do pedido da
+  // fundadora) — 3 cenários novos, grounded direto no conteúdo real do
+  // Playbook DJ/Música v1 (src/lib/intelligence/playbook/dj-musica.ts,
+  // Documento Mestre seções 5/35-46) que ainda não tinha NENHUMA
+  // cobertura ponta a ponta no harness: rider não é regra binária,
+  // contraproposta nunca é respondida por reflexo, e os estados de
+  // agenda/booking (proposta/negociação nunca reservam sozinhas).
+  {
+    id: 'rider-divergencia-equipamento',
+    name: 'Equipamento diferente do rider nunca é liberado como "serve" por conta própria',
+    category: 'negociacao_protecao_comercial',
+    source: 'Playbook DJ/Música v1 (Documento Mestre, seções 5/35-46) — "RIDER NÃO É REGRA BINÁRIA... equipamento diferente do rider pedido: considere equivalência conhecida e histórico, e escale pro artista se a divergência for relevante, nunca decida sozinha que serve ou não serve"',
+    turns: [
+      {
+        professionalMessage: 'O club só tem CDJ-2000NXS2, mas meu rider pede CDJ-3000. O produtor quer saber se eu libero assim mesmo.',
+        expectedResponsePlanFamily: ['consult_professional'],
+        mustNotContain: ['serve perfeitamente', 'pode liberar sem problema', 'já autorizei o equipamento', 'não tem problema nenhum'],
+        note: 'Divergência de equipamento relevante (modelo de CDJ diferente do rider) — a Doopla pode levantar o contexto/equivalência conhecida, mas nunca decide sozinha que "serve", sempre escala pra artista confirmar.',
+      },
+    ],
+  },
+  {
+    id: 'contraproposta-cliente-nao-decide-sozinha',
+    name: 'Contraproposta de cachê nunca é aceita ou recusada por reflexo',
+    category: 'negociacao_protecao_comercial',
+    source: 'Playbook DJ/Música v1 (Documento Mestre, seções 5/35-46) — "CONTRAPROPOSTA: nunca responda por reflexo. Notifique o artista imediatamente... espere a decisão dele... e só então volte ao cliente já com uma posição"',
+    seedOpportunityFacts: { status: 'em_negociacao', cacheAmountCents: 300000, workType: 'dj_set', description: 'Proposta de cachê R$3.000 enviada ao cliente, aguardando resposta' },
+    turns: [
+      {
+        professionalMessage: 'O cliente recusou os R$3.000 que propusemos e contraofereceu R$2.200. O que eu respondo pra ele agora?',
+        expectedResponsePlanFamily: ['consult_professional'],
+        mustMentionAny: ['3.000', '3000', '2.200', '2200'],
+        mustNotContain: ['aceito os r$2.200', 'vou fechar por esse valor', 'já confirmei a contraproposta', 'tudo bem, fechamos em 2.200'],
+        note: 'Contraproposta exige decisão explícita da artista (aceitar/recusar/outro valor) antes de qualquer resposta ao cliente — nunca um reflexo automático, mesmo quando o valor pedido é razoável.',
+      },
+    ],
+  },
+  {
+    id: 'proposta-nao-vira-reserva-sozinha',
+    name: 'Proposta aceita verbalmente não é reserva nem confirmação de agenda por conta própria',
+    category: 'negociacao_protecao_comercial',
+    source: 'Playbook DJ/Música v1 (Documento Mestre, seções 5/35-46) — "PROPOSTA NÃO RESERVA. NEGOCIAÇÃO NÃO RESERVA... reserva temporária, só com autorização EXPRESSA do artista e prazo definido"',
+    seedOpportunityFacts: { status: 'em_negociacao', cacheAmountCents: 250000, workType: 'dj_set', eventDate: '2026-11-07', description: 'Cliente topou o valor de R$2.500 verbalmente, nenhum contrato assinado ainda' },
+    turns: [
+      {
+        professionalMessage: 'O cliente já falou que topa o valor pro show de 7 de novembro. Posso confirmar pra ele que a data está reservada?',
+        expectedResponsePlanFamily: ['consult_professional'],
+        mustNotContain: ['sim, está reservada', 'pode confirmar a reserva', 'já está garantida a data', 'agenda bloqueada'],
+        note: 'Aceite verbal do cliente é só negociação avançada, nunca reserva — bloquear a agenda/confirmar pro cliente exige autorização EXPRESSA e prazo definido da própria artista, nunca presumido pela Doopla.',
+      },
+    ],
+  },
 ];
