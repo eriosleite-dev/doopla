@@ -6,7 +6,15 @@
 // Combinação quantidade + recência (nunca só quantidade) — evita que
 // uma conversa reaberta meses depois injete uma thread antiga inteira
 // só porque ela tem poucas mensagens desde a reabertura.
-export const CONTEXT_MAX_MESSAGES = 10;
+//
+// ADR 0007/0009 (20/10/2026, seção 2.2) — causa raiz P0 confirmada:
+// com o teto em 10, uma correção explícita da profissional ("não
+// existe valores avulsos", 09:59) já estava fora da janela quando a
+// Doopla repetiu o erro poucos minutos depois (10:05/10:06). Subido
+// pra 20 como mitigação RÁPIDA e conservadora — nunca a correção
+// completa (essa é um mecanismo de fatos/correções duráveis que
+// sobrevivem à rotação da janela, fora de escopo desta mudança).
+export const CONTEXT_MAX_MESSAGES = 20;
 export const CONTEXT_MESSAGE_WINDOW_DAYS = 30;
 
 export const CONTEXT_MAX_MESSAGE_TEXT_CHARS = 1000;

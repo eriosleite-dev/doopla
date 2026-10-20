@@ -7,7 +7,8 @@ import { buildClassificationContext } from './classification-context';
 // ADR 0005, Etapa 3 bloco 1 (16/10/2026) — validação real do achado
 // comprovado: classification-context.ts cortava o histórico pra
 // trigger + 2 mensagens anteriores, mesmo o Context Builder já tendo
-// carregado até CONTEXT_MAX_MESSAGES (10). Este arquivo prova, com
+// carregado até CONTEXT_MAX_MESSAGES (hoje 20, ver ADR 0007/0009 seção
+// 2.2). Este arquivo prova, com
 // cenários de conversa real, que a correção de fato propaga TODO o
 // histórico já carregado — nunca um corte próprio e menor.
 //
