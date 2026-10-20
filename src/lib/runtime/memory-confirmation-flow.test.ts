@@ -65,7 +65,7 @@ describe('runMemoryConfirmationFlow', () => {
     const result = await runMemoryConfirmationFlow(
       supabase,
       { ...baseParams, messageText: 'Eu sempre prefiro contratos de 2h.' },
-      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: true, kind: 'operational_preference', value: 'prefere contratos de 2h', confidence: 0.9 }, inputTokens: 1, outputTokens: 1 }) }
+      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: true, kind: 'operational_preference', value: 'prefere contratos de 2h', confidence: 0.9, subjectKey: null }, inputTokens: 1, outputTokens: 1 }) }
     );
     expect(result.handled).toBe(true);
     expect(persistProposedMemory).toHaveBeenCalledTimes(1);
@@ -77,7 +77,7 @@ describe('runMemoryConfirmationFlow', () => {
     const result = await runMemoryConfirmationFlow(
       supabase,
       { ...baseParams, messageText: 'Qual o status do booking de sábado?' },
-      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: false, kind: null, value: null, confidence: null }, inputTokens: 1, outputTokens: 1 }) }
+      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: false, kind: null, value: null, confidence: null, subjectKey: null }, inputTokens: 1, outputTokens: 1 }) }
     );
     expect(result.handled).toBe(false);
     expect(persistProposedMemory).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe('runMemoryConfirmationFlow', () => {
     const result = await runMemoryConfirmationFlow(
       supabase,
       { ...baseParams, messageText: 'sim' },
-      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: false, kind: null, value: null, confidence: null }, inputTokens: 1, outputTokens: 1 }) }
+      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: false, kind: null, value: null, confidence: null, subjectKey: null }, inputTokens: 1, outputTokens: 1 }) }
     );
 
     expect(persistMemoryReview).not.toHaveBeenCalled();
@@ -164,7 +164,7 @@ describe('runMemoryConfirmationFlow', () => {
       { ...baseParams, messageText: 'aliás, me conta sobre o booking de sábado' },
       {
         confirmationRecognizerModelCall: async () => ({ parsed: { decision: 'ambiguous' }, inputTokens: 1, outputTokens: 1 }),
-        declarationRecognizerModelCall: async () => ({ parsed: { recognized: false, kind: null, value: null, confidence: null }, inputTokens: 1, outputTokens: 1 }),
+        declarationRecognizerModelCall: async () => ({ parsed: { recognized: false, kind: null, value: null, confidence: null, subjectKey: null }, inputTokens: 1, outputTokens: 1 }),
       }
     );
 
@@ -193,7 +193,7 @@ describe('runMemoryConfirmationFlow', () => {
     const result = await runMemoryConfirmationFlow(
       supabase,
       { ...baseParams, messageText: 'Eu sempre prefiro contratos de 2h.' },
-      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: true, kind: 'operational_preference', value: 'prefere contratos de 2h', confidence: 0.9 }, inputTokens: 1, outputTokens: 1 }) }
+      { declarationRecognizerModelCall: async () => ({ parsed: { recognized: true, kind: 'operational_preference', value: 'prefere contratos de 2h', confidence: 0.9, subjectKey: null }, inputTokens: 1, outputTokens: 1 }) }
     );
 
     expect(result.handled).toBe(true);

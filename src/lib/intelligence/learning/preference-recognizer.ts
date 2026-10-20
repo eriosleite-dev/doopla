@@ -48,6 +48,18 @@ const modelOutputSchema = z.object({
   // explícita) antes de qualquer uso. Task #72 (fluxo de confirmação)
   // é o primeiro consumidor real deste campo.
   confidence: z.number().min(0).max(1).nullable(),
+  // Task #76 (ADR 0012) — rótulo livre curto do ESCOPO a que a
+  // preferência se aplica (ex.: "bar", "casamento"), nunca uma
+  // taxonomia fechada (diferente do subjectKey de policy-gate-post:
+  // lá o espaço de contextos é conhecido/fixo, aqui é aberto). null =
+  // regra geral, sem escopo específico (ex.: "sempre faço 2h", sem
+  // qualificador). O model só PROPÕE o rótulo — nunca decide o que
+  // fazer com ele; quem decide supersede/coexist/ambiguous é só
+  // resolveMemorySupersessionCandidate (memory-policy.ts), código
+  // puro. Campo OPCIONAL por natureza (null é um valor válido e
+  // esperado, nunca "o model não preencheu") — não entra na guarda
+  // estrutural de recognized=true abaixo, diferente de kind/value/confidence.
+  subjectKey: z.string().nullable(),
 });
 export type PreferenceRecognizerModelOutput = z.infer<typeof modelOutputSchema>;
 export { modelOutputSchema as preferenceRecognizerModelOutputSchema };
@@ -83,6 +95,7 @@ const INSTRUCTIONS = [
   'Também nunca reconheça uma decisão PONTUAL sobre um caso específico (ex.: "pode aceitar esse desconto pra esse cliente", "deixa eu responder com R$2.000 dessa vez") — isso é uma instrução sobre UM booking/conversa, nunca uma regra geral pro futuro. Só reconheça quando a frase tem cara de regra permanente (presença de palavras como "sempre", "nunca", "costumo", "prefiro", "normalmente", ou equivalente), nunca uma instrução datada/específica.',
   `value: um resumo curto (até ${MAX_MEMORY_VALUE_CHARS} caracteres) da preferência, na própria formulação da profissional quando possível — nunca invente detalhe que ela não disse, nunca expanda além do que foi declarado.`,
   'confidence: de 0 a 1, sua autoavaliação de quão claramente a mensagem expressa uma regra permanente e própria (não uma autorização — só uma estimativa sua). Uma frase explícita com "sempre"/"nunca"/"prefiro" é confidence alta; uma formulação mais implícita é confidence mais baixa, mesmo quando ainda reconhecida.',
+  'subjectKey: se a preferência menciona um escopo/contexto específico a que ela se aplica (ex.: tipo de evento como "casamento"/"formatura", tipo de local como "bar"/"casa de show", tipo de cliente como "corporativo"), descreva esse escopo em uma palavra curta, minúscula, sem acento (ex.: "casamento", "bar"). Se a preferência é uma regra GERAL, sem nenhum escopo específico mencionado (ex.: "sempre faço contratos de 2h", sem dizer "em bares" ou qualquer qualificador), subjectKey é null — nunca invente um escopo que a profissional não mencionou.',
   'Na dúvida genuína entre reconhecer ou não, prefira recognized=false — é sempre mais seguro deixar a mensagem seguir pelo fluxo normal do que propor uma memória que a profissional não declarou de verdade como regra sua.',
 ].join('\n');
 
@@ -91,6 +104,7 @@ export type RecognizePreferenceDeclarationResult = {
   kind: PreferenceMemoryKind | null;
   value: string | null;
   confidence: number | null;
+  subjectKey: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
 };
@@ -128,16 +142,28 @@ export async function recognizePreferenceDeclaration(
   }
 
   if (!parsed || !parsed.recognized) {
-    return { recognized: false, kind: null, value: null, confidence: null, inputTokens, outputTokens };
+    return { recognized: false, kind: null, value: null, confidence: null, subjectKey: null, inputTokens, outputTokens };
   }
 
   // Guarda estrutural: kind/value/confidence só sobrevivem quando os
   // três vieram preenchidos e kind é um dos 3 válidos — nunca confia
   // no model pra "não preencher" sozinho nem pra um valor vazio.
+  // subjectKey NUNCA entra nesta guarda — null é um valor válido e
+  // esperado (regra geral, sem escopo), não motivo pra descartar o
+  // reconhecimento inteiro.
   const trimmedValue = parsed.value?.trim() ?? '';
   if (!parsed.kind || trimmedValue.length === 0 || parsed.confidence === null) {
-    return { recognized: false, kind: null, value: null, confidence: null, inputTokens, outputTokens };
+    return { recognized: false, kind: null, value: null, confidence: null, subjectKey: null, inputTokens, outputTokens };
   }
 
-  return { recognized: true, kind: parsed.kind, value: trimmedValue, confidence: parsed.confidence, inputTokens, outputTokens };
+  const trimmedSubjectKey = parsed.subjectKey?.trim() ?? '';
+  return {
+    recognized: true,
+    kind: parsed.kind,
+    value: trimmedValue,
+    confidence: parsed.confidence,
+    subjectKey: trimmedSubjectKey.length === 0 ? null : trimmedSubjectKey,
+    inputTokens,
+    outputTokens,
+  };
 }
