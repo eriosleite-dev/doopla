@@ -21,7 +21,7 @@ export {
 export { buildPlannerContext } from './planner-context';
 export { buildPlannerInstructions } from './prompt';
 export { AI_FEATURE_RESPONSE_PLANNING, PLANNER_MAX_RETRIES, PLANNER_MODEL } from './config';
-export { planResponse } from './plan';
+export { planResponse, plannerModelOutputSchema } from './plan';
 export type { PlannerModelCall, PlannerModelCallResult, PlannerModelOutput, PlanResult } from './plan';
 export { GOLDEN_SUITE_CASES as PLANNER_GOLDEN_SUITE_CASES } from './golden-suite';
 export type { PlannerGoldenSuiteCase } from './golden-suite';
