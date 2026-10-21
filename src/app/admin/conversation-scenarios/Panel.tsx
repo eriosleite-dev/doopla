@@ -58,7 +58,7 @@ function TurnCard({ turn }: { turn: TurnResult }) {
         <span style={turn.turnPass ? okStyle : failStyle}>{turn.turnPass ? 'CRITÉRIOS OBJETIVOS: OK' : 'CRITÉRIOS OBJETIVOS: FALHOU'}</span>
       </div>
       <div style={{ marginBottom: 8 }}>
-        <strong>Profissional:</strong> {turn.professionalMessage}
+        <strong>{turn.triggerAuthorType === 'professional' ? 'Profissional' : 'Cliente'}:</strong> {turn.triggerMessage}
       </div>
       <div style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>
         <strong>Doopla (texto final, pós-limpeza determinística — leia este texto você mesma, &quot;OK&quot; acima não avalia qualidade):</strong>{' '}

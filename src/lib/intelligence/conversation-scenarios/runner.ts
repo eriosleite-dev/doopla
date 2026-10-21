@@ -5,6 +5,7 @@ import { estimateAiCostCents } from '@/lib/admin/ai-pricing';
 import { stripTravessao } from '@/lib/runtime/message-style';
 import { CLASSIFIER_MODEL, buildClassificationInstructions, classifyIntent } from '../classification';
 import type { ClassifierModelCall } from '../classification';
+import { CONTEXT_MAX_MESSAGES } from '../context-builder';
 import type { ContextFact, ContextPackage, MessageContextItem } from '../context-builder';
 import { DELEGATED_CONTACT_RECOGNIZER_MODEL, recognizeDelegatedContactRequest } from '../delegated-contact';
 import type { DelegatedContactRecognizerModelCall } from '../delegated-contact';
@@ -38,20 +39,30 @@ import type { AssertionCheck, ConversationScenario, HarnessRunResult, ScenarioRe
 
 const SYNTHETIC_PROFESSIONAL_ID = 'conversation-scenarios-synthetic-professional';
 const SYNTHETIC_PROFESSIONAL_NAME = 'Duda (profissional fictícia do harness)';
+// Task "Próxima fase: inteligência conversacional multiturno" (21/10/2026)
+// — gap 2 da auditoria: nome sintético fixo pro participante externo,
+// mesmo princípio de SYNTHETIC_PROFESSIONAL_NAME (fixo, documentado
+// como fictício, nunca um dado real).
+const SYNTHETIC_EXTERNAL_PARTICIPANT_ID = 'conversation-scenarios-synthetic-external-participant';
+const SYNTHETIC_EXTERNAL_PARTICIPANT_NAME = 'Marina (cliente fictícia do harness)';
 
 function instructionsHash(text: string): string {
   return createHash('sha256').update(text).digest('hex').slice(0, 12);
 }
 
-function buildSyntheticConversation(): MinimalConversation {
+// hasExternalParticipant: true quando QUALQUER turno do cenário usa
+// externalParticipantMessage — muda conversation_type pra
+// 'external_inquiry', mesmo valor que uma conversa real com cliente
+// teria (ver context-builder/classification-context.ts).
+function buildSyntheticConversation(hasExternalParticipant: boolean): MinimalConversation {
   return {
     id: 'conversation-scenarios-synthetic',
     represented_professional_id: SYNTHETIC_PROFESSIONAL_ID,
     mandate: 'active',
     status: 'open',
     current_state: 'ongoing',
-    conversation_type: 'professional_self',
-    external_participant_id: null,
+    conversation_type: hasExternalParticipant ? 'external_inquiry' : 'professional_self',
+    external_participant_id: hasExternalParticipant ? SYNTHETIC_EXTERNAL_PARTICIPANT_ID : null,
     related_opportunity_id: null,
     related_booking_id: null,
   };
@@ -85,7 +96,11 @@ function factsFromSeed(sourceType: 'booking' | 'opportunity', sourceId: string, 
   return facts;
 }
 
-function buildContextPackage(items: MessageContextItem[], scenario: ConversationScenario): ContextPackage {
+// windowItems: já truncado pelo chamador pro mesmo tamanho de janela
+// que produção usa (CONTEXT_MAX_MESSAGES) — este helper nunca trunca
+// sozinho, só projeta o que recebe (ver comentário na chamada, no loop
+// principal, sobre por que o truncamento precisa acontecer ali).
+function buildContextPackage(windowItems: MessageContextItem[], scenario: ConversationScenario, hasExternalParticipant: boolean): ContextPackage {
   const facts: ContextFact[] = [
     { sourceType: 'professional_profile', sourceId: SYNTHETIC_PROFESSIONAL_ID, field: 'fullName', value: SYNTHETIC_PROFESSIONAL_NAME, factType: 'structured', loadedAt: new Date().toISOString() },
   ];
@@ -99,10 +114,29 @@ function buildContextPackage(items: MessageContextItem[], scenario: Conversation
     professionalBusinessContext: { status: 'not_found' },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
     professionalLearnedPreferences: { status: 'loaded', facts: [] },
-    messages: { status: 'loaded', items, windowMessageCount: items.length, windowSince: items[0]?.createdAt ?? new Date().toISOString() },
+    messages: {
+      status: 'loaded',
+      items: windowItems,
+      windowMessageCount: windowItems.length,
+      windowSince: windowItems[0]?.createdAt ?? new Date().toISOString(),
+    },
     opportunity: opportunityFacts.length > 0 ? { status: 'loaded', facts: opportunityFacts } : { status: 'no_link' },
     booking: bookingFacts.length > 0 ? { status: 'loaded', facts: bookingFacts } : { status: 'no_link' },
-    externalParticipant: { status: 'no_link' },
+    externalParticipant: hasExternalParticipant
+      ? {
+          status: 'loaded',
+          facts: [
+            {
+              sourceType: 'external_participant',
+              sourceId: SYNTHETIC_EXTERNAL_PARTICIPANT_ID,
+              field: 'name',
+              value: SYNTHETIC_EXTERNAL_PARTICIPANT_NAME,
+              factType: 'structured',
+              loadedAt: new Date().toISOString(),
+            },
+          ],
+        }
+      : { status: 'no_link' },
   };
 }
 
@@ -256,17 +290,46 @@ export async function runConversationScenario(scenario: ConversationScenario, de
   let costConfigured = true;
   let totalLatencyMs = 0;
 
+  // Task "Próxima fase: inteligência conversacional multiturno"
+  // (21/10/2026) — computado uma vez: muda conversation_type/
+  // externalParticipant pro cenário inteiro, nunca turno a turno (uma
+  // conversa real não troca de external_inquiry pra professional_self
+  // no meio do caminho).
+  const hasExternalParticipant = scenario.turns.some((t) => t.externalParticipantMessage !== undefined);
+
   for (let turnIndex = 0; turnIndex < scenario.turns.length; turnIndex++) {
     const turn = scenario.turns[turnIndex];
+    const hasProfessionalText = turn.professionalMessage !== undefined;
+    const hasExternalText = turn.externalParticipantMessage !== undefined;
+    if (hasProfessionalText === hasExternalText) {
+      // Falha fechado — nunca adivinha autor quando o cenário está mal
+      // formado (os dois campos presentes, ou os dois ausentes).
+      throw new Error(
+        `scenario_turn_author_invalid: turno ${turnIndex} do cenário "${scenario.id}" precisa de EXATAMENTE um entre professionalMessage/externalParticipantMessage`
+      );
+    }
+    const triggerAuthorType: ConversationMessageAuthorType = hasProfessionalText ? 'professional' : 'external_participant';
+    const triggerText = (hasProfessionalText ? turn.professionalMessage : turn.externalParticipantMessage) as string;
+
     // ADR 0010 (20/10/2026) — capturado ANTES do push da mensagem-
     // gatilho deste turno, mesma convenção de recentMessages real
     // (fetchRecentConversationMessages, runtime/recent-conversation-messages.ts):
     // só o que já existia na conversa antes desta mensagem.
     const priorItemsForDelegation = [...items];
-    items.push(toMessageItem('professional', turn.professionalMessage, items.length));
+    items.push(toMessageItem(triggerAuthorType, triggerText, items.length));
 
-    const conversation = buildSyntheticConversation();
-    const contextPackage = buildContextPackage(items, scenario);
+    // Gap 1 da auditoria (21/10/2026): produção nunca envia mais que
+    // CONTEXT_MAX_MESSAGES pro Classifier/Planner (context-builder/
+    // messages.ts, corte rígido) — até aqui o harness mandava `items`
+    // inteiro, sem truncar, então um cenário de 15-20 turnos testava um
+    // comportamento que produção nunca teria (mais histórico do que o
+    // model real recebe). `items` continua crescendo sem corte (precisa
+    // do índice real pra seedHistory/mensagens seguintes) — só a JANELA
+    // passada pro Context Package é truncada, espelhando messages.ts.
+    const windowItems = items.slice(-CONTEXT_MAX_MESSAGES);
+
+    const conversation = buildSyntheticConversation(hasExternalParticipant);
+    const contextPackage = buildContextPackage(windowItems, scenario, hasExternalParticipant);
     const toolCtx: ToolContext = { ...deps.toolCtx, representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID, conversation };
 
     const classifierStart = Date.now();
@@ -300,8 +363,15 @@ export async function runConversationScenario(scenario: ConversationScenario, de
     let delegationPurposeSummary: string | null = null;
     let delegationDraftMessageContent: string | null = null;
     if (turn.delegation) {
+      // Pedido de delegação só faz sentido vindo do profissional —
+      // falha fechado se um cenário tentar combinar com um turno de
+      // participante externo (erro de autoria do cenário, nunca
+      // silenciosamente ignorado).
+      if (!hasProfessionalText) {
+        throw new Error(`scenario_turn_delegation_requires_professional: turno ${turnIndex} do cenário "${scenario.id}" tem 'delegation' num turno de participante externo`);
+      }
       const recognizerStart = Date.now();
-      const result = await recognizeDelegatedContactRequest(turn.professionalMessage, turn.delegation.activeRequest, {
+      const result = await recognizeDelegatedContactRequest(triggerText, turn.delegation.activeRequest, {
         ...(deps.recognizerModelCall ? { modelCall: deps.recognizerModelCall } : {}),
         recentMessages: priorItemsForDelegation.map((m) => ({ authorType: m.authorType, text: m.text })),
       });
@@ -367,7 +437,8 @@ export async function runConversationScenario(scenario: ConversationScenario, de
 
     turnResults.push({
       turnIndex,
-      professionalMessage: turn.professionalMessage,
+      triggerMessage: triggerText,
+      triggerAuthorType,
       primaryIntent: classification.primaryIntent,
       classificationStatus: classification.classificationStatus,
       effectiveConfidence: classification.effectiveConfidence,

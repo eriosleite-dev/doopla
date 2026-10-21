@@ -14,11 +14,25 @@ import type { ResponsePlan } from '../planner';
 // requisito explícito da fundadora (nunca confundir as duas coisas).
 
 export type ScenarioTurn = {
-  // Só o profissional fala neste harness (escopo: professional_self,
-  // onde todos os bugs relatados pela fundadora aconteceram). A
-  // resposta da Doopla é sempre GERADA pelo modelo real nesta mesma
-  // execução — nunca escrita à mão, nunca copiada de um print antigo.
-  professionalMessage: string;
+  // Até 21/10/2026, só o profissional falava neste harness (escopo
+  // original: professional_self, onde os bugs do diagnóstico inicial
+  // aconteceram). Task "Próxima fase: inteligência conversacional
+  // multiturno" (21/10/2026) — gap 2 confirmado na auditoria: pra
+  // simular uma conversa real com cliente, um turno agora pode vir do
+  // profissional OU do participante externo. EXATAMENTE UM dos dois
+  // campos abaixo precisa estar presente (nunca os dois, nunca
+  // nenhum) — checado em runner.ts, falha fechado com erro explícito
+  // se um cenário violar isso. A resposta da Doopla continua sempre
+  // GERADA pelo modelo real nesta mesma execução — nunca escrita à
+  // mão, nunca copiada de um print antigo.
+  professionalMessage?: string;
+  // Mensagem do cliente/participante externo neste turno — alternativa
+  // a professionalMessage, nunca junto. Quando QUALQUER turno do
+  // cenário usa este campo, o conversation_type sintético muda pra
+  // 'external_inquiry' e externalParticipant passa a 'loaded' (ver
+  // runner.ts) — mesmo efeito que uma conversa real com cliente teria
+  // no Context Builder.
+  externalParticipantMessage?: string;
 
   // Assertivas objetivas (requisito 6 da fundadora: critérios
   // objetivos, nunca um segundo model/LLM-judge decidindo "parece
@@ -119,7 +133,12 @@ export type AssertionCheck = { name: string; pass: boolean; detail?: string; blo
 
 export type TurnResult = {
   turnIndex: number;
-  professionalMessage: string;
+  // Renomeado de professionalMessage (21/10/2026, suporte a turnos de
+  // cliente) — o texto que de fato disparou este turno, venha do
+  // profissional ou do participante externo; triggerAuthorType diz
+  // qual dos dois.
+  triggerMessage: string;
+  triggerAuthorType: ConversationMessageAuthorType;
   primaryIntent: string;
   classificationStatus: string;
   effectiveConfidence: string;

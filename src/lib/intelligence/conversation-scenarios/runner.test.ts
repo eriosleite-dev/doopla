@@ -413,3 +413,114 @@ describe('runConversationScenarios — teto de execução', () => {
     expect(result.totalCostCents).toBeGreaterThan(0);
   });
 });
+
+// Task "Próxima fase: inteligência conversacional multiturno"
+// (21/10/2026) — gaps 1 e 2 da auditoria, corrigidos agora.
+describe('runConversationScenario — janela truncada como produção (gap 1 da auditoria)', () => {
+  it('nunca manda mais que CONTEXT_MAX_MESSAGES-1 mensagens anteriores pro Planner, mesmo num cenário de muitos turnos', async () => {
+    const seenRecentMessagesCounts: number[] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenRecentMessagesCounts.push(ctx.recentMessages.length);
+      return fakePlanner('ok, entendido')({ instructions: '', input });
+    };
+    // 12 turnos × 2 mensagens (profissional + resposta real) = até 24
+    // itens — mais que CONTEXT_MAX_MESSAGES (20), dentro do teto de
+    // CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS.
+    const manyTurnsScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: 12 }, (_, i) => ({ professionalMessage: `pergunta número ${i}` })),
+    };
+
+    await runConversationScenario(manyTurnsScenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    // O corte é CONTEXT_MAX_MESSAGES no total da janela (anteriores + a
+    // própria mensagem-gatilho) — recentMessages (só as anteriores)
+    // nunca passa de CONTEXT_MAX_MESSAGES - 1. Antes desta correção,
+    // o último turno via 22 anteriores (items inteiro, sem corte).
+    for (const count of seenRecentMessagesCounts) {
+      expect(count).toBeLessThanOrEqual(19);
+    }
+    // E cresce normalmente até bater no teto — prova que o corte é
+    // real, não um teto artificial desde o primeiro turno.
+    expect(Math.max(...seenRecentMessagesCounts)).toBe(19);
+  });
+});
+
+describe('runConversationScenario — turnos de participante externo (gap 2 da auditoria)', () => {
+  it('um turno com externalParticipantMessage entra no histórico como external_participant, nunca como professional', async () => {
+    const seenAuthorTypes: string[][] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenAuthorTypes.push(ctx.recentMessages.map((m: { authorType: string }) => m.authorType));
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ externalParticipantMessage: 'Quanto custa pra tocar no meu casamento?' }, { professionalMessage: 'Me chama no privado' }],
+    };
+
+    const result = await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    expect(result.turns[0].triggerAuthorType).toBe('external_participant');
+    expect(result.turns[1].triggerAuthorType).toBe('professional');
+    // Turno 2 vê no histórico a mensagem do cliente (turno 1) + a resposta real da Doopla — ambas presentes com o authorType certo.
+    expect(seenAuthorTypes[1]).toEqual(['external_participant', 'ai']);
+  });
+
+  it('conversationType muda pra external_inquiry e externalParticipant fica loaded quando o cenário tem um turno de cliente', async () => {
+    let seenConversationType = '';
+    let seenExternalParticipantName: string | null = null;
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenConversationType = ctx.conversationType;
+      seenExternalParticipantName = ctx.externalParticipantName;
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ externalParticipantMessage: 'Oi, vocês tocam em casamento?' }] };
+
+    await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    expect(seenConversationType).toBe('external_inquiry');
+    expect(seenExternalParticipantName).not.toBeNull();
+  });
+
+  it('cenário só com professionalMessage continua professional_self (nunca regride o comportamento já existente)', async () => {
+    let seenConversationType = '';
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      seenConversationType = JSON.parse(input).conversationType;
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+
+    await runConversationScenario(SIMPLE_SCENARIO, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    expect(seenConversationType).toBe('professional_self');
+  });
+
+  it('turno sem nenhum dos dois campos de mensagem falha fechado, nunca silenciosamente vira string vazia', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{} as ConversationScenario['turns'][number]] };
+    await expect(
+      runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('scenario_turn_author_invalid');
+  });
+
+  it('turno com os dois campos de mensagem ao mesmo tempo também falha fechado (autoria ambígua)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'oi', externalParticipantMessage: 'oi' }],
+    };
+    await expect(
+      runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('scenario_turn_author_invalid');
+  });
+
+  it('delegation num turno de participante externo falha fechado (pedido de delegação só faz sentido vindo do profissional)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ externalParticipantMessage: 'manda pra Gabi', delegation: { activeRequest: null, expectedSignal: 'new_request' } }],
+    };
+    await expect(
+      runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('scenario_turn_delegation_requires_professional');
+  });
+});
