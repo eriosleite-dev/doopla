@@ -1,15 +1,18 @@
 import { createHash } from 'crypto';
 
+import { zodTextFormat } from 'openai/helpers/zod';
+
 import type { ConversationMessageAuthorType } from '@/lib/supabase/types';
 import { estimateAiCostCents } from '@/lib/admin/ai-pricing';
 import { stripTravessao } from '@/lib/runtime/message-style';
-import { CLASSIFIER_MODEL, buildClassificationInstructions, classifyIntent } from '../classification';
+import { CLASSIFIER_MODEL, buildClassificationInstructions, classifierModelOutputSchema, classifyIntent } from '../classification';
 import type { ClassifierModelCall } from '../classification';
 import { CONTEXT_MAX_MESSAGES } from '../context-builder';
 import type { ContextFact, ContextPackage, MessageContextItem } from '../context-builder';
-import { DELEGATED_CONTACT_RECOGNIZER_MODEL, recognizeDelegatedContactRequest } from '../delegated-contact';
+import { DELEGATED_CONTACT_RECOGNIZER_MODEL, delegatedContactRecognizerModelOutputSchema, recognizeDelegatedContactRequest } from '../delegated-contact';
 import type { DelegatedContactRecognizerModelCall } from '../delegated-contact';
-import { PLANNER_MODEL, buildPlannerInstructions, planResponse } from '../planner';
+import { getOpenAIClient } from '../openai-client';
+import { PLANNER_MODEL, buildPlannerInstructions, planResponse, plannerModelOutputSchema } from '../planner';
 import type { PlannerModelCall } from '../planner';
 import type { MinimalConversation, ToolContext } from '../types';
 import { SEMANTIC_CORRECTNESS_DISCLAIMER, buildScenarioResultFromTurns } from './types';
@@ -283,6 +286,87 @@ type RunDeps = {
   recognizerModelCall?: DelegatedContactRecognizerModelCall;
 };
 
+// Captura de erro real (21/10/2026, achado real) — classifyIntent/
+// planResponse/recognizeDelegatedContactRequest sempre "engolem" a
+// exceção de rede/API de propósito e caem num fallback determinístico
+// (comportamento de PRODUÇÃO correto, nunca mudado aqui). Isso deixava
+// o harness sem distinguir "a chamada real nunca aconteceu" de "o
+// model respondeu algo ruim" — uma rodada real bateu exatamente nisso
+// (28 cenários corretos, depois toda chamada seguinte silenciosamente
+// caindo em invalid/null, sem nenhum sinal do motivo).
+//
+// Replica a MESMA chamada real que cada módulo já faz internamente
+// (mesmo model, mesmo schema) só pra poder capturar a exceção ANTES
+// dela ser engolida — sempre RE-LANÇA depois de capturar, então o
+// fallback de classify.ts/plan.ts/recognizer.ts roda exatamente igual
+// a antes; isto é só instrumentação, nunca uma segunda implementação
+// paralela do caminho real.
+function buildRealClassifierModelCallWithErrorCapture(errorBox: { value: string | null }): ClassifierModelCall {
+  return async ({ instructions, input }) => {
+    try {
+      const client = getOpenAIClient();
+      const response = await client.responses.parse({
+        model: CLASSIFIER_MODEL,
+        instructions,
+        input,
+        text: { format: zodTextFormat(classifierModelOutputSchema, 'intent_classification') },
+      });
+      return {
+        parsed: response.output_parsed ?? null,
+        inputTokens: response.usage?.input_tokens ?? null,
+        outputTokens: response.usage?.output_tokens ?? null,
+      };
+    } catch (err) {
+      errorBox.value = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+  };
+}
+
+function buildRealPlannerModelCallWithErrorCapture(errorBox: { value: string | null }): PlannerModelCall {
+  return async ({ instructions, input }) => {
+    try {
+      const client = getOpenAIClient();
+      const response = await client.responses.parse({
+        model: PLANNER_MODEL,
+        instructions,
+        input,
+        text: { format: zodTextFormat(plannerModelOutputSchema, 'response_plan') },
+      });
+      return {
+        parsed: response.output_parsed ?? null,
+        inputTokens: response.usage?.input_tokens ?? null,
+        outputTokens: response.usage?.output_tokens ?? null,
+      };
+    } catch (err) {
+      errorBox.value = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+  };
+}
+
+function buildRealRecognizerModelCallWithErrorCapture(errorBox: { value: string | null }): DelegatedContactRecognizerModelCall {
+  return async ({ instructions, input }) => {
+    try {
+      const client = getOpenAIClient();
+      const response = await client.responses.parse({
+        model: DELEGATED_CONTACT_RECOGNIZER_MODEL,
+        instructions,
+        input,
+        text: { format: zodTextFormat(delegatedContactRecognizerModelOutputSchema, 'delegated_contact_recognition') },
+      });
+      return {
+        parsed: response.output_parsed ?? null,
+        inputTokens: response.usage?.input_tokens ?? null,
+        outputTokens: response.usage?.output_tokens ?? null,
+      };
+    } catch (err) {
+      errorBox.value = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
+  };
+}
+
 // Task "Próxima fase: inteligência conversacional multiturno"
 // (21/10/2026) — extraído do corpo do loop original (um turno só) pra
 // ser reusável tanto por "roda o cenário inteiro de uma vez"
@@ -335,21 +419,18 @@ async function runSingleTurn(
   const contextPackage = buildContextPackage(windowItems, scenario, hasExternalParticipant);
   const toolCtx: ToolContext = { ...deps.toolCtx, representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID, conversation };
 
+  const classifierErrorBox: { value: string | null } = { value: null };
   const classifierStart = Date.now();
-  const { classification, inputTokens: classifierInputTokens, outputTokens: classifierOutputTokens } = await classifyIntent(
-    toolCtx,
-    contextPackage,
-    deps.classifierModelCall ? { modelCall: deps.classifierModelCall } : {}
-  );
+  const { classification, inputTokens: classifierInputTokens, outputTokens: classifierOutputTokens } = await classifyIntent(toolCtx, contextPackage, {
+    modelCall: deps.classifierModelCall ?? buildRealClassifierModelCallWithErrorCapture(classifierErrorBox),
+  });
   const classifierLatencyMs = Date.now() - classifierStart;
 
+  const plannerErrorBox: { value: string | null } = { value: null };
   const plannerStart = Date.now();
-  const { decision, inputTokens: plannerInputTokens, outputTokens: plannerOutputTokens } = await planResponse(
-    toolCtx,
-    contextPackage,
-    classification,
-    deps.plannerModelCall ? { modelCall: deps.plannerModelCall } : {}
-  );
+  const { decision, inputTokens: plannerInputTokens, outputTokens: plannerOutputTokens } = await planResponse(toolCtx, contextPackage, classification, {
+    modelCall: deps.plannerModelCall ?? buildRealPlannerModelCallWithErrorCapture(plannerErrorBox),
+  });
   const plannerLatencyMs = Date.now() - plannerStart;
 
   let delegationSignal = null as TurnResult['delegationSignal'];
@@ -365,6 +446,7 @@ async function runSingleTurn(
   let delegationRecipientNumber: string | null = null;
   let delegationPurposeSummary: string | null = null;
   let delegationDraftMessageContent: string | null = null;
+  const recognizerErrorBox: { value: string | null } = { value: null };
   if (turn.delegation) {
     // Pedido de delegação só faz sentido vindo do profissional —
     // falha fechado se um cenário tentar combinar com um turno de
@@ -375,7 +457,7 @@ async function runSingleTurn(
     }
     const recognizerStart = Date.now();
     const result = await recognizeDelegatedContactRequest(triggerText, turn.delegation.activeRequest, {
-      ...(deps.recognizerModelCall ? { modelCall: deps.recognizerModelCall } : {}),
+      modelCall: deps.recognizerModelCall ?? buildRealRecognizerModelCallWithErrorCapture(recognizerErrorBox),
       recentMessages: priorItemsForDelegation.map((m) => ({ authorType: m.authorType, text: m.text })),
     });
     recognizerLatencyMs = Date.now() - recognizerStart;
@@ -472,6 +554,9 @@ async function runSingleTurn(
     costCents: turnCostCents,
     latencyMs: { classifier: classifierLatencyMs, planner: plannerLatencyMs, recognizer: recognizerLatencyMs, total: turnLatencyMs },
     turnPass,
+    classifierError: classifierErrorBox.value,
+    plannerError: plannerErrorBox.value,
+    recognizerError: recognizerErrorBox.value,
   };
 
   return { turnResult, items };

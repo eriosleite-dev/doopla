@@ -1,6 +1,11 @@
 // Doopla Intelligence Core v1 — "Doopla chama o cliente" (Etapa 2.1):
 // barrel, mesmo padrão dos outros módulos de intelligence/.
-export { recognizeDelegatedContactRequest, type DelegatedContactRecognizerModelCall, type RecognizeDelegatedContactRequestResult } from './recognizer';
+export {
+  recognizeDelegatedContactRequest,
+  delegatedContactRecognizerModelOutputSchema,
+  type DelegatedContactRecognizerModelCall,
+  type RecognizeDelegatedContactRequestResult,
+} from './recognizer';
 export { checkRecipientConsent, type RecipientConsentCheckModelCall, type RecipientConsentCheckResult } from './recipient-consent-check';
 export {
   DELEGATED_CONTACT_SIGNALS,

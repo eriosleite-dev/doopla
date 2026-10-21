@@ -71,6 +71,14 @@ describe('AI Evaluation Harness — isolamento estrutural (ADR 0005, requisitos 
       "from '@/lib/admin/ai-pricing'",
       "from '@/lib/runtime/message-style'",
       "from '@/lib/supabase/types'",
+      // 21/10/2026 — captura de erro real das chamadas de model
+      // (achado real: um erro real de API ficava indistinguível de
+      // "o model respondeu mal" no resultado do harness). getOpenAIClient
+      // é só o getter do client real (já usado internamente por
+      // classify.ts/plan.ts/recognizer.ts); zodTextFormat é formatação
+      // de schema, nenhum dos dois é capaz de enviar/escrever nada.
+      "from '../openai-client'",
+      "from 'openai/helpers/zod'",
     ];
     const importLines = source.split('\n').filter((l) => l.trim().startsWith('import'));
     for (const line of importLines) {

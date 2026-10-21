@@ -184,6 +184,21 @@ export type TurnResult = {
   costCents: number | null;
   latencyMs: { classifier: number; planner: number; recognizer: number | null; total: number };
   turnPass: boolean;
+  // Achado real (21/10/2026) — classifyIntent/planResponse/
+  // recognizeDelegatedContactRequest sempre "engolem" exceção real de
+  // rede/API de propósito (fail closed, cai num fallback determinístico
+  // — comportamento de PRODUÇÃO correto, nunca deve mudar). Mas isso
+  // deixava o harness sem nenhum jeito de diferenciar "o model
+  // respondeu algo ruim" de "a chamada real nunca chegou a acontecer"
+  // — um erro real (ex.: rate limit da OpenAI) virava silenciosamente
+  // classificationStatus='invalid'/responsePlan='consult_professional'
+  // sem nenhum sinal do motivo. Capturado FORA do fallback (ver
+  // runner.ts, modelCall injetado com captura de erro) — null quando a
+  // chamada real funcionou (mesmo que o resultado semântico tenha
+  // ficado ruim) ou quando o turno não usou aquele componente.
+  classifierError: string | null;
+  plannerError: string | null;
+  recognizerError: string | null;
 };
 
 export type ScenarioResult = {

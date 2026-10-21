@@ -100,6 +100,14 @@ function TurnCard({ turn }: { turn: TurnResult }) {
       <div style={{ marginBottom: 8 }}>
         <strong>{turn.triggerAuthorType === 'professional' ? 'Profissional' : 'Cliente'}:</strong> {turn.triggerMessage}
       </div>
+      {(turn.classifierError !== null || turn.plannerError !== null || turn.recognizerError !== null) && (
+        <div style={{ fontSize: 12, marginBottom: 8, padding: '6px 10px', background: '#3a1414', border: '1px solid #8a2020', borderRadius: 4, color: '#ff9b93' }}>
+          ⚠️ <strong>Erro real na chamada ao model (não é julgamento semântico)</strong> — os campos abaixo (intent/plano/texto) são o fallback
+          determinístico, nunca uma resposta real do model. {turn.classifierError && <>Classifier: {turn.classifierError} </>}
+          {turn.plannerError && <>Planner: {turn.plannerError} </>}
+          {turn.recognizerError && <>Recognizer: {turn.recognizerError}</>}
+        </div>
+      )}
       <div style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>
         <strong>Doopla (texto final, pós-limpeza determinística — leia este texto você mesma, &quot;OK&quot; acima não avalia qualidade):</strong>{' '}
         {turn.proposedResponseFinal ?? '(sem resposta — plano não gera texto)'}
@@ -156,11 +164,39 @@ export function ConversationScenariosPanel() {
   const [result, setResult] = useState<HarnessRunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [compareFile, setCompareFile] = useState<HarnessRunResult | null>(null);
+  // Task "Próxima fase: inteligência conversacional multiturno"
+  // (21/10/2026) — seleção de cenários, pra poder isolar um subconjunto
+  // (ex.: só os novos "multiturno_*") sem precisar rodar os 28+ cenários
+  // curtos de novo toda vez — achado real: um rate limit da OpenAI numa
+  // rodada completa deixou os 3 cenários novos sem dado nenhum, e
+  // reproduzir exigia uma forma de rodar só eles.
+  const [scenarioList, setScenarioList] = useState<ListedScenario[] | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   async function handleEstimate() {
     setError(null);
-    const est = await estimateConversationScenariosAction();
+    const [est, { scenarios }] = await Promise.all([estimateConversationScenariosAction(), listHarnessScenariosAction()]);
     setEstimate(est);
+    setScenarioList(scenarios);
+    setSelectedIds(new Set(scenarios.map((s) => s.id)));
+  }
+
+  function selectAll() {
+    if (scenarioList) setSelectedIds(new Set(scenarioList.map((s) => s.id)));
+  }
+  function selectNone() {
+    setSelectedIds(new Set());
+  }
+  function selectMultiturnoOnly() {
+    if (scenarioList) setSelectedIds(new Set(scenarioList.filter((s) => s.category.startsWith('multiturno_')).map((s) => s.id)));
+  }
+  function toggleScenario(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   async function handleRun() {
@@ -169,7 +205,7 @@ export function ConversationScenariosPanel() {
     setResult(null);
     setProgress(null);
 
-    const { scenarios } = await listHarnessScenariosAction();
+    const scenarios = (scenarioList ?? []).filter((s) => selectedIds.has(s.id));
     const { short, long } = partitionScenarios(scenarios);
     const shortBatches = chunkScenarioIds(short);
     // Progresso conta "passos" dos dois caminhos juntos: um passo = um
@@ -274,10 +310,38 @@ export function ConversationScenariosPanel() {
       {estimate && !confirmed && (
         <div style={cardStyle}>
           <div style={{ marginBottom: 12 }}>
-            {estimate.scenarioCount} cenários, {estimate.totalTurns} turnos, até {estimate.totalModelCalls} chamadas ao modelo. Custo real por chamada
-            depende do tamanho do contexto gerado a cada turno — calculado e mostrado por turno depois de rodar.
+            {estimate.scenarioCount} cenários, {estimate.totalTurns} turnos, até {estimate.totalModelCalls} chamadas ao modelo (TOTAL — a seleção
+            abaixo decide o que de fato roda). Custo real por chamada depende do tamanho do contexto gerado a cada turno — calculado e mostrado por
+            turno depois de rodar.
           </div>
-          <button type="button" onClick={() => setConfirmed(true)} style={{ padding: '8px 16px', borderRadius: 6 }}>
+          {scenarioList && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ color: '#aaa' }}>
+                  {selectedIds.size} de {scenarioList.length} cenários selecionados ({scenarioList.filter((s) => selectedIds.has(s.id)).reduce((sum, s) => sum + s.turnCount, 0)}{' '}
+                  turnos)
+                </span>
+                <button type="button" onClick={selectAll} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12 }}>
+                  todos
+                </button>
+                <button type="button" onClick={selectNone} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12 }}>
+                  nenhum
+                </button>
+                <button type="button" onClick={selectMultiturnoOnly} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12 }}>
+                  só os novos (multiturno)
+                </button>
+              </div>
+              <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #333', borderRadius: 6, padding: 8 }}>
+                {scenarioList.map((s) => (
+                  <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '2px 0', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedIds.has(s.id)} onChange={() => toggleScenario(s.id)} />
+                    <span style={{ color: '#999' }}>[{s.turnCount}t]</span> {s.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <button type="button" onClick={() => setConfirmed(true)} disabled={selectedIds.size === 0} style={{ padding: '8px 16px', borderRadius: 6 }}>
             2. confirmar e liberar a execução real
           </button>
         </div>
