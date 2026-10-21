@@ -2,8 +2,18 @@
 
 import { useState } from 'react';
 
-import { estimateConversationScenariosAction, listHarnessScenariosAction, runConversationScenariosBatchAction } from './actions';
-import type { HarnessRunResult, TurnResult } from '@/lib/intelligence/conversation-scenarios/types';
+import {
+  estimateConversationScenariosAction,
+  getHarnessRunMetadataAction,
+  listHarnessScenariosAction,
+  runConversationScenarioChunkAction,
+  runConversationScenariosBatchAction,
+} from './actions';
+import { SEMANTIC_CORRECTNESS_DISCLAIMER, buildScenarioResultFromTurns } from '@/lib/intelligence/conversation-scenarios/types';
+import type { HarnessRunResult, ScenarioResult, TurnResult } from '@/lib/intelligence/conversation-scenarios/types';
+import type { MessageContextItem } from '@/lib/intelligence/context-builder';
+
+type ListedScenario = { id: string; name: string; category: string; source: string; turnCount: number };
 
 // Execução em lotes (19/10/2026) — ver comentário em actions.ts. Nunca
 // quebra um cenário ao meio: agrupa cenários inteiros (na ordem
@@ -30,14 +40,44 @@ function chunkScenarioIds(scenarios: { id: string; turnCount: number }[]): strin
   return batches;
 }
 
-function mergeHarnessResults(acc: HarnessRunResult | null, next: HarnessRunResult): HarnessRunResult {
-  if (acc === null) return next;
-  return {
-    ...acc,
-    scenarios: [...acc.scenarios, ...next.scenarios],
-    totalCostCents: acc.totalCostCents !== null && next.totalCostCents !== null ? acc.totalCostCents + next.totalCostCents : null,
-    allPass: acc.allPass && next.allPass,
-  };
+// Task "Próxima fase: inteligência conversacional multiturno"
+// (21/10/2026) — achado real: um cenário sozinho com mais turnos que
+// HARNESS_BATCH_MAX_TURNS ignora o agrupamento acima (chunkScenarioIds
+// nunca quebra um cenário ao meio) e rodaria inteiro numa Server
+// Action só. Cenários "curtos" (cabem no lote normal) continuam
+// exatamente no caminho de sempre; cenários "longos" (10-20 turnos,
+// pensados pro laboratório de conversas completas) rodam pelo caminho
+// novo e retomável abaixo, nunca misturados no mesmo lote.
+function partitionScenarios(scenarios: ListedScenario[]): { short: ListedScenario[]; long: ListedScenario[] } {
+  const short = scenarios.filter((s) => s.turnCount <= HARNESS_BATCH_MAX_TURNS);
+  const long = scenarios.filter((s) => s.turnCount > HARNESS_BATCH_MAX_TURNS);
+  return { short, long };
+}
+
+// Roda UM cenário longo inteiro, em pedaços de HARNESS_BATCH_MAX_TURNS
+// turnos, retomando entre chamadas (items/nextTurnIndex devolvidos
+// pela Server Action anterior) — nunca uma chamada só com o cenário
+// inteiro. onChunkDone é chamado a cada pedaço concluído, pra reportar
+// progresso turno a turno (um cenário de 15 turnos leva 3 chamadas
+// reais, cada uma pode demorar; sem isso a barra de progresso ficaria
+// parada por minutos sem nenhum sinal de vida).
+async function runLongScenario(scenario: ListedScenario, onChunkDone: () => void): Promise<{ result?: ScenarioResult; error?: string }> {
+  let items: MessageContextItem[] | null = null;
+  let fromTurnIndex = 0;
+  const turnResults: TurnResult[] = [];
+
+  while (fromTurnIndex < scenario.turnCount) {
+    const res = await runConversationScenarioChunkAction(scenario.id, items, fromTurnIndex, HARNESS_BATCH_MAX_TURNS);
+    if (res.error || !res.turnResults || res.nextTurnIndex === undefined || !res.items) {
+      return { error: res.error ?? 'harness_execution_failed' };
+    }
+    turnResults.push(...res.turnResults);
+    items = res.items;
+    fromTurnIndex = res.nextTurnIndex;
+    onChunkDone();
+  }
+
+  return { result: buildScenarioResultFromTurns(scenario, turnResults) };
 }
 
 const cardStyle: React.CSSProperties = { border: '1px solid #333', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -130,28 +170,65 @@ export function ConversationScenariosPanel() {
     setProgress(null);
 
     const { scenarios } = await listHarnessScenariosAction();
-    const batches = chunkScenarioIds(scenarios);
-    let merged: HarnessRunResult | null = null;
+    const { short, long } = partitionScenarios(scenarios);
+    const shortBatches = chunkScenarioIds(short);
+    // Progresso conta "passos" dos dois caminhos juntos: um passo = um
+    // lote de cenários curtos, OU um pedaço (HARNESS_BATCH_MAX_TURNS
+    // turnos) de um cenário longo — mesma unidade de "uma chamada real
+    // à Server Action", pra barra de progresso nunca ficar parada por
+    // minutos sem sinal de vida num cenário de 15-20 turnos.
+    const longSteps = long.reduce((sum, s) => sum + Math.ceil(s.turnCount / HARNESS_BATCH_MAX_TURNS), 0);
+    const totalSteps = shortBatches.length + longSteps;
+    let doneSteps = 0;
+    const scenarioResults: ScenarioResult[] = [];
+    let stepError: string | null = null;
 
-    for (let i = 0; i < batches.length; i++) {
-      setProgress({ done: i, total: batches.length });
-      const res = await runConversationScenariosBatchAction(batches[i]);
-      if (res.error) {
-        setRunning(false);
-        setProgress(null);
-        setError(res.error);
-        // Nunca descarta os lotes já rodados com sucesso só porque um
-        // lote seguinte falhou (ex.: rate_limited por um lease de uma
-        // execução anterior ainda não liberado) — mostra o que já tem.
-        setResult(merged);
-        return;
+    try {
+      for (let i = 0; i < shortBatches.length && !stepError; i++) {
+        setProgress({ done: doneSteps, total: totalSteps });
+        const res = await runConversationScenariosBatchAction(shortBatches[i]);
+        if (res.error) {
+          stepError = res.error;
+          break;
+        }
+        if (res.result) scenarioResults.push(...res.result.scenarios);
+        doneSteps += 1;
       }
-      if (res.result) merged = mergeHarnessResults(merged, res.result);
-    }
 
-    setRunning(false);
-    setProgress(null);
-    setResult(merged);
+      for (const scenario of long) {
+        if (stepError) break;
+        const res = await runLongScenario(scenario, () => {
+          doneSteps += 1;
+          setProgress({ done: doneSteps, total: totalSteps });
+        });
+        if (res.error) {
+          stepError = res.error;
+          break;
+        }
+        if (res.result) scenarioResults.push(res.result);
+      }
+
+      if (stepError) setError(stepError);
+
+      // Nunca descarta os cenários já rodados com sucesso só porque um
+      // passo seguinte falhou (ex.: rate_limited por um lease de uma
+      // execução anterior ainda não liberado) — mostra o que já tem,
+      // erro ou não.
+      if (scenarioResults.length > 0) {
+        const { metadata } = await getHarnessRunMetadataAction();
+        const costConfigured = scenarioResults.every((s) => s.totalCostCents !== null);
+        setResult({
+          metadata,
+          semanticDisclaimer: SEMANTIC_CORRECTNESS_DISCLAIMER,
+          scenarios: scenarioResults,
+          totalCostCents: costConfigured ? scenarioResults.reduce((sum, s) => sum + (s.totalCostCents ?? 0), 0) : null,
+          allPass: scenarioResults.every((s) => s.scenarioPass),
+        });
+      }
+    } finally {
+      setRunning(false);
+      setProgress(null);
+    }
   }
 
   function handleDownload() {
@@ -210,7 +287,7 @@ export function ConversationScenariosPanel() {
         <button type="button" onClick={handleRun} disabled={running} style={{ padding: '8px 16px', borderRadius: 6 }}>
           {running
             ? progress
-              ? `rodando… lote ${progress.done + 1} de ${progress.total} (execução em lotes pequenos, nunca trava a página num limite de tempo da Vercel)`
+              ? `rodando… passo ${progress.done + 1} de ${progress.total} (lotes pequenos — inclusive dentro de cenários longos — nunca trava a página num limite de tempo da Vercel)`
               : 'rodando… (chamadas reais à OpenAI, pode levar um tempo)'
             : '3. rodar os cenários'}
         </button>

@@ -197,6 +197,32 @@ export type ScenarioResult = {
   totalLatencyMs: number;
 };
 
+// Task "Próxima fase: inteligência conversacional multiturno"
+// (21/10/2026) — agregação PURA (zero I/O), extraída de
+// runConversationScenario (runner.ts) pra ser reusável tanto lá quanto
+// no painel admin: um cenário longo agora roda em vários pedaços
+// (runConversationScenarioChunk, chamadas HTTP separadas pra nunca
+// estourar o limite de execução da plataforma) e o CLIENTE precisa
+// juntar os TurnResult[] de todos os pedaços e calcular o
+// ScenarioResult final sem depender de nenhuma função 'use server' —
+// mesmo motivo de golden-suite-summary.ts (planner-golden-suite)
+// existir fora de actions.ts.
+export function buildScenarioResultFromTurns(scenario: { id: string; name: string; category: string; source: string }, turns: TurnResult[]): ScenarioResult {
+  const costConfigured = turns.every((t) => t.costCents !== null);
+  const totalCostCents = costConfigured ? turns.reduce((sum, t) => sum + (t.costCents ?? 0), 0) : null;
+  const totalLatencyMs = turns.reduce((sum, t) => sum + t.latencyMs.total, 0);
+  return {
+    scenarioId: scenario.id,
+    name: scenario.name,
+    category: scenario.category,
+    source: scenario.source,
+    turns,
+    scenarioPass: turns.every((t) => t.turnPass),
+    totalCostCents,
+    totalLatencyMs,
+  };
+}
+
 export type HarnessRunMetadata = {
   runAt: string;
   gitCommit: string;

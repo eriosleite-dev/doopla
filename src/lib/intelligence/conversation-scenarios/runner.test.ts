@@ -5,7 +5,8 @@ import type { DelegatedContactRecognizerModelCallResult } from '../delegated-con
 import type { EvidenceUsed } from '../planner';
 import type { PlannerModelCallResult } from '../planner/plan';
 import type { ToolContext } from '../types';
-import { CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, runConversationScenario, runConversationScenarios } from './runner';
+import { CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, runConversationScenario, runConversationScenarioChunk, runConversationScenarios } from './runner';
+import { buildScenarioResultFromTurns } from './types';
 import type { ConversationScenario } from './types';
 
 // Doopla Intelligence Core v1 — AI Evaluation Harness: teste de
@@ -522,5 +523,65 @@ describe('runConversationScenario — turnos de participante externo (gap 2 da a
     await expect(
       runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
     ).rejects.toThrow('scenario_turn_delegation_requires_professional');
+  });
+});
+
+describe('runConversationScenarioChunk — execução retomável (achado real: cenário de 10-20 turnos sozinho ignora o lote de 6 do painel admin)', () => {
+  it('rodar um cenário de 10 turnos em 2 pedaços de 5 produz exatamente os mesmos turnResults que rodar tudo de uma vez', async () => {
+    const tenTurnScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: 10 }, (_, i) => ({ professionalMessage: `pergunta número ${i}` })),
+    };
+    const deps = { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok, entendido') };
+
+    const whole = await runConversationScenario(tenTurnScenario, deps);
+
+    const chunk1 = await runConversationScenarioChunk(tenTurnScenario, deps, null, 0, 5);
+    expect(chunk1.scenarioComplete).toBe(false);
+    expect(chunk1.nextTurnIndex).toBe(5);
+    expect(chunk1.turnResults).toHaveLength(5);
+
+    const chunk2 = await runConversationScenarioChunk(tenTurnScenario, deps, chunk1.items, chunk1.nextTurnIndex, 5);
+    expect(chunk2.scenarioComplete).toBe(true);
+    expect(chunk2.nextTurnIndex).toBe(10);
+    expect(chunk2.turnResults).toHaveLength(5);
+
+    const chunkedResult = buildScenarioResultFromTurns(tenTurnScenario, [...chunk1.turnResults, ...chunk2.turnResults]);
+
+    // turnIndex/triggerMessage/responsePlan idênticos turno a turno —
+    // prova que retomar em pedaços separados nunca perde nem embaralha
+    // histórico (o pedaço 2 precisa ver exatamente o que o pedaço 1
+    // gerou, não uma versão reconstruída errada).
+    expect(chunkedResult.turns.map((t) => [t.turnIndex, t.triggerMessage, t.responsePlan])).toEqual(
+      whole.turns.map((t) => [t.turnIndex, t.triggerMessage, t.responsePlan])
+    );
+    expect(chunkedResult.scenarioPass).toBe(whole.scenarioPass);
+  });
+
+  it('um pedaço vê no histórico tudo que o pedaço anterior gerou (gatilhos + respostas reais), nunca reinicia do zero', async () => {
+    const seenRecentMessagesCounts: number[] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenRecentMessagesCounts.push(ctx.recentMessages.length);
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+    const fourTurnScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: 4 }, (_, i) => ({ professionalMessage: `turno ${i}` })),
+    };
+    const deps = { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall };
+
+    const chunk1 = await runConversationScenarioChunk(fourTurnScenario, deps, null, 0, 2);
+    await runConversationScenarioChunk(fourTurnScenario, deps, chunk1.items, chunk1.nextTurnIndex, 2);
+
+    // Turno 0: 0 anteriores. Turno 1: turno 0 + resposta real = 2.
+    // Turno 2 (já no 2º pedaço, retomando o estado do 1º): turnos 0-1 +
+    // 2 respostas reais = 4. Turno 3: + o próprio turno 2 e resposta = 6.
+    expect(seenRecentMessagesCounts).toEqual([0, 2, 4, 6]);
+  });
+
+  it('fromTurnIndex fora do intervalo do cenário falha fechado', async () => {
+    const deps = { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') };
+    await expect(runConversationScenarioChunk(SIMPLE_SCENARIO, deps, null, 99, 5)).rejects.toThrow('scenario_chunk_invalid_from_turn_index');
   });
 });
