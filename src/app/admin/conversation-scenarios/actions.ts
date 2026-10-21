@@ -7,6 +7,7 @@ import { CONVERSATION_SCENARIOS } from '@/lib/intelligence/conversation-scenario
 import { CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, buildHarnessRunMetadata, runConversationScenarioChunk, runConversationScenarios } from '@/lib/intelligence/conversation-scenarios/runner';
 import type { HarnessRunMetadata, HarnessRunResult, TurnResult } from '@/lib/intelligence/conversation-scenarios/types';
 import type { MessageContextItem } from '@/lib/intelligence/context-builder';
+import type { ConversationStateSnapshot } from '@/lib/intelligence/conversation-state';
 import type { ActorContext, ToolContext } from '@/lib/intelligence/types';
 
 // Doopla Intelligence Core v1 — AI Evaluation Harness, Server Action
@@ -170,8 +171,16 @@ export async function runConversationScenarioChunkAction(
   scenarioId: string,
   priorItems: MessageContextItem[] | null,
   fromTurnIndex: number,
-  maxTurnsThisCall: number
-): Promise<{ items?: MessageContextItem[]; turnResults?: TurnResult[]; nextTurnIndex?: number; scenarioComplete?: boolean; error?: string }> {
+  maxTurnsThisCall: number,
+  priorConversationState: ConversationStateSnapshot | null = null
+): Promise<{
+  items?: MessageContextItem[];
+  turnResults?: TurnResult[];
+  nextTurnIndex?: number;
+  scenarioComplete?: boolean;
+  conversationState?: ConversationStateSnapshot;
+  error?: string;
+}> {
   const { supabase } = await getAdminSession();
 
   try {
@@ -195,7 +204,7 @@ export async function runConversationScenarioChunkAction(
   }
 
   try {
-    const chunk = await runConversationScenarioChunk(scenario, { toolCtx: buildHarnessToolCtx(supabase) }, priorItems, fromTurnIndex, maxTurnsThisCall);
+    const chunk = await runConversationScenarioChunk(scenario, { toolCtx: buildHarnessToolCtx(supabase) }, priorItems, fromTurnIndex, maxTurnsThisCall, priorConversationState);
     return chunk;
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'harness_execution_failed' };

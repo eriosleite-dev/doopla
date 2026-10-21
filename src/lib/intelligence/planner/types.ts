@@ -1,5 +1,5 @@
 import type { IntentClassification } from '../classification';
-import type { ContextFact, ContextFactSourceType, ContextSection } from '../context-builder';
+import type { ContextFact, ContextFactSourceType, ContextSection, ConversationStateSection } from '../context-builder';
 import type { ConversationMessageAuthorType } from '@/lib/supabase/types';
 import type { ProfessionalDecisionCategory } from './decision-categories';
 import type { ResponsePlan } from './response-plan';
@@ -121,6 +121,14 @@ export type PlannerContext = {
   opportunity: ContextSection<ContextFact>;
   booking: ContextSection<ContextFact>;
   externalParticipant: ContextSection<ContextFact>;
+  // Conversation State Ledger — atalho determinístico sobre fatos já
+  // estabelecidos NESTA conversa (ver conversation-state/types.ts).
+  // Deliberadamente fora da família ContextSection<ContextFact>: um
+  // fato aqui aponta pra uma conversation_message real já presente em
+  // triggerMessage/recentMessages — se o Planner citar, continua
+  // citando sourceType:'conversation_message' (nunca um sourceType
+  // novo, nunca uma fonte de autorização nova).
+  conversationState: ConversationStateSection;
 };
 
 // ============================================================

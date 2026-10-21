@@ -1,4 +1,5 @@
 import type { ConversationMessageAuthorType, ConversationMessageContentType, ConversationMessageDirection } from '@/lib/supabase/types';
+import type { ConversationStateSnapshot } from '../conversation-state';
 import type { ToolExecutionError } from '../types';
 
 // Doopla Intelligence Core v1 — Context Builder v1 (Bloco 2).
@@ -106,6 +107,16 @@ export type MessagesSection =
   | { status: 'loaded'; items: MessageContextItem[]; windowMessageCount: number; windowSince: string };
 
 // ============================================================
+// Conversation State Ledger — snapshot determinístico do que já está
+// estabelecido na conversa (ver src/lib/intelligence/conversation-state).
+// Deliberadamente NÃO é ContextSection<ContextFact>: um fato aqui é só
+// um ponteiro pra uma mensagem real (nunca uma fonte de evidência
+// nova) — ver comentário em conversation-state/types.ts.
+// ============================================================
+
+export type ConversationStateSection = { status: 'not_allowed' | 'unavailable' } | { status: 'loaded'; snapshot: ConversationStateSnapshot };
+
+// ============================================================
 // Commercial history — mesmo formato loaded/not_allowed/unavailable de
 // MessagesSection (zero itens é um estado normal, "loaded" com
 // facts: [], nunca not_found), com um campo a mais: retrievalStrategy.
@@ -147,6 +158,7 @@ export type ContextPackage = {
   // ContextFactSourceType.
   professionalLearnedPreferences: ContextSection<ContextFact>;
   messages: MessagesSection;
+  conversationState: ConversationStateSection;
   opportunity: ContextSection<ContextFact>;
   booking: ContextSection<ContextFact>;
   externalParticipant: ContextSection<ContextFact>;
@@ -162,7 +174,8 @@ export type ContextPackageSectionName =
   | 'opportunity'
   | 'booking'
   | 'externalParticipant'
-  | 'messages';
+  | 'messages'
+  | 'conversationState';
 
 // Reason code sanitizado — nunca a mensagem crua de erro do
 // Supabase/SDK. São sempre os códigos já tipados de ToolExecutionError

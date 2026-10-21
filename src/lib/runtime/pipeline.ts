@@ -4,6 +4,8 @@ import { runApprovalEngine } from '../intelligence/approval';
 import { classifyIntent, AI_FEATURE_INTENT_CLASSIFICATION } from '../intelligence/classification';
 import { AI_MODEL } from '../intelligence/config';
 import { buildContextPackage } from '../intelligence/context-builder';
+import { EMPTY_CONVERSATION_STATE_SNAPSHOT, advanceConversationStateSnapshot, writeConversationStateSnapshot } from '../intelligence/conversation-state';
+import type { ConversationStateTurnInput } from '../intelligence/conversation-state';
 import { detectInboundProposal, AI_FEATURE_INBOUND_PROPOSAL_DETECTION, INBOUND_PROPOSAL_MODEL } from '../intelligence/inbound-proposal';
 import { finishOrchestratorRun, logAiUsageEvent, startOrchestratorRun } from '../intelligence/observability';
 import { AI_FEATURE_RESPONSE_PLANNING, filterCommitmentAuthorizingEvidence, planResponse } from '../intelligence/planner';
@@ -793,6 +795,27 @@ async function runCycle(supabase: SupabaseClient<any>, event: InboundEvent, inbo
   }
 
   await finishInboundEvent(supabase, { eventId: inboundEventId, status: 'processed', conversationMessageId: message.id, error: null });
+
+  // Conversation State Ledger — avança o snapshot com o que o
+  // Classifier/Planner JÁ produziram nesta rodada (decision final,
+  // pós-gate), nunca um recálculo retroativo. Prior snapshot vem do
+  // MESMO ContextPackage que o Planner usou (buildResult.contextPackage),
+  // nunca uma segunda leitura separada — garante que "o que avança" é
+  // exatamente "o que o Planner viu". Falha de escrita nunca derruba o
+  // turno (writeConversationStateSnapshot nunca lança, ver store.ts).
+  const conversationStateBefore =
+    buildResult.contextPackage.conversationState.status === 'loaded' ? buildResult.contextPackage.conversationState.snapshot : EMPTY_CONVERSATION_STATE_SNAPSHOT;
+  const conversationStateTurnInput: ConversationStateTurnInput = {
+    triggerMessageId: message.id,
+    triggerAuthorType: event.authorType,
+    triggerMessageSnippet: event.body.length > 500 ? `${event.body.slice(0, 500)}…` : event.body,
+    primaryIntent: classification.primaryIntent,
+    secondaryIntents: classification.secondaryIntents,
+    proposedDecisionCategory: decision.professionalDecisionCategory,
+    commitmentNature: decision.commitmentNature,
+    responsePlan: decision.responsePlan,
+  };
+  await writeConversationStateSnapshot(supabase, event.conversationId, advanceConversationStateSnapshot(conversationStateBefore, conversationStateTurnInput));
 
   return {
     kind: 'completed',

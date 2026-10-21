@@ -96,6 +96,7 @@ function buildSyntheticContext(
     representedProfessionalId: professionalId,
     builtAt: now,
     professional: { status: 'loaded', facts: [] },
+    conversationState: { status: 'not_allowed' },
     professionalBusinessContext: { status: 'loaded', facts: [] },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
     professionalLearnedPreferences: { status: 'loaded', facts: [] },

@@ -4,6 +4,7 @@ export type {
   CommercialHistoryRetrievalStrategy,
   CommercialHistorySection,
   ContextBuildResult,
+  ConversationStateSection,
   ContextFact,
   ContextFactSourceType,
   ContextFactType,

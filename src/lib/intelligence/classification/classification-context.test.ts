@@ -36,6 +36,7 @@ function contextPackageWithMessages(items: MessageContextItem[]): ContextPackage
     representedProfessionalId: 'prof-1',
     builtAt: new Date().toISOString(),
     professional: { status: 'loaded', facts: [] },
+    conversationState: { status: 'not_allowed' },
     professionalBusinessContext: { status: 'not_found' },
     professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
     professionalLearnedPreferences: { status: 'loaded', facts: [] },

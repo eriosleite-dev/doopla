@@ -8,6 +8,8 @@ import { stripTravessao } from '@/lib/runtime/message-style';
 import { CLASSIFIER_MODEL, buildClassificationInstructions, classifierModelOutputSchema, classifyIntent } from '../classification';
 import type { ClassifierModelCall } from '../classification';
 import { CONTEXT_MAX_MESSAGES } from '../context-builder';
+import { EMPTY_CONVERSATION_STATE_SNAPSHOT, advanceConversationStateSnapshot } from '../conversation-state';
+import type { ConversationStateSnapshot, ConversationStateTurnInput } from '../conversation-state';
 import type { ContextFact, ContextPackage, MessageContextItem } from '../context-builder';
 import { DELEGATED_CONTACT_RECOGNIZER_MODEL, delegatedContactRecognizerModelOutputSchema, recognizeDelegatedContactRequest } from '../delegated-contact';
 import type { DelegatedContactRecognizerModelCall } from '../delegated-contact';
@@ -103,7 +105,12 @@ function factsFromSeed(sourceType: 'booking' | 'opportunity', sourceId: string, 
 // que produção usa (CONTEXT_MAX_MESSAGES) — este helper nunca trunca
 // sozinho, só projeta o que recebe (ver comentário na chamada, no loop
 // principal, sobre por que o truncamento precisa acontecer ali).
-function buildContextPackage(windowItems: MessageContextItem[], scenario: ConversationScenario, hasExternalParticipant: boolean): ContextPackage {
+function buildContextPackage(
+  windowItems: MessageContextItem[],
+  scenario: ConversationScenario,
+  hasExternalParticipant: boolean,
+  conversationStateSnapshot: ConversationStateSnapshot
+): ContextPackage {
   const facts: ContextFact[] = [
     { sourceType: 'professional_profile', sourceId: SYNTHETIC_PROFESSIONAL_ID, field: 'fullName', value: SYNTHETIC_PROFESSIONAL_NAME, factType: 'structured', loadedAt: new Date().toISOString() },
   ];
@@ -123,6 +130,7 @@ function buildContextPackage(windowItems: MessageContextItem[], scenario: Conver
       windowMessageCount: windowItems.length,
       windowSince: windowItems[0]?.createdAt ?? new Date().toISOString(),
     },
+    conversationState: { status: 'loaded', snapshot: conversationStateSnapshot },
     opportunity: opportunityFacts.length > 0 ? { status: 'loaded', facts: opportunityFacts } : { status: 'no_link' },
     booking: bookingFacts.length > 0 ? { status: 'loaded', facts: bookingFacts } : { status: 'no_link' },
     externalParticipant: hasExternalParticipant
@@ -382,8 +390,9 @@ async function runSingleTurn(
   deps: RunDeps,
   itemsBefore: MessageContextItem[],
   turnIndex: number,
-  hasExternalParticipant: boolean
-): Promise<{ turnResult: TurnResult; items: MessageContextItem[] }> {
+  hasExternalParticipant: boolean,
+  conversationStateBefore: ConversationStateSnapshot
+): Promise<{ turnResult: TurnResult; items: MessageContextItem[]; conversationState: ConversationStateSnapshot }> {
   const items = [...itemsBefore];
   const turn = scenario.turns[turnIndex];
   const hasProfessionalText = turn.professionalMessage !== undefined;
@@ -403,6 +412,7 @@ async function runSingleTurn(
   // (fetchRecentConversationMessages, runtime/recent-conversation-messages.ts):
   // só o que já existia na conversa antes desta mensagem.
   const priorItemsForDelegation = [...items];
+  const triggerMessageId = `scenario-msg-${items.length}`;
   items.push(toMessageItem(triggerAuthorType, triggerText, items.length));
 
   // Gap 1 da auditoria (21/10/2026): produção nunca envia mais que
@@ -416,7 +426,7 @@ async function runSingleTurn(
   const windowItems = items.slice(-CONTEXT_MAX_MESSAGES);
 
   const conversation = buildSyntheticConversation(hasExternalParticipant);
-  const contextPackage = buildContextPackage(windowItems, scenario, hasExternalParticipant);
+  const contextPackage = buildContextPackage(windowItems, scenario, hasExternalParticipant, conversationStateBefore);
   const toolCtx: ToolContext = { ...deps.toolCtx, representedProfessionalId: SYNTHETIC_PROFESSIONAL_ID, conversation };
 
   const classifierErrorBox: { value: string | null } = { value: null };
@@ -432,6 +442,23 @@ async function runSingleTurn(
     modelCall: deps.plannerModelCall ?? buildRealPlannerModelCallWithErrorCapture(plannerErrorBox),
   });
   const plannerLatencyMs = Date.now() - plannerStart;
+
+  // Mesmo mecanismo de produção (ver pipeline.ts) — avança o snapshot
+  // com o que o Classifier/Planner JÁ produziram neste turno, nunca um
+  // recálculo retroativo. triggerMessageSnippet é o texto bruto da
+  // própria mensagem-gatilho (sem truncamento aqui — cenários sintéticos
+  // nunca chegam perto do limite real de caracteres).
+  const conversationStateTurnInput: ConversationStateTurnInput = {
+    triggerMessageId,
+    triggerAuthorType,
+    triggerMessageSnippet: triggerText,
+    primaryIntent: classification.primaryIntent,
+    secondaryIntents: classification.secondaryIntents,
+    proposedDecisionCategory: decision.professionalDecisionCategory,
+    commitmentNature: decision.commitmentNature,
+    responsePlan: decision.responsePlan,
+  };
+  const conversationState = advanceConversationStateSnapshot(conversationStateBefore, conversationStateTurnInput);
 
   let delegationSignal = null as TurnResult['delegationSignal'];
   let recognizerInputTokens: number | null = null;
@@ -559,7 +586,7 @@ async function runSingleTurn(
     recognizerError: recognizerErrorBox.value,
   };
 
-  return { turnResult, items };
+  return { turnResult, items, conversationState };
 }
 
 // Task "Próxima fase: inteligência conversacional multiturno"
@@ -584,13 +611,21 @@ export async function runConversationScenarioChunk(
   deps: RunDeps,
   priorItems: MessageContextItem[] | null,
   fromTurnIndex: number,
-  maxTurnsThisCall: number
-): Promise<{ items: MessageContextItem[]; turnResults: TurnResult[]; nextTurnIndex: number; scenarioComplete: boolean }> {
+  maxTurnsThisCall: number,
+  priorConversationState: ConversationStateSnapshot | null = null
+): Promise<{
+  items: MessageContextItem[];
+  turnResults: TurnResult[];
+  nextTurnIndex: number;
+  scenarioComplete: boolean;
+  conversationState: ConversationStateSnapshot;
+}> {
   if (fromTurnIndex < 0 || fromTurnIndex > scenario.turns.length) {
     throw new Error(`scenario_chunk_invalid_from_turn_index: ${fromTurnIndex} fora do intervalo do cenário "${scenario.id}" (${scenario.turns.length} turnos)`);
   }
 
   let items = priorItems ?? (scenario.seedHistory ?? []).map((m, i) => toMessageItem(m.authorType, m.text, i));
+  let conversationState = priorConversationState ?? EMPTY_CONVERSATION_STATE_SNAPSHOT;
   const turnResults: TurnResult[] = [];
   // Mesmo critério de antes — computado uma vez por CENÁRIO, nunca por
   // chamada/pedaço (uma conversa real não troca de external_inquiry
@@ -600,12 +635,13 @@ export async function runConversationScenarioChunk(
   const endIndex = Math.min(fromTurnIndex + maxTurnsThisCall, scenario.turns.length);
 
   for (let turnIndex = fromTurnIndex; turnIndex < endIndex; turnIndex++) {
-    const result = await runSingleTurn(scenario, deps, items, turnIndex, hasExternalParticipant);
+    const result = await runSingleTurn(scenario, deps, items, turnIndex, hasExternalParticipant, conversationState);
     items = result.items;
+    conversationState = result.conversationState;
     turnResults.push(result.turnResult);
   }
 
-  return { items, turnResults, nextTurnIndex: endIndex, scenarioComplete: endIndex >= scenario.turns.length };
+  return { items, turnResults, nextTurnIndex: endIndex, scenarioComplete: endIndex >= scenario.turns.length, conversationState };
 }
 
 export async function runConversationScenario(scenario: ConversationScenario, deps: RunDeps): Promise<ScenarioResult> {

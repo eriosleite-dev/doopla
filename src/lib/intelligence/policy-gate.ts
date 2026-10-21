@@ -41,6 +41,7 @@ export function evaluatePreModelGate(ctx: PolicyGateContext): PolicyGateResult {
   const allowedContextSources: ContextSource[] = [
     'professional_profile',
     'conversation_messages',
+    'conversation_state',
     'professional_business_context',
     'professional_commercial_history',
     'professional_learned_preferences',

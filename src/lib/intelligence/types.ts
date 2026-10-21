@@ -97,7 +97,12 @@ export type ContextSource =
   | 'external_participant'
   | 'professional_business_context'
   | 'professional_commercial_history'
-  | 'professional_learned_preferences';
+  | 'professional_learned_preferences'
+  // Conversation State Ledger — mesmo grupo de conversation_messages
+  // (sempre elegível, nunca depende de opportunity/booking/participante
+  // vinculado): é um atalho determinístico sobre a PRÓPRIA janela de
+  // mensagens desta conversa, nunca uma fonte de dado nova/externa.
+  | 'conversation_state';
 
 export type ToolContext = {
   representedProfessionalId: string;

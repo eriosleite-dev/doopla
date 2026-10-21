@@ -39,6 +39,7 @@ const CONTEXT_PACKAGE: ContextPackage = {
   representedProfessionalId: 'prof-1',
   builtAt: '2026-10-15T12:00:00Z',
   professional: { status: 'unavailable' },
+  conversationState: { status: 'not_allowed' },
   professionalBusinessContext: { status: 'unavailable' },
   professionalCommercialHistory: { status: 'unavailable' },
   professionalLearnedPreferences: { status: 'unavailable' },

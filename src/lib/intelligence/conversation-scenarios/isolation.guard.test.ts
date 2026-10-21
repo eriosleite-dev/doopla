@@ -79,6 +79,11 @@ describe('AI Evaluation Harness — isolamento estrutural (ADR 0005, requisitos 
       // de schema, nenhum dos dois é capaz de enviar/escrever nada.
       "from '../openai-client'",
       "from 'openai/helpers/zod'",
+      // 21/10/2026 — ConversationState Ledger: módulo puro
+      // (advanceConversationStateSnapshot, sem I/O) só consumido aqui
+      // pra montar o conversationState sintético do cenário, mesmo
+      // princípio de classification/planner/delegated-contact acima.
+      "from '../conversation-state'",
     ];
     const importLines = source.split('\n').filter((l) => l.trim().startsWith('import'));
     for (const line of importLines) {

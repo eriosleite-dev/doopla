@@ -59,5 +59,6 @@ export function buildPlannerContext(
     opportunity: contextPackage.opportunity,
     booking: contextPackage.booking,
     externalParticipant: contextPackage.externalParticipant,
+    conversationState: contextPackage.conversationState,
   };
 }

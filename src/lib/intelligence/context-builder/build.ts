@@ -1,4 +1,5 @@
 import type { ContextSource, ToolContext } from '../types';
+import { buildConversationStateSection } from './conversation-state-section';
 import { buildMessagesSection } from './messages';
 import {
   buildBookingSection,
@@ -73,6 +74,10 @@ export async function buildContextPackage(
   // por lá) — 'query_error' já é o motivo real aqui, não um genérico.
   noteIfUnavailable('messages', messages.status);
 
+  // Conversation State Ledger — nunca 'unavailable' (ver comentário em
+  // conversation-state-section.ts), então nada a notar aqui.
+  const conversationState = await buildConversationStateSection(toolCtx, gate);
+
   return {
     contextPackage: {
       conversationId: toolCtx.conversation.id,
@@ -83,6 +88,7 @@ export async function buildContextPackage(
       professionalCommercialHistory: professionalCommercialHistory.section,
       professionalLearnedPreferences: professionalLearnedPreferences.section,
       messages,
+      conversationState,
       opportunity: opportunity.section,
       booking: booking.section,
       externalParticipant: externalParticipant.section,

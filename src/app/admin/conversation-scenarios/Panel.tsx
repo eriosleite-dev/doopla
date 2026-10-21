@@ -12,6 +12,7 @@ import {
 import { SEMANTIC_CORRECTNESS_DISCLAIMER, buildScenarioResultFromTurns } from '@/lib/intelligence/conversation-scenarios/types';
 import type { HarnessRunResult, ScenarioResult, TurnResult } from '@/lib/intelligence/conversation-scenarios/types';
 import type { MessageContextItem } from '@/lib/intelligence/context-builder';
+import type { ConversationStateSnapshot } from '@/lib/intelligence/conversation-state';
 
 type ListedScenario = { id: string; name: string; category: string; source: string; turnCount: number };
 
@@ -63,16 +64,18 @@ function partitionScenarios(scenarios: ListedScenario[]): { short: ListedScenari
 // parada por minutos sem nenhum sinal de vida).
 async function runLongScenario(scenario: ListedScenario, onChunkDone: () => void): Promise<{ result?: ScenarioResult; error?: string }> {
   let items: MessageContextItem[] | null = null;
+  let conversationState: ConversationStateSnapshot | null = null;
   let fromTurnIndex = 0;
   const turnResults: TurnResult[] = [];
 
   while (fromTurnIndex < scenario.turnCount) {
-    const res = await runConversationScenarioChunkAction(scenario.id, items, fromTurnIndex, HARNESS_BATCH_MAX_TURNS);
+    const res = await runConversationScenarioChunkAction(scenario.id, items, fromTurnIndex, HARNESS_BATCH_MAX_TURNS, conversationState);
     if (res.error || !res.turnResults || res.nextTurnIndex === undefined || !res.items) {
       return { error: res.error ?? 'harness_execution_failed' };
     }
     turnResults.push(...res.turnResults);
     items = res.items;
+    conversationState = res.conversationState ?? null;
     fromTurnIndex = res.nextTurnIndex;
     onChunkDone();
   }
