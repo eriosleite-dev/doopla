@@ -808,4 +808,64 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       },
     ],
   },
+  {
+    id: 'multiturno-recall-condicao-horario-extra',
+    name: 'Profissional recupera condição operacional própria, pergunta indireta e categoria diferente de preço/desconto',
+    category: 'multiturno_recall_generalizacao',
+    source:
+      'Cenário sintético, inédito (21/10/2026) — pós-achado real: o Conversation State Ledger resolveu recall de PREÇO mas não de DESCONTO na mesma rodada. Este cenário testa a MESMA capacidade (recall de decisão própria vários turnos depois) com categoria de decisão diferente (condição operacional de horário extra, não preço/desconto) e frase de recall diferente ("que condição eu tinha passado" em vez de "qual foi mesmo o X que autorizei") — nunca otimizado pra uma frase específica, testa se a capacidade generaliza.',
+    turns: [
+      {
+        professionalMessage: 'O cliente do aniversário de 1 ano perguntou se dá pra tocar até mais tarde, até umas 3h da manhã.',
+        expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant'],
+      },
+      {
+        professionalMessage: 'Pode, mas só libero isso cobrando R$300 a mais por hora extra, e só confirmado com pelo menos 2 dias de antecedência.',
+        note: 'DECISÃO (recuperada no último turno) — condição operacional nova, categoria diferente de preço/desconto.',
+      },
+      {
+        professionalMessage: 'Separado disso, preciso resolver o transporte do equipamento até sábado.',
+        note: 'Assunto completamente diferente, pra afastar a decisão anterior da pergunta de recall.',
+      },
+      {
+        professionalMessage: 'Já consegui uma van, vou fechar com o motorista hoje.',
+      },
+      {
+        professionalMessage: 'Me lembra uma coisa: que condição eu tinha passado pro cliente sobre tocar além do horário marcado?',
+        mustMentionAny: ['300', 'duzentos e cinquenta'],
+        mustCiteConversationEvidence: true,
+        note: 'Recall da PRÓPRIA decisão, 3 turnos depois, frase bem diferente de "qual foi mesmo o X que autorizei" — nunca pode responder genérico como se a condição fosse desconhecida.',
+      },
+    ],
+  },
+  {
+    id: 'multiturno-recall-implicito-reconfirmacao',
+    name: 'Cliente reconfirma implicitamente uma condição prévia, sem perguntar diretamente "qual foi"',
+    category: 'multiturno_recall_generalizacao',
+    source:
+      'Cenário sintético, inédito (21/10/2026) — mesma motivação do cenário acima, mas testando recall IMPLÍCITO vindo do cliente externo (paráfrase assumindo o fato já combinado, nunca uma pergunta direta tipo "qual foi mesmo") — generalização em duas direções ao mesmo tempo: autor (cliente, não profissional) e forma da pergunta (afirmação que pressupõe o fato, não interrogação).',
+    turns: [
+      {
+        externalParticipantMessage: 'Oi! Fechado o show de 15 anos, dia 25/11. Dá pra incluir meia hora de hora extra se a festa atrasar?',
+        expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant'],
+      },
+      {
+        professionalMessage: 'Dá, mas cobro R$250 a mais por meia hora adicional, e só libero se avisarem na hora.',
+        note: 'DECISÃO (recuperada implicitamente no último turno).',
+      },
+      {
+        externalParticipantMessage: 'Combinado! Ah, o som de ambientação da entrada também está incluso no pacote?',
+        note: 'Assunto diferente, pra afastar a decisão da reconfirmação final.',
+      },
+      {
+        professionalMessage: 'Sim, isso já faz parte do pacote padrão, sem custo extra.',
+      },
+      {
+        externalParticipantMessage: 'Perfeito. Então se precisarmos da meia hora extra no dia, já fica certo que é R$250, sem precisar renegociar na hora, né?',
+        mustMentionAny: ['250'],
+        mustCiteConversationEvidence: true,
+        note: 'Reconfirmação IMPLÍCITA (pressupõe o fato, nunca pergunta "qual foi") — nunca pode tratar como se o valor fosse desconhecido ou reabrir negociação do zero.',
+      },
+    ],
+  },
 ];
