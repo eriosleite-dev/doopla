@@ -8,19 +8,27 @@ import { useEffect } from 'react';
 // de progresso segmentada e rodapé fixo com o CTA principal. O
 // conteúdo de cada etapa é passado como children; quem chama decide se
 // usa um único .ob-step ou um carrossel .steps-track (Prepare sua
-// Doopla, que tem 5 sub-etapas dentro de uma página só).
+// Doopla, que tem 4 sub-etapas dentro de uma página só).
 export function OnboardingShell({
   step,
-  totalSteps = 7,
+  // Funil 6→5 etapas (15/09/2026) — a etapa de canal (WhatsApp/Painel/
+  // Ambos) saiu do onboarding, nenhuma escolha operacional real por
+  // trás dela. Único default usado pelos 3 callers (CreateAccountForm,
+  // PrepareForm, PlanForm) — nenhum passa totalSteps explícito.
+  totalSteps = 5,
   onBack,
   footer,
   children,
+  boxed = false,
 }: {
   step: number;
   totalSteps?: number;
   onBack?: () => void;
   footer: React.ReactNode;
   children: React.ReactNode;
+  // Ver onboarding.css (".onboarding-boxed") — só true quando renderizado
+  // dentro do card do modal da Home (CreateAccountModal.tsx).
+  boxed?: boolean;
 }) {
   useEffect(() => {
     const eyes = Array.from(document.querySelectorAll<HTMLElement>('#onboarding [data-eye]'));
@@ -68,7 +76,7 @@ export function OnboardingShell({
   }, []);
 
   return (
-    <div id="onboarding">
+    <div id="onboarding" className={boxed ? 'onboarding-boxed' : undefined}>
       <div className="app">
         <div className="topbar">
           <span className="logo">

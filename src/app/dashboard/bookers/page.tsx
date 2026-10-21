@@ -3,227 +3,250 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { AddConnectionModal } from '../add-connection-modal';
-import { confirmInviteAction } from '../actions';
+import { confirmInviteAction, respondRepresentationRequestAction } from '../actions';
+import { PendingInviteCard } from '../resend-invite-button';
 import {
   getArtistBookerRelationships,
-  getDiscoverBookers,
-  getFavoriteBookers,
-  getFavoriteIds,
   getIncomingRepresentationRequests,
   getOutgoingRepresentationRequestsForArtist,
   getPendingInvites,
   getSentInvites,
+  getSubscription,
 } from '../data';
+import { PublicIdChip } from '../public-id-chip';
 import { getSessionProfile } from '../session';
-import { ListFilter } from '../list-filter';
-import { PendingStatusList } from '../pending-status-list';
-import { accentButtonClass, avatarClass, eyebrowClass, initialsFromName } from '../ui';
-import { BookerRow } from './booker-row';
-import { DiscoverBookers } from './discover-bookers';
-import { IncomingRequests } from './incoming-requests';
+import { hasDooplaPro } from '@/lib/subscription';
+import { proGhostButtonClass, proHeaderGapClass, proPrimaryButtonClass } from '../pro-format';
+import { ProCard } from '../pro-ui';
+import { initialsFromName } from '../ui';
+import { TerminateRelationshipButton } from '../terminate-relationship-button';
 
 export const metadata: Metadata = {
-  title: 'Bookers | Doopla',
+  title: 'Minha equipe | Doopla',
 };
 
-export default async function BookersPage(props: {
-  searchParams: Promise<{
-    discoverLimit?: string;
-    bookerNoLimite?: string;
-    vinculado?: string;
-    roteamentoResetado?: string;
-  }>;
-}) {
-  const { discoverLimit, bookerNoLimite, vinculado, roteamentoResetado } = await props.searchParams;
+// Item 11 da revisão Professional Web Dashboard (06/09/2026) —
+// reescrita conceitual completa. Removido por completo: favoritos,
+// busca/descoberta de novos bookers, ranking, "bookers ativos
+// recentemente", campo "Encontrar Bookers" — tudo isso era marketplace
+// de outro produto. O modelo vigente é só relacionamento operacional
+// profissional <-> Booker (representations/representation_requests,
+// migrations 0005/0018/0033), nunca ressuscitado o modelo de
+// agência/marketplace antigo. Ações preservadas EXATAMENTE como já
+// existiam (mesmas Server Actions, nenhuma regra nova): aceitar/recusar
+// solicitação (respondRepresentationRequestAction), aceitar convite
+// genérico (confirmInviteAction), remover vínculo ativo
+// (TerminateRelationshipButton -> terminateRepresentationAction). Não
+// existe hoje "cancelar convite/solicitação que eu enviei" — gap real,
+// não inventado aqui (mesmo já registrado antes desta revisão).
+export default async function BookersPage() {
   const { supabase, user, profile } = await getSessionProfile();
   if (profile.role !== 'artista') redirect('/dashboard');
 
-  const vinculadoBooker = vinculado
-    ? (
-        await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', vinculado)
-          .maybeSingle<{ full_name: string }>()
-      ).data
-    : null;
-
-  const [
-    myBookers,
-    incomingRequests,
-    outgoingRequests,
-    sentInvites,
-    receivedInvites,
-    favoriteBookers,
-    favoriteIds,
-  ] = await Promise.all([
+  const [myBookers, incomingRequests, outgoingRequests, sentInvites, receivedInvites, subscription] = await Promise.all([
     getArtistBookerRelationships(user.id, supabase),
     getIncomingRepresentationRequests(user.id, supabase),
     getOutgoingRepresentationRequestsForArtist(user.id, supabase),
     getSentInvites(user.id, supabase),
     getPendingInvites(user.id, supabase),
-    getFavoriteBookers(user.id, supabase),
-    getFavoriteIds(user.id, supabase),
+    getSubscription(user.id, supabase),
   ]);
+  const hasProPlan = hasDooplaPro(subscription);
 
-  const limit = Math.min(Math.max(Number(discoverLimit) || 12, 12), 96);
-  const discoverBookers = await getDiscoverBookers(
-    myBookers.map((b) => b.profileId),
-    supabase,
-    limit + 1
-  );
-  const hasMore = discoverBookers.length > limit;
-  const visibleDiscover = discoverBookers.slice(0, limit);
-
-  const pendingInviteRows = sentInvites
-    .filter((i) => i.status === 'pendente')
-    .map((i) => ({
-      key: i.id,
-      name: i.invitee_name,
-      status: 'Convite enviado · Aguardando cadastro',
-    }));
-  const outgoingRequestRows = outgoingRequests.map((r) => ({
+  const outgoingPending = outgoingRequests.map((r) => ({
     key: r.id,
     name: r.bookerName,
-    status: 'Solicitação enviada · Aguardando aceite',
     href: `/dashboard/bookers/${r.booker.profileId}`,
   }));
-  const hasAnyPending =
-    incomingRequests.length > 0 ||
-    outgoingRequestRows.length > 0 ||
-    pendingInviteRows.length > 0 ||
-    receivedInvites.length > 0;
+  const invitesPending = sentInvites
+    .filter((i) => i.status === 'pendente' || i.status === 'expirada')
+    .map((i) => ({ key: i.id, name: i.invitee_name, href: null, expired: i.status === 'expirada', token: i.token }));
+
+  const hasNothing = myBookers.length === 0 && incomingRequests.length === 0 && outgoingPending.length === 0 && invitesPending.length === 0 && receivedInvites.length === 0;
 
   return (
-    <main className="flex flex-col gap-10">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className={eyebrowClass}>Bookers</p>
-          <h1 className="font-doopla-display mt-1 text-3xl font-semibold">Seus bookers</h1>
+    <main>
+      {/* Reposição do CTA (07/10/2026, achado da fundadora) — antes
+         "Adicionar alguém da equipe" ficava no canto superior direito,
+         na mesma linha dos 3 ícones globais do shell (sino/comunidade/
+         configurações, ver pro-shell.tsx), competindo visualmente com
+         eles. Hierarquia agora: título+badge -> descrição -> CTA
+         principal, tudo alinhado à esquerda, sem nenhuma relação com a
+         navegação global. Markup inline aqui (não em ProPageHeader,
+         componente compartilhado por Bookings/Agenda/Financeiro/
+         Configurações) de propósito — essa mudança foi pedida só pra
+         Minha equipe por enquanto. mb usa proHeaderGapClass (pass de
+         hierarquia global, 07/10/2026), mesma distância header ->
+         conteúdo que ProPageHeader usa nas outras rotas. */}
+      <div className={proHeaderGapClass}>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="font-pro-sub text-[24px] font-bold sm:text-[26px]">Minha equipe</h1>
+          {hasProPlan ? (
+            <span className="rounded-full border border-[var(--pro-red)] px-2.5 py-0.5 font-doopla-mono text-[10px] font-bold uppercase tracking-[.08em] text-[var(--pro-red)]">
+              PRO
+            </span>
+          ) : (
+            <span className="rounded-full border border-[var(--pro-line)] px-2.5 py-0.5 font-doopla-mono text-[10px] font-bold uppercase tracking-[.08em] text-[var(--pro-tx-50)]">
+              BÁSICO
+            </span>
+          )}
         </div>
-        <AddConnectionModal myRole="artista" />
-      </header>
-
-      {bookerNoLimite === '1' && (
-        <section className="rounded-[18px] border border-[var(--line-light)] bg-white p-5">
-          <p className="text-sm text-[var(--ink)]/70">
-            Esse booker atingiu o limite de artistas do plano dele e não pôde confirmar sua
-            solicitação agora. Vale tentar de novo mais tarde, ou combinar diretamente com ele.
-          </p>
-        </section>
-      )}
-
-      {vinculadoBooker && (
-        <section className="rounded-[18px] border border-[var(--accent)] bg-white p-5">
-          <p className="text-sm text-[var(--ink)]/80">
-            {vinculadoBooker.full_name} agora está conectado a você. Quer que ela também receba
-            seus novos pedidos de orçamento?
-          </p>
-          <Link
-            href="/dashboard/perfil#roteamento"
-            className={`${accentButtonClass} mt-3 inline-flex`}
-          >
-            Configurar Link de Orçamento
-          </Link>
-        </section>
-      )}
-
-      {roteamentoResetado === '1' && (
-        <section className="rounded-[18px] border border-[var(--line-light)] bg-white p-5">
-          <p className="text-sm text-[var(--ink)]/70">
-            Seus novos pedidos de orçamento agora estão sendo direcionados pra você, porque a
-            conexão com o booker configurado no Link de Orçamento foi encerrada.
-          </p>
-        </section>
-      )}
-
-      <section className="flex flex-col gap-3">
-        <p className={eyebrowClass}>Meus bookers</p>
-        {myBookers.length === 0 ? (
-          <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
-            Você ainda não tem nenhum booker conectado. Use &quot;Adicionar um Booker&quot; acima
-            pra convidar quem já trabalha com você, ou espere alguém te representar.
-          </p>
-        ) : (
-          <ListFilter
-            items={myBookers}
-            getKey={(b) => b.profileId}
-            searchPlaceholder="Buscar entre os bookers que trabalham com você..."
-            getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.mercados ?? ''}`}
-            renderItem={(b) => <BookerRow booker={b} isFavorited={favoriteIds.has(b.profileId)} />}
-            emptyMessage="Nenhum booker combina com esses filtros."
-            itemLabel={{ singular: 'booker', plural: 'bookers' }}
-          />
+        <p className="mt-1.5 max-w-[440px] text-[13.5px] text-[var(--pro-tx-70)]">
+          Gerencie quem pode trabalhar com seus bookings pela Doopla.
+        </p>
+        {!hasNothing && (
+          <div className="mt-4">
+            <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} />
+          </div>
         )}
-      </section>
+      </div>
 
-      {hasAnyPending && (
-        <section id="solicitacoes" className="flex flex-col gap-3">
-          <p className={eyebrowClass}>Solicitações e convites</p>
+      {/* "Seu ID Doopla" (07/10/2026, achado da fundadora) — faltava um
+         jeito de achar o próprio ID aqui, pra passar pra quem vai
+         adicionar você pelo "Com ID Doopla". Reaproveita PublicIdChip
+         tal como já existe (mesmo componente de artistas/page.tsx) —
+         nenhuma lógica nova de ID, só exposição num lugar que fazia
+         falta. Fora do ProPageHeader (componente compartilhado por
+         outras rotas) de propósito, pra não vazar pra lá. */}
+      {profile.slug && (
+        // mb-6 (pass de hierarquia global, 07/10/2026) — 24px entre
+        // seções principais de função diferente, mesmo valor usado nos
+        // outros 3 blocos desta página.
+        <div className="mb-6">
+          <PublicIdChip publicId={profile.slug} variant="pro" />
+        </div>
+      )}
 
-          {receivedInvites.length > 0 && (
-            <ul className="flex flex-col gap-2">
-              {receivedInvites.map((invite) => (
-                <li
-                  key={invite.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-white px-4 py-3"
-                >
-                  <span className="flex items-center gap-3 text-sm">
-                    <span className={avatarClass}>{initialsFromName(invite.inviterName)}</span>
-                    <span>
-                      <strong>{invite.inviterName}</strong> quer se conectar com você na doopla.
-                    </span>
+      {/* Redesign 01/10/2026 (achado de produto da fundadora, 2 rodadas
+         na mesma data) — versão anterior (ícone em círculo + card
+         alto) tinha aparência de placeholder/marketplace. Agora: sem
+         ícone/ilustração, padding padrão de ProCard (consistente com
+         o resto do painel, ~160-180px de altura total), conteúdo
+         alinhado à esquerda, copy como convite direto em vez de
+         "estado vazio". */}
+      {hasNothing && (
+        <ProCard className="flex flex-col items-start gap-3">
+          <div>
+            <p className="font-pro-sub text-[14px] font-bold">Traga sua equipe para a Doopla</p>
+            <p className="mt-1.5 max-w-[420px] text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
+              Convide quem já trabalha com você para acompanhar seus bookings.
+            </p>
+          </div>
+          <AddConnectionModal myRole="artista" variant="pro" hasProPlan={hasProPlan} triggerLabel="+ Adicionar pessoa" />
+        </ProCard>
+      )}
+
+      {incomingRequests.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3">
+          {incomingRequests.map((req) => (
+            <ProCard key={req.id}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Link href={`/dashboard/bookers/${req.booker.profileId}`} className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="font-pro-sub flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[var(--pro-red)] text-[13px] font-semibold text-[var(--pro-off)]">
+                    {initialsFromName(req.booker.fullName)}
                   </span>
-                  <form action={confirmInviteAction}>
-                    <input type="hidden" name="inviteId" value={invite.id} />
-                    <button type="submit" className={accentButtonClass}>
-                      Aceitar conexão
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-bold text-[var(--pro-off)]">{req.booker.fullName}</p>
+                    <p className="text-[12px] text-[var(--pro-amber)]">Convite pendente · quer operar seus bookings</p>
+                  </div>
+                </Link>
+                <div className="flex flex-none gap-2">
+                  <form action={respondRepresentationRequestAction}>
+                    <input type="hidden" name="requestId" value={req.id} />
+                    <input type="hidden" name="decision" value="aceitar" />
+                    <button type="submit" className={proPrimaryButtonClass}>
+                      Aceitar
                     </button>
                   </form>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {incomingRequests.length > 0 && <IncomingRequests requests={incomingRequests} />}
-
-          <PendingStatusList rows={[...outgoingRequestRows, ...pendingInviteRows]} />
-        </section>
+                  <form action={respondRepresentationRequestAction}>
+                    <input type="hidden" name="requestId" value={req.id} />
+                    <input type="hidden" name="decision" value="recusar" />
+                    <button type="submit" className={proGhostButtonClass}>
+                      Recusar
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </ProCard>
+          ))}
+        </div>
       )}
 
-      <section id="favoritos" className="flex flex-col gap-3 scroll-mt-6">
-        <p className={eyebrowClass}>Meus favoritos</p>
-        {favoriteBookers.length === 0 ? (
-          <p className="rounded-[18px] bg-white p-6 text-sm text-[var(--ink)]/55">
-            Nenhum booker favoritado ainda. Clique no coração de um perfil pra guardar aqui —
-            diferente de &quot;já trabalhei com&quot;, é só uma lista sua pra acompanhar.
-          </p>
-        ) : (
-          <ListFilter
-            items={favoriteBookers}
-            getKey={(b) => b.profileId}
-            searchPlaceholder="Buscar entre seus bookers favoritos..."
-            getSearchText={(b) => `${b.fullName} ${b.city ?? ''} ${b.mercados ?? ''}`}
-            renderItem={(b) => <BookerRow booker={b} isFavorited />}
-            emptyMessage="Nenhum favorito combina com esses filtros."
-            itemLabel={{ singular: 'favorito', plural: 'favoritos' }}
-          />
-        )}
-      </section>
+      {receivedInvites.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3">
+          {receivedInvites.map((invite) => (
+            <ProCard key={invite.id}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="flex items-center gap-3 text-[13.5px] text-[var(--pro-off)]">
+                  <span className="font-pro-sub flex h-11 w-11 flex-none items-center justify-center rounded-full bg-[var(--pro-red)] text-[13px] font-semibold text-[var(--pro-off)]">
+                    {initialsFromName(invite.inviterName)}
+                  </span>
+                  <strong>{invite.inviterName}</strong> quer se conectar com você na Doopla.
+                </span>
+                <form action={confirmInviteAction}>
+                  <input type="hidden" name="inviteId" value={invite.id} />
+                  <button type="submit" className={proPrimaryButtonClass}>
+                    Aceitar conexão
+                  </button>
+                </form>
+              </div>
+            </ProCard>
+          ))}
+        </div>
+      )}
 
-      <div id="descubra" className="flex flex-col gap-2 pt-4">
-        <p className={eyebrowClass}>Encontrar bookers</p>
-        <p className="text-[12.5px] text-[var(--ink)]/55">
-          Mostrando bookers ativos recentemente na doopla, não por popularidade. Use a busca
-          pra ver outros perfis.
-        </p>
-      </div>
-      <DiscoverBookers
-        bookers={visibleDiscover}
-        limit={limit}
-        hasMore={hasMore}
-        favoriteIds={[...favoriteIds]}
-      />
+      {(outgoingPending.length > 0 || invitesPending.length > 0) && (
+        <div className="mb-6 flex flex-col gap-2">
+          {outgoingPending.map((row) => (
+            <ProCard key={row.key} className="!p-4">
+              <Link href={row.href} className="flex items-center justify-between gap-3 text-[13px] text-[var(--pro-off)] hover:text-[var(--pro-tx-70)]">
+                <span>{row.name}</span>
+                <span className="text-[12px] text-[var(--pro-tx-50)]">Convite pendente · Aguardando aceite</span>
+              </Link>
+            </ProCard>
+          ))}
+          {invitesPending.map((row) => (
+            <PendingInviteCard
+              key={row.key}
+              inviteId={row.key}
+              name={row.name}
+              token={row.token}
+              expired={row.expired}
+              variant="pro"
+            />
+          ))}
+        </div>
+      )}
+
+      {myBookers.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {myBookers.map((b) => (
+            <ProCard key={b.profileId} className="!p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Link href={`/dashboard/bookers/${b.profileId}`} className="flex min-w-0 flex-1 items-center gap-3">
+                  <span className="font-pro-sub flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[var(--pro-red)] text-[12px] font-semibold text-[var(--pro-off)]">
+                    {initialsFromName(b.fullName)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-bold text-[var(--pro-off)]">
+                      {b.fullName} · <span className="text-[var(--pro-green)]">Ativo</span>
+                    </p>
+                    <p className="truncate text-[12px] text-[var(--pro-tx-50)]">
+                      {b.ongoingCount > 0 ? `${b.ongoingCount} ${b.ongoingCount === 1 ? 'trabalho em andamento' : 'trabalhos em andamento'}` : 'nenhum trabalho em andamento agora'}
+                    </p>
+                  </div>
+                </Link>
+                <div className="flex flex-none items-center gap-3">
+                  <Link href={`/dashboard/bookers/${b.profileId}`} className={proGhostButtonClass}>
+                    Gerenciar
+                  </Link>
+                  <TerminateRelationshipButton representationId={b.representationId} targetName={b.fullName} />
+                </div>
+              </div>
+            </ProCard>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

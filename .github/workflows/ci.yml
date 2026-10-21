@@ -1,0 +1,50 @@
+name: CI
+
+# Doopla — CI mínimo (Head of AI + Principal AI Engineer, Fase 0 do AI
+# Engineering Charter, 15/10/2026). Único objetivo: dar uma rede de
+# segurança automática pro que até aqui só rodava manualmente a cada
+# sessão (typecheck + lint + vitest offline + build). Nunca chama
+# OpenAI/Meta/Supabase de verdade — nenhum segredo real é lido aqui,
+# só placeholders claramente falsos pras duas env vars NEXT_PUBLIC_
+# que o Next.js poderia inlinar durante o build (confirmado por teste
+# real nesta sessão: `next build` já passa sem NENHUMA env var
+# definida, porque toda rota que de fato lê credencial é dinâmica
+# (`ƒ`), nunca prerenderizada — os placeholders aqui são defesa em
+# profundidade, não uma necessidade comprovada).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders claramente falsos — nunca um projeto Supabase
+      # real. Nenhuma chamada de rede de verdade acontece em
+      # typecheck/lint/test/build (todo teste injeta modelCall/
+      # supabase fake, nunca bate na rede).
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key-never-real
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalação reproduzível
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes (Vitest, 100% offline — nenhum modelCall/supabase real)
+        run: npm run test
+
+      - name: Build de produção
+        run: npm run build

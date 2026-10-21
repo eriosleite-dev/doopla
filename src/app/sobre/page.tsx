@@ -2,60 +2,56 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { PageShell } from '../_home/PageShell';
+import { EyesShowcase } from '../_home/EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Sobre a Doopla',
-  description:
-    'A Doopla nasceu para dar ao artista independente a estrutura que existe por trás de uma carreira profissional. Representação, organização e inteligência para que você possa focar no seu trabalho e continuar no controle da sua carreira.',
+  description: 'A Doopla é uma nova forma de agenciamento para artistas independentes.',
 };
 
 export default function SobrePage() {
   return (
     <PageShell>
-      <section className="page-hero">
-        <span className="eyebrow">Sobre a Doopla</span>
-        <h1>Toda carreira merece sua Doopla.</h1>
-        <p>
-          A Doopla nasceu para dar ao artista independente a estrutura que
-          existe por trás de uma carreira profissional. Representação,
-          organização e inteligência para que você possa focar no seu
-          trabalho e continuar no controle da sua carreira.
-        </p>
-        <div className="hero-eyes" aria-hidden="true">
-          <span className="dot">
-            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--cream)' }} />
-          </span>
-          <span className="dot">
-            <span className="pupil" style={{ width: '34%', height: '34%', borderRadius: '50%', background: 'var(--cream)' }} />
-          </span>
+      <section className="inst-hero">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Sobre a Doopla</span>
+            <h1>Toda carreira merece sua Doopla.</h1>
+            <p className="lead">A Doopla é uma nova forma de agenciamento para artistas independentes.</p>
+          </div>
+          <EyesShowcase />
         </div>
       </section>
 
-      <section className="page-content">
-        <div className="inner">
-          <h2>Você faz seu trabalho. Sua Doopla cuida do booking.</h2>
-          <div className="concepts">
-            <div className="concept">
-              <h3>Representação</h3>
-              <p>Negociação, propostas, follow-ups, contratos e organização.</p>
+      <section className="inst-content">
+        <div className="two-col">
+          <div>
+            <h2>Uma Doopla para atender, negociar e acompanhar seus bookings.</h2>
+            <div className="inst-content-cta">
+              <p>Tenha uma Doopla trabalhando por você.</p>
+              <Link href="/cadastro" className="btn btn-primary">
+                Criar conta
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </Link>
             </div>
-            <div className="concept">
-              <h3>Com você no controle</h3>
-              <p>Sua Doopla conduz. Decisões comerciais importantes passam por você.</p>
+          </div>
+          <div className="stack-list">
+            <div className="stack-item">
+              <h3>Atende e negocia</h3>
+              <p>Entende cada pedido, conversa com o cliente e conduz o booking.</p>
             </div>
-            <div className="concept">
-              <h3>Independência</h3>
-              <p>Você não precisa entrar para uma agência para ter estrutura de representação.</p>
+            <div className="stack-item">
+              <h3>Acompanha cada booking</h3>
+              <p>Organiza condições, próximos passos, contratos e pagamentos.</p>
+            </div>
+            <div className="stack-item">
+              <h3>Você continua no controle</h3>
+              <p>Quando uma decisão precisa ser sua, sua Doopla te chama.</p>
             </div>
           </div>
         </div>
-      </section>
-
-      <section className="page-cta">
-        <h2>Tem booking pra resolver?</h2>
-        <Link href="/cadastro" className="btn-cta">
-          Começar agora
-        </Link>
       </section>
     </PageShell>
   );

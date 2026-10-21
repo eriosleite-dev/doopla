@@ -94,8 +94,34 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     ],
     bookingFacts: {},
     expectedProfessionalDecisionSignal: 'candidate_contextual',
-    expectedResponsePlanFamily: ['acknowledge', 'consult_professional'],
+    // 'answer_with_known_information' passou a ser família válida aqui
+    // (achado #2 do passo 4b, invariants.ts): com professionalDecisionSignal
+    // ancorado ('candidate_contextual'), o piso não rebaixa mais isso
+    // pra consult_professional — a resposta decisiva da própria
+    // profissional pode seguir direto pro cliente (Bloco 6/Gate
+    // continua validando o CONTEÚDO antes de qualquer envio real).
+    expectedResponsePlanFamily: ['acknowledge', 'consult_professional', 'answer_with_known_information'],
     note: 'candidate_contextual nunca é aprovação — só sinal; nenhum plano deste bloco pode representar execução/aprovação',
+  },
+  {
+    // Caso novo (achado #2 do passo 4b): reproduz o padrão real que
+    // revelou a lacuna em produção — a Doopla pergunta algo à
+    // profissional (professional_action_required, Bloco 4), e a
+    // resposta decisiva dela precisa virar comunicação real de volta
+    // ao cliente, nunca silêncio nem uma segunda pergunta à mesma
+    // profissional sobre o que ela acabou de decidir.
+    name: 'profissional responde decisivamente a pergunta interna da Doopla sobre logística',
+    category: 'professionalDecisionSignal',
+    input: 'Não precisa, a gente leva nosso próprio palco.',
+    triggerAuthorType: 'professional',
+    previousMessages: [
+      { authorType: 'external_participant', text: 'Vocês já têm palco montado ou a gente precisa alugar?' },
+      { authorType: 'ai', text: 'O cliente perguntou se vocês já têm palco ou se ele precisa alugar. Pode confirmar?' },
+    ],
+    bookingFacts: {},
+    expectedProfessionalDecisionSignal: 'candidate_contextual',
+    expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge'],
+    note: 'nunca mais consult_professional aqui — a profissional já decidiu, ancorada na própria mensagem; a resposta deve seguir pro cliente',
   },
   {
     name: 'profissional confirma sem referente',
@@ -107,11 +133,43 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     note: 'sem proposta específica no contexto recente — nunca um "candidate_contextual" de graça',
   },
   {
-    name: 'controle — fato interno nunca vira autorizado pra envio',
+    // Reescrito no fechamento do Runtime (decisão do usuário):
+    // requiresProfessionalReviewBeforeSend deixou de ser um literal
+    // `true` incondicional e passou a ser derivado do responsePlan
+    // final (resolveRequiresProfessionalReviewBeforeSend, invariants.ts).
+    // A checagem de que essa derivação bate exatamente (nunca "sempre
+    // true") agora roda pra TODO caso desta suíte, não só neste (ver
+    // invariantHolds em src/app/dev/planner-golden-suite/actions.ts) —
+    // este caso continua existindo especificamente porque, mesmo
+    // resolvendo pra answer_with_known_information ou consult_professional
+    // (os únicos dois que continuam exigindo revisão), o dado em jogo
+    // (telefone/contato) é sensível o bastante pra nunca virar
+    // candidato a auto-send, mesmo sem decisão comercial nenhuma em
+    // jogo — golden-suite continua auditando isso de propósito.
+    name: 'controle — dado potencialmente sensível continua exigindo revisão',
     category: 'requiresProfessionalReviewBeforeSend',
     input: 'Qual o telefone desse cliente mesmo?',
     expectedResponsePlanFamily: ['answer_with_known_information', 'consult_professional', 'ask_external_participant', 'clarify_ambiguity', 'acknowledge'],
-    note: 'qualquer que seja o plano, requiresProfessionalReviewBeforeSend precisa continuar true — esta é a invariante que este caso audita, não o plano em si',
+    note: 'a invariante checada é sempre requiresProfessionalReviewBeforeSend === resolveRequiresProfessionalReviewBeforeSend(responsePlan) — nunca "sempre true"; qualquer plano da família passa, contanto que a derivação bata',
+  },
+  {
+    // Caso novo (fechamento do Runtime): demonstra o outro lado da
+    // invariante — requiresProfessionalDecision=true no TURNO (intent
+    // orcamento sempre ativa accept_or_decline_work/price_or_cache)
+    // NÃO implica revisão automática. Se o responsePlan final for
+    // ask_external_participant (ainda coletando contexto — data/
+    // duração/tipo de evento — antes de valer a pena consultar o
+    // profissional, exatamente como prompt.ts já instrui), a pergunta
+    // em si não afirma nenhum compromisso e fica elegível a auto-send
+    // (auto_send_eligible no Runtime). Só quando o plano final é
+    // consult_professional a revisão volta a ser obrigatória.
+    name: 'pergunta de coleta em turno de decisão fica elegível a auto-send',
+    category: 'requiresProfessionalReviewBeforeSend',
+    input: 'Oi! Queria saber quanto custa pra tocar no meu casamento.',
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+    note: 'requiresProfessionalDecision=true não é o sinal usado pra revisão — só o responsePlan final é. ask_external_participant aqui prova que uma pergunta de coleta em pleno turno de decisão pode ser auto-send eligible; consult_professional continua exigindo revisão',
   },
 
   // ============================================================
@@ -262,5 +320,107 @@ export const GOLDEN_SUITE_CASES: PlannerGoldenSuiteCase[] = [
     expectedProfessionalDecisionSignal: 'none',
     expectedResponsePlanFamily: ['acknowledge', 'consult_professional', 'clarify_ambiguity'],
     note: '"Manda" respondendo um pedido de suporte não é confirmação de proposta comercial nenhuma — professionalDecisionSignal nunca deveria virar candidate_contextual aqui',
+  },
+
+  // ============================================================
+  // Rodada de generalização — "CODE | Otimização do Planner para
+  // gpt-5.6-terra" (20/10/2026). Mesmos PRINCÍPIOS dos casos 8/14/25
+  // (que motivaram a variante terra-v1), mas com enunciados/assuntos
+  // DIFERENTES de propósito — requisito explícito da fundadora: "não
+  // otimizar somente para as frases literais dos testes existentes".
+  // ============================================================
+  {
+    name: 'generalização — recall de data (nunca pedir confirmação do que já se sabe)',
+    category: 'report_existing_fact',
+    input: 'Em que dia mesmo é o show?',
+    bookingFacts: { status: 'confirmed', cacheAmountCents: 450000, eventDate: '2026-11-03', eventLocation: 'Clube XYZ, Curitiba' },
+    expectedCommitmentNature: 'report_existing_fact',
+    expectedRequiresProfessionalDecision: false,
+    expectedResponsePlanFamily: ['answer_with_known_information'],
+    note: 'generalização do caso 14 (horário) — mesmo princípio: fato já confirmado, responder direto, nunca empurrar de volta pra profissional confirmar o que o Planner já sabe',
+  },
+  {
+    name: 'generalização — informação genuinamente indisponível (nunca inventar, nunca tratar como decisão nova)',
+    category: 'unavailable',
+    input: 'Qual foi o rider técnico que a gente tinha combinado mesmo?',
+    expectedRequiresProfessionalDecision: false,
+    expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant', 'clarify_ambiguity'],
+    note: 'generalização do caso 25 (valor sem fonte) com assunto diferente (rider técnico) — sem fato disponível, nunca inventa, e nunca classifica uma pergunta de recordação como decisão comercial nova só por faltar o dado',
+  },
+  {
+    name: 'generalização — confirmação contextual curta com palavra diferente ("Pode ser")',
+    category: 'professionalDecisionSignal',
+    input: 'Pode ser',
+    triggerAuthorType: 'professional',
+    previousMessages: [
+      { authorType: 'external_participant', text: 'Vocês topam um desconto de 10% se eu fechar hoje mesmo?' },
+      { authorType: 'ai', text: 'O cliente perguntou se você topa 10% de desconto fechando hoje. Você decide?' },
+    ],
+    bookingFacts: {},
+    expectedProfessionalDecisionSignal: 'candidate_contextual',
+    expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge', 'consult_professional'],
+    note: 'generalização do caso 8 (palco próprio) — confirmação curta e decisiva referenciando uma pergunta pendente específica no histórico, nunca tratada como mensagem isolada sem contexto',
+  },
+  {
+    name: 'generalização — mudança comercial real (duração), nunca confundida com relato',
+    category: 'new_or_changed_commitment',
+    input: 'Dá pra estender o set em mais 1 hora?',
+    bookingFacts: { status: 'confirmed', cacheAmountCents: 300000, eventDate: '2026-09-12', durationMinutes: 120 },
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant'],
+    note: 'mudança real de escopo (duração), nunca resolvida sozinha mesmo com o booking já confirmado — garante que a variante terra não "corrigiu" os casos 14/25 custando confiança nos casos em que uma decisão nova de verdade precisa ser escalada',
+  },
+  {
+    name: 'generalização — mensagem informativa sem pedido de ação, assunto diferente',
+    category: 'acknowledge',
+    input: 'Cheguei bem em casa depois do show, foi tudo tranquilo.',
+    triggerAuthorType: 'professional',
+    expectedResponsePlanFamily: ['acknowledge'],
+    note: 'generalização do caso "Fechei um trabalho sábado" — notícia tranquila, reação curta, nunca um interrogatório sobre o que aconteceu',
+  },
+  {
+    name: 'generalização — múltiplos assuntos na mesma mensagem',
+    category: 'multiplos_assuntos',
+    input: 'Quanto custa pra tocar no meu aniversário, e vocês também atendem banda ao vivo ou só DJ?',
+    // Suite estrutural (responsePlan/commitmentNature/signal) não
+    // verifica COBERTURA de conteúdo — só o julgamento humano lendo o
+    // draft consegue confirmar se os DOIS assuntos foram endereçados
+    // (ADR 0007/0009 P1, prompt.ts: "nunca só o primeiro assunto").
+    // Caso existe pra leitura qualitativa, não pra um PASS/FAIL automático
+    // de cobertura — note isto explicitamente no relatório, nunca finja
+    // que o check estrutural cobre isso.
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+    note: 'PASS/FAIL aqui mede só os campos estruturados — a cobertura real dos dois assuntos (preço E tipo de formação) só é verificável lendo o draft à mão',
+  },
+
+  // ============================================================
+  // Rodada de generalização #2 — "CODE | Próxima etapa da avaliação
+  // do cérebro Doopla" (20/10/2026). Fecha a lacuna: casos 11 e 26
+  // (críticos citados pela fundadora) ainda não tinham uma segunda
+  // variação testando o MESMO princípio com enunciado/assunto
+  // diferente (ao contrário de 8→29, 14→27, 25→28). Mesmo requisito
+  // de sempre: nunca otimizar pra frase literal, só pro princípio.
+  // ============================================================
+  {
+    name: 'generalização — pergunta de preço sem booking existente, assunto diferente',
+    category: 'requiresProfessionalReviewBeforeSend',
+    input: 'Olá, gostaria de saber o valor pra uma festa de 15 anos em dezembro.',
+    expectedCommitmentNature: 'new_or_changed_commitment',
+    expectedRequiresProfessionalDecision: true,
+    expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+    note: 'generalização do caso 11 (pergunta de preço pro casamento) com evento/mês diferentes — mesmo princípio: pedir preço sem booking existente é sempre new_or_changed_commitment, mas um responsePlan de coleta (ask_external_participant) continua elegível a auto-send sem exigir revisão',
+  },
+  {
+    name: 'generalização — sinal de decisão em tópico errado, palavra diferente',
+    category: 'professionalDecisionSignal',
+    input: 'Pode',
+    triggerAuthorType: 'professional',
+    previousMessages: [{ authorType: 'external_participant', text: 'O link de pagamento que vocês mandaram não está funcionando, pode verificar?' }],
+    expectedProfessionalDecisionSignal: 'none',
+    expectedResponsePlanFamily: ['acknowledge', 'consult_professional', 'clarify_ambiguity'],
+    note: 'generalização do caso 26 ("Manda" respondendo suporte de painel) com palavra de confirmação e tópico diferentes (link de pagamento com problema técnico) — confirma que "suporte ≠ confirmação comercial" não depende da palavra "Manda" nem do tópico "painel" especificamente',
   },
 ];

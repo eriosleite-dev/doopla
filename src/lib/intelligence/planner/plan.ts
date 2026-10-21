@@ -1,7 +1,9 @@
 import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
+import { jaccardWordSimilarity } from '@/lib/runtime/text-similarity';
 import type { IntentClassification } from '../classification';
+import { routeCompetencies } from '../classification/competencies';
 import type { ContextPackage } from '../context-builder';
 import { getOpenAIClient } from '../openai-client';
 import type { ToolContext } from '../types';
@@ -10,9 +12,12 @@ import { PROFESSIONAL_DECISION_CATEGORIES } from './decision-categories';
 import {
   boundMissingInformation,
   computeDecisionCategories,
+  deterministicFallbackResponse,
+  filterCommitmentAuthorizingEvidence,
   missingInformationFallback,
   resolveCommitmentNature,
   resolveProfessionalDecisionSignal,
+  resolveRequiresProfessionalReviewBeforeSend,
   resolveResponsePlan,
   validateEvidenceUsed,
 } from './invariants';
@@ -22,19 +27,36 @@ import { PLANNER_MODEL_RESPONSE_PLANS } from './response-plan';
 import { COMMITMENT_NATURES, MISSING_INFORMATION_REASONS, PROFESSIONAL_DECISION_SIGNALS } from './types';
 import type { PlannerDecision } from './types';
 
+// ADR 0007/0009 (20/10/2026, seção 2.3) — mesmo limiar do Mecanismo C
+// (reply-loop-detection.ts), por consistência: 85% de similaridade de
+// Jaccard sobre palavras normalizadas.
+const REPEAT_CLARIFICATION_SIMILARITY_THRESHOLD = 0.85;
+
 // Doopla Intelligence Core v1 — Bloco 4: Response Planner.
 //
 // O schema que o MODEL preenche é deliberadamente menor que
 // PlannerDecision: sem requiresProfessionalDecision/
 // professionalDecisionCategory finais (só invariants.ts, em código,
 // preenche isso, unindo o mandatório com o que o model propôs) e sem
-// requiresProfessionalReviewBeforeSend (hardcoded, fora do schema —
-// estruturalmente impossível do model influenciar).
+// requiresProfessionalReviewBeforeSend (derivado por
+// resolveRequiresProfessionalReviewBeforeSend, invariants.ts, a partir
+// só do responsePlan FINAL — fora do schema, estruturalmente
+// impossível do model influenciar).
 const evidenceUsedSchema = z.discriminatedUnion('sourceType', [
   z.object({ sourceType: z.literal('professional_profile'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('opportunity'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('booking'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('external_participant'), sourceId: z.string(), field: z.string() }),
+  // Professional Intelligence Context — camada A ("context evidence"),
+  // ver invariants.ts. Citável pelo model (prova que usou o dado pra
+  // preparar a resposta), mas nunca conta como camada B (autorização de
+  // compromisso) — filterCommitmentAuthorizingEvidence exclui as duas.
+  z.object({ sourceType: z.literal('professional_business_context'), sourceId: z.string(), field: z.string() }),
+  z.object({ sourceType: z.literal('professional_commercial_history'), sourceId: z.string(), field: z.string() }),
+  // Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — mesma
+  // camada A das duas acima, nunca camada B (ver
+  // COMMITMENT_AUTHORIZING_SOURCE_TYPES, invariants.ts).
+  z.object({ sourceType: z.literal('professional_learned_preference'), sourceId: z.string(), field: z.string() }),
   z.object({ sourceType: z.literal('conversation_message'), sourceId: z.string() }),
 ]);
 
@@ -106,7 +128,12 @@ export async function planResponse(
   opts: { modelCall?: PlannerModelCall; maxRetries?: number } = {}
 ): Promise<PlanResult> {
   const plannerContext = buildPlannerContext(contextPackage, toolCtx.conversation, intentClassification);
-  const instructions = buildPlannerInstructions();
+  // Playbook DJ/Música (ADR 0006) — reaproveita o MESMO Competence
+  // Router já usado em produção (classification/competencies.ts),
+  // nunca uma segunda classificação. routeCompetencies é determinístico
+  // (tabela intent→competência), nunca o model escolhendo.
+  const competencies = routeCompetencies([intentClassification.primaryIntent, ...intentClassification.secondaryIntents]);
+  const instructions = buildPlannerInstructions({ competencies, conversationType: plannerContext.conversationType });
   const input = JSON.stringify(plannerContext);
   const modelCall = opts.modelCall ?? defaultModelCall;
   const maxRetries = opts.maxRetries ?? PLANNER_MAX_RETRIES;
@@ -118,8 +145,12 @@ export async function planResponse(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const result = await modelCall({ instructions, input });
-      inputTokens = result.inputTokens;
-      outputTokens = result.outputTokens;
+      // Head of AI (15/10/2026) — mesmo achado/mesma correção de
+      // classify.ts: soma null-safe em vez de sobrescrever, pra nunca
+      // subcontar tokens de tentativas anteriores que falharam mas
+      // ainda assim foram cobradas de verdade pela OpenAI.
+      if (result.inputTokens !== null) inputTokens = (inputTokens ?? 0) + result.inputTokens;
+      if (result.outputTokens !== null) outputTokens = (outputTokens ?? 0) + result.outputTokens;
       if (result.parsed) {
         parsed = result.parsed;
         break;
@@ -146,31 +177,58 @@ export async function planResponse(
         professionalDecisionCategory: [],
         professionalDecisionSignal: 'none',
         proposedResponse: null,
-        requiresProfessionalReviewBeforeSend: true,
+        requiresProfessionalReviewBeforeSend: resolveRequiresProfessionalReviewBeforeSend('consult_professional'),
       },
       inputTokens,
       outputTokens,
     };
   }
 
+  // evidenceUsed = camada A completa (context/reasoning evidence,
+  // auditável) — nunca usada diretamente pelos invariantes de
+  // compromisso abaixo. commitmentEvidence = camada B (subconjunto
+  // restrito a COMMITMENT_AUTHORIZING_SOURCE_TYPES, ver invariants.ts)
+  // — a única que pode influenciar commitmentNature/responsePlan/
+  // professionalDecisionSignal. Mesmo comportamento de antes do
+  // Professional Intelligence Context pras 5 fontes originais.
   const evidenceUsed = validateEvidenceUsed(parsed.evidenceUsed, plannerContext);
+  const commitmentEvidence = filterCommitmentAuthorizingEvidence(evidenceUsed);
   const allIntents = [intentClassification.primaryIntent, ...intentClassification.secondaryIntents];
-  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, evidenceUsed.length, allIntents);
+  const commitmentNature = resolveCommitmentNature(parsed.commitmentNature, commitmentEvidence.length, allIntents);
   const { categories, requiresProfessionalDecision } = computeDecisionCategories(allIntents, commitmentNature, parsed.proposedDecisionCategory);
   const professionalDecisionSignal = resolveProfessionalDecisionSignal(
     parsed.professionalDecisionSignal,
     plannerContext.triggerMessage?.authorType,
-    evidenceUsed
+    commitmentEvidence
   );
-  const responsePlan = resolveResponsePlan({
+  let responsePlan = resolveResponsePlan({
     modelPlan: parsed.responsePlan,
     classificationStatus: intentClassification.classificationStatus,
     effectiveConfidence: intentClassification.effectiveConfidence,
     requiresProfessionalDecision,
     professionalDecisionSignal,
     triggerHasUsableText,
-    evidenceUsedCount: evidenceUsed.length,
+    evidenceUsedCount: commitmentEvidence.length,
   });
+
+  // ADR 0007/0009 (20/10/2026, seção 2.3) — causa raiz P0 confirmada:
+  // nenhum mecanismo determinístico impedia a Doopla de repetir a
+  // MESMA pergunta de esclarecimento turno após turno (achado real:
+  // "mensal, anual ou ambos?" repetida até 10:06 sem nunca avançar).
+  // Compara o draft contra a ÚLTIMA mensagem de IA já enviada nesta
+  // conversation (mesma similaridade de Jaccard do Mecanismo C,
+  // reply-loop-detection.ts — nunca uma chamada de IA extra) — se for
+  // quase-idêntica (>=85%), nunca deixa o model tentar de novo com as
+  // mesmas palavras: escala pra consult_professional, mesmo destino já
+  // usado pelo piso de decisão protegida acima (ver resolveResponsePlan).
+  // Aplica pra clarify_ambiguity E acknowledge — as duas famílias onde
+  // "fazer a mesma pergunta de novo" é o padrão observado.
+  if ((responsePlan === 'clarify_ambiguity' || responsePlan === 'acknowledge') && parsed.proposedResponse) {
+    const lastAiMessage = [...plannerContext.recentMessages].reverse().find((m) => m.authorType === 'ai' && m.text);
+    if (lastAiMessage?.text && jaccardWordSimilarity(parsed.proposedResponse, lastAiMessage.text) >= REPEAT_CLARIFICATION_SIMILARITY_THRESHOLD) {
+      responsePlan = 'consult_professional';
+    }
+  }
 
   // O draft do model foi escrito pensando no plano QUE ELE propôs — se
   // o código rebaixou o plano por um piso que ele não previu (ex.:
@@ -179,20 +237,37 @@ export async function planResponse(
   // fora do contexto pra que foi escrito. clarify_ambiguity/acknowledge
   // ainda fazem sentido com o draft original na maioria dos casos.
   const draftStillValid = responsePlan === parsed.responsePlan || responsePlan === 'clarify_ambiguity' || responsePlan === 'acknowledge';
-  const proposedResponse = draftStillValid ? parsed.proposedResponse : null;
+  // Nunca silêncio quando há texto humano real no gatilho: se o draft
+  // foi descartado (piso mudou o plano pra algo que o texto do model
+  // não cobre) ou nunca existiu (no_response_needed legitimamente não
+  // escreve nada), um fallback determinístico fecha a lacuna — ver
+  // comentário em deterministicFallbackResponse (invariants.ts).
+  //
+  // missingInformation calculado ANTES do fallback (achado da
+  // fundadora, 19/10/2026) pra alimentar a variação de frase do
+  // consult_professional com a MESMA lista já saneada que vai pro
+  // resultado final — nunca uma segunda leitura de parsed.missingInformation
+  // que poderia divergir.
+  const missingInformation = boundMissingInformation(parsed.missingInformation);
+  const rawProposedResponse = draftStillValid ? parsed.proposedResponse : null;
+  const proposedResponse =
+    rawProposedResponse ??
+    (triggerHasUsableText
+      ? deterministicFallbackResponse(responsePlan, { conversationType: plannerContext.conversationType, missingInformation })
+      : null);
 
   return {
     decision: {
       intentClassification,
       responsePlan,
       commitmentNature,
-      missingInformation: boundMissingInformation(parsed.missingInformation),
+      missingInformation,
       evidenceUsed,
       requiresProfessionalDecision,
       professionalDecisionCategory: categories,
       professionalDecisionSignal,
       proposedResponse,
-      requiresProfessionalReviewBeforeSend: true,
+      requiresProfessionalReviewBeforeSend: resolveRequiresProfessionalReviewBeforeSend(responsePlan),
     },
     inputTokens,
     outputTokens,

@@ -1,256 +1,859 @@
-  /* Doopla AI-first: identidade visual própria da Home (paleta e fontes
-     diferentes do restante do produto, que ainda usa o sistema antigo em
-     src/app/globals.css). Tudo escopado sob #home-marketing de propósito,
-     pra não vazar pra outras rotas em navegação client-side.
+  /* Nova Home pública (09/09/2026) — redesign a partir do mockup
+     doopla-home-mockup.html (fonte de verdade visual: composição,
+     hierarquia, espaçamento, proporções, copy). Paleta/tokens de marca
+     preservados EXATAMENTE como já estavam (--red:#e2291c, --off:#fbf9f2,
+     --black — mesmos valores usados no Professional Dashboard e já
+     usados pela Home anterior), nunca a paleta aproximada do mockup
+     (#ff2b34 etc.) — instrução explícita do usuário: o mockup é
+     referência de composição, a identidade de cor já existente
+     prevalece. Tudo escopado sob #home-marketing, mesmo princípio de
+     sempre (não vaza pra outras rotas em navegação client-side).
 
-     Propositalmente SEM `scroll-behavior:smooth` no html: o GSAP
-     ScrollTrigger que dirige o pin do hero (.stage) depende de calcular a
-     posição de scroll com precisão, e o smooth-scroll nativo do browser
-     interfere nesse cálculo — é o que causava a tela em branco ao rolar
-     pra depois do hero.
+     Logo (header/footer): NÃO é o desenho aproximado do mockup. É a
+     mesma implementação real do EyeLogo.tsx (d + dois olhos + pla,
+     mesma fonte 'Familjen Grotesk', mesmas cores) portada pra HTML cru
+     aqui (nav-logo/foot-logo), porque home.html não é uma árvore React
+     e não pode montar um componente inline no meio do fluxo do header/
+     footer. Mesmo desenho, mesmas classes de sempre (.eye-slot/
+     .mascot-pupil) — só texto+CSS, nunca PNG.
 
-     `overflow-x:hidden` fica no body (global, sem risco pras outras
-     rotas), não em #home-marketing: declarar só overflow-x num elemento
-     comum faz o overflow-y computar pra "auto" (regra do próprio CSS),
-     virando um novo container de scroll que quebra a cadeia de
-     position:sticky do .stage-pin. body/html têm uma exceção no spec que
-     propaga o overflow pro viewport em vez de criar esse container. */
+     Seção "Sempre com você" (a seção que fala de WhatsApp): fundo
+     vermelho sólido (--red), texto do lado esquerdo em preto (mesma
+     combinação já usada na Home anterior pra "manda"/"Mais que
+     automação", nunca branco sobre vermelho). Lado direito: os olhos
+     GRANDES reais da Home anterior (.legacy-eyes-*), recuperados de
+     `git show ad897c0:src/app/_home/home.css`/`home.js` — a
+     implementação com pulinhos/GSAP que existia na seção que dizia
+     "Mais que automação. Representação.", NÃO o sistema .mascot de
+     tracking por cursor (essa foi uma tentativa anterior errada nesta
+     mesma rodada, substituída). Portado pra Web Animations API vanilla
+     (sem reintroduzir GSAP, removido deliberadamente em 08/09/2026 por
+     um bug real de ScrollTrigger) preservando a sequência/durações/
+     valores-alvo originais — só a curva de easing exata do GSAP é
+     aproximada com easings CSS equivalentes (detalhado em home.js).
+
+     3 mascotes novos (hero + CTA final — nunca a seção "sempre com
+     você", que usa os olhos legados acima): desenho vem do mockup
+     (corpo redondo, olhos, sorriso, mãos), cores/glow usando os mesmos
+     tokens de marca. Ganham blink (piscar), tracking de cursor NÃO —
+     grade de animação explícita do usuário: "o logo olha, os mascotes
+     piscam". */
   body{ overflow-x:hidden; }
   #home-marketing{
-    --red:#e2291c; --red-deep:#c21f14; --black:#121110; --cream:#f3efe2; --off:#fbf9f2;
-    background:var(--cream); color:var(--black); font-family:'Inter', sans-serif;
+    --red:#e2291c; --red-deep:#c21f14; --red-glow:rgba(226,41,28,.5);
+    --black:#121110; --bg:#0c0b0b; --bg-2:#131211; --off:#fbf9f2;
+    --panel:rgba(255,255,255,.04); --panel-solid:#161414; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.14);
+    --tx-70:rgba(251,249,242,.7); --tx-50:rgba(251,249,242,.5); --tx-30:rgba(251,249,242,.3);
+    background:var(--bg); color:var(--off); font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
   }
   #home-marketing *{ box-sizing:border-box; margin:0; padding:0; }
-  #home-marketing ::selection{ background:var(--black); color:var(--red); }
+  #home-marketing ::selection{ background:var(--red); color:var(--off); }
+  #home-marketing img,#home-marketing svg{ display:block; }
+  #home-marketing a{ color:inherit; text-decoration:none; }
+  #home-marketing button{ font-family:inherit; cursor:pointer; }
+  #home-marketing .wrap{ max-width:1240px; margin:0 auto; padding:0 32px; }
   #home-marketing .mono{ font-family:'IBM Plex Mono', monospace; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem; }
+  #home-marketing .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--red); display:block; }
 
-  /* opacity:0 aqui (não só na nav) pra barra corrida não ficar flutuando
-     sozinha, sem cabeçalho em cima, antes da entrada cinematográfica do
-     hero revelar a nav — os dois entram juntos (ver stageTl em home.js). */
-  #home-marketing .nav-wrap{ position:fixed; top:0; left:0; right:0; z-index:50; opacity:0; }
-  /* nav sempre com fundo sólido igual ao da seção por trás dela (nunca um
-     "vidro" translúcido) — cada seção declara data-nav com a combinação de
-     cor exata que ela usa, pra nav nunca virar uma cor que não existe na
-     paleta (ex.: vermelho + branco translúcido = rosa desbotado). */
-  #home-marketing nav{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:18px 44px; transform:translateY(-14px); pointer-events:none;
-    transition:color .35s ease, background .35s ease;
+  /* ===== HEADER (sticky, sempre visível) ===== */
+  #home-marketing header{
+    position:sticky; top:0; z-index:50;
+    background:rgba(12,11,11,.85); backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line);
   }
-  #home-marketing nav.nav-red{ color:var(--black); background:var(--red); }
-  #home-marketing nav.nav-black{ color:var(--off); background:var(--black); }
-  #home-marketing nav.nav-cream{ color:var(--black); background:var(--off); }
-  #home-marketing nav.nav-redcream{ color:var(--off); background:var(--red); }
-  #home-marketing nav .links{ display:flex; gap:44px; align-items:center; }
-  #home-marketing nav a{ color:inherit; text-decoration:none; font-weight:600; font-size:.78rem; letter-spacing:.12em; text-transform:uppercase; }
-  #home-marketing nav .btn.nav-cta{ padding:9px 20px; font-size:.72rem; }
+  #home-marketing header .wrap{ height:76px; display:flex; align-items:center; justify-content:space-between; }
+  #home-marketing .header-actions{ display:flex; align-items:center; gap:10px; }
+  #home-marketing .menu-trigger{
+    display:flex; align-items:center; gap:9px; background:transparent; border:none; color:var(--off);
+    font-size:.78rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; padding:9px 6px;
+  }
+  #home-marketing .menu-trigger .bars{ display:flex; flex-direction:column; gap:3px; width:16px; }
+  #home-marketing .menu-trigger .bars span{ display:block; height:1.5px; background:var(--off); border-radius:1px; }
+  #home-marketing nav .btn-ghost{ color:var(--off); border:1px solid var(--line-strong); border-radius:999px; padding:11px 20px; font-size:.78rem; font-weight:600; }
+  #home-marketing nav .btn-ghost:hover{ border-color:var(--tx-50); }
 
-  /* barra corrida: só existe na tela do hero — some (fade) assim que o
-     usuário rola pra além dela, não fica presa acompanhando o resto da
-     página como a nav (ver ScrollTrigger em home.js). */
-  #home-marketing .marquee{
-    background:var(--black); overflow:hidden; white-space:nowrap; padding:10px 0;
-    border-top:1px solid rgba(243,239,226,.12);
-    transition:opacity .3s ease;
+  /* ===== LOGO (d + 2 olhos + pla) — mesma implementação de EyeLogo.tsx,
+     em HTML cru (ver nota no topo do arquivo). Rastreamento de cursor
+     reaproveita initMascotEyes() sem nenhuma mudança em home.js: basta
+     a raiz carregar .nav-logo/.foot-logo e a pupila carregar
+     .mascot-pupil, exatamente como a Home anterior já fazia. */
+  #home-marketing .nav-logo,
+  #home-marketing .foot-logo{
+    font-family:'Familjen Grotesk',sans-serif; font-weight:600; color:var(--off);
+    display:flex; align-items:center; text-transform:none; letter-spacing:normal; cursor:pointer;
   }
-  #home-marketing .marquee.marquee-hide{ opacity:0; pointer-events:none; }
-  #home-marketing .marquee-track{ display:inline-flex; animation:doopla-marquee 22s linear infinite; }
-  #home-marketing .marquee-track span{
+  #home-marketing .nav-logo{ font-size:1.3rem; }
+  #home-marketing .foot-logo{ font-size:1.35rem; }
+  #home-marketing .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--off); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
+  #home-marketing .eye-slot .mascot-pupil{ width:34%; height:34%; background:var(--black); }
+
+  /* ===== LETREIRO + ABERTURA VERMELHA (08/10/2026) — resgate estático
+     da abertura histórica (commit cf18bb3). Rolagem suave pro #hero
+     via "Descubra" — só esse anchor, sem afetar navegação do resto do
+     site. */
+  html{ scroll-behavior:smooth; }
+
+  #home-marketing .opening-marquee{
+    background:var(--black); overflow:hidden; white-space:nowrap; padding:11px 0;
+    border-bottom:1px solid var(--line);
+  }
+  /* 88s (era 22s) pra acompanhar o aumento de 4 pra 16 pares de spans no
+     HTML — mesma velocidade de rolagem (~49px/s), só um ciclo completo
+     mais longo. Ver comentário no home.html sobre o motivo do aumento. */
+  #home-marketing .opening-marquee-track{ display:inline-flex; animation:opening-marquee 88s linear infinite; }
+  #home-marketing .opening-marquee-track span{
     font-family:'IBM Plex Mono', monospace; font-size:.72rem; letter-spacing:.12em; text-transform:uppercase;
-    color:var(--cream); padding:0 24px; white-space:nowrap;
+    color:var(--off); padding:0 24px; white-space:nowrap;
   }
-  #home-marketing .marquee-track span::after{ content:"•"; margin-left:24px; color:rgba(243,239,226,.4); }
-  @keyframes doopla-marquee{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
-  #home-marketing .nav-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.25rem; display:flex; align-items:center; }
-  #home-marketing .eye-slot{ width:.6em; height:.6em; display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; }
-  #home-marketing .eye-slot .eye{ width:100%; height:100%; max-width:none; max-height:none; }
+  #home-marketing .opening-marquee-track span::after{ content:"•"; margin-left:24px; color:var(--tx-30); }
+  @keyframes opening-marquee{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
 
-  /* ===== HERO STAGE (pinned, entrada cinematográfica) ===== */
-  #home-marketing .stage{ height:320vh; position:relative; padding:0; }
-  #home-marketing .stage-pin{
-    position:sticky; top:0; height:100vh; display:flex; align-items:center; justify-content:center;
-    overflow:hidden; background:var(--red);
+  /* Fundo vermelho + texto preto — mesma regra já documentada no topo
+     deste arquivo pra seção "Sempre com você" (nunca branco sobre
+     vermelho, evita a combinação que lembra o iFood). */
+  #home-marketing .opening{
+    position:relative; background:var(--red); overflow:hidden;
+    min-height:88vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:90px 32px 70px;
   }
-  #home-marketing .grain{
+  #home-marketing .opening-grain{
     position:absolute; inset:0;
     background-image:radial-gradient(circle, rgba(0,0,0,.14) 1px, transparent 1px);
     background-size:3px 3px; opacity:.5; pointer-events:none;
   }
-  #home-marketing .edge-label{
+  #home-marketing .opening-edge{
     position:absolute; top:50%; writing-mode:vertical-rl; color:rgba(18,17,16,.65);
-    font-weight:600; letter-spacing:.16em; font-size:.7rem; text-transform:uppercase; opacity:0;
+    font-family:'IBM Plex Mono',monospace; font-weight:600; letter-spacing:.16em; font-size:.7rem; text-transform:uppercase;
   }
-  #home-marketing .edge-label.left{ left:28px; transform:translateY(-50%) rotate(180deg); }
-  #home-marketing .edge-label.right{ right:28px; transform:translateY(-50%); }
-  #home-marketing .seal{ position:absolute; bottom:34px; left:34px; width:60px; height:60px; opacity:0; }
-  #home-marketing .seal svg{ width:100%; height:100%; }
-  #home-marketing .index-count{ position:absolute; bottom:34px; right:44px; color:var(--black); font-weight:600; font-size:.78rem; letter-spacing:.1em; opacity:0; }
-  #home-marketing .logo-mark{ position:absolute; display:flex; align-items:center; justify-content:center; gap:3vw; }
-  #home-marketing .eye{
-    width:15vw; height:15vw; max-width:190px; max-height:190px; border-radius:50%;
-    background:var(--black); display:flex; align-items:center; justify-content:center; position:relative;
+  #home-marketing .opening-edge.left{ left:28px; transform:translateY(-50%) rotate(180deg); }
+  #home-marketing .opening-edge.right{ right:28px; transform:translateY(-50%); }
+  #home-marketing .opening-seal{ position:absolute; bottom:34px; left:34px; width:52px; height:52px; }
+  #home-marketing .opening-seal svg{ width:100%; height:100%; }
+  #home-marketing .opening-index{
+    position:absolute; bottom:38px; right:44px; color:rgba(18,17,16,.65);
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
   }
-  #home-marketing .pupil{ width:34%; height:34%; border-radius:50%; background:var(--cream); position:relative; z-index:2; }
-  #home-marketing .logo-mark .eyes-col{ position:relative; }
-  #home-marketing .logo-mark .eyes-shadow{ width:64%; height:12px; bottom:-14px; }
-  #home-marketing .wordmark{
-    position:absolute; display:flex; align-items:center; justify-content:center;
+  #home-marketing .opening-logo{
+    display:flex; align-items:center; justify-content:center;
     font-family:'Familjen Grotesk',sans-serif; font-weight:600; color:var(--black);
-    font-size:clamp(2.8rem,12vw,10rem); line-height:1; letter-spacing:-.01em; opacity:0;
+    font-size:clamp(3.4rem,13vw,9rem); line-height:1; letter-spacing:-.01em; margin-bottom:28px;
   }
-  #home-marketing .wordmark .eye-slot{ width:.62em; height:.62em; margin:0 .02em; }
-  #home-marketing .kicker{
-    position:absolute; top:calc(50% - 15vw - 30px); color:var(--black); font-weight:600; font-size:.78rem;
-    letter-spacing:.3em; text-transform:uppercase; opacity:0;
+  #home-marketing .opening-logo .eye-slot{ background:var(--black); }
+  #home-marketing .opening-logo .eye-slot .mascot-pupil{ background:var(--off); }
+  /* max-width reduzido de 620 pra 480px (08/10/2026, achado da
+     fundadora: "toda carreira merece sua doopla não pode ultrapassar
+     o logo") — em telas largas o logo gigante (clamp trava em 9rem)
+     renderiza ~500-520px, mais estreito que os 620px que o título
+     podia ocupar antes de quebrar linha. 480px garante que o título
+     nunca exceda a largura real do logo. */
+  #home-marketing .opening-copy{ max-width:480px; }
+  /* Título mais editorial (08/10/2026, achado da fundadora: "menos
+     aparência de título convencional de landing page") — mesma fonte
+     do logo gigante (Familjen Grotesk, já usada no projeto, nenhuma
+     dependência nova) + caixa alta, em vez de Inter/sentence-case
+     (que é o padrão do h1 do hero logo abaixo — precisava se
+     diferenciar). */
+  #home-marketing .opening-copy h1{
+    font-family:'Familjen Grotesk',sans-serif; font-weight:700; text-transform:uppercase;
+    letter-spacing:.01em; color:var(--black);
+    font-size:clamp(1.7rem,4vw,2.6rem); line-height:1.15; margin-bottom:22px;
   }
-  #home-marketing .hero-copy{
-    position:absolute; top:calc(50% + 5vw + 40px); text-align:center; max-width:560px; padding:0 24px;
-    opacity:0; transform:translateY(20px);
+  /* "Representação inteligente." como assinatura secundária, não mais
+     parágrafo de corpo — mesma linguagem mono/uppercase do .eyebrow/
+     letreiro já usada no site, nunca competindo com o título. */
+  #home-marketing .opening-copy p{
+    font-family:'IBM Plex Mono',monospace; font-weight:700; text-transform:uppercase;
+    font-size:.72rem; letter-spacing:.12em; color:rgba(18,17,16,.65);
   }
-  #home-marketing .hero-copy h1{ font-family:'Anton',sans-serif; font-weight:400; color:var(--black); font-size:clamp(1.6rem,4.2vw,2.6rem); line-height:1.16; margin-bottom:16px; text-transform:uppercase; }
-  #home-marketing .hero-copy p{ color:var(--black); font-size:1rem; line-height:1.55; opacity:.78; margin-bottom:26px; }
-  #home-marketing .btn{
-    padding:13px 26px; border-radius:2px; font-size:.8rem; font-weight:700; letter-spacing:.08em;
-    text-transform:uppercase; text-decoration:none; display:inline-block;
+  #home-marketing .opening-discover{
+    position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:8px; color:var(--black); cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
   }
-  #home-marketing .btn-primary{ background:var(--black); color:var(--off); }
-  #home-marketing .btn-ghost{ border:1px solid rgba(251,249,242,.5); color:var(--off); }
-  #home-marketing .btn-invert{ background:var(--off); color:var(--black); }
-  #home-marketing .scroll-hint{
-    position:absolute; bottom:38px; left:50%; transform:translateX(-50%); color:var(--black);
-    font-weight:600; font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
+  @media (max-width:760px){
+    #home-marketing .opening{ min-height:76vh; padding:80px 22px 64px; }
+    #home-marketing .opening-edge,
+    #home-marketing .opening-seal,
+    #home-marketing .opening-index{ display:none; }
+    #home-marketing .opening-logo{ font-size:clamp(2.6rem,18vw,4.6rem); margin-bottom:20px; }
+    #home-marketing .opening-copy h1{ font-size:clamp(1.4rem,7vw,1.9rem); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #home-marketing .opening-marquee-track{ animation:none; }
+    html{ scroll-behavior:auto; }
   }
 
-  /* ===== GENERIC SECTION ===== */
-  #home-marketing section{ padding:100px 44px; }
-  #home-marketing .narrow{ max-width:760px; margin:0 auto; }
-  #home-marketing .wide{ max-width:1040px; margin:0 auto; }
-  #home-marketing section .mono{ color:var(--red-deep); display:block; margin-bottom:14px; }
-  #home-marketing section h2{ font-family:'Anton',sans-serif; font-size:clamp(1.7rem,3.6vw,2.9rem); line-height:1.12; margin-bottom:20px; }
-  #home-marketing section p.lead{ font-size:1.02rem; color:#4a463d; line-height:1.65; max-width:620px; }
-
-  /* "Tem booking pra resolver?" unificada com a interação dos olhos —
-     um único bloco vermelho, duas colunas, texto preto (nada de texto
-     branco sobre vermelho aqui — combinação que lembrava o site do iFood). */
-  #home-marketing .manda{
-    background:var(--red); color:var(--black);
-    display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:40px;
-    min-height:100vh; padding:100px 80px;
+  /* ===== MASCOTE (hero + CTA final) — bola vermelha, olho preto, pupila
+     branca. Ganha .blink (piscada), nunca tracking de cursor. */
+  #home-marketing .mascot{
+    position:relative; border-radius:50%; display:flex; align-items:center; justify-content:center; gap:10%;
+    background:radial-gradient(circle at 38% 32%, #ff4a38, var(--red) 60%, #a81a10 100%);
+    box-shadow:0 0 60px 10px var(--red-glow), inset -8px -10px 24px rgba(0,0,0,.35);
+    flex:none;
   }
-  #home-marketing .manda h2{ color:var(--black); font-size:clamp(2.1rem,4.4vw,3.6rem); line-height:1.02; margin-bottom:44px; }
-  #home-marketing .manda .manda-note{ margin-top:28px; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--black); }
-  #home-marketing .manda .situacoes{ display:flex; flex-direction:column; gap:22px; }
-  #home-marketing .manda .situacao{ display:flex; align-items:center; gap:16px; }
-  #home-marketing .manda .situacao p{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.05rem; color:var(--black); }
-  #home-marketing .manda .icone{
-    width:38px; height:38px; min-width:38px; border-radius:50%; border:1.5px solid var(--black);
-    display:flex; align-items:center; justify-content:center; color:var(--black);
+  #home-marketing .mascot::before,
+  #home-marketing .mascot::after{
+    content:''; position:absolute; bottom:-8%; width:30%; height:22%; border-radius:50% 50% 45% 45%;
+    background:radial-gradient(circle at 35% 25%, #ff4a38, var(--red) 60%, #a81a10 100%);
+    box-shadow:inset -3px -5px 8px rgba(0,0,0,.35);
   }
-  #home-marketing .manda .icone svg{ width:18px; height:18px; }
+  #home-marketing .mascot::before{ left:-4%; }
+  #home-marketing .mascot::after{ right:-4%; }
+  #home-marketing .mascot-eye{ border-radius:50%; background:var(--black); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  #home-marketing .mascot-pupil{ border-radius:50%; background:var(--off); will-change:transform; }
+  #home-marketing .mascot-smile{ position:absolute; border:none; border-bottom:3px solid rgba(0,0,0,.45); border-radius:50%; }
+  /* piscada: só o olho (altura) fecha, a pupila não deforma nem some de
+     forma abrupta — squash vertical rápido, nunca lento, nunca chama
+     atenção. Sem mudar largura/posição/layout do elemento. */
+  #home-marketing .mascot-eye{ transition:transform 90ms ease-in-out; transform-origin:center; }
+  #home-marketing .mascot-eye.blink{ transform:scaleY(.08); }
 
-  #home-marketing .manda-eyes{ display:flex; flex-direction:column; align-items:center; gap:32px; }
-  #home-marketing .manda-eyes .mono{ color:var(--black); }
-  #home-marketing .eyes-stage{ position:relative; width:100%; max-width:560px; height:230px; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; gap:clamp(26px,5vw,60px); cursor:pointer; }
-  #home-marketing .eyes-col{ display:flex; flex-direction:column; align-items:center; }
-  #home-marketing .eyes-eye{ width:160px; height:160px; border-radius:50%; background:var(--black); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-  #home-marketing .eyes-shadow{ position:absolute; bottom:-18px; left:50%; width:100px; height:13px; background:rgba(0,0,0,.22); border-radius:50%; transform:translateX(-50%); filter:blur(2px); }
-  #home-marketing .eyes-pupil{ width:52px; height:52px; border-radius:50%; background:var(--off); position:absolute; top:50%; left:50%; margin:-26px 0 0 -26px; }
+  /* ===== OLHOS GRANDES DA HOME ANTERIOR (seção "sempre com você") =====
+     Portados de git show ad897c0:src/app/_home/home.css — as classes
+     .manda-eyes/.eyes-stage/.eyes-col/.eyes-eye/.eyes-pupil/.eyes-shadow
+     da era "Mais que automação. Representação.", renomeadas .legacy-*
+     pra não colidir com o sistema .mascot (que é outra coisa: os 3
+     mascotes com corpo/blink desta rodada). Tamanhos, cores e sombra
+     idênticos ao original (160px olho/52px pupila desktop, 110px/36px
+     mobile) — a implementação atual estava errada por ser pequena
+     demais (56px) e não ter sombra; esta é a recuperação real. */
+  #home-marketing .legacy-eyes-stage{ position:relative; width:100%; max-width:400px; margin:0 auto; display:flex; align-items:flex-start; justify-content:center; gap:clamp(26px,5vw,60px); cursor:pointer; }
+  #home-marketing .legacy-eyes-col{ display:flex; flex-direction:column; align-items:center; }
+  #home-marketing .legacy-eyes-eye{ width:160px; height:160px; border-radius:50%; background:var(--black); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  #home-marketing .legacy-eyes-shadow{ position:absolute; bottom:-18px; left:50%; width:100px; height:13px; background:rgba(0,0,0,.22); border-radius:50%; transform:translateX(-50%) scale(1); opacity:.25; filter:blur(2px); }
+  #home-marketing .legacy-eyes-pupil{ width:52px; height:52px; border-radius:50%; background:var(--off); position:absolute; top:50%; left:50%; margin:-26px 0 0 -26px; }
+  #home-marketing .legacy-eyes-caption{
+    font-family:'IBM Plex Mono', monospace; letter-spacing:.14em; text-transform:uppercase; font-size:.72rem;
+    color:var(--black); text-align:center;
+  }
+  @media (max-width:760px){
+    #home-marketing .legacy-eyes-eye{ width:110px; height:110px; }
+    #home-marketing .legacy-eyes-pupil{ width:36px; height:36px; margin:-18px 0 0 -18px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    #home-marketing .legacy-eyes-col{ transform:none !important; }
+    #home-marketing .legacy-eyes-eye{ transform:none !important; }
+    #home-marketing .legacy-eyes-pupil{ transform:none !important; }
+    #home-marketing .legacy-eyes-shadow{ transform:translateX(-50%) scale(1) !important; opacity:.25 !important; }
+  }
 
-  /* feita com quem entende de booking */
-  #home-marketing .feita{ background:var(--off); }
+  /* ===== HERO ===== */
+  #home-marketing .hero{ padding:64px 44px 60px; overflow:hidden; }
+  /* align-items:start (16/09/2026, era center): com center, a coluna de
+     texto — mais baixa em altura de conteúdo que a coluna do celular
+     (542px) — ficava centralizada no meio da linha, sobrando espaço
+     acima do eyebrow. Com start, os dois topos (eyebrow e celular)
+     ficam na mesma linha, sem precisar de nenhum offset fixo — .phone
+     já nasce no topo de .hero-visual por conta própria (só ele conta
+     pro layout flex ali dentro; .hero-glow/.mascot-hero/.hero-side são
+     position:absolute, não participam do align-items:center interno).
+     No breakpoint mobile (abaixo de 1080px) .hero-grid já vira 1
+     coluna só — este align-items não tem efeito visual lá. */
+  #home-marketing .hero-grid{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:start; }
+  /* min-width:0 nos itens de grid — sem isso, o track "1fr" nunca
+     encolhe abaixo do min-content do conteúdo (badges/telefone/texto),
+     causando overflow horizontal em telas estreitas (achado real do QA
+     mobile, não previsto no mockup estático). */
+  #home-marketing .hero-grid > *,
+  #home-marketing .two-col > *,
+  #home-marketing .with-you > *,
+  #home-marketing .cta-final > .cta-mid{ min-width:0; }
+  /* Ritmo vertical reequilibrado (16/09/2026) junto com align-items:start
+     acima: com a coluna de texto agora alinhada pelo topo (não mais
+     centralizada na linha), os gaps originais deixavam a coluna
+     concentrada lá em cima, com um vão grande sobrando embaixo dos
+     badges antes do fim da linha (altura do celular, 542px). Aumento
+     proporcional em cada gap já existente — mesmo sistema de spacing,
+     nenhum elemento novo, nenhum offset fixo — pra ocupar melhor a
+     altura disponível sem virar espaçamento artificial/uniforme. */
+  #home-marketing .hero-copy .eyebrow{ margin-bottom:26px; }
+  #home-marketing .hero-copy h1{
+    font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.02em; color:var(--off);
+    font-size:clamp(2.2rem,4.6vw,3.5rem); line-height:1.07; margin-bottom:32px;
+  }
+  #home-marketing .hero-copy h1 .accent{ color:var(--red); }
+  #home-marketing .hero-copy p.lead{ font-size:1.03rem; line-height:1.6; color:var(--tx-70); max-width:460px; margin-bottom:44px; }
+  #home-marketing .hero-badges{ display:flex; flex-wrap:wrap; gap:24px; margin-top:48px; }
+  #home-marketing .hero-badge{ display:flex; align-items:center; gap:9px; }
+  #home-marketing .hero-badge svg{ flex:none; color:var(--red); width:18px; height:18px; }
+  #home-marketing .hero-badge span{ font-size:.8rem; color:var(--tx-70); line-height:1.3; max-width:130px; }
 
-  /* como funciona */
-  #home-marketing .comofunciona{ background:var(--black); color:var(--off); }
-  #home-marketing .comofunciona h2{ color:var(--off); }
-  #home-marketing .flow{ display:flex; flex-wrap:wrap; gap:0; margin-top:40px; }
-  #home-marketing .flow-step{ flex:1; min-width:150px; padding:18px 16px 18px 0; position:relative; }
-  #home-marketing .flow-step .n{ font-family:'Anton',sans-serif; font-size:1.6rem; color:var(--red); display:block; margin-bottom:8px; }
-  #home-marketing .flow-step p{ font-size:.85rem; color:rgba(251,249,242,.72); line-height:1.5; }
-  #home-marketing .flow-note{ margin-top:28px; font-size:.92rem; color:rgba(251,249,242,.75); line-height:1.6; max-width:560px; }
-  /* camada humana: destaque curto, não uma seção nova — responde "e se só
-     a IA não bastar?" sem virar protagonista nem explicação longa. */
-  #home-marketing .human-layer{ margin-top:24px; padding-top:24px; border-top:1px solid rgba(251,249,242,.14); max-width:560px; }
-  #home-marketing .human-layer-title{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:.92rem; color:var(--off); margin-bottom:8px; }
-  #home-marketing .human-layer p{ font-size:.82rem; color:rgba(251,249,242,.62); line-height:1.55; margin-top:4px; }
+  #home-marketing .hero-visual{ position:relative; display:flex; justify-content:center; align-items:center; min-height:520px; }
+  #home-marketing .hero-glow{
+    position:absolute; inset:-60px; z-index:0; filter:blur(6px);
+    background:
+      radial-gradient(closest-side, var(--red-glow), transparent 70%) 68% 30% / 60% 60% no-repeat,
+      radial-gradient(closest-side, rgba(226,41,28,.22), transparent 75%) 20% 75% / 55% 55% no-repeat;
+  }
+  #home-marketing .phone{
+    position:relative; z-index:2; width:266px; height:542px; border-radius:38px;
+    background:linear-gradient(160deg,#2a2a2d,#0c0c0d 40%); padding:9px;
+    box-shadow:0 30px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+  }
+  #home-marketing .phone-screen{
+    position:relative; width:100%; height:100%; background:var(--bg); border-radius:30px; overflow:hidden;
+    display:flex; flex-direction:column; border:1px solid rgba(255,255,255,.06);
+  }
+  #home-marketing .phone-notch{ position:absolute; top:8px; left:50%; transform:translateX(-50%); width:88px; height:22px; background:#000; border-radius:14px; z-index:5; }
+  #home-marketing .phone-status{ display:flex; justify-content:space-between; align-items:center; padding:14px 20px 4px; font-size:.72rem; font-weight:600; color:#fff; }
+  #home-marketing .phone-status .icons{ display:flex; gap:5px; align-items:center; }
+  #home-marketing .phone-chatbar{ display:flex; align-items:center; gap:10px; padding:10px 14px 12px; border-bottom:1px solid rgba(255,255,255,.07); }
+  #home-marketing .phone-back{ color:var(--tx-50); flex:none; display:flex; }
+  #home-marketing .phone-back svg{ width:16px; height:16px; }
+  #home-marketing .phone-avatar{
+    width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 35% 30%, #ff5a5a, #b30f16 75%); flex:none;
+    display:flex; align-items:center; justify-content:center; gap:5px; position:relative;
+  }
+  /* Avatar Doopla no mockup de WhatsApp (achado da fundadora): pupilas
+     levemente voltadas pro texto "Doopla", que fica sempre à direita
+     deste avatar nos 3 usos (phone-chatbar e os 2 job-demo-row) — nunca
+     tracking de cursor aqui, initMascotEyes() (home.js) só olha pra
+     .mascot/.nav-logo/.foot-logo, este avatar fica de fora por
+     desenho. Deslocamento pequeno (1px) pra nunca estourar o
+     overflow:hidden do .mascot-eye (olho de 8-9px, pupila de 3px).
+     Boca reaproveita .mascot-smile (mesma técnica dos mascotes grandes:
+     border-bottom + border-radius:50%), só com posição/escala
+     mínimas pro tamanho deste avatar — nunca cria elemento novo. */
+  #home-marketing .phone-avatar .mascot-pupil{ transform:translateX(1px); }
+  #home-marketing .phone-avatar .mascot-smile{ width:11px; height:4px; top:60%; left:50%; transform:translateX(-50%); border-bottom-width:1.4px; }
+  #home-marketing .job-demo-avatar.phone-avatar .mascot-smile{ width:9px; height:3px; top:58%; border-bottom-width:1.2px; }
+  #home-marketing .phone-chatbar .who{ flex:1; }
+  #home-marketing .phone-chatbar .who .name{ display:block; font-size:.78rem; font-weight:600; color:var(--off); }
+  #home-marketing .phone-chatbar .who .status{ font-size:.66rem; color:#5fd97a; }
+  #home-marketing .phone-chat-icons{ display:flex; align-items:center; gap:12px; margin-left:auto; color:var(--tx-50); flex:none; }
+  #home-marketing .phone-chat-icons svg{ width:15px; height:15px; }
+  #home-marketing .phone-messages{ flex:1; display:flex; flex-direction:column; gap:10px; padding:16px 14px; overflow:hidden; }
+  #home-marketing .bubble{ max-width:82%; padding:9px 12px; border-radius:14px; font-size:.72rem; line-height:1.42; position:relative; }
+  #home-marketing .bubble.in{ align-self:flex-start; background:#1c211d; color:var(--tx-70); border-bottom-left-radius:4px; }
+  #home-marketing .bubble.out{ align-self:flex-end; background:var(--red); color:var(--off); border-bottom-right-radius:4px; }
+  /* variante neutra: mesma mensagem da doopla (1ª pessoa, alinhada à
+     direita como .out), só sem o vermelho — intercalada com .out pra
+     criar o ritmo vermelho/cinza/vermelho/cinza pedido, em vez de tudo
+     vermelho pesado. Cor própria (#1d1c1c), não a mesma de .bubble.in
+     (#1c211d tem leve viés esverdeado — sinalizado explicitamente
+     como indesejado): cinza neutro de verdade, sem verde, ainda assim
+     coerente com a paleta escura e quente do resto da interface. */
+  #home-marketing .bubble.neutral{ align-self:flex-end; background:#1d1c1c; color:var(--tx-70); border-bottom-right-radius:4px; }
+  #home-marketing .bubble .time{ display:block; margin-top:4px; font-size:.58rem; opacity:.65; text-align:right; }
+  #home-marketing .bubble-group{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  #home-marketing .bubble-sender{ display:flex; align-items:center; gap:5px; font-size:.62rem; font-weight:600; color:var(--tx-50); padding-right:2px; }
+  #home-marketing .bubble-avatar{
+    display:flex; align-items:center; justify-content:center; gap:3px; width:20px; height:20px; border-radius:50%; flex:none;
+    background:radial-gradient(circle at 38% 32%, #ff4a38, var(--red) 60%, #a81a10 100%);
+  }
+  #home-marketing .phone-input{ display:flex; align-items:center; gap:8px; padding:10px 14px 16px; border-top:1px solid rgba(255,255,255,.06); }
+  #home-marketing .phone-input-icon{ display:flex; color:var(--tx-50); flex:none; }
+  #home-marketing .phone-input-icon svg{ width:16px; height:16px; }
+  #home-marketing .phone-input .field{ flex:1; height:28px; border-radius:14px; background:#1c211d; display:flex; align-items:center; padding:0 12px; font-size:.68rem; color:var(--tx-30); }
+  #home-marketing .phone-mic{ display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:var(--red); color:var(--off); flex:none; box-shadow:0 0 14px var(--red-glow); }
+  #home-marketing .phone-mic svg{ width:13px; height:13px; }
 
-  /* segurança */
-  #home-marketing .security{ background:var(--black); color:var(--off); }
-  #home-marketing .security h2{ color:var(--off); }
-  #home-marketing .checklist{ list-style:none; display:flex; flex-direction:column; gap:12px; margin:26px 0 0; max-width:520px; }
-  #home-marketing .checklist li{ font-size:.92rem; padding-left:28px; position:relative; }
-  #home-marketing .checklist li::before{ content:"✓"; position:absolute; left:0; top:0; width:18px; height:18px; border-radius:5px; background:var(--red); color:var(--off); font-size:.68rem; display:flex; align-items:center; justify-content:center; }
+  #home-marketing .mascot-hero{ width:150px; height:126px; position:absolute; right:-6px; bottom:6%; z-index:3; }
+  #home-marketing .mascot-hero .mascot-eye{ width:30px; height:30px; }
+  #home-marketing .mascot-hero .mascot-pupil{ width:13px; height:13px; }
+  /* Ajuste pontual pós-integração (16/09/2026): mesma boca já existente,
+     só mais visível/simpática — contraste maior, sem mudar largura,
+     altura, posição ou proporção do rosto. Escopo só .mascot-hero,
+     .mascot-cta preservado exatamente como estava. */
+  #home-marketing .mascot-hero .mascot-smile{ width:30px; height:11px; top:65%; left:50%; transform:translateX(-50%); border-bottom-width:3.5px; border-bottom-color:rgba(0,0,0,.62); }
+  #home-marketing .mascot-hero::before,
+  #home-marketing .mascot-hero::after{ width:34px; height:20px; bottom:-8%; }
+  #home-marketing .mascot-hero::before{ left:-8px; }
+  #home-marketing .mascot-hero::after{ right:-8px; }
+  #home-marketing .mascot-hero .eyes-row{ display:flex; gap:14px; position:absolute; top:32%; left:50%; transform:translateX(-50%); }
 
-  /* planos */
-  #home-marketing .pricing{ background:var(--off); }
-  #home-marketing .pricing-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:10px; }
-  #home-marketing .price-card{ border:1px solid #e7e2d3; border-radius:22px; padding:32px 28px; background:#fff; display:flex; flex-direction:column; }
-  #home-marketing .price-card.dark{ background:var(--black); color:var(--off); border-color:var(--black); }
-  #home-marketing .price-card .who{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.3rem; margin-bottom:10px; }
-  #home-marketing .price-card .amount{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:2rem; margin-bottom:6px; }
-  #home-marketing .price-card .amount .per{ font-size:.95rem; font-weight:500; color:#8a8676; }
-  #home-marketing .price-card.dark .amount .per{ color:rgba(251,249,242,.5); }
-  #home-marketing .price-card p.trial{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.08em; text-transform:uppercase; color:var(--red); margin-bottom:14px; }
-  #home-marketing .price-card.dark p.trial{ color:var(--off); opacity:.8; }
-  #home-marketing .price-card p.desc{ font-size:.88rem; color:#5a5648; margin-bottom:16px; }
-  #home-marketing .price-card.dark p.desc{ color:rgba(251,249,242,.7); }
-  #home-marketing .price-card p.lead-in{ font-size:.83rem; font-weight:600; margin-bottom:10px; }
-  #home-marketing .price-card ul{ list-style:none; display:flex; flex-direction:column; gap:7px; }
-  #home-marketing .price-card li{ font-size:.83rem; padding-left:18px; position:relative; }
-  #home-marketing .price-card li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
-  #home-marketing .price-card p.note{ font-size:.78rem; color:#8a8676; margin-top:18px; line-height:1.5; }
-  #home-marketing .price-card.dark p.note{ color:rgba(251,249,242,.5); }
-  #home-marketing .price-card .price-cta{ display:block; text-align:center; width:100%; margin-top:auto; }
+  #home-marketing .hero-side{ position:absolute; right:6px; top:6%; z-index:3; display:flex; align-items:flex-start; gap:8px; max-width:170px; }
+  #home-marketing .hero-side .sq{ width:8px; height:8px; background:var(--red); box-shadow:0 0 10px var(--red-glow); flex:none; margin-top:6px; }
+  /* Só no layout de 2 colunas (hero-grid vira 1fr acima de 1080px — ver
+     media query abaixo) o .phone fica centralizado numa coluna bem mais
+     larga que ele mesmo, e o badge ancorado em right:6px/170px invadia o
+     canto do telefone (achado real, medido: ~42px de sobreposição em
+     1440px). Abaixo de 1081px o hero-visual já é largo o bastante pra
+     não sobrepor (comportamento original preservado, sem alteração). */
+  @media (min-width:1081px){
+    #home-marketing .hero-side{ right:auto; left:calc(50% + 133px + 16px); max-width:110px; }
+  }
+  #home-marketing .hero-side span{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--off); line-height:1.5; }
 
-  /* faq */
-  #home-marketing .faq{ background:var(--off); }
-  #home-marketing .faq-list details{ border-bottom:1px solid #e7e2d3; padding:16px 0; }
-  #home-marketing .faq-list summary{ list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:.95rem; }
+  /* ===== PROFISSÕES ===== */
+  #home-marketing .strip{ border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:30px 44px; }
+  /* Alinhamento com as seções abaixo (08/10/2026, achado da fundadora)
+     — .strip tinha padding:44px E .wrap (dentro) seu próprio
+     padding:32px + max-width:1240px, dupla margem (mesmo bug já
+     corrigido no mobile, ver comentário mais abaixo neste arquivo)
+     deixando a barra desalinhada com .two-col (padding:44px do
+     section.block + max-width:1180px, sem padding próprio). Zera o
+     padding do .wrap aqui e iguala o max-width a 1180px — início/fim
+     da barra batem exatamente com o container das seções vizinhas.
+     Só a regra base (desktop); o bloco mobile logo abaixo já tem sua
+     própria versão de .strip .wrap, nunca tocada aqui. */
+  #home-marketing .strip .wrap{ display:flex; align-items:center; gap:40px; flex-wrap:wrap; max-width:1180px; padding:0; }
+  /* Coluna do rótulo mono + a nova headline da seção (pacote de
+     reposicionamento) — mesmo espaço da .strip original, só empilhado
+     em coluna em vez de um único texto solto. */
+  #home-marketing .strip-label-col{ display:flex; flex-direction:column; gap:8px; flex:none; max-width:230px; }
+  #home-marketing .strip-label{ font-family:'IBM Plex Mono',monospace; font-size:.68rem; letter-spacing:.12em; color:var(--tx-50); text-transform:uppercase; line-height:1.5; }
+  #home-marketing .strip-headline{ font-family:'Inter',sans-serif; font-weight:700; font-size:1rem; color:var(--off); line-height:1.35; margin:0; }
+  /* Redistribui ao longo da largura (08/10/2026, achado da fundadora:
+     "espremidas", "e muito mais" precisa cair na ponta direita) —
+     space-between usa o espaço todo entre o primeiro item e o último
+     ("e muito mais"), gap maior garante respiro mínimo mesmo se algum
+     dia a lista encolher. */
+  #home-marketing .prof-list{ display:flex; justify-content:space-between; gap:44px; flex:1; flex-wrap:wrap; }
+  #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; gap:9px; color:var(--tx-70); }
+  #home-marketing .prof-item svg{ color:var(--off); opacity:.85; }
+  #home-marketing .prof-item span{ font-size:.78rem; font-weight:500; }
+  /* .prof-card (as 6 primeiras) e .prof-more/.prof-more-inner (as 3
+     últimas: Influencers/Serviços gerais/"e muito mais") ficam dentro
+     de wrappers no HTML — no desktop TODOS viram display:contents: os
+     .prof-item filhos passam a contar como se fossem filhos diretos de
+     .prof-list pro flex-wrap acima, mesma ordem/gap de sempre, nenhuma
+     caixa nova no meio (visual desktop mostra as 9 profissões, igual
+     sempre mostrou — .prof-card não existe visualmente aqui, é só um
+     agrupamento estrutural do HTML). .prof-card-divider/.prof-card-more
+     (card mobile, 4ª rodada 07/10/2026) não existem no desktop.
+     .prof-more-toggle não existe mais em lugar nenhum (toggle removido
+     07/10/2026). */
+  #home-marketing .prof-card,
+  #home-marketing .prof-card-grid,
+  #home-marketing .prof-more,
+  #home-marketing .prof-more-inner{ display:contents; }
+  #home-marketing .prof-card-divider,
+  #home-marketing .prof-card-more,
+  #home-marketing .prof-more-toggle{ display:none; }
+
+  /* ===== SECTION generic ===== */
+  #home-marketing section.block{ padding:88px 44px; border-bottom:1px solid var(--line); }
+  #home-marketing .two-col{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:start; }
+  #home-marketing .block h2{ font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.015em; color:var(--off); font-size:clamp(1.9rem,3vw,2.6rem); line-height:1.14; margin:16px 0 18px; }
+  #home-marketing .block h2 .dim{ color:var(--tx-50); font-weight:700; }
+  #home-marketing .block p.lead{ color:var(--tx-70); font-size:.97rem; line-height:1.65; max-width:420px; }
+
+  /* recursos / problem list — cada item agora tem título + subtítulo
+     (era só uma linha), por isso align-items:flex-start (era center)
+     pra acompanhar o ícone com um bloco de 2 linhas. */
+  #home-marketing .problem-list{ display:flex; flex-direction:column; }
+  #home-marketing .problem{ display:flex; align-items:flex-start; gap:16px; padding:20px 0; border-bottom:1px solid var(--line); }
+  #home-marketing .problem:first-child{ border-top:1px solid var(--line); }
+  #home-marketing .problem .ico{ color:var(--red); flex:none; margin-top:2px; }
+  #home-marketing .problem-text{ flex:1; }
+  #home-marketing .problem-title{ margin:0; font-size:.94rem; color:var(--off); font-weight:600; line-height:1.4; }
+  #home-marketing .problem-sub{ margin:4px 0 0; font-size:.82rem; color:var(--tx-50); line-height:1.5; }
+  /* Tag "Em breve" (07/10/2026, achado da fundadora) — "Novos
+     trabalhos" (match de oportunidades) é fase beta, não quer prometer
+     isso agora na Home. Mesma linguagem mono/uppercase do .eyebrow já
+     usado no arquivo, só compacta e em pílula, pra marcar item futuro
+     sem precisar remover a linha inteira da lista. */
+  #home-marketing .soon-tag{
+    display:inline-block; font-family:'IBM Plex Mono',monospace;
+    font-size:.6rem; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--tx-50);
+    border:1px solid var(--line); border-radius:999px;
+    padding:2px 8px; margin-left:8px; vertical-align:middle;
+  }
+
+  /* ===== NOVAS SEÇÕES — pacote de reposicionamento de comunicação =====
+     Nenhum componente visual novo: .centered-copy só reaproveita as
+     classes tipográficas já existentes (.eyebrow/h2/p.lead/.btn)
+     centralizadas numa coluna estreita; .job-demo reaproveita .bubble
+     (já usado no telefone do hero) e o mesmo padrão de painel/borda de
+     .plan-card, só num arranjo novo. */
+  #home-marketing .centered-copy{ max-width:640px; margin:0 auto; display:flex; flex-direction:column; align-items:center; text-align:center; }
+  #home-marketing .centered-copy h2{ margin:16px 0 18px; }
+  #home-marketing .centered-copy p.lead{ max-width:560px; margin:0 auto; }
+  #home-marketing .centered-copy .btn{ margin-top:10px; }
+  #home-marketing .manifesto p.lead + p.lead{ margin-top:14px; }
+  #home-marketing .manifesto-close{ margin:24px 0 0; font-family:'Inter',sans-serif; font-weight:700; font-size:1.1rem; color:var(--off); }
+
+  /* Demonstração "Novos trabalhos" — v3 (16/09/2026, ajuste pontual da
+     fundadora). Cada troca (cliente↔Doopla, Doopla↔profissional) é UMA
+     superfície de conversa só (.job-demo-panel), nunca caixa dentro de
+     caixa. Os dois painéis ficam soltos e independentes — sem linha,
+     seta, tracejado ou qualquer connector entre eles; a ordem vertical
+     e a pequena transição do WhatsApp já bastam para explicar o fluxo
+     (achado da fundadora: a linha vertical deixava a composição com
+     cara de timeline/processo técnico). O selo do WhatsApp pertence só
+     à TRANSIÇÃO entre as conversas, nunca ao topo do primeiro painel
+     (achado anterior: fazia parecer que o primeiro bloco "era" o
+     WhatsApp). */
+  #home-marketing .job-demo{ position:relative; display:flex; flex-direction:column; gap:6px; }
+  /* Mesmo glow do hero (.hero-glow), mais discreto — só pra dar
+     profundidade e equilibrar o peso visual com a coluna esquerda,
+     igual à ref. de arte (16/09/2026). */
+  #home-marketing .job-demo-glow{ position:absolute; inset:-40px; z-index:-1; filter:blur(6px); background:radial-gradient(closest-side, var(--red-glow), transparent 70%) 75% 90% / 55% 55% no-repeat; opacity:.55; }
+  #home-marketing .job-demo-panel{ background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:16px 18px; display:flex; flex-direction:column; gap:12px; position:relative; z-index:1; }
+  #home-marketing .job-demo-row{ display:flex; align-items:flex-start; gap:10px; }
+  #home-marketing .job-demo-avatar{ flex:none; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; gap:3px; }
+  #home-marketing .job-demo-avatar.phone-avatar{ width:26px; height:26px; }
+  #home-marketing .job-demo-avatar-neutral{ background:rgba(255,255,255,.08); color:var(--tx-50); }
+  #home-marketing .job-demo-avatar-neutral svg{ width:14px; height:14px; }
+  #home-marketing .job-demo-row-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+  #home-marketing .job-demo-who{ font-size:.64rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--tx-50); line-height:1; padding-top:5px; }
+  #home-marketing .job-demo-row .bubble{ max-width:100%; }
+  #home-marketing .job-demo-ellipsis{ align-self:flex-start; margin-left:36px; color:var(--tx-30); font-size:.8rem; letter-spacing:.12em; }
+  #home-marketing .job-demo-info{ display:flex; align-items:center; gap:8px; margin-left:36px; padding:8px 12px; border-radius:10px; background:rgba(255,255,255,.03); font-size:.78rem; color:var(--tx-70); }
+  #home-marketing .job-demo-info svg{ flex:none; color:var(--red); }
+  /* Estilo próprio (não usa .btn-ghost) — achado real desta rodada:
+     .btn-ghost some no mobile (@media max-width:760px, regra pensada
+     pro "Entrar" do header), o que também escondia sem querer o CTA
+     desta demonstração. "Quero saber mais" precisa continuar visível
+     no mobile. */
+  #home-marketing .job-demo-panel .job-card-cta{ margin-left:36px; align-self:flex-start; padding:9px 18px; font-size:.76rem; background:transparent; color:var(--off); border:1px solid var(--line-strong); }
+
+  #home-marketing .job-demo-transition{ display:flex; align-items:center; gap:10px; padding:10px 0 10px 18px; position:relative; z-index:1; }
+  #home-marketing .job-demo-whatsapp-badge{ flex:none; width:28px; height:28px; border-radius:50%; background:var(--red); display:flex; align-items:center; justify-content:center; box-shadow:0 0 0 4px var(--bg); }
+  #home-marketing .job-demo-whatsapp-badge svg{ width:14px; height:14px; color:#fff; }
+  #home-marketing .job-demo-transition span{ font-size:.8rem; color:var(--tx-70); }
+
+  /* sempre com você (WhatsApp) — fundo vermelho sólido, olhos grandes
+     reaproveitados à direita */
+  #home-marketing .always{ background:var(--red); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  /* Lado esquerdo preto sobre vermelho — mesma combinação já usada na
+     seção "manda"/"Mais que automação" da Home anterior (ver
+     git show ad897c0:src/app/_home/home.css, .manda{color:var(--black)}):
+     texto branco sobre vermelho não é usado de propósito. */
+  #home-marketing .always .eyebrow,
+  #home-marketing .always h2,
+  #home-marketing .always p.lead{ color:var(--black); }
+  /* CTA sobre fundo vermelho: botão preto, texto claro, glow suave e
+     escuro só pra separar do fundo (nunca neon) — pedido explícito,
+     nunca a inversão off-white/preto usada em outros CTAs desta seção. */
+  #home-marketing .always .btn-primary{ background:var(--black); color:var(--off); box-shadow:0 10px 34px rgba(0,0,0,.32); }
+  #home-marketing .with-you{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:48px; align-items:center; }
+  #home-marketing .with-you-visual{ display:flex; flex-direction:column; align-items:center; gap:48px; }
+
+  /* ===== COMO FUNCIONA ===== */
+  /* Mesma largura útil de .two-col/.plans/.with-you/.faq .narrow (1180px
+     centralizado) — .steps é irmão de .two-col dentro de section.block,
+     então sem isso ele herdava só o padding:44px da section e estourava
+     lateralmente o alinhamento do título/texto acima em telas largas. */
+  #home-marketing .steps{ max-width:1180px; margin:44px auto 0; display:grid; grid-template-columns:repeat(4,1fr); gap:0; }
+  #home-marketing .step{ padding:0 26px; position:relative; }
+  #home-marketing .step:not(:first-child){ border-left:1px solid var(--line); }
+  /* .step tinha padding:0 26px nos 4 lados, inclusive o 1º (esquerda) e
+     o último (direita) — isso inseria o conteúdo do passo 01/04 pra
+     dentro do eixo real do container (mesmo max-width/margin de
+     .steps), descolando do alinhamento de "COMO FUNCIONA"/título acima.
+     Zerar só a borda externa: o padding continua existindo pra dar
+     respiro em volta do border-left (divisória entre cards), só não
+     empurra mais o conteúdo das pontas pra dentro do container. */
+  #home-marketing .step:first-child{ padding-left:0; }
+  #home-marketing .step:last-child{ padding-right:0; }
+  #home-marketing .step .num{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--tx-50); font-weight:600; display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  #home-marketing .step .ring{ width:26px; height:26px; border:1px solid var(--line-strong); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--red); flex:none; }
+  #home-marketing .step h4{ font-family:'Inter',sans-serif; font-size:1rem; font-weight:700; color:var(--off); margin:0 0 8px; }
+  #home-marketing .step p{ font-size:.84rem; color:var(--tx-70); line-height:1.55; margin:0; }
+  #home-marketing .human-layer{ margin-top:32px; padding-top:24px; border-top:1px solid var(--line); max-width:640px; }
+  #home-marketing .human-layer-title{ font-family:'Inter',sans-serif; font-weight:700; font-size:.92rem; color:var(--off); margin-bottom:8px; }
+  #home-marketing .human-layer p{ font-size:.82rem; color:var(--tx-50); line-height:1.55; margin-top:4px; }
+
+  /* ===== PLANOS ===== */
+  #home-marketing .plans-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:24px; flex-wrap:wrap; max-width:1180px; margin:0 auto; }
+  /* align-items:start (era o stretch padrão do grid): cada card precisa
+     ter a própria altura, nunca esticar pra acompanhar o outro quando
+     só um dos dois está expandido (Ver mais). */
+  #home-marketing .plans{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:46px; align-items:start; }
+  #home-marketing .plan-card{ background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:32px; display:flex; flex-direction:column; gap:16px; }
+  #home-marketing .plan-card.pro{ background:linear-gradient(165deg,#1c0d0e,#100708); border:1px solid rgba(226,41,28,.4); box-shadow:0 0 40px rgba(226,41,28,.12); }
+  #home-marketing .plan-name{ font-size:.8rem; font-weight:600; color:var(--tx-50); text-transform:uppercase; letter-spacing:.06em; font-family:'IBM Plex Mono',monospace; }
+  #home-marketing .plan-card.pro .plan-name{ color:var(--red); }
+  #home-marketing .plan-price{ font-family:'Inter',sans-serif; font-size:2.1rem; font-weight:800; letter-spacing:-.02em; color:var(--off); }
+  #home-marketing .plan-price small{ font-size:.85rem; font-weight:500; color:var(--tx-50); }
+  #home-marketing .plan-note{ font-size:.82rem; color:var(--tx-50); }
+  #home-marketing .plan-features{ list-style:none; display:flex; flex-direction:column; gap:7px; font-size:.85rem; color:var(--tx-70); }
+  #home-marketing .plan-features li{ padding-left:16px; position:relative; }
+  #home-marketing .plan-features li::before{ content:"•"; position:absolute; left:0; color:var(--red); }
+  #home-marketing .plan-cta{ margin-top:auto; text-align:center; }
+
+  /* "Ver mais"/"Ver menos" — expande o próprio card, sem navegar nem
+     abrir modal. grid-template-rows 0fr->1fr (em vez de max-height com
+     valor chutado) porque anima com precisão pro tamanho real do
+     conteúdo, em qualquer altura de lista/qualquer breakpoint, sem
+     JS medindo pixel nenhum. */
+  #home-marketing .plan-more-toggle{
+    background:none; border:none; padding:2px 0; margin-top:-4px; align-self:flex-start;
+    color:var(--tx-50); font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:600;
+    letter-spacing:.06em; text-transform:uppercase; cursor:pointer;
+  }
+  #home-marketing .plan-more-toggle:hover{ color:var(--off); }
+  #home-marketing .plan-more-toggle .more-label{ display:none; }
+  #home-marketing .plan-card.expanded .plan-more-toggle .less-label{ display:none; }
+  #home-marketing .plan-card.expanded .plan-more-toggle .more-label{ display:inline; }
+  #home-marketing .plan-more{ display:grid; grid-template-rows:0fr; transition:grid-template-rows 280ms ease; }
+  #home-marketing .plan-more > ul{ overflow:hidden; min-height:0; }
+  #home-marketing .plan-card.expanded .plan-more{ grid-template-rows:1fr; }
+
+  /* ===== FAQ (mantido da Home anterior — sem seção equivalente no novo
+     mockup; overlay do Menu referencia "FAQ" como destino, então a
+     seção precisa continuar existindo. Ver relatório.) ===== */
+  /* Mesma largura útil das seções principais da Home (.two-col, .plans,
+     .with-you já usam 1180px) — não um número novo/arbitrário. A 760px
+     original deixava sobra lateral enorme comparado ao resto da página. */
+  #home-marketing .faq .narrow{ max-width:1180px; margin:0 auto; }
+  #home-marketing .faq-list details{ border-bottom:1px solid var(--line); padding:16px 0; }
+  #home-marketing .faq-list details:first-child{ border-top:1px solid var(--line); }
+  #home-marketing .faq-list summary{ list-style:none; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:16px; font-family:'Inter',sans-serif; font-weight:700; font-size:.94rem; color:var(--off); }
   #home-marketing .faq-list summary::-webkit-details-marker{ display:none; }
-  #home-marketing .faq-list .plus{ font-size:1.1rem; color:var(--red); }
-  #home-marketing .faq-list p{ font-size:.86rem; color:#5a5648; margin-top:10px; line-height:1.55; }
+  #home-marketing .faq-list .plus{ font-size:1.1rem; color:var(--red); flex:none; }
+  #home-marketing .faq-list p{ font-size:.86rem; color:var(--tx-50); margin-top:10px; line-height:1.55; }
 
-  /* cta final */
-  #home-marketing .final-cta{ background:var(--red); color:var(--black); text-align:center; padding:56px 28px; }
-  #home-marketing .final-cta h2{ color:var(--black); margin:0 auto 22px; max-width:620px; font-size:clamp(1.7rem,3.6vw,2.9rem); }
-  /* "Doopla" no meio da frase: os dois "o" viram os olhos da marca, mesma
-     fonte Anton ao redor — só o alinhamento vertical precisa de ajuste
-     fino, já que aqui o eye-slot fica dentro do fluxo normal do texto
-     (não centralizado por flex como no nav/rodapé). */
-  #home-marketing .final-cta h2 .eye-slot{ vertical-align:middle; position:relative; top:-.08em; }
-  #home-marketing .final-cta h2 .nowrap{ white-space:nowrap; }
-  #home-marketing .final-cta .cta-sub{ font-size:1rem; margin:0 0 26px; opacity:.85; }
+  /* ===== BOTÕES ===== */
+  #home-marketing .btn{ padding:13px 24px; border-radius:999px; font-size:.82rem; font-weight:600; letter-spacing:.01em; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; border:none; }
+  #home-marketing .btn-primary{ background:var(--red); color:var(--off); box-shadow:0 8px 24px rgba(226,41,28,.35); }
+  #home-marketing .btn-ghost{ background:transparent; color:var(--off); border:1px solid var(--line-strong); }
 
-  #home-marketing footer{ background:var(--black); color:rgba(251,249,242,.6); padding:44px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
-  #home-marketing .foot-logo{ font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.3rem; color:var(--off); display:flex; align-items:center; }
+  /* ===== CTA FINAL ===== */
+  /* padding inferior reduzido (era 100px): sobrava vazio excessivo antes
+     do footer (footer já tem 48px de padding-top próprio, então 48+48
+     dá uma transição compacta sem colar) — achado real, não estético. */
+  #home-marketing .cta-final-wrap{ padding:88px 44px 48px; }
+  /* max-width igual a .two-col/.plans/.with-you/.faq .narrow — mesmo
+     grid principal da Home, não um número novo. Estava em 1080px,
+     sobrando margem lateral visível comparado às outras seções. */
+  /* Padding vertical reduzido (era 44px) — card ficava alto demais;
+     horizontal e max-width intactos, então largura/alinhamento lateral
+     não mudam. display:grid + align-items:center já recentraliza
+     mascote/texto/CTA sozinho dentro da altura menor. */
+  #home-marketing .cta-final{
+    max-width:1180px; margin:0 auto; border-radius:22px; background:linear-gradient(120deg,var(--panel-solid),var(--bg));
+    border:1px solid var(--line); display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:40px;
+    padding:28px 48px; position:relative; overflow:hidden;
+  }
+  #home-marketing .cta-final .glow{ position:absolute; left:-40px; bottom:-60px; width:260px; height:220px; background:radial-gradient(closest-side, var(--red-glow), transparent 72%); filter:blur(8px); z-index:0; }
+  #home-marketing .mascot-cta{ width:110px; height:92px; position:relative; z-index:2; }
+  #home-marketing .mascot-cta .mascot-eye{ width:22px; height:22px; }
+  #home-marketing .mascot-cta .mascot-pupil{ width:10px; height:10px; }
+  #home-marketing .mascot-cta .mascot-smile{ width:20px; height:11px; top:64%; left:50%; transform:translateX(-50%); }
+  #home-marketing .mascot-cta::before,
+  #home-marketing .mascot-cta::after{ width:26px; height:16px; }
+  #home-marketing .mascot-cta::before{ left:-6px; }
+  #home-marketing .mascot-cta::after{ right:-6px; }
+  #home-marketing .mascot-cta .eyes-row{ display:flex; gap:12px; position:absolute; top:32%; left:50%; transform:translateX(-50%); }
+  #home-marketing .cta-mid{ position:relative; z-index:2; }
+  #home-marketing .cta-mid .eyebrow{ margin-bottom:10px; }
+  #home-marketing .cta-mid h3{ font-family:'Inter',sans-serif; font-size:clamp(1.5rem,2.4vw,2rem); font-weight:800; color:var(--off); margin:0 0 10px; letter-spacing:-.01em; }
+  #home-marketing .cta-mid p{ margin:0; color:var(--tx-70); font-size:.9rem; max-width:380px; }
+  #home-marketing .cta-right{ display:flex; flex-direction:column; align-items:flex-end; gap:10px; position:relative; z-index:2; }
+  #home-marketing .cta-right small{ color:var(--tx-30); font-size:.75rem; }
+
+  /* ===== FOOTER ===== */
+  #home-marketing footer{ padding:48px 44px 36px; }
+  #home-marketing .foot-top{ max-width:1180px; margin:0 auto; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px; margin-bottom:30px; }
+  #home-marketing .foot-tagline{ font-size:.82rem; color:var(--tx-50); margin-top:8px; }
   #home-marketing .foot-links{ display:flex; gap:26px; flex-wrap:wrap; }
-  #home-marketing .foot-links a{ color:inherit; text-decoration:none; font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; }
-  #home-marketing .foot-legal{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; opacity:.55; }
+  #home-marketing .foot-links a{ font-size:.82rem; color:var(--tx-70); }
+  #home-marketing .foot-links a:hover{ color:var(--off); }
+  #home-marketing .foot-bottom{ max-width:1180px; margin:0 auto; display:flex; justify-content:space-between; align-items:center; padding-top:24px; border-top:1px solid var(--line); flex-wrap:wrap; gap:12px; }
+  #home-marketing .foot-bottom span{ font-size:.76rem; color:var(--tx-30); }
 
-  @media (max-width:820px){
-    #home-marketing .pricing-grid{ grid-template-columns:1fr; }
-    #home-marketing footer{ flex-direction:column; text-align:center; }
-    #home-marketing .manda{ grid-template-columns:1fr; min-height:0; padding:72px 24px; gap:56px; }
-    #home-marketing .manda-eyes{ order:-1; }
-    #home-marketing .eyes-eye{ width:110px; height:110px; }
-    #home-marketing .eyes-pupil{ width:36px; height:36px; margin:-18px 0 0 -18px; }
+  /* ===== RESPONSIVE ===== */
+  @media (max-width:1080px){
+    #home-marketing .hero-grid{ grid-template-columns:1fr; }
+    #home-marketing .two-col{ grid-template-columns:1fr; gap:32px; }
+    #home-marketing .with-you{ grid-template-columns:1fr; }
+    #home-marketing .with-you-visual{ order:2; margin-top:12px; }
+    #home-marketing .with-you-copy{ order:1; }
+    #home-marketing .steps{ grid-template-columns:repeat(2,1fr); row-gap:34px; }
+    #home-marketing .step:nth-child(3){ border-left:none; }
+    /* 2 colunas: cada linha vira seu próprio par esquerda/direita —
+       item 2 (fim da linha 1) e item 3 (início da linha 2) também
+       precisam ficar rente às bordas do container, não só 1 e 4. */
+    #home-marketing .step:nth-child(2){ padding-right:0; }
+    #home-marketing .step:nth-child(3){ padding-left:0; }
+    #home-marketing .cta-final{ grid-template-columns:1fr; text-align:left; gap:24px; padding:36px; }
+    #home-marketing .cta-right{ align-items:flex-start; }
+  }
+  @media (max-width:760px){
+    #home-marketing header .wrap{ height:64px; }
+    #home-marketing .btn-ghost{ display:none; }
+    #home-marketing .btn{ padding:11px 18px; font-size:.78rem; }
+    #home-marketing .hero{ padding:32px 22px 44px; }
+    /* Bug de largura mobile (achado da fundadora): .hero-grid também
+       carrega a classe .wrap (padding:0 32px, regra base), somado ao
+       padding:22px que .hero já aplica na seção — dupla margem lateral
+       (22+32=54px), bem mais estreito que .two-col (só os 22px de
+       section.block). Cancela a contribuição do .wrap aqui: o padding
+       de .hero já basta, mesmo critério usado por .two-col/section.block. */
+    #home-marketing .hero-grid{ padding:0; max-width:none; width:100%; }
+    #home-marketing .hero-copy{ order:1; }
+    /* raiz do bug de colisão telefone/mascote no mobile: .hero-visual
+       continuava display:flex em ROW (herdado da regra base) sem
+       flex-wrap, então .phone (até 280px) + .mascot-hero (150px) +
+       .hero-side tentavam caber lado a lado e se sobrepunham. Única
+       mudança real da correção: empilhar em coluna (a ordem no DOM já
+       é telefone -> mascote -> legenda, então o empilhamento fica
+       nessa ordem sem precisar tocar em mais nada). */
+    /* margin-top 32px -> 18px (achado da fundadora: excesso de espaço
+       vazio antes do mockup) — único valor tocado aqui, resto da regra
+       (empilhamento telefone/mascote/legenda) inalterado. */
+    /* margin-top 40px: respiro entre o fim dos textos dos benefícios e
+       o mockup (pedido 36-48px, achado da fundadora — ficou espremido
+       com 18px). */
+    #home-marketing .hero-visual{ order:2; margin-top:40px; min-height:0; flex-direction:column; justify-content:flex-start; }
+    #home-marketing .hero-copy p.lead{ max-width:100%; }
+    /* Benefícios em faixa horizontal de 3 colunas (achado da fundadora:
+       empilhados só do lado esquerdo desperdiçava largura). Ícone em
+       cima + texto embaixo, centralizado — mesmo padrão já usado em
+       .prof-item. Ícones/cores inalterados, só o arranjo. margin-top
+       36px: respiro entre "Começar agora" e os benefícios (pedido
+       32-40px, ficou espremido com 18px). */
+    #home-marketing .hero-badges{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:36px; }
+    #home-marketing .hero-badge{ flex-direction:column; text-align:center; gap:6px; }
+    #home-marketing .hero-badge span{ max-width:none; font-size:.68rem; line-height:1.25; }
+    #home-marketing .phone{ width:100%; max-width:280px; height:500px; margin:0 auto; }
+    #home-marketing .hero-side{ position:static; margin-top:20px; flex-direction:row; align-items:center; gap:10px; justify-content:flex-start; max-width:none; }
+    /* position:relative (não static): o mascote precisa continuar sendo
+       o bloco de posicionamento dos próprios olhos/sorriso/patas
+       (.eyes-row/.mascot-smile/::before/::after são position:absolute
+       esperando o mascote como referência, igual no desktop). Com
+       static essa referência escapava pro .hero-visual (o único
+       ancestral com position:relative), jogando os olhos longe do
+       corpo — achado durante este QA, não só a colisão com o telefone.
+       relative sem top/left/right/bottom ocupa exatamente o mesmo
+       lugar no fluxo que static ocupava, então não muda o empilhamento
+       da correção acima, só devolve a referência certa pros filhos. */
+    #home-marketing .mascot-hero{ position:relative; margin:16px auto 0; }
+    #home-marketing .hero-glow{ inset:-20px; }
+    /* Mesmo bug de dupla margem do .hero-grid acima: .strip não tinha
+       override de padding mobile (ficava com os 44px do desktop) e
+       .strip .wrap ainda carregava os 32px de .wrap — 44+32=76px de
+       cada lado. Section com 22px (mesmo valor de section.block) +
+       .wrap zerado = mesma largura de .two-col. */
+    /* padding-bottom 32px (5ª rodada, 07/10/2026, achado da fundadora:
+       a linha divisória — border-bottom deste .strip — estava encostada
+       na borda inferior do card, sem respiro visual nenhum). Antes era
+       0 (4ª rodada mirava o total card->h2 da PRÓXIMA seção, não o gap
+       card->linha isoladamente). Não mexe em section.block (padding-top
+       próprio da próxima seção, compartilhado, intocado) nem em nada
+       dentro do .prof-card — só o espaço entre o fim do card e a borda
+       deste .strip. */
+    #home-marketing .strip{ padding:30px 22px 32px; }
+    /* Override pontual só desta transição (não mexe na regra
+       compartilhada .block h2, que outras seções continuam usando
+       normalmente): o h2 de "Você cuida do seu trabalho" tem
+       margin-top:16px próprio, que somado ao padding-top:54px de
+       section.block dava 70px fixos antes mesmo de .strip entrar na
+       conta — impossível chegar nos ~56-64px pedidos só ajustando o
+       padding do .strip. 4(strip)+1(borda)+54(section)+0(h2) = 59px. */
+    #home-marketing #o-que-a-doopla-faz h2{ margin-top:0; }
+    /* gap:0 (3ª rodada) — cada espaçamento agora é um margin explícito
+       nos filhos (.prof-list margin-top:32px, .prof-more-note margin-top),
+       não um gap compartilhado entre rótulo/grid/nota — valores pedidos
+       eram diferentes pra cada salto, gap único não dava conta. Respiro
+       entre rótulo e título dentro de .strip-label-col (8px->12px,
+       07/10/2026 1ª rodada) continua. */
+    #home-marketing .strip .wrap{ flex-direction:column; align-items:stretch; gap:0; padding:0; max-width:none; width:100%; }
+    #home-marketing .strip-label-col{ gap:12px; }
+    /* Profissões compactas (achado da fundadora, 06/10/2026, substitui
+       o grid 2-col do commit anterior): mostra só DJs/Fotógrafos/Beauty
+       numa linha de 3 colunas iguais — compacto por desenho, não uma
+       lista longa. As outras 6 (inclusive "e muito mais", de volta a
+       ser um .prof-item normal) ficam dentro de .prof-more/.prof-more-inner,
+       escondidas até "Ver mais". .prof-list vira grid só aqui —
+       desktop continua flex (regra base, .prof-more/.prof-more-inner
+       em display:contents lá).
+
+       Correção estrutural 06/10/2026 (bug real em produção, achado da
+       fundadora em iPhone/Safari — nunca reproduzido no Chromium usado
+       pra testar): dois problemas, não um patch em cima do outro.
+
+       1) minmax(0,1fr) em vez de 1fr puro — sem isso, "1fr" equivale a
+       minmax(auto,1fr): a coluna nunca encolhe abaixo do min-content do
+       conteúdo. "Serviços gerais"/"Freelancers" (texto mais longo)
+       forçavam a coluna a crescer além do espaço disponível e escapar
+       do container. MESMO bug já documentado neste arquivo pra
+       .hero-grid/.two-col/.with-you (ver `> *{ min-width:0 }` acima) —
+       só não tinha sido aplicado aqui ainda.
+
+       2) Abandonada a animação grid-template-rows 0fr->1fr usada em
+       .plan-more: lá funciona porque o filho é uma <ul> simples. Aqui
+       o filho (.prof-more-inner) era OUTRO grid — grid dentro de linha
+       0fr de outro grid cria uma dependência circular de tamanho (a
+       altura "auto" da linha externa depende do conteúdo, que depende
+       de "0fr" da linha interna) que motores diferentes resolvem de
+       formas diferentes. Troca por display:none/grid simples: sem
+       fração, sem ambiguidade, altura sempre calculada pelo conteúdo
+       real — perde a animação suave, ganha previsibilidade entre
+       engines (não há WebKit disponível neste ambiente pra validar a
+       versão animada, então a estrutura mais simples é a única
+       verificável aqui). */
+    /* 07/10/2026, 4ª rodada (achado da fundadora) — as 6 categorias
+       (DJs/Fotógrafos/Beauty/Músicos/Professores/Freelancers) agora
+       ficam dentro de um card único (.prof-card), fundo/borda/radius
+       no mesmo padrão já usado em .plan-card (background:var(--panel),
+       border:1px solid var(--line), border-radius:22px) — identidade
+       visual já estabelecida no arquivo, não um estilo novo. Grid
+       2 colunas x 3 linhas (antes era 3x2 solto, sem card). Divisor +
+       "e muito mais" centralizado substituem a "e muitos outros
+       profissionais independentes." da rodada anterior (removida).
+       Influencers/Serviços gerais/"e muito mais" (dentro de .prof-more/
+       .prof-more-inner) continuam fora do mobile — display:none,
+       inalterado, só continuam existindo no desktop. */
+    #home-marketing .prof-list{ display:block; margin-top:32px; }
+    #home-marketing .prof-card{
+      display:block; background:var(--panel); border:1px solid var(--line);
+      border-radius:22px; padding:20px 16px;
+    }
+    #home-marketing .prof-card-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 14px; }
+    #home-marketing .prof-item{ display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; min-width:0; }
+    #home-marketing .prof-item svg{ width:18px; height:18px; }
+    #home-marketing .prof-item span{ font-size:.68rem; line-height:1.2; }
+    #home-marketing .prof-card-divider{ display:block; height:1px; background:var(--line); margin:18px 0 14px; }
+    #home-marketing .prof-card-more{ display:block; text-align:center; font-size:.72rem; color:var(--tx-50); margin:0; }
+    #home-marketing .prof-more,
+    #home-marketing .prof-more-inner{ display:none; }
+    #home-marketing .prof-more-toggle{ display:none; }
+    #home-marketing section.block{ padding:54px 22px; }
+    #home-marketing .cta-final-wrap{ padding:54px 22px 32px; }
+    #home-marketing .with-you-visual{ padding-top:8px; }
+    #home-marketing .steps{ grid-template-columns:1fr 1fr; gap:26px 20px; }
+    #home-marketing .step{ padding:0; }
+    #home-marketing .step:nth-child(even){ border-left:1px solid var(--line); padding-left:20px; }
+    #home-marketing .step:nth-child(odd){ border-left:none; }
+    #home-marketing .plans{ grid-template-columns:1fr; }
+    #home-marketing .plans-head{ flex-direction:column; align-items:flex-start; gap:10px; }
+    #home-marketing .cta-final{ padding:28px 22px; }
+    #home-marketing .mascot-cta{ display:none; }
+    #home-marketing .foot-top{ flex-direction:column; }
+    #home-marketing .foot-bottom{ flex-direction:column; align-items:flex-start; }
+  }
+  @media (max-width:420px){
+    #home-marketing .steps{ grid-template-columns:1fr; }
+    #home-marketing .step:nth-child(even){ border-left:none; padding-left:0; }
   }
 
-  /* ===== Fallback sem GSAP =====
-     Todo o conteúdo do hero (wordmark, nav, kicker, hero-copy) começa com
-     opacity:0 no CSS e só fica visível através da timeline do GSAP. Se o
-     script de /vendor/gsap falhar em carregar por qualquer motivo de rede
-     do lado do usuário, essa timeline nunca roda e o hero fica invisível
-     pra sempre. home.js adiciona a classe abaixo em #home-marketing se o
-     GSAP não carregar dentro de um tempo razoável, forçando esse conteúdo
-     visível numa versão estática (sem a entrada cinematográfica, mas
-     nunca em branco). */
-  #home-marketing.gsap-fallback .logo-mark{ opacity:0; }
-  #home-marketing.gsap-fallback .edge-label,
-  #home-marketing.gsap-fallback .seal,
-  #home-marketing.gsap-fallback .index-count,
-  #home-marketing.gsap-fallback .kicker,
-  #home-marketing.gsap-fallback .wordmark{ opacity:1; }
-  #home-marketing.gsap-fallback .hero-copy{ opacity:1; transform:translateY(0); }
-  #home-marketing.gsap-fallback .scroll-hint{ display:none; }
-  #home-marketing.gsap-fallback .nav-wrap{ opacity:1; }
-  #home-marketing.gsap-fallback nav{ transform:translateY(0); pointer-events:auto; }
+  /* Reduced motion: pupilas do mascote/logo ficam paradas, piscada
+     desativada por completo (home.js checa isso antes de registrar
+     qualquer listener/timer). */
+  @media (prefers-reduced-motion: reduce){
+    #home-marketing .mascot-pupil{ transition:none !important; }
+    #home-marketing .mascot-eye{ transition:none !important; }
+  }
+
+  /* ===== MENU OVERLAY (tela cheia, exclusivo da Home — nunca o mesmo
+     componente/CSS das páginas institucionais compartilhadas, que
+     seguem fora de escopo desta rodada) ===== */
+  #home-menu-overlay{
+    position:fixed; inset:0; z-index:100; background:var(--bg, #0c0b0b);
+    display:flex; flex-direction:column; opacity:0; pointer-events:none; transition:opacity .22s ease;
+    font-family:'Inter',sans-serif;
+  }
+  #home-menu-overlay.open{ opacity:1; pointer-events:auto; }
+  #home-menu-overlay .overlay-top{ display:flex; align-items:center; justify-content:space-between; padding:20px 32px; }
+  #home-menu-overlay .nav-logo{
+    font-family:'Familjen Grotesk',sans-serif; font-weight:600; font-size:1.3rem; color:var(--off, #fbf9f2);
+    display:flex; align-items:center; text-decoration:none;
+  }
+  #home-menu-overlay .eye-slot{ width:.62em; height:.62em; border-radius:50%; background:var(--off, #fbf9f2); display:inline-flex; align-items:center; justify-content:center; margin:0 .02em; flex:none; }
+  #home-menu-overlay .eye-slot .mascot-pupil{ width:34%; height:34%; border-radius:50%; background:var(--black, #121110); }
+  #home-menu-overlay .btn{ padding:13px 24px; border-radius:999px; font-size:.82rem; font-weight:600; display:inline-flex; align-items:center; gap:8px; text-decoration:none; border:none; }
+  #home-menu-overlay .btn-primary{ background:var(--red, #e2291c); color:var(--off, #fbf9f2); box-shadow:0 8px 24px rgba(226,41,28,.35); }
+  #home-menu-overlay .close-btn{ background:transparent; border:none; color:var(--off, #fbf9f2); font-size:1.6rem; line-height:1; padding:6px; cursor:pointer; }
+  #home-menu-overlay .overlay-items{ flex:1; display:flex; flex-direction:column; justify-content:center; gap:6px; padding:0 32px; }
+  #home-menu-overlay .overlay-items a{
+    color:var(--off, #fbf9f2); text-decoration:none; font-size:clamp(1.6rem,5vw,2.4rem); font-weight:800; letter-spacing:-.01em;
+    padding:10px 0; border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  #home-menu-overlay .overlay-bottom{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:24px 32px 32px; flex-wrap:wrap; }
+  #home-menu-overlay .overlay-tagline{ font-family:'IBM Plex Mono',monospace; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:rgba(251,249,242,.5); }

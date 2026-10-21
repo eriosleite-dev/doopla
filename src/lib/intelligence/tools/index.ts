@@ -6,8 +6,14 @@ import './get-professional-profile';
 import './get-opportunity';
 import './get-booking';
 import './get-external-participant';
+import './get-professional-business-context';
+import './get-professional-commercial-history';
+import './get-professional-learned-preferences';
 
 export { getProfessionalProfileTool } from './get-professional-profile';
 export { getOpportunityTool } from './get-opportunity';
 export { getBookingTool } from './get-booking';
 export { getExternalParticipantTool } from './get-external-participant';
+export { getProfessionalBusinessContextTool } from './get-professional-business-context';
+export { getProfessionalCommercialHistoryTool } from './get-professional-commercial-history';
+export { getProfessionalLearnedPreferencesTool } from './get-professional-learned-preferences';

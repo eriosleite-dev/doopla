@@ -1,0 +1,21 @@
+-- Correção real de produção (14/10/2026) — achado ao validar os crons
+-- logo após o deploy da Etapa 2.1: list_pending_delegated_contacts_with_expired_literal_content_lease
+-- tem 66 caracteres, acima do limite de 63 (NAMEDATALEN-1) do
+-- Postgres. A 0109 criou essa function com esse nome, mas o Postgres
+-- truncou silenciosamente pra list_pending_delegated_contacts_with_expired_literal_content_le
+-- (63 chars) — nenhum erro na hora de aplicar, só um nome diferente do
+-- que o código TypeScript chama. Resultado real observado: o sweep do
+-- cron drain-professional-self-messages recebia 404 (PGRST202, função
+-- não encontrada) nessa chamada especificamente, a cada tick, desde o
+-- deploy — sempre capturado pelo try/catch (nunca derrubou o cron
+-- principal), mas o sweep de recuperação de leases do texto literal
+-- nunca rodava de fato.
+--
+-- Correção: renomeia a function já existente (preserva os grants,
+-- nunca precisa recriar) pro mesmo padrão de nomenclatura já usado
+-- pela function irmã (list_pending_delegated_contacts_with_expired_execution_lease,
+-- 60 chars) — list_..._with_expired_literal_lease (58 chars, nunca
+-- mais perto do limite). O código TypeScript (pending-delegated-contacts.ts)
+-- muda junto, no mesmo deploy desta correção.
+alter function public.list_pending_delegated_contacts_with_expired_literal_content_le(integer)
+  rename to list_pending_delegated_contacts_with_expired_literal_lease;

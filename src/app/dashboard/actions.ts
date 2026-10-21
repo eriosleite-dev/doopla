@@ -2,9 +2,11 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createClient } from '@/lib/supabase/server';
-import { isArtistBlockedForBooker } from '@/lib/subscription';
+import { ensurePublicId } from '@/lib/public-id';
+import { hasDooplaPro, isArtistBlockedForBooker } from '@/lib/subscription';
 import type {
   AgendaEntryType,
   Booking,
@@ -15,8 +17,50 @@ import type {
   Subscription,
 } from '@/lib/supabase/types';
 import { buildContractContent, CONTRACT_TEMPLATE_VERSION } from './contratos/template';
+import { canMarkBookingPaid } from './data';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySupabaseClient = SupabaseClient<any>;
 
 const REVIEW_EDIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Gate central de "Minha equipe é Pro" (07/09/2026) — chamado nos dois
+// pontos reais de criação de vínculo artista->booker (inviteBookerAction
+// pra booker sem conta, requestRepresentationAction pra booker já
+// cadastrado). Um helper só, reutilizado nos dois lugares, de propósito:
+// evita dois checks divergentes que pudessem sair de sincronia depois.
+// Consulta a assinatura de verdade (nunca confia em estado do client) e
+// delega o critério pra hasDooplaPro() (lib/subscription.ts) — o mesmo
+// gate que o resto do produto (Web e Mobile) usa ou vai usar, nunca uma
+// regra própria daqui.
+async function artistHasDooplaPro(supabase: AnySupabaseClient, profileId: string): Promise<boolean> {
+  const { data: subscription } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('profile_id', profileId)
+    .maybeSingle<Subscription>();
+  return hasDooplaPro(subscription);
+}
+
+const MINHA_EQUIPE_PRO_ERROR =
+  'Minha equipe é um recurso do Doopla Pro. Faça upgrade pra conectar um Booker.';
+
+// Limite de 5 novos bookings/mês no Doopla Básico (07/09/2026) — a
+// decisão de entitlement/contagem é 100% da trigger
+// artist_booking_monthly_limit_check (migration 0073), a autoridade de
+// verdade sobre os dois pontos reais de INSERT em bookings
+// (proposeBookingAction e selectBookerForOpportunityAction abaixo).
+// Nenhum dos dois recalcula a contagem em TS — isso duplicaria a
+// decisão e poderia sair de sincronia com o banco. Aqui só traduzimos o
+// erro `artist_booking_monthly_limit_reached` (raised pela trigger, ver
+// migration 0073) numa mensagem legível, o mesmo padrão já usado pra
+// `opportunity_already_filled` (select_booker_for_opportunity).
+const ARTIST_BOOKING_LIMIT_ERROR =
+  'Limite de 5 novos bookings esse mês no plano Básico. Faça upgrade pro Doopla Pro pra bookings ilimitados.';
+
+function isArtistBookingLimitError(message: string | undefined): boolean {
+  return Boolean(message?.includes('artist_booking_monthly_limit_reached'));
+}
 
 // Vínculo artista↔booker: fonte única de verdade é a tabela
 // `representations`. Todo caminho que cria/altera essa relação (aceite de
@@ -54,8 +98,14 @@ export async function confirmInviteAction(formData: FormData) {
   if (
     !invite ||
     invite.invitee_profile_id !== user.id ||
-    invite.status !== 'pendente'
+    invite.status !== 'pendente' ||
+    new Date(invite.expires_at) <= new Date()
   ) {
+    // Checagem de expires_at direto aqui (não só via expire_stale_invites)
+    // porque o sweep é sob demanda — sem isso, um convite vencido no
+    // exato intervalo entre vencer e o próximo sweep rodar ainda
+    // aceitaria normalmente. status='pendente' sozinho não é confiável
+    // pra essa garantia.
     return;
   }
 
@@ -264,7 +314,10 @@ export async function proposeBookingAction(
     .select('id')
     .single<{ id: string }>();
 
-  if (error || !booking) return { error: 'Não foi possível criar a proposta.' };
+  if (error || !booking) {
+    if (isArtistBookingLimitError(error?.message)) return { error: ARTIST_BOOKING_LIMIT_ERROR };
+    return { error: 'Não foi possível criar a proposta.' };
+  }
 
   await supabase.from('booking_events').insert({
     booking_id: booking.id,
@@ -277,7 +330,12 @@ export async function proposeBookingAction(
   redirect(`/dashboard/bookings/${booking.id}`);
 }
 
-function proposerProfileId(booking: Booking): string {
+// Direct Booking (booker_profile_id null) sempre nasce com proposed_by
+// 'artista' (convert_opportunity_to_booking, migration 0087), então
+// este branch nunca resolve pra null na prática — mas o tipo precisa
+// refletir a coluna real. Comparações (`user.id === proposerProfileId(...)`)
+// continuam corretas: nunca combinam com null.
+function proposerProfileId(booking: Booking): string | null {
   return booking.proposed_by === 'artista'
     ? booking.artist_profile_id
     : booking.booker_profile_id;
@@ -331,6 +389,19 @@ export async function respondBookingAction(formData: FormData) {
     actor_profile_id: user.id,
     event_type: newStatus,
   });
+
+  // Beta Instrumentation — product.booking_closed sempre; value.booking_closed
+  // só quando há correlação real com uma conversa/run da Doopla (a
+  // checagem roda dentro da RPC, com privilégio elevado, porque quem
+  // aceita pode ser o booker, sem RLS de leitura sobre as tabelas do
+  // artista). Nunca lançável — falha aqui é telemetria.
+  if (newStatus === 'aceita') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: eventError } = await (supabase as SupabaseClient<any>).rpc('record_booking_closed_event', { p_booking_id: bookingId });
+    if (eventError) {
+      console.error(`record_booking_closed_event falhou (telemetria — ação principal não é afetada): ${eventError.message}`);
+    }
+  }
 
   revalidatePath(`/dashboard/bookings/${bookingId}`);
   revalidatePath('/dashboard');
@@ -423,7 +494,6 @@ export async function markPaidAction(formData: FormData) {
   const ctx = await requireUserAndProfile();
   if (!ctx) return;
   const { supabase, user, profile } = ctx;
-  if (profile.role !== 'booker') return;
 
   const { data: booking } = await supabase
     .from('bookings')
@@ -431,11 +501,11 @@ export async function markPaidAction(formData: FormData) {
     .eq('id', bookingId)
     .single<Booking>();
   if (!booking || booking.status !== 'aguardando_pagamento') return;
-  if (user.id !== booking.booker_profile_id) return;
   // Trabalhos com NF fecham pelo próprio fluxo de faturamento (comissão
   // paga direto pelo artista) — a Doopla nunca processou esse pagamento
   // pra poder confirmá-lo aqui.
   if (booking.requires_invoice === 'sim') return;
+  if (!canMarkBookingPaid(booking, { role: profile.role, userId: user.id })) return;
 
   await supabase.from('bookings').update({ status: 'concluida' }).eq('id', bookingId);
   await supabase.from('booking_events').insert({
@@ -1006,7 +1076,10 @@ export async function selectBookerForOpportunityAction(
     })
     .select('id')
     .single<{ id: string }>();
-  if (bookingError || !booking) return { error: 'Booker escolhido, mas não foi possível criar o booking.' };
+  if (bookingError || !booking) {
+    if (isArtistBookingLimitError(bookingError?.message)) return { error: ARTIST_BOOKING_LIMIT_ERROR };
+    return { error: 'Booker escolhido, mas não foi possível criar o booking.' };
+  }
 
   await supabase.from('booking_events').insert({
     booking_id: booking.id,
@@ -1104,6 +1177,46 @@ export async function addAgendaEntryAction(
   return {};
 }
 
+// Editar uma marcação existente (30/09/2026, achado real de QA: a
+// fundadora marcou uma viagem de vários dias e quis encurtar o período
+// depois — antes só dava excluir tudo e recriar). Mesma validação de
+// addAgendaEntryAction; muda `entry_type`/`start_date`/`end_date`/`note`
+// por id, nunca `artist_profile_id`/`created_by_profile_id` (dono do
+// registro é imutável por esta action — RLS, migration 0094, também
+// impede na camada de banco, defesa em profundidade).
+export async function updateAgendaEntryAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const id = String(formData.get('id') ?? '').trim();
+  const entryType = String(formData.get('entryType') ?? '').trim();
+  const startDate = String(formData.get('startDate') ?? '').trim();
+  const endDate = String(formData.get('endDate') ?? '').trim() || startDate;
+  const note = String(formData.get('note') ?? '').trim();
+
+  if (!id || !startDate) return { error: 'Preencha ao menos o tipo e a data.' };
+  if (!(AGENDA_ENTRY_TYPES as string[]).includes(entryType)) return { error: 'Tipo inválido.' };
+  if (endDate < startDate) return { error: 'A data final não pode ser antes da inicial.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase } = ctx;
+
+  const { error } = await supabase
+    .from('agenda_entries')
+    .update({
+      entry_type: entryType as AgendaEntryType,
+      start_date: startDate,
+      end_date: endDate,
+      note: note || null,
+    })
+    .eq('id', id);
+  if (error) return { error: 'Não foi possível salvar — confira se você tem acesso a essa agenda.' };
+
+  revalidatePath('/dashboard/agenda');
+  return {};
+}
+
 export async function removeAgendaEntryAction(formData: FormData) {
   const id = String(formData.get('id') ?? '');
   if (!id) return;
@@ -1114,33 +1227,6 @@ export async function removeAgendaEntryAction(formData: FormData) {
   await supabase.from('agenda_entries').delete().eq('id', id);
 
   revalidatePath('/dashboard/agenda');
-}
-
-export async function requestPayoutAction(
-  _prevState: { error?: string },
-  formData: FormData
-): Promise<{ error?: string }> {
-  const amountCents = centsFromReais(formData.get('amount'));
-  if (!amountCents || amountCents <= 0) {
-    return { error: 'Informe um valor válido.' };
-  }
-
-  const ctx = await requireUserAndProfile();
-  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user } = ctx;
-
-  const availableCents = Number(formData.get('availableCents') ?? '0');
-  if (amountCents > availableCents) {
-    return { error: 'O valor solicitado é maior do que o disponível para saque.' };
-  }
-
-  await supabase
-    .from('payout_requests')
-    .insert({ profile_id: user.id, amount_cents: amountCents });
-
-  revalidatePath('/dashboard/dinheiro');
-  revalidatePath('/dashboard');
-  return {};
 }
 
 export async function uploadAvatarAction(
@@ -1170,35 +1256,16 @@ export async function uploadAvatarAction(
 
   await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
 
+  // Compartilhada por Booker/Agência (AvatarUploader em
+  // /dashboard/perfil, intocado) e Artista (ProAvatarUploader vive em
+  // /dashboard/perfil/dados desde o Settings V2 consolidado, 09/09/2026
+  // — "Dados profissionais" é uma das 3 rotas que substituíram o antigo
+  // /dashboard/perfil/editar monolítico).
   revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
   return {};
 }
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-}
-
-// Nunca gerar um slug igual a uma rota real do site.
-const RESERVED_SLUGS = new Set([
-  'ajuda',
-  'auth',
-  'cadastro',
-  'dashboard',
-  'login',
-  'precos',
-  'privacidade',
-  'seguranca',
-  'sobre',
-  'termos',
-  'api',
-]);
 
 export async function enablePublicProfileAction() {
   const ctx = await requireUserAndProfile();
@@ -1206,26 +1273,17 @@ export async function enablePublicProfileAction() {
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return;
 
+  // Normalmente já vem preenchido (getSessionProfile garante um ID
+  // público estável pra todo profile na primeira visita ao painel,
+  // ver dashboard/session.ts) — o fallback aqui é só pra sessões
+  // antigas que ainda não passaram por lá.
   if (!profile.slug) {
     const { data: artist } = await supabase
       .from('artist_profiles')
       .select('stage_name')
       .eq('profile_id', user.id)
-      .single<{ stage_name: string | null }>();
-
-    let base = slugify(artist?.stage_name || profile.full_name || 'artista') || 'artista';
-    if (RESERVED_SLUGS.has(base)) base = `${base}-artista`;
-    let slug = base;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const { data: existing } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle<{ id: string }>();
-      if (!existing && !RESERVED_SLUGS.has(slug)) break;
-      slug = `${base}-${Math.floor(Math.random() * 10000)}`;
-    }
-    await supabase.from('profiles').update({ slug }).eq('id', user.id);
+      .maybeSingle<{ stage_name: string | null }>();
+    await ensurePublicId(supabase, user.id, artist?.stage_name || profile.full_name);
   }
 
   await supabase
@@ -1233,6 +1291,12 @@ export async function enablePublicProfileAction() {
     .update({ public_enabled: true })
     .eq('profile_id', user.id);
 
+  // PublicProfileCard vive em /dashboard/perfil/publico (Artista) desde
+  // o Settings V2 consolidado (09/09/2026) — nunca em /dashboard/perfil
+  // (essa rota é Configurações, sem esse form). /dashboard revalida a
+  // Home (orçamentoUrl depende de public_enabled), /dashboard/perfil
+  // revalida o resumo "Ativo/Desativado" na linha do hub.
+  revalidatePath('/dashboard/perfil/publico');
   revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
 }
@@ -1248,6 +1312,7 @@ export async function disablePublicProfileAction() {
     .update({ public_enabled: false })
     .eq('profile_id', user.id);
 
+  revalidatePath('/dashboard/perfil/publico');
   revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
 }
@@ -1272,14 +1337,33 @@ export async function updatePublicLinksAction(
     })
     .eq('profile_id', user.id);
 
-  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/publico');
   return {};
 }
 
-export async function updateArtistProfileAction(
-  _prevState: { error?: string },
+// Polimento visual "Perfil e trabalho" (15/09/2026, 2ª rodada) —
+// `updateArtistProfileAction` (identidade) e `updateArtistWorkContextAction`
+// (contexto de trabalho) eram 2 actions separadas desde o Settings V2
+// (09/09/2026) especificamente porque viviam em 2 FORMULÁRIOS/PÁGINAS
+// diferentes: um FormData só com os campos de identidade zeraria o
+// contexto de trabalho (e vice-versa) se as duas continuassem em UPDATEs
+// independentes disparados por forms diferentes. Essa restrição deixou
+// de existir quando a UI virou 1 formulário só (1 <form>, 1 FormData com
+// TODOS os campos, 1 botão "Salvar alterações") — um UPDATE único é
+// seguro porque todo campo sempre chega junto no mesmo envio. Por isso
+// as 2 actions viraram 1: `updateProfileAndWorkContextAction`. Mesma
+// tabela (artist_profiles), mesma validação, mesmo tratamento de campo
+// legado (omitido do payload, nunca sobrescrito pra null/vazio):
+// Subcategoria/Mercados/Gêneros/Site/Outros links (identidade),
+// work_types/client_types/regions/languages/help_areas/career_stage/
+// travels/serves_other_locations/accepts_out_of_city_work (contexto de
+// trabalho, chips antigos) e `fee_range`/`other_preferences` (substituídos
+// por `base_fee_cents`/`pricing_notes`, migrations 0001/0038, sem
+// migration nova).
+export async function updateProfileAndWorkContextAction(
+  _prevState: { error?: string; success?: boolean },
   formData: FormData
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; success?: boolean }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
   const { supabase, user, profile } = ctx;
@@ -1287,56 +1371,60 @@ export async function updateArtistProfileAction(
 
   const stageName = String(formData.get('stageName') ?? '').trim();
   const category = String(formData.get('category') ?? '').trim();
-  const subcategory = String(formData.get('subcategory') ?? '').trim();
   const bio = String(formData.get('bio') ?? '').trim();
-  const genresRaw = String(formData.get('genres') ?? '').trim();
-  const mercados = String(formData.get('mercados') ?? '').trim();
-  const websiteUrl = String(formData.get('websiteUrl') ?? '').trim();
-  const otherLinks = String(formData.get('otherLinks') ?? '').trim();
-  const otherPreferences = String(formData.get('otherPreferences') ?? '').trim();
-  const travels = formData.get('travels') === 'on';
-  const servesOtherLocations = formData.get('servesOtherLocations') === 'on';
-  const acceptsOutOfCityWork = formData.get('acceptsOutOfCityWork') === 'on';
-  const careerStage = String(formData.get('careerStage') ?? '').trim();
-  const feeRange = String(formData.get('feeRange') ?? '').trim();
-  const workTypes = formData.getAll('workTypes').map(String).filter(Boolean);
-  const clientTypes = formData.getAll('clientTypes').map(String).filter(Boolean);
-  const regions = formData.getAll('regions').map(String).filter(Boolean);
-  const languages = formData.getAll('languages').map(String).filter(Boolean);
-  const helpAreas = formData.getAll('helpAreas').map(String).filter(Boolean);
+  const whatYouDo = String(formData.get('whatYouDo') ?? '').trim();
+  const whereYouServe = String(formData.get('whereYouServe') ?? '').trim();
+  const baseFeeCents = centsFromReais(formData.get('baseFee'));
+  const pricingNotes = String(formData.get('pricingNotes') ?? '').trim();
+  // "Emite nota fiscal?" — 2 botões visíveis (Sim/Não), sem 3ª opção.
+  // Mesma coluna (artist_profiles.issues_invoice, migration 0037).
+  // Nenhum dos dois botões apertado ainda (FormData vazio) não distingue
+  // de "respondeu Não" — por isso o campo continua com 3 estados no
+  // banco (true/false/null), só a UI que não oferece mais um 3º botão.
+  const issuesInvoiceRaw = String(formData.get('issuesInvoice') ?? '');
 
-  const genres = genresRaw
-    ? genresRaw.split(',').map((g) => g.trim()).filter(Boolean)
-    : [];
-
-  await supabase
+  // A policy de UPDATE de artist_profiles não tem WITH CHECK explícito
+  // (usa o mesmo auth.uid()=profile_id do USING) — um update cujo filtro
+  // não bate com nenhuma linha (RLS ou JWT dessincronizado no meio do
+  // request) retorna { error: null, data: null } por padrão, sem
+  // nenhuma indicação de que 0 linhas foram afetadas. Por isso o
+  // .select() aqui: sem ele, checar só `error` (como o padrão das
+  // actions irmãs) não detecta esse caso — "Salvo ✓" aparecia mesmo
+  // quando a escrita não tocava a linha nenhuma (achado real, 16/09/2026,
+  // reportado pela fundadora depois do primeiro fix só de `error`).
+  const { data: updatedRows, error } = await supabase
     .from('artist_profiles')
     .update({
       stage_name: stageName || null,
       category: category || null,
-      subcategory: subcategory || null,
       bio: bio || null,
-      genres,
-      mercados: mercados || null,
-      website_url: websiteUrl || null,
-      other_links: otherLinks || null,
-      other_preferences: otherPreferences || null,
-      travels,
-      serves_other_locations: servesOtherLocations,
-      accepts_out_of_city_work: acceptsOutOfCityWork,
-      career_stage: careerStage || null,
-      fee_range: feeRange || null,
-      work_types: workTypes,
-      client_types: clientTypes,
-      regions,
-      languages,
-      help_areas: helpAreas,
+      what_you_do: whatYouDo || null,
+      where_you_serve: whereYouServe || null,
+      base_fee_cents: baseFeeCents,
+      pricing_notes: pricingNotes || null,
+      issues_invoice: issuesInvoiceRaw === '' ? null : issuesInvoiceRaw === 'true',
     })
-    .eq('profile_id', user.id);
+    .eq('profile_id', user.id)
+    .select('profile_id');
+  if (error || !updatedRows || updatedRows.length === 0) {
+    // Diagnóstico temporário (QA real, 30/09/2026) — a falha "Não foi
+    // possível salvar agora." reportada pela fundadora não reproduz
+    // via SQL direto (update funciona normalmente simulando a mesma
+    // sessão/RLS). Sem log nenhum hoje, essa classe de falha é
+    // invisível nos Runtime Logs da Vercel. Loga o erro real do
+    // Supabase (se houver) e o user.id resolvido nesta request — só
+    // diagnóstico, não muda nenhum comportamento pro usuário.
+    console.error('updateProfileAndWorkContextAction: update sem efeito', {
+      userId: user.id,
+      error,
+      updatedRowsCount: updatedRows?.length ?? null,
+    });
+    return { error: 'Não foi possível salvar agora.' };
+  }
 
-  revalidatePath('/dashboard/perfil');
+  revalidatePath('/dashboard/perfil/dados');
   revalidatePath('/dashboard');
-  return {};
+  return { success: true };
 }
 
 export async function updateBookerProfileAction(
@@ -1425,6 +1513,12 @@ export async function updateLinkRoutingAction(
   );
   if (error) return { error: 'Não foi possível salvar o roteamento.' };
 
+  // Roteamento/link de orçamento vivia em /dashboard/perfil/canais
+  // ("Canais e conexões") desde o Settings V2 consolidado (09/09/2026);
+  // agora também aparece inline em /dashboard/perfil ("Canais da sua
+  // Doopla", 14/09/2026) — revalida os dois, a rota antiga preservada
+  // não deixou de existir, só ficou fora da navegação normal.
+  revalidatePath('/dashboard/perfil/canais');
   revalidatePath('/dashboard/perfil');
   revalidatePath('/dashboard');
   return { success: true };
@@ -1449,6 +1543,7 @@ export async function inviteArtistAction(
       inviter_profile_id: user.id,
       invitee_name: name,
       invitee_contact: contact || null,
+      invitee_role: 'artista',
     })
     .select('token')
     .single<{ token: string }>();
@@ -1470,14 +1565,76 @@ export async function inviteBookerAction(
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
   const { supabase, user, profile } = ctx;
   if (profile.role !== 'artista') return { error: 'Só artistas convidam bookers.' };
+  if (!(await artistHasDooplaPro(supabase, user.id))) return { error: MINHA_EQUIPE_PRO_ERROR };
 
-  const { error } = await supabase.from('invites').insert({
-    inviter_profile_id: user.id,
-    invitee_name: name,
-    invitee_contact: contact || null,
-  });
-  if (error) return { error: 'Não foi possível enviar o convite agora.' };
+  const { data: invite, error } = await supabase
+    .from('invites')
+    .insert({
+      inviter_profile_id: user.id,
+      invitee_name: name,
+      invitee_contact: contact || null,
+      invitee_role: 'booker',
+    })
+    .select('token')
+    .single<{ token: string }>();
+  if (error || !invite) return { error: 'Não foi possível enviar o convite agora.' };
 
+  revalidatePath('/dashboard/bookers');
+  return { success: true, inviteToken: invite.token };
+}
+
+// Reenvio de convite (migration 0069) — regenera token/validade na
+// mesma linha via resend_invite (RPC decide autorização por
+// auth.uid() = inviter_profile_id, nunca confia em input do form pra
+// isso). Usado tanto pra convite expirado (recuperação) quanto ainda
+// pendente (link se perdeu). Nunca reenvia convite já confirmado — o
+// RPC recusa e devolve invite_already_confirmed.
+export async function resendInviteAction(
+  _prevState: { error?: string; success?: boolean; inviteToken?: string },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean; inviteToken?: string }> {
+  const inviteId = String(formData.get('inviteId') ?? '');
+  if (!inviteId) return { error: 'Convite não encontrado.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase } = ctx;
+
+  const { data, error } = await supabase
+    .rpc('resend_invite', { p_invite_id: inviteId })
+    .single<{ new_token: string; new_expires_at: string }>();
+
+  if (error || !data) {
+    if (error?.message.includes('invite_already_confirmed')) {
+      return { error: 'Esse convite já foi aceito — não há o que reenviar.' };
+    }
+    return { error: 'Não foi possível reenviar o convite agora.' };
+  }
+
+  revalidatePath('/dashboard/artistas');
+  revalidatePath('/dashboard/bookers');
+  return { success: true, inviteToken: data.new_token };
+}
+
+// Cancelar convite pendente (migration 0102) — achado da fundadora:
+// não existia jeito nenhum de desistir de um convite já enviado. RPC
+// decide autorização por auth.uid()=inviter_profile_id, nunca confia
+// em input do form pra isso, e só deleta se ainda estiver 'pendente'.
+export async function cancelInviteAction(
+  _prevState: { error?: string; success?: boolean },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const inviteId = String(formData.get('inviteId') ?? '');
+  if (!inviteId) return { error: 'Convite não encontrado.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase } = ctx;
+
+  const { error } = await supabase.rpc('cancel_invite', { p_invite_id: inviteId });
+  if (error) return { error: 'Não foi possível cancelar o convite agora.' };
+
+  revalidatePath('/dashboard/artistas');
   revalidatePath('/dashboard/bookers');
   return { success: true };
 }
@@ -1513,6 +1670,68 @@ export async function setContractUrlAction(
   return {};
 }
 
+const CONTRACT_FILE_EXTENSION_BY_MIME: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+};
+
+// Achado de UX real (Sessão Central, 21/09/2026): "Anexar contrato
+// próprio" só aceitava colar uma URL — sem forma de enviar um arquivo
+// do computador. Mesmo padrão de uploadAvatarAction acima (bucket
+// próprio, arquivo por usuário em `{user_id}/...`, upsert), salvando
+// no mesmo `bookings.contract_url` que setContractUrlAction já usa —
+// nenhuma duplicação de coluna/lógica de posse, só uma segunda forma
+// de preencher o mesmo campo.
+export async function uploadContractFileAction(
+  _prevState: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  const file = formData.get('contractFile');
+  const bookingId = String(formData.get('bookingId') ?? '');
+  if (!bookingId) return { error: 'Booking inválido.' };
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: 'Selecione um arquivo.' };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { error: 'O arquivo precisa ter até 10MB.' };
+  }
+  const extension = CONTRACT_FILE_EXTENSION_BY_MIME[file.type];
+  if (!extension) {
+    return { error: 'Formato não suportado. Use PDF, Word, JPG ou PNG.' };
+  }
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('id, artist_profile_id, booker_profile_id')
+    .eq('id', bookingId)
+    .single<{ id: string; artist_profile_id: string; booker_profile_id: string | null }>();
+  if (!booking || (user.id !== booking.artist_profile_id && user.id !== booking.booker_profile_id)) {
+    return { error: 'Você não faz parte desse booking.' };
+  }
+
+  const path = `${user.id}/${bookingId}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from('contracts')
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (uploadError) return { error: 'Não foi possível enviar o arquivo.' };
+
+  const { data: publicUrlData } = supabase.storage.from('contracts').getPublicUrl(path);
+  const contractUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
+
+  await supabase.from('bookings').update({ contract_url: contractUrl }).eq('id', bookingId);
+
+  revalidatePath('/dashboard/contratos');
+  revalidatePath(`/dashboard/bookings/${bookingId}`);
+  return {};
+}
+
 export async function generateContractAction(
   _prevState: { error?: string },
   formData: FormData
@@ -1540,6 +1759,18 @@ export async function generateContractAction(
     return { error: 'Você não faz parte desse booking.' };
   }
 
+  // Direct Booking (16/09/2026) — o contrato padrão Doopla depende de
+  // um Booker real (buildContractContent exige os dois "PARTES"). Sem
+  // Booker, gerar esse contrato é uma ação impossível — nunca deixar
+  // chegar ao ponto de falhar silenciosamente com "Não foi possível
+  // montar o contrato.". Contrato padrão Doopla pra Direct Booking
+  // continua PENDING (decisão de produto já registrada) — a UI
+  // (ContractSection/ProContractSection) já não oferece este botão
+  // pra booking sem Booker, este check é a segunda camada fail-closed.
+  if (!booking.booker_profile_id) {
+    return { error: 'Este booking não tem Booker — o contrato padrão da Doopla ainda não está disponível para esse caso.' };
+  }
+
   const { data: updatedBooking, error: updateError } = await supabase
     .from('bookings')
     .update({
@@ -1562,7 +1793,9 @@ export async function generateContractAction(
     supabase
       .from('profiles')
       .select('full_name')
-      .eq('id', updatedBooking.booker_profile_id)
+      // booking.booker_profile_id (não updatedBooking) — já confirmado
+      // not null pelo check acima; o UPDATE nunca toca essa coluna.
+      .eq('id', booking.booker_profile_id)
       .single<Pick<Profile, 'full_name'>>(),
   ]);
   if (!artist || !booker) return { error: 'Não foi possível montar o contrato.' };
@@ -1604,7 +1837,14 @@ export async function requestRepresentationAction(
 
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase } = ctx;
+  const { supabase, user, profile } = ctx;
+
+  // Gate Pro só na direção artista -> booker (Minha equipe). Booker
+  // solicitando um artista (a direção original desta action, antes de
+  // "Minha equipe" existir) nunca é bloqueado por isso.
+  if (profile.role === 'artista' && !(await artistHasDooplaPro(supabase, user.id))) {
+    return { error: MINHA_EQUIPE_PRO_ERROR };
+  }
 
   const { error } = await supabase.rpc('request_representation_link', {
     p_target_profile_id: targetProfileId,
@@ -1743,6 +1983,41 @@ export type ContactLookupResult =
   | { kind: 'no_match' }
   | { kind: 'error'; error: string };
 
+// Resolve o que fazer com uma conta já encontrada (por contato ou por
+// ID público): já conectado, já tem solicitação pendente, ou é um match
+// novo — compartilhado pelos dois caminhos de lookupXAction abaixo, pra
+// nunca duplicar essa checagem de vínculo/solicitação existente.
+async function resolveMatchOutcome(
+  supabase: AnySupabaseClient,
+  callerId: string,
+  match: { profile_id: string; full_name: string; display_name: string | null }
+): Promise<ContactLookupResult> {
+  const displayName = match.display_name ?? match.full_name;
+
+  const { data: existingRep } = await supabase
+    .from('representations')
+    .select('id')
+    .or(
+      `and(artist_profile_id.eq.${callerId},booker_profile_id.eq.${match.profile_id}),` +
+        `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${callerId})`
+    )
+    .maybeSingle<{ id: string }>();
+  if (existingRep) return { kind: 'existing_connection', name: displayName };
+
+  const { data: pendingRequest } = await supabase
+    .from('representation_requests')
+    .select('id')
+    .or(
+      `and(artist_profile_id.eq.${callerId},booker_profile_id.eq.${match.profile_id}),` +
+        `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${callerId})`
+    )
+    .eq('status', 'pendente')
+    .maybeSingle<{ id: string }>();
+  if (pendingRequest) return { kind: 'pending_request', name: displayName };
+
+  return { kind: 'match', profileId: match.profile_id, name: displayName };
+}
+
 // Fluxo unificado "Adicionar um Booker/Artista": dado um contato, descobre
 // sozinho se já existe conta (pra decidir solicitação x convite) e se já
 // existe vínculo/solicitação/convite em aberto (pra nunca duplicar).
@@ -1759,32 +2034,7 @@ export async function lookupContactAction(contact: string): Promise<ContactLooku
   });
   const match = matches?.[0];
 
-  if (match) {
-    const displayName = match.display_name ?? match.full_name;
-
-    const { data: existingRep } = await supabase
-      .from('representations')
-      .select('id')
-      .or(
-        `and(artist_profile_id.eq.${user.id},booker_profile_id.eq.${match.profile_id}),` +
-          `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${user.id})`
-      )
-      .maybeSingle<{ id: string }>();
-    if (existingRep) return { kind: 'existing_connection', name: displayName };
-
-    const { data: pendingRequest } = await supabase
-      .from('representation_requests')
-      .select('id')
-      .or(
-        `and(artist_profile_id.eq.${user.id},booker_profile_id.eq.${match.profile_id}),` +
-          `and(artist_profile_id.eq.${match.profile_id},booker_profile_id.eq.${user.id})`
-      )
-      .eq('status', 'pendente')
-      .maybeSingle<{ id: string }>();
-    if (pendingRequest) return { kind: 'pending_request', name: displayName };
-
-    return { kind: 'match', profileId: match.profile_id, name: displayName };
-  }
+  if (match) return resolveMatchOutcome(supabase, user.id, match);
 
   const { data: pendingInvite } = await supabase
     .from('invites')
@@ -1796,6 +2046,29 @@ export async function lookupContactAction(contact: string): Promise<ContactLooku
   if (pendingInvite) return { kind: 'pending_invite', name: pendingInvite.invitee_name };
 
   return { kind: 'no_match' };
+}
+
+// Segundo caminho do mesmo fluxo "Adicionar um Booker/Artista" (07/09/2026)
+// — busca pelo ID público estável (profiles.slug) em vez de e-mail/
+// telefone, pro caso de quem está do outro lado preferir compartilhar só
+// o código em vez do contato. Só faz sentido quando a conta já existe: se
+// não encontra nada, não tem contato pra oferecer um convite (ver
+// AddConnectionModal, que não mostra fallback de convite nesse modo).
+export async function lookupPublicIdAction(publicId: string): Promise<ContactLookupResult> {
+  const trimmed = publicId.trim();
+  if (!trimmed) return { kind: 'error', error: 'Informe o código ID.' };
+
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { kind: 'error', error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const { data: matches } = await supabase.rpc('find_representation_target_by_public_id', {
+    p_public_id: trimmed,
+  });
+  const match = matches?.[0];
+  if (!match) return { kind: 'no_match' };
+
+  return resolveMatchOutcome(supabase, user.id, match);
 }
 
 export async function submitReviewAction(
@@ -1932,21 +2205,14 @@ export async function toggleFavoriteAction(
 export async function upgradeToProAction(): Promise<{ error?: string }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user, profile } = ctx;
+  const { supabase, profile } = ctx;
   if (profile.role !== 'booker') return { error: 'Só bookers podem assinar o Pro.' };
 
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({
-      booker_plan: 'pro',
-      status: 'active',
-      pro_period_ends_at: null,
-      active_artist_profile_id: null,
-      active_artist_pending_choice: false,
-      canceled_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('profile_id', user.id);
+  // Autoridade segura (07/09/2026, migration 0075) — nunca mais UPDATE
+  // cru em subscriptions: confirm_booker_pro_upgrade valida auth.uid()
+  // e role='booker' no servidor, grava valores fixos, nunca aceita
+  // status/pro_period_ends_at vindos do client.
+  const { error } = await supabase.rpc('confirm_booker_pro_upgrade');
   if (error) return { error: 'Não foi possível confirmar o upgrade. Tente novamente.' };
 
   revalidatePath('/dashboard');
@@ -1960,25 +2226,82 @@ export async function upgradeToProAction(): Promise<{ error?: string }> {
 export async function cancelProAction(): Promise<{ error?: string }> {
   const ctx = await requireUserAndProfile();
   if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
-  const { supabase, user, profile } = ctx;
+  const { supabase, profile } = ctx;
   if (profile.role !== 'booker') return { error: 'Ação inválida.' };
 
-  const periodEnd = new Date();
-  periodEnd.setDate(periodEnd.getDate() + 30);
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .update({
-      canceled_at: new Date().toISOString(),
-      pro_period_ends_at: periodEnd.toISOString().slice(0, 10),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('profile_id', user.id)
-    .eq('booker_plan', 'pro');
+  // Autoridade segura (07/09/2026, migration 0075) — nunca mais UPDATE
+  // cru em subscriptions: cancel_booker_pro valida auth.uid(),
+  // role='booker' e booker_plan='pro' no servidor, e calcula os 30 dias
+  // de período restante ali dentro (nunca vindo do client).
+  const { error } = await supabase.rpc('cancel_booker_pro');
   if (error) return { error: 'Não foi possível cancelar. Tente novamente.' };
 
   revalidatePath('/dashboard');
   return {};
+}
+
+// Settings V2 (08/09/2026) — Plano e assinatura, artista. Mesma RPC de
+// sempre (select_artist_plan, migration 0075/cadastro/plano), agora
+// chamável de dentro de Configurações — nunca uma segunda autoridade.
+// select_artist_plan só aceita a troca enquanto status='trialing' (a
+// própria RPC rejeita fora disso); esta action só traduz o erro,
+// nunca reimplementa a regra.
+export async function updateArtistPlanAction(plan: 'doopla' | 'pro'): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Ação inválida.' };
+
+  const { error } = await supabase.rpc('select_artist_plan', { p_plan: plan });
+  if (error) return { error: 'Não foi possível trocar de plano agora.' };
+
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/perfil/assinatura');
+  return {};
+}
+
+// Settings V2 (08/09/2026) — Preferências da Doopla, "como sua Doopla
+// fala com você". Mesma coluna de sempre (artist_profiles.
+// attention_channel, coletada na Etapa 4/6 do onboarding) — write-once
+// até agora, sem superfície de edição. Nunca uma preferência de
+// notificação genérica: é operacional (como o profissional é avisado
+// quando a Doopla precisa dele), por isso vive em "Doopla", não em
+// "Notificações".
+export async function updateAttentionChannelAction(channel: 'whatsapp' | 'painel' | 'ambos'): Promise<{ error?: string }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user, profile } = ctx;
+  if (profile.role !== 'artista') return { error: 'Ação inválida.' };
+
+  const { error } = await supabase.from('artist_profiles').update({ attention_channel: channel }).eq('profile_id', user.id);
+  if (error) return { error: 'Não foi possível salvar agora.' };
+
+  revalidatePath('/dashboard/perfil/preferencias');
+  return {};
+}
+
+// Settings V2 (08/09/2026) — "Informações da conta", nunca contexto
+// profissional/comercial (esse fica em Preferências da Doopla/Perfil
+// profissional). Só identidade/contato básicos — mesmas colunas de
+// profiles que handle_new_user já grava no cadastro.
+export async function updateAccountInfoAction(
+  _prevState: { error?: string; success?: boolean },
+  formData: FormData
+): Promise<{ error?: string; success?: boolean }> {
+  const ctx = await requireUserAndProfile();
+  if (!ctx) return { error: 'Sessão expirada. Entre novamente.' };
+  const { supabase, user } = ctx;
+
+  const fullName = String(formData.get('fullName') ?? '').trim();
+  const phone = String(formData.get('phone') ?? '').trim();
+  if (!fullName) return { error: 'Nome não pode ficar em branco.' };
+
+  const { error } = await supabase.from('profiles').update({ full_name: fullName, phone: phone || null }).eq('id', user.id);
+  if (error) return { error: 'Não foi possível salvar agora.' };
+
+  revalidatePath('/dashboard/perfil/conta');
+  revalidatePath('/dashboard');
+  return { success: true };
 }
 
 // Depois de um downgrade automático, o booker pode trocar o artista

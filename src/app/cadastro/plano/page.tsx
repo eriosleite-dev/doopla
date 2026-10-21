@@ -9,13 +9,14 @@ export const metadata: Metadata = {
   title: 'Escolha seu plano | Doopla',
 };
 
-// Etapa 7, última do funil novo. O trial de 7 dias já começou de
-// verdade na etapa 1 (handle_new_user grava status='trialing' e
-// trial_ends_at na hora da conta ser criada) — essa tela só confirma
-// qual dos dois planos a assinatura em trial aponta. artist_plan já
-// vem pré-selecionado se o usuário clicou "Começar grátis" num card
-// específico da Home (passado como metadata na etapa 1), mas continua
-// livre pra trocar aqui antes de continuar.
+// Etapa 5, última do funil novo (6→5 desde 15/09/2026, saída da etapa
+// de canal do onboarding — ver OnboardingShell.tsx). O trial de 7 dias
+// já começou de verdade na etapa 1 (handle_new_user grava
+// status='trialing' e trial_ends_at na hora da conta ser criada) —
+// essa tela só confirma qual dos dois planos a assinatura em trial
+// aponta. artist_plan já vem pré-selecionado se o usuário clicou
+// "Começar grátis" num card específico da Home (passado como metadata
+// na etapa 1), mas continua livre pra trocar aqui antes de continuar.
 export default async function PlanoPage() {
   const supabase = await createClient();
   const {
