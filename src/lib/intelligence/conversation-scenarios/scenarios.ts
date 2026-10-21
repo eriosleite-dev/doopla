@@ -571,4 +571,241 @@ export const CONVERSATION_SCENARIOS: ConversationScenario[] = [
       },
     ],
   },
+
+  // ============================================================
+  // Laboratório de conversas completas — task "Próxima fase:
+  // inteligência conversacional multiturno" (21/10/2026), seção 5 do
+  // pedido da fundadora. Diferente de TODOS os cenários acima: nunca
+  // partem de um incidente real relatado por ela — são SINTÉTICOS,
+  // desenhados de propósito pra cobrir os 10 padrões que ela listou
+  // (perguntas consecutivas, mudança de assunto, complementos/
+  // referências implícitas, correções, info comercial, recuperação de
+  // fato, confirmações, ambiguidade, pedido de ação, encerramento/
+  // retomada) em conversas de 10-20 turnos — nunca repetindo nenhuma
+  // frase usada em qualquer rodada anterior desta sessão (requisito
+  // dela: "não quero mais melhorias que funcionem só pra frases
+  // específicas"). Rodados AGORA só servem pra medir a linha de base
+  // real (código atual, sem nenhuma mudança) — nenhuma conclusão sobre
+  // "o que mudar" deve ser tirada sem antes ler os drafts à mão
+  // (SEMANTIC_CORRECTNESS_DISCLAIMER continua valendo aqui).
+  // ============================================================
+  {
+    id: 'multiturno-orcamento-cliente-multiplos-assuntos',
+    name: 'Cliente externo — dois assuntos em paralelo, correção de data, confirmação e encerramento',
+    category: 'multiturno_multiplos_assuntos',
+    source:
+      'Cenário sintético, inédito — desenhado pra generalizar os padrões "múltiplos assuntos simultâneos", "complemento curto", "mudança de assunto", "retomada", "correção", "recuperação de fato entre autores diferentes" e "encerramento", nunca repetindo frases de rodadas anteriores.',
+    turns: [
+      {
+        externalParticipantMessage: 'Oi! Vocês tocam em casamento?',
+        expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+        note: 'Abertura — pergunta simples, primeiro assunto da conversa.',
+      },
+      {
+        externalParticipantMessage: 'Seria dia 14 de dezembro, um sábado, em Curitiba.',
+        note: 'Complemento curto e proativo (dá dado antes de ser pedido) — testa se a Doopla aproveita o que já veio, nunca pede de novo.',
+      },
+      {
+        externalParticipantMessage: 'Ah, vocês também tocam em aniversário de 15 anos? Minha prima tá procurando um DJ.',
+        expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional', 'acknowledge'],
+        note: 'Mudança abrupta de assunto, SEGUNDO tópico paralelo — testa se a Doopla reconhece como um assunto novo, sem descartar nem confundir com o casamento.',
+      },
+      {
+        externalParticipantMessage: 'Voltando ao meu casamento: seria por umas 4 horas de set.',
+        mustNotReask: ['qual é a data', 'que dia seria', 'qual seria a data'],
+        note: 'Retomada explícita do PRIMEIRO assunto — nunca deveria perguntar a data de novo (já dada no turno 2).',
+      },
+      {
+        professionalMessage: 'Pode fechar o casamento por R$3.500 se ela confirmar até sexta.',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge', 'consult_professional'],
+        note: 'Profissional responde decisivamente a uma decisão comercial que estava pendente — a resposta precisa seguir pro cliente, nunca virar uma segunda pergunta de volta pra profissional.',
+      },
+      {
+        externalParticipantMessage: 'Perfeito, fechado! Só confirma: foi R$3.500 mesmo?',
+        mustMentionAny: ['3.500', '3500', 'três mil e quinhentos'],
+        mustCiteConversationEvidence: true,
+        note: 'Recuperação de fato dado por OUTRO autor (a profissional, turno anterior) — nunca existiu em booking/opportunity estruturado, só na própria conversa.',
+      },
+      {
+        professionalMessage: 'Isso, mas falta combinar o horário de chegada ainda.',
+        note: 'Profissional deixa um item explicitamente em aberto.',
+      },
+      {
+        externalParticipantMessage: 'Consigo chegar às 18h, o evento começa às 19h. Serve?',
+        note: 'Resolve o item deixado em aberto no turno anterior — testa se a Doopla reconhece que isso FECHA a pendência, não abre uma nova.',
+      },
+      {
+        externalParticipantMessage: 'E sobre a festa de 15 anos da minha prima: ela falou que confirma semana que vem.',
+        mustCiteConversationEvidence: true,
+        note: 'Retomada do SEGUNDO assunto (aniversário), 6 turnos depois do turno 3 — testa se o assunto paralelo continuou "vivo", nunca foi esquecido por causa do assunto principal ter tomado o resto da conversa.',
+      },
+      {
+        externalParticipantMessage: 'Mudei de ideia, meu casamento vai ser dia 21/12, não dia 14.',
+        mustNotContain: ['14 de dezembro', 'dia 14/12', 'dia 14'],
+        note: 'CORREÇÃO explícita de um fato dado 9 turnos atrás (turno 2) — a resposta final nunca deveria repetir a data antiga como se ainda valesse.',
+      },
+      {
+        externalParticipantMessage: 'Perfeito, é isso! Obrigada.',
+        expectedResponsePlanFamily: ['acknowledge'],
+        note: 'Encerramento — reconhecer que a solicitação foi concluída, nunca reabrir nenhuma pergunta já resolvida (data, valor, horário).',
+      },
+    ],
+  },
+  {
+    id: 'multiturno-profissional-pendencias-janela-contexto',
+    name: 'Profissional — pendências administrativas paralelas e recuperação de fato além da janela de contexto',
+    category: 'multiturno_janela_contexto',
+    source:
+      'Cenário sintético, inédito — desenhado de propósito pra testar os LIMITES da janela de histórico (CONTEXT_MAX_MESSAGES=20, context-builder/budget.ts): os dois últimos turnos pedem recall de fatos combinados bem no início da conversa, a distâncias diferentes (uma dentro da janela, outra provavelmente fora). Nunca testa só "o model é bom" — testa "até onde o model consegue ver", documentando o limite já diagnosticado em vez de confundir uma falha de janela com um bug novo do Planner.',
+    seedBookingFacts: { status: 'confirmed', cacheAmountCents: 280000, eventDate: '2026-12-05', eventLocation: 'Espaço Jardins, São Paulo' },
+    turns: [
+      {
+        professionalMessage: 'Oi Doopla, o cliente do show de dezembro perguntou se pode levar banda ao vivo além de mim no palco.',
+        expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant'],
+        note: 'DECISÃO A (vai ser recuperada nos últimos turnos) — decisão operacional nova sobre um booking já confirmado.',
+      },
+      {
+        professionalMessage: 'Pode, desde que seja só durante o intervalo do meu set.',
+        note: 'Profissional decide a DECISÃO A, com uma condição específica ("intervalo").',
+      },
+      {
+        professionalMessage: 'Separado disso, preciso que você anote: confirmar o motorista até quinta.',
+        expectedResponsePlanFamily: ['acknowledge', 'consult_professional'],
+        note: 'ITEM B fica em aberto — pedido de lembrete/ação, assunto completamente diferente da DECISÃO A.',
+      },
+      {
+        professionalMessage: 'Mudando de assunto: o cliente perguntou se dá pra reduzir o valor em 10% pagando à vista.',
+        expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+        note: 'DECISÃO C — nova negociação comercial, mesmo com o cachê já confirmado no booking seedado.',
+      },
+      {
+        professionalMessage: 'Pode aceitar os 10% à vista.',
+        note: 'Profissional decide a DECISÃO C.',
+      },
+      {
+        professionalMessage: 'Voltando no motorista: já confirmou, pode desconsiderar.',
+        mustNotReask: ['motorista'],
+        note: 'Fecha o ITEM B — a Doopla nunca deveria voltar a perguntar sobre o motorista depois disso.',
+      },
+      {
+        professionalMessage: 'Vou levar uma caixa de som extra, só avisando.',
+        expectedResponsePlanFamily: ['acknowledge'],
+        note: 'Mensagem informativa neutra, sem pedido — reação curta esperada.',
+      },
+      {
+        professionalMessage: 'O local tem estacionamento próprio, não preciso reservar vaga.',
+        expectedResponsePlanFamily: ['acknowledge'],
+        note: 'Mais uma informativa neutra — enche a conversa de turnos "de preenchimento" realistas, sem forçar nenhuma decisão nova.',
+      },
+      {
+        professionalMessage: 'O contrato desse show já foi assinado?',
+        expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant', 'clarify_ambiguity'],
+        note: 'Pergunta operacional sem fato disponível no contexto sintético — nunca deveria inventar uma resposta.',
+      },
+      {
+        professionalMessage: 'Ainda não, vou cobrar o cliente sobre isso essa semana.',
+        note: 'Profissional só avisa, sem pedir nada novo.',
+      },
+      {
+        professionalMessage: 'A artista teloneira já confirmou presença pro warm-up.',
+        expectedResponsePlanFamily: ['acknowledge'],
+      },
+      {
+        professionalMessage: 'Já separei a playlist também.',
+        expectedResponsePlanFamily: ['acknowledge'],
+      },
+      {
+        professionalMessage: 'Mudança: agora preciso chegar 1h antes do horário combinado, não 30 minutos.',
+        note: 'Informação operacional nova (não é correção de nada dito antes).',
+      },
+      {
+        professionalMessage: 'Me lembra: qual foi mesmo o desconto que autorizei pro cliente?',
+        mustMentionAny: ['10%', 'dez por cento'],
+        mustCiteConversationEvidence: true,
+        note: 'Recall da DECISÃO C (turnos 3-4), uns 9-10 turnos atrás — ainda deve estar dentro ou bem perto do limite da janela de 20 mensagens. Se falhar aqui (e não no próximo turno), é sinal mais forte de falha real do Planner do que de limite de janela.',
+      },
+      {
+        professionalMessage: 'E sobre a banda ao vivo no intervalo, isso ainda está de pé?',
+        mustMentionAny: ['intervalo'],
+        mustCiteConversationEvidence: true,
+        note: 'Recall da DECISÃO A (turnos 0-1), a mais antiga da conversa — a essa altura já deve estar FORA da janela de 20 mensagens (CONTEXT_MAX_MESSAGES, budget.ts). Uma falha aqui é esperada e CONFIRMA o limite já diagnosticado (nunca deve ser lida como um bug novo do Planner) — releia manualmente quantas mensagens já existem neste ponto antes de concluir qualquer coisa. Se isto PASSAR, vale conferir o draft à mão: pode ser o model inferindo/inventando continuidade a partir de nada, o que seria pior que simplesmente não lembrar.',
+      },
+      {
+        professionalMessage: 'Perfeito, obrigada pela ajuda hoje.',
+        expectedResponsePlanFamily: ['acknowledge'],
+        note: 'Encerramento.',
+      },
+    ],
+  },
+  {
+    id: 'multiturno-negociacao-ambiguidade-delegacao',
+    name: 'Negociação comercial intercalada com pedido de delegação, confirmação ambígua e ação',
+    category: 'multiturno_negociacao_delegacao',
+    source:
+      'Cenário sintético, inédito — desenhado pra generalizar "confirmação curta/ambígua com referente específico", "pedido de delegação no meio de outro assunto", "retomada de status de delegação vários turnos depois", "cancelamento explícito" e "pedido de ação simples (nota fiscal)", intercalando cliente e profissional na mesma conversa.',
+    turns: [
+      {
+        externalParticipantMessage: 'Oi, vocês fazem evento corporativo?',
+        expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional'],
+      },
+      {
+        externalParticipantMessage: 'É um lançamento de produto, ainda não sei a data exata.',
+      },
+      {
+        professionalMessage: 'Chama o Marcos lá do grupo e pergunta se ele topa fazer a produção desse evento comigo.',
+        delegation: { activeRequest: null, expectedSignal: 'new_request' },
+        note: 'Pedido de delegação inequívoco NO MEIO de uma negociação comercial em andamento — testa se o reconhecedor isola isso corretamente do assunto comercial paralelo.',
+      },
+      {
+        externalParticipantMessage: 'Já defini: vai ser dia 10 de março, um evento de 3 horas.',
+      },
+      {
+        professionalMessage: 'Pode cobrar R$5.000 pra esse formato.',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge', 'consult_professional'],
+      },
+      {
+        externalParticipantMessage: 'Consegue fazer por R$4.000?',
+        expectedResponsePlanFamily: ['consult_professional', 'ask_external_participant'],
+        note: 'Pedir desconto é sempre negociação nova, nunca resolvida sozinha mesmo com o valor anterior conhecido.',
+      },
+      {
+        professionalMessage: 'Pode fechar.',
+        expectedResponsePlanFamily: ['answer_with_known_information', 'acknowledge', 'consult_professional'],
+        note: 'Confirmação curta e decisiva — só funciona ancorada numa proposta específica do turno anterior (R$4.000), nunca tratada como aprovação genérica solta.',
+      },
+      {
+        externalParticipantMessage: 'Perfeito, fechado por R$4.000 então!',
+      },
+      {
+        professionalMessage: 'E aí, o Marcos topou a produção?',
+        delegation: {
+          activeRequest: { status: 'awaiting_recipient_reply', literalContentGate: 'awaiting_recipient_reply', recipientName: 'Marcos', recipientNumberKnown: true, pendingConfirmationText: null },
+          expectedSignal: 'status_inquiry',
+        },
+        note: 'Retomada do pedido de delegação do turno 3, 5 turnos depois, com um assunto comercial inteiro no meio — testa status_inquiry reconhecido corretamente mesmo depois de um desvio longo.',
+      },
+      {
+        professionalMessage: 'Beleza. Cancela aquele pedido pro Marcos, vou fazer a produção sozinho mesmo.',
+        delegation: {
+          activeRequest: { status: 'awaiting_recipient_reply', literalContentGate: 'awaiting_recipient_reply', recipientName: 'Marcos', recipientNumberKnown: true, pendingConfirmationText: null },
+          expectedSignal: 'cancels_pending',
+        },
+        note: 'Cancelamento explícito do pedido de delegação ainda pendente.',
+      },
+      {
+        externalParticipantMessage: 'Última coisa: dá pra emitir nota fiscal?',
+        expectedResponsePlanFamily: ['ask_external_participant', 'consult_professional', 'clarify_ambiguity'],
+        note: 'Pedido de ação simples, assunto novo e direto.',
+      },
+      {
+        professionalMessage: 'Sim, emito nota sim.',
+      },
+      {
+        externalParticipantMessage: 'Ótimo, então está tudo certo. Obrigada!',
+        expectedResponsePlanFamily: ['acknowledge'],
+        mustNotReask: ['qual seria o valor', 'qual é a data do evento'],
+        note: 'Encerramento — nunca reabrir data/valor já fechados ao longo da conversa.',
+      },
+    ],
+  },
 ];
