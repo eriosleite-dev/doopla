@@ -33,9 +33,8 @@ const HOME_HTML = HOME_HTML_RAW.replace(
 ).replace('__PRICE_PRO__', `${market.currencySymbol}${market.pricing.pro.toFixed(2).replace('.', ',')}`);
 
 export const metadata: Metadata = {
-  title: 'doopla · toda carreira merece sua doopla',
-  description:
-    'Toda carreira merece sua Doopla. Um novo jeito de cuidar dos seus bookings, sem precisar cuidar de tudo sozinho.',
+  title: 'doopla . Toda carreira merece sua doopla',
+  description: 'Booking Inteligente',
 };
 
 export default function Home() {
