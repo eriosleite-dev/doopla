@@ -1,81 +1,69 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { EyeLogo } from './EyeLogo';
+import { LoginModal } from './LoginModal';
+import { SiteMenuOverlay } from './SiteMenuOverlay';
 
-const MENU_ITEMS = [
-  { href: '/#como-funciona', label: 'Como funciona' },
-  { href: '/#o-que-sua-doopla-faz', label: 'O que sua Doopla faz' },
-  { href: '/#planos', label: 'Planos' },
-  { href: '/seguranca', label: 'Segurança' },
-  { href: '/#faq', label: 'FAQ' },
-  { href: '/sobre', label: 'Sobre' },
-];
-
+// Header das páginas institucionais (Sobre/Segurança/Termos/
+// Privacidade/Contato), migrado pra usar a MESMA marcação/classes do
+// header real da Home V2 (home.html: header > .wrap > .nav-logo +
+// .header-actions), estilizado por home.css — nunca um header próprio
+// reinventado. Só a interatividade muda: home.html não é React (usa
+// listeners nativos via HomeMenuOverlay/HomeLoginModal), aqui é tudo
+// estado React comum, já que esta página inteira é uma árvore React de
+// verdade.
 export function SiteHeader() {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    document.body.style.overflow = 'hidden';
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
 
   return (
     <>
-      <header className="site-header">
-        <Link href="/" className="eye-logo" aria-label="Ir para a página inicial da Doopla">
-          <EyeLogo />
-        </Link>
-        <nav>
-          <button type="button" className="menu-btn" onClick={() => setOpen(true)} aria-haspopup="true" aria-expanded={open}>
-            <span className="bars" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-            Menu
-          </button>
-          <Link href="/sobre">Sobre</Link>
-          <Link href="/login">Entrar</Link>
-          <Link href="/cadastro" className="btn-cta">
-            Começar agora
+      <header>
+        <div className="wrap">
+          <Link href="/" className="nav-logo" aria-label="Doopla, ir para a home">
+            d<span className="eye-slot"><span className="mascot-pupil" /></span>
+            <span className="eye-slot"><span className="mascot-pupil" /></span>pla
           </Link>
-        </nav>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="menu-trigger"
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+            >
+              <span className="bars" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+              Menu
+            </button>
+            <Link
+              href="/login"
+              className="btn btn-ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                setLoginOpen(true);
+              }}
+            >
+              Entrar
+            </Link>
+            <Link href="/cadastro" className="btn btn-primary">
+              Criar conta
+            </Link>
+          </div>
+        </div>
       </header>
 
-      <div className={`menu-overlay${open ? ' open' : ''}`} role="dialog" aria-modal="true" aria-label="Navegação" aria-hidden={!open}>
-        <div className="overlay-top">
-          <Link href="/" className="eye-logo on-dark" onClick={() => setOpen(false)}>
-            <EyeLogo onDark />
-          </Link>
-          <button type="button" className="close-btn" onClick={() => setOpen(false)} aria-label="Fechar menu">
-            ×
-          </button>
-        </div>
-        <div className="overlay-items">
-          {MENU_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} onClick={() => setOpen(false)}>
-              {item.label}
-            </Link>
-          ))}
-        </div>
-        <div className="overlay-bottom">
-          <span className="overlay-tagline">Quero minha Doopla</span>
-          <Link href="/cadastro" className="btn-cta" onClick={() => setOpen(false)}>
-            Começar agora
-          </Link>
-        </div>
-      </div>
+      <SiteMenuOverlay open={menuOpen} onClose={() => setMenuOpen(false)} />
+
+      {/* LoginModal se renderiza via portal em document.body e já
+          provê o próprio wrapper #site-chrome internamente (ver
+          LoginModal.tsx) — não precisa de nada extra aqui. */}
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </>
   );
 }

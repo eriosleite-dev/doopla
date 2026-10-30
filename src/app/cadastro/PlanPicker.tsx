@@ -1,34 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 
 import { fieldInputClass } from '@/app/auth/ui';
 import { MARKETS, TRIAL_DAYS, type PlanId } from '@/lib/market';
-
-export const PLAN_CARDS: { id: PlanId; name: string; description: string; features: string[] }[] = [
-  {
-    id: 'doopla',
-    name: 'Doopla',
-    description: 'Sua Doopla trabalha com você.',
-    features: [
-      'Até 5 novos bookings por mês',
-      'Sua Doopla atende, negocia e acompanha cada booking até o fechamento',
-      'Contratos e acompanhamento de pagamentos',
-      'Comunidade Doopla',
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Doopla Pro',
-    description: 'Mais estrutura para fazer sua carreira crescer.',
-    features: [
-      'Bookings ilimitados',
-      'Especialista humano se precisar',
-      'Inteligência sobre cachês, clientes e negociações',
-      'Materiais profissionais para sua carreira',
-    ],
-  },
-];
+import { PLAN_CARDS } from '@/lib/plans';
 
 // Sem cobrança de verdade ainda (nenhum processador de pagamento
 // integrado) — "confirmar assinatura" grava estado real no banco
@@ -51,21 +27,52 @@ export function PlanPicker({
   fieldName = 'artistPlan',
   onChange,
   showVoucherField = true,
+  // Beta Fechado por código (07/10/2026) — separado de showVoucherField
+  // de propósito (founder voucher trava preço futuro; beta libera
+  // acesso grátis agora, nunca misturar). default false: só PlanForm.tsx
+  // (etapa 5 do funil novo) liga isso, nenhum outro uso de PlanPicker
+  // ganha o campo sem pedir.
+  showBetaCodeField = false,
+  // Avisa o pai quando o campo de código de beta tem texto (07/10/2026,
+  // achado da fundadora: "não quero que a pessoa ache que é um teste de
+  // 7 dias" — com código preenchido, PlanForm.tsx troca o texto do CTA
+  // pra não sugerir trial nenhum). undefined preserva comportamento de
+  // sempre pra quem não passa isso.
+  onBetaCodeChange,
   variant = 'legacy',
 }: {
   initialPlan: PlanId;
   fieldName?: string;
   onChange?: (plan: PlanId) => void;
   showVoucherField?: boolean;
+  showBetaCodeField?: boolean;
+  onBetaCodeChange?: (code: string) => void;
   variant?: 'legacy' | 'onboarding';
 }) {
   const [selected, setSelected] = useState<PlanId>(initialPlan);
   const [showVoucher, setShowVoucher] = useState(false);
+  const [showBetaCode, setShowBetaCode] = useState(false);
+  // Quais cards têm "Ver todos os recursos" aberto — por id, não
+  // exclusivo (dá pra expandir os dois planos ao mesmo tempo pra
+  // comparar). Só usado pelo variant="onboarding".
+  const [expanded, setExpanded] = useState<Set<PlanId>>(new Set());
   const market = MARKETS.BR;
 
   function choose(plan: PlanId) {
     setSelected(plan);
     onChange?.(plan);
+  }
+
+  function toggleExpanded(plan: PlanId, event: MouseEvent) {
+    // stopPropagation: o botão fica DENTRO do card clicável (onClick
+    // seleciona o plano) — expandir/recolher nunca deve mudar a seleção.
+    event.stopPropagation();
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(plan)) next.delete(plan);
+      else next.add(plan);
+      return next;
+    });
   }
 
   if (variant === 'onboarding') {
@@ -74,6 +81,8 @@ export function PlanPicker({
         <input type="hidden" name={fieldName} value={selected} />
         {PLAN_CARDS.map((card) => {
           const isSelected = selected === card.id;
+          const isExpanded = expanded.has(card.id);
+          const detailsId = `plan-more-${card.id}`;
           return (
             <div
               key={card.id}
@@ -93,6 +102,25 @@ export function PlanPicker({
                 <span className="plan-trial">{TRIAL_DAYS} dias grátis</span>
                 <ul className="plan-feats">
                   {card.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+
+                <button
+                  type="button"
+                  className="plan-more-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={detailsId}
+                  onClick={(e) => toggleExpanded(card.id, e)}
+                >
+                  {isExpanded ? 'Mostrar menos ↑' : 'Ver todos os recursos ↓'}
+                </button>
+                <ul
+                  id={detailsId}
+                  className={`plan-feats plan-more${isExpanded ? ' open' : ''}`}
+                  aria-hidden={!isExpanded}
+                >
+                  {card.moreFeatures.map((f) => (
                     <li key={f}>{f}</li>
                   ))}
                 </ul>
@@ -119,6 +147,33 @@ export function PlanPicker({
               style={{ marginTop: 8 }}
             >
               Tenho um código de voucher Founder
+            </button>
+          ))}
+
+        {showBetaCodeField &&
+          (showBetaCode ? (
+            <div className="field" style={{ marginTop: 12 }}>
+              <label htmlFor="betaCode">Código de convite do Beta</label>
+              <input
+                type="text"
+                id="betaCode"
+                name="betaCode"
+                placeholder="Ex: DOOPLA-BETA"
+                onChange={(e) => onBetaCodeChange?.(e.target.value)}
+              />
+              <p className="hint">
+                Com um código válido, sua conta tem acesso completo e permanente durante o beta — não é um teste de
+                7 dias, e não tem cobrança.
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowBetaCode(true)}
+              className="back-btn show"
+              style={{ marginTop: 8 }}
+            >
+              Tenho um código de convite do Beta
             </button>
           ))}
       </div>
@@ -193,6 +248,32 @@ export function PlanPicker({
             className="w-fit text-xs text-[var(--ink)]/50 underline underline-offset-2"
           >
             Tenho um código de voucher Founder
+          </button>
+        ))}
+
+      {showBetaCodeField &&
+        (showBetaCode ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-[var(--ink)]/70">Código de convite do Beta</span>
+            <input
+              type="text"
+              name="betaCode"
+              placeholder="Ex: DOOPLA-BETA"
+              className={fieldInputClass}
+              onChange={(e) => onBetaCodeChange?.(e.target.value)}
+            />
+            <span className="text-xs text-[var(--ink)]/50">
+              Com um código válido, sua conta tem acesso completo e permanente durante o beta — não é um
+              teste de 7 dias, e não tem cobrança.
+            </span>
+          </label>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowBetaCode(true)}
+            className="w-fit text-xs text-[var(--ink)]/50 underline underline-offset-2"
+          >
+            Tenho um código de convite do Beta
           </button>
         ))}
     </div>

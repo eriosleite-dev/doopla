@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { createClient } from '@/lib/supabase/server';
@@ -8,6 +9,10 @@ import type { UserRole } from '@/lib/supabase/types';
 
 export interface AuthFormState {
   error?: string;
+  // Presente só quando a chamada veio com modalMode=1 (ver
+  // createAccountAction) — sinaliza pro componente cliente avançar de
+  // etapa, já que nesse modo a Server Action nunca faz redirect().
+  success?: boolean;
 }
 
 // A "agência" deixou de ser um tipo de conta selecionável no cadastro —
@@ -38,6 +43,11 @@ export async function loginAction(
     return { error: 'E-mail ou senha inválidos.' };
   }
 
+  // Sem isso, a rota protegida pra onde vamos redirecionar pode
+  // reaproveitar cache do Router (Next.js) de antes do login — padrão
+  // oficial do Supabase pra Server Actions de auth: revalida antes de
+  // redirecionar, nunca depois.
+  revalidatePath('/', 'layout');
   redirect(next.startsWith('/') ? next : '/dashboard');
 }
 
@@ -72,6 +82,7 @@ const ONBOARDING_FIELDS: Record<UserRole, string[]> = {
     'jaRepresenta',
     'roster',
     'pendingInvites',
+    'pendingInviteToken',
     'artistCategories',
     'clientTypes',
     'regions',
@@ -141,10 +152,23 @@ export async function createAccountAction(
     return { error: 'Não foi possível criar a conta. Tente novamente.' };
   }
 
+  // modalMode (07/09/2026, correção do bug do "Criar conta em modal" da
+  // Home): quando a Home abre o funil dentro do modal (CreateAccountModal),
+  // ela precisa CONTINUAR renderizando a etapa 2 (Preparar) dentro do
+  // mesmo overlay — um redirect() aqui derrubaria a Home inteira pra
+  // navegar pra /cadastro/preparar. Só suprime o redirect quando já
+  // existe sessão ativa (o caso comum — ver comentário abaixo); se o
+  // projeto exige confirmação de e-mail, não tem como continuar sem
+  // sessão de qualquer forma, então cai pro redirect normal mesmo em
+  // modo modal (honesto: o modal não pode fingir que a etapa 2 é
+  // acessível sem sessão).
+  const modalMode = String(formData.get('modalMode') ?? '') === '1';
+
   // Se o projeto Supabase não exige confirmação de e-mail, o signUp já
   // volta com sessão ativa — segue direto pro resto do onboarding sem
   // fazer o usuário esperar um e-mail que não vai bloquear nada.
   if (data.session) {
+    if (modalMode) return { success: true };
     redirect('/cadastro/preparar');
   }
   redirect('/cadastro/confirme-seu-email');
@@ -186,6 +210,24 @@ export async function signupAction(
   const supabase = await createClient();
   const origin = await siteOrigin();
 
+  // Pré-checagem só de UX (06/10/2026): cadastro de Booker exige convite
+  // válido — a trava real está em handle_new_user (migration 0100, aborta
+  // a conta inteira se o token não reclamar um convite pendente/válido).
+  // Aqui só evitamos o erro genérico do Auth API ("Database error saving
+  // new user") quando dá pra saber de antemão que vai falhar.
+  if (role === 'booker') {
+    const inviteToken = metadata.pendingInviteToken;
+    if (!inviteToken) {
+      return { error: 'Criar uma conta de Booker exige um convite válido.' };
+    }
+    const { data: invite } = await supabase
+      .rpc('get_invite_by_token', { p_token: inviteToken })
+      .maybeSingle();
+    if (!invite || invite.invitee_role !== 'booker' || invite.is_expired) {
+      return { error: 'Esse link de convite não é válido ou já expirou.' };
+    }
+  }
+
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -208,5 +250,12 @@ export async function signupAction(
 export async function logoutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  redirect('/login');
+  revalidatePath('/', 'layout');
+  // Decisão da fundadora (14/09/2026, Categoria B): na web, sair volta
+  // pra Home (site público, com "Entrar" no menu), não pra /login —
+  // padrão comum em SaaS com site público + painel separado. O app
+  // mobile é diferente (sem site público pra voltar) e já vai direto
+  // pra tela de login sozinho, via reação ao estado de sessão vazio em
+  // useAuth.tsx — não precisou de mudança.
+  redirect('/');
 }

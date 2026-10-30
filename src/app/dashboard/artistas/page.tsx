@@ -17,6 +17,8 @@ import {
 import { getSessionProfile } from '../session';
 import { ListFilter } from '../list-filter';
 import { PendingStatusList } from '../pending-status-list';
+import { PublicIdChip } from '../public-id-chip';
+import { PendingInviteCard } from '../resend-invite-button';
 import { accentButtonClass, avatarClass, eyebrowClass, initialsFromName } from '../ui';
 import { ArtistRow } from './artist-row';
 import { DiscoverArtists } from './discover-artists';
@@ -68,11 +70,12 @@ export default async function ArtistasPage(props: {
   const requestStatusRecord = Object.fromEntries(requestStatuses);
 
   const pendingInviteRows = sentInvites
-    .filter((i) => i.status === 'pendente')
+    .filter((i) => i.status === 'pendente' || i.status === 'expirada')
     .map((i) => ({
       key: i.id,
       name: i.invitee_name,
-      status: 'Convite enviado · Aguardando cadastro',
+      expired: i.status === 'expirada',
+      token: i.token,
     }));
   const outgoingRequestRows = outgoingRequests.map((r) => ({
     key: r.id,
@@ -96,7 +99,10 @@ export default async function ArtistasPage(props: {
             Artistas que você representa
           </h1>
         </div>
-        <AddConnectionModal myRole="booker" />
+        <div className="flex flex-col items-end gap-2">
+          {profile.slug && <PublicIdChip publicId={profile.slug} />}
+          <AddConnectionModal myRole="booker" />
+        </div>
       </header>
 
       <section className="flex flex-col gap-3">
@@ -151,7 +157,17 @@ export default async function ArtistasPage(props: {
 
           {incomingRequests.length > 0 && <IncomingArtistRequests requests={incomingRequests} />}
 
-          <PendingStatusList rows={[...outgoingRequestRows, ...pendingInviteRows]} />
+          <PendingStatusList rows={outgoingRequestRows} />
+
+          {pendingInviteRows.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {pendingInviteRows.map((row) => (
+                <li key={row.key}>
+                  <PendingInviteCard inviteId={row.key} name={row.name} token={row.token} expired={row.expired} />
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 

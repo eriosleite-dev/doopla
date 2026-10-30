@@ -3,7 +3,8 @@ import Link from 'next/link';
 
 import { removeAgendaEntryAction } from '../actions';
 import { AgendaEntryForm } from './agenda-entry-form';
-import { buildCalendarMonth, parseMonthParam } from './calendar';
+import { ProAgendaView } from './pro-agenda-view';
+import { buildCalendarMonth, groupMonthEvents, parseMonthParam } from './calendar';
 import {
   AGENDA_ENTRY_LABEL,
   getAgendaEvents,
@@ -58,6 +59,30 @@ export default async function AgendaPage(props: {
   const artistEntries =
     activeArtistId != null ? await getArtistAgendaEntries(activeArtistId, supabase) : [];
 
+  // Agenda é rota COMPARTILHADA — Booker (shell legado, seção "Agenda
+  // dos seus artistas" abaixo) continua 100% intocado; profissional/
+  // artista vê o re-skin novo (item 8 da revisão Professional Web
+  // Dashboard, 06/09/2026), mesma lógica de dados (buildCalendarMonth/
+  // getAgendaEvents/CRUD de agenda_entries).
+  if (profile.role !== 'booker') {
+    // Editar marcação (30/09/2026, achado real de QA) — monthEvents já
+    // vem expandido por dia (ver expandAgendaEntry, data.ts), então não
+    // carrega o start_date/end_date/note reais do registro (só o
+    // recorte visível NESTE mês, que seria errado pra pré-preencher um
+    // formulário de edição se a marcação atravessar virada de mês).
+    // Busca os registros crus separadamente, só pra esse propósito.
+    const ownEntries = await getArtistAgendaEntries(user.id, supabase);
+    return (
+      <ProAgendaView
+        calendar={calendar}
+        monthEvents={monthEvents}
+        artistProfileId={user.id}
+        agendaEntryLabel={AGENDA_ENTRY_LABEL}
+        entries={ownEntries}
+      />
+    );
+  }
+
   return (
     <main className="flex flex-col gap-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -80,8 +105,6 @@ export default async function AgendaPage(props: {
           </span>
         </div>
       </header>
-
-      {profile.role === 'artista' && <AgendaEntryForm artistProfileId={user.id} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className={cardClass}>
@@ -139,28 +162,28 @@ export default async function AgendaPage(props: {
             <p className="mt-4 text-sm text-[var(--ink)]/55">Nada marcado neste mês.</p>
           ) : (
             <ul className="mt-4 flex flex-col gap-2">
-              {monthEvents.map((e, i) => {
+              {groupMonthEvents(monthEvents).map((row) => {
                 const info = (
                   <>
-                    <span className="font-doopla-mono w-10 flex-none text-center text-lg font-semibold">
-                      {e.day}
+                    <span className="font-doopla-mono w-14 flex-none text-center text-lg font-semibold">
+                      {row.dayLabel}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{e.title}</span>
+                      <span className="block truncate text-sm font-medium">{row.title}</span>
                       <span className="block truncate text-[12px] text-[var(--ink)]/55">
-                        {e.sub}
+                        {row.sub}
                       </span>
                     </span>
                   </>
                 );
                 return (
                   <li
-                    key={i}
+                    key={row.key}
                     className="flex items-center gap-4 rounded-[14px] border border-[var(--line-light)] p-3"
                   >
-                    {e.bookingId ? (
+                    {row.bookingId ? (
                       <Link
-                        href={`/dashboard/bookings/${e.bookingId}`}
+                        href={`/dashboard/bookings/${row.bookingId}`}
                         className="flex min-w-0 flex-1 items-center gap-4 hover:opacity-70"
                       >
                         {info}
@@ -174,12 +197,12 @@ export default async function AgendaPage(props: {
                     ) : (
                       <div className="flex min-w-0 flex-1 items-center gap-4">{info}</div>
                     )}
-                    <span className={agendaTagClass(e.kind)}>
-                      {e.kind === 'confirmado' ? 'Confirmado' : AGENDA_ENTRY_LABEL[e.kind]}
+                    <span className={agendaTagClass(row.kind)}>
+                      {row.kind === 'confirmado' ? 'Confirmado' : AGENDA_ENTRY_LABEL[row.kind]}
                     </span>
-                    {e.entryId && (
+                    {row.entryId && (
                       <form action={removeAgendaEntryAction}>
-                        <input type="hidden" name="id" value={e.entryId} />
+                        <input type="hidden" name="id" value={row.entryId} />
                         <button
                           type="submit"
                           aria-label="Remover marcação"
@@ -197,7 +220,7 @@ export default async function AgendaPage(props: {
         </section>
       </div>
 
-      {profile.role === 'booker' && myArtists.length > 0 && (
+      {myArtists.length > 0 && (
         <section className={cardClass}>
           <p className={eyebrowClass}>Agenda dos seus artistas</p>
           <p className="mt-1 text-[12.5px] text-[var(--ink)]/55">

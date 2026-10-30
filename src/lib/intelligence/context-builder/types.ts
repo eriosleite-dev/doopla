@@ -1,4 +1,5 @@
 import type { ConversationMessageAuthorType, ConversationMessageContentType, ConversationMessageDirection } from '@/lib/supabase/types';
+import type { ConversationStateSnapshot } from '../conversation-state';
 import type { ToolExecutionError } from '../types';
 
 // Doopla Intelligence Core v1 — Context Builder v1 (Bloco 2).
@@ -18,7 +19,22 @@ export type ContextFactSourceType =
   | 'professional_profile'
   | 'opportunity'
   | 'booking'
-  | 'external_participant';
+  | 'external_participant'
+  // Professional Intelligence Context — CONHECIMENTO sobre o
+  // profissional além desta conversa, nunca AUTORIZAÇÃO. Fatos destas
+  // duas fontes são evidência de contexto/raciocínio válida (camada A),
+  // mas deliberadamente NUNCA entram no whitelist de evidência que
+  // autoriza compromisso (camada B, ver planner/invariants.ts,
+  // COMMITMENT_AUTHORIZING_SOURCE_TYPES) — preferência declarada não
+  // autoriza nada, precedente histórico não autoriza repeti-lo.
+  | 'professional_business_context'
+  | 'professional_commercial_history'
+  // ADR 0004, Rodadas 4/5 — preferência APRENDIDA em conversa (nunca
+  // digitada no painel, nunca restrição comercial obrigatória).
+  // Proveniência deliberadamente separada de professional_business_context
+  // (dado digitado) — nunca a mesma fonte, mesmo os dois sendo
+  // conhecimento-nunca-autorização.
+  | 'professional_learned_preference';
 
 // structured: veio direto de uma READ tool/banco, sem cálculo.
 // derived: calculado/resumido a partir de fatos estruturados — o
@@ -91,6 +107,36 @@ export type MessagesSection =
   | { status: 'loaded'; items: MessageContextItem[]; windowMessageCount: number; windowSince: string };
 
 // ============================================================
+// Conversation State Ledger — snapshot determinístico do que já está
+// estabelecido na conversa (ver src/lib/intelligence/conversation-state).
+// Deliberadamente NÃO é ContextSection<ContextFact>: um fato aqui é só
+// um ponteiro pra uma mensagem real (nunca uma fonte de evidência
+// nova) — ver comentário em conversation-state/types.ts.
+// ============================================================
+
+export type ConversationStateSection = { status: 'not_allowed' | 'unavailable' } | { status: 'loaded'; snapshot: ConversationStateSnapshot };
+
+// ============================================================
+// Commercial history — mesmo formato loaded/not_allowed/unavailable de
+// MessagesSection (zero itens é um estado normal, "loaded" com
+// facts: [], nunca not_found), com um campo a mais: retrievalStrategy.
+//
+// 'recency_bounded_v1' é a ÚNICA estratégia implementada — seleção
+// determinística pelos N bookings mais recentes do profissional, sem
+// nenhum julgamento de relevância. O nome do tipo/campo já assume que
+// vai existir uma v2 por relevância (mesmo cliente/tipo de
+// trabalho/faixa de valor/local) — quando ela existir, troca só a
+// função de seleção e adiciona um novo valor a este union; nenhum
+// consumidor (ContextFact, EvidenceUsed, Planner) muda.
+// ============================================================
+
+export type CommercialHistoryRetrievalStrategy = 'recency_bounded_v1';
+
+export type CommercialHistorySection =
+  | { status: 'not_allowed' | 'unavailable' }
+  | { status: 'loaded'; facts: ContextFact[]; retrievalStrategy: CommercialHistoryRetrievalStrategy; limit: number };
+
+// ============================================================
 // Pacote completo
 // ============================================================
 
@@ -99,7 +145,20 @@ export type ContextPackage = {
   representedProfessionalId: string;
   builtAt: string;
   professional: ContextSection<ContextFact>;
+  // Preferências/dados de negócio DECLARADOS pelo profissional (mesmos
+  // campos editáveis em /dashboard/perfil) — conhecimento estruturado,
+  // nunca autorização (ver comentário em ContextFactSourceType).
+  professionalBusinessContext: ContextSection<ContextFact>;
+  // Histórico comercial real do próprio profissional (bookings
+  // passados), retrieval V1 por recência — ver CommercialHistorySection.
+  professionalCommercialHistory: CommercialHistorySection;
+  // Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — nunca
+  // confundidas com professionalBusinessContext (dado digitado no
+  // painel). CONHECIMENTO, nunca AUTORIZAÇÃO — ver comentário em
+  // ContextFactSourceType.
+  professionalLearnedPreferences: ContextSection<ContextFact>;
   messages: MessagesSection;
+  conversationState: ConversationStateSection;
   opportunity: ContextSection<ContextFact>;
   booking: ContextSection<ContextFact>;
   externalParticipant: ContextSection<ContextFact>;
@@ -107,7 +166,16 @@ export type ContextPackage = {
 
 // Nome curto de cada seção — usado só pra reportar indisponibilidade
 // pra observability, nunca pra decidir nada dentro do Builder.
-export type ContextPackageSectionName = 'professional' | 'opportunity' | 'booking' | 'externalParticipant' | 'messages';
+export type ContextPackageSectionName =
+  | 'professional'
+  | 'professionalBusinessContext'
+  | 'professionalCommercialHistory'
+  | 'professionalLearnedPreferences'
+  | 'opportunity'
+  | 'booking'
+  | 'externalParticipant'
+  | 'messages'
+  | 'conversationState';
 
 // Reason code sanitizado — nunca a mensagem crua de erro do
 // Supabase/SDK. São sempre os códigos já tipados de ToolExecutionError

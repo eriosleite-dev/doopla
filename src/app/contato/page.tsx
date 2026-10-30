@@ -1,29 +1,33 @@
 import type { Metadata } from 'next';
 
+import { SUPPORT_EMAIL } from '@/lib/support';
+import { Mascot } from '../_home/Mascot';
 import { PageShell } from '../_home/PageShell';
 import { ContactForm } from './ContactForm';
 
 export const metadata: Metadata = {
   title: 'Fale com a Doopla',
-  description: 'Dúvida, problema, parceria ou qualquer outra coisa: chama a gente.',
+  description: 'Dúvidas, suporte ou parcerias. Fale com a Doopla.',
 };
 
 export default function ContatoPage() {
   return (
     <PageShell>
-      <section className="page-hero">
-        <span className="eyebrow">Contato</span>
-        <h1>Quer falar com a Doopla?</h1>
-        <p>Dúvida, problema, parceria ou qualquer outra coisa: chama a gente.</p>
-      </section>
-
-      <section className="page-content">
-        <div className="inner contact-grid">
-          <div className="contact-info">
-            <h2 style={{ textAlign: 'left', margin: '0 0 10px' }}>E-mail</h2>
-            <a className="email" href="mailto:contato@doopla.pro">
-              contato@doopla.pro
+      <section className="contact-section">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Contato</span>
+            <h1>Vamos conversar?</h1>
+            <p className="lead">Dúvidas, suporte ou parcerias. Fale com a Doopla.</p>
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="contact-email">
+              {SUPPORT_EMAIL}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
             </a>
+            <div className="contact-mascot">
+              <Mascot size="cta" tracking />
+            </div>
           </div>
           <ContactForm />
         </div>

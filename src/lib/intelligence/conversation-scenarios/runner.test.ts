@@ -1,0 +1,587 @@
+import { describe, expect, it } from 'vitest';
+
+import type { ClassifierModelCallResult } from '../classification';
+import type { DelegatedContactRecognizerModelCallResult } from '../delegated-contact/recognizer';
+import type { EvidenceUsed } from '../planner';
+import type { PlannerModelCallResult } from '../planner/plan';
+import type { ToolContext } from '../types';
+import { CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, runConversationScenario, runConversationScenarioChunk, runConversationScenarios } from './runner';
+import { buildScenarioResultFromTurns } from './types';
+import type { ConversationScenario } from './types';
+
+// Doopla Intelligence Core v1 — AI Evaluation Harness: teste de
+// engenharia do runner (orquestração), sempre com modelCall injetado
+// — nunca chama a OpenAI de verdade. Validação SEMÂNTICA real (contra
+// o modelo de produção) acontece só no painel /admin, por decisão
+// explícita da fundadora (ADR 0005).
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const TOOL_CTX: ToolContext = { representedProfessionalId: 'x', actorContext: { representedProfessionalId: 'x', actorType: 'professional', actorProfileId: 'x', capabilities: [], triggerSource: 'dev_test_panel' }, conversation: {} as any, supabase: {} as any };
+
+function fakeClassifier(primaryIntent: string): (params: { instructions: string; input: string }) => Promise<ClassifierModelCallResult> {
+  return async () => ({ parsed: { classificationStatus: 'classified', primaryIntent: primaryIntent as never, secondaryIntents: [], modelConfidence: 'high' }, inputTokens: 100, outputTokens: 20 });
+}
+
+function fakePlanner(proposedResponse: string | null, extra?: Partial<PlannerModelCallResult['parsed']>): (p: { instructions: string; input: string }) => Promise<PlannerModelCallResult> {
+  return async ({ input }) => {
+    const ctx = JSON.parse(input);
+    const evidenceUsed: EvidenceUsed[] = ctx.triggerMessage ? [{ sourceType: 'conversation_message', sourceId: ctx.triggerMessage.messageId as string }] : [];
+    return {
+      parsed: {
+        responsePlan: 'acknowledge',
+        commitmentNature: 'not_applicable',
+        proposedDecisionCategory: [],
+        missingInformation: [],
+        evidenceUsed,
+        professionalDecisionSignal: 'none',
+        proposedResponse,
+        ...extra,
+      },
+      inputTokens: 150,
+      outputTokens: 30,
+    };
+  };
+}
+
+const SIMPLE_SCENARIO: ConversationScenario = {
+  id: 'teste-simples',
+  name: 'cenário de teste',
+  category: 'teste',
+  source: 'fixture de engenharia, não um caso real',
+  turns: [{ professionalMessage: 'Oi' }, { professionalMessage: 'Tudo bem?' }],
+};
+
+describe('runConversationScenario — crescimento de histórico entre turnos', () => {
+  it('o turno 2 enxerga o turno 1 inteiro (mensagem do profissional + resposta real gerada da Doopla)', async () => {
+    const seenRecentMessagesCounts: number[] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenRecentMessagesCounts.push(ctx.recentMessages.length);
+      return fakePlanner('resposta da doopla')({ instructions: '', input });
+    };
+
+    await runConversationScenario(SIMPLE_SCENARIO, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: plannerCall,
+    });
+
+    // Turno 1: só o próprio gatilho, 0 mensagens anteriores.
+    // Turno 2: o gatilho do turno 1 + a resposta REAL gerada por ele — 2 anteriores.
+    expect(seenRecentMessagesCounts).toEqual([0, 2]);
+  });
+
+  it('quando o Planner não produz texto (proposedResponse null), o turno seguinte não ganha uma mensagem "ai" fantasma', async () => {
+    const seenRecentMessagesCounts: number[] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenRecentMessagesCounts.push(ctx.recentMessages.length);
+      // no_response_needed só sai null quando triggerHasUsableText é falso — aqui simulamos via commitmentNature/responsePlan direto, sem gatilho real.
+      return fakePlanner(null, { responsePlan: 'clarify_ambiguity' })({ instructions: '', input });
+    };
+
+    const result = await runConversationScenario(SIMPLE_SCENARIO, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: plannerCall,
+    });
+
+    // clarify_ambiguity sempre tem fallback determinístico (deterministicFallbackResponse)
+    // então proposedResponseFinal nunca fica null de fato aqui — mas o teste prova que o pipeline não quebra nesse caminho.
+    expect(result.turns).toHaveLength(2);
+  });
+});
+
+describe('runConversationScenario — avaliação de assertivas objetivas', () => {
+  it('mustNotReask falha quando a resposta final repete uma pergunta já respondida', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'manda pra Gabi, +5511999999999', mustNotReask: ['qual é o número'] }],
+    };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Claro, só confirma: qual é o número mesmo?'),
+    });
+    expect(result.turns[0].assertions.find((a) => a.name.includes('não pergunta de novo'))?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('mustCiteConversationEvidence passa quando o Planner cita a mensagem-gatilho real', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Sim', mustCiteConversationEvidence: true }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Combinado.'),
+    });
+    expect(result.turns[0].assertions.find((a) => a.name.includes('ancorada'))?.pass).toBe(true);
+  });
+
+  it('detecta travessão no texto bruto do modelo (a limpeza determinística corrige, mas o harness ainda reporta o achado)', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Oi' }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Tudo certo — já te aviso.'),
+    });
+    const travessaoCheck = result.turns[0].formatChecks.find((c) => c.name.includes('travessão'));
+    expect(travessaoCheck?.pass).toBe(false);
+    expect(result.turns[0].proposedResponseFinal).toBe('Tudo certo, já te aviso.');
+  });
+
+  it('travessão no texto bruto nunca derruba turnPass sozinho (não-bloqueante, achado real 19/10/2026 — o texto final já é corrigido por stripTravessao)', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Oi' }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Tudo certo — já te aviso.'),
+    });
+    const travessaoCheck = result.turns[0].formatChecks.find((c) => c.name.includes('travessão'));
+    expect(travessaoCheck?.pass).toBe(false);
+    expect(travessaoCheck?.blocking).toBe(false);
+    expect(result.turns[0].turnPass).toBe(true);
+  });
+});
+
+describe('runConversationScenario — reconhecedor de delegação (isolado, nunca executa)', () => {
+  it('compara o sinal reconhecido com o esperado do cenário, sem nunca criar estado real', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'Chama a Gabi e fala oi', delegation: { activeRequest: null, expectedSignal: 'new_request' } }],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: 'dizer oi', draftMessageContent: null },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok, vou falar com ela.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    expect(result.turns[0].delegationSignal).toBe('new_request');
+    expect(result.turns[0].delegationSignalMatches).toBe(true);
+    expect(result.scenarioPass).toBe(true);
+  });
+
+  it('sinal divergente do esperado reprova o turno (precisão do reconhecedor, nunca execução)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'E aí, conseguiu?', delegation: { activeRequest: null, expectedSignal: 'status_inquiry' } }],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'no_delegation_signal', recipientName: null, recipientNumber: null, purposeSummary: null, draftMessageContent: null },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Não entendi, pode explicar melhor?'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    expect(result.turns[0].delegationSignalMatches).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('TurnResult expõe recipientName/recipientNumber/purposeSummary/draftMessageContent do recognizer (P0.1/P0.2, ADR 0005) — antes descartados', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'manda pra Marina, 11999999999', delegation: { activeRequest: null, expectedSignal: 'new_request' } }],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Marina', recipientNumber: '11999999999', purposeSummary: 'avisar algo', draftMessageContent: 'Oi Marina, tudo bem?' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    expect(result.turns[0].delegationRecipientName).toBe('Marina');
+    expect(result.turns[0].delegationRecipientNumber).toBe('11999999999');
+    expect(result.turns[0].delegationPurposeSummary).toBe('avisar algo');
+    expect(result.turns[0].delegationDraftMessageContent).toBe('Oi Marina, tudo bem?');
+  });
+
+  it('draftMessageContentMustNotContain reprova quando o texto preparado pra envio contém um termo proibido não coberto pelo backstop de recognizer.ts', async () => {
+    // Backstop determinístico de recognizer.ts (ver recognizer.ts/
+    // recognizer.test.ts) só reconhece um conjunto específico de
+    // padrões de autoapresentação ("aqui é X", "sou X", "quem fala é
+    // X") — por isso é sempre exercitado de verdade aqui (a função é
+    // real, nunca mockada), nunca contornável via modelCall injetado.
+    // Este teste prova que o check genérico do Harness funciona
+    // independente do backstop, usando uma frase fora desse conjunto
+    // (“gabi falando”) — cobertura complementar, não redundante.
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['gabi falando'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: 'Gabi falando, mandei beijos.' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('backstop determinístico de recognizer.ts (real, nunca mockado) já neutraliza o caso clássico antes do check do Harness ver o texto', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['aqui é a gabi'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: 'Oi! Aqui é a Gabi.' },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    // O backstop real já zera o campo antes de chegar no check — por
+    // isso o check nem dispara (null é válido), e o cenário passa.
+    expect(result.turns[0].delegationDraftMessageContent).toBeNull();
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck).toBeUndefined();
+  });
+
+  it('draftMessageContentMustNotContain não reprova quando o campo vem null (pediu esclarecimento, resultado válido)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [
+        {
+          professionalMessage: 'manda pra Gabi, fala que é ela mesma',
+          delegation: { activeRequest: null, expectedSignal: 'new_request', draftMessageContentMustNotContain: ['aqui é a gabi'] },
+        },
+      ],
+    };
+    const recognizerCall = async (): Promise<DelegatedContactRecognizerModelCallResult> => ({
+      parsed: { signal: 'new_request', recipientName: 'Gabi', recipientNumber: null, purposeSummary: null, draftMessageContent: null },
+      inputTokens: 50,
+      outputTokens: 10,
+    });
+
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Ok.'),
+      recognizerModelCall: recognizerCall,
+    });
+
+    const identityCheck = result.turns[0].assertions.find((a) => a.name.includes('erro de identidade'));
+    expect(identityCheck).toBeUndefined();
+    expect(result.turns[0].delegationDraftMessageContent).toBeNull();
+  });
+});
+
+describe('Lote P0 96+144 — extensões genéricas do runner', () => {
+  it('mustNotContain reprova quando a resposta final contém um termo proibido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Liga pra Nina', mustNotContain: ['vou ligar', 'ligo pra ela'] }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Claro, já vou ligar pra ela agora.'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('capacidade/confirmação proibida'));
+    expect(check?.pass).toBe(false);
+    expect(result.scenarioPass).toBe(false);
+  });
+
+  it('mustNotContain passa quando a resposta final não contém nenhum termo proibido', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Liga pra Nina', mustNotContain: ['vou ligar', 'ligo pra ela'] }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Não consigo fazer ligação por aqui, só mensagem de WhatsApp. Quer que eu mande uma mensagem pra ela?'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('capacidade/confirmação proibida'));
+    expect(check?.pass).toBe(true);
+  });
+
+  it('seedBookingFacts chega de fato no input real do Planner (prova a cadeia fixture -> ContextPackage -> prompt)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      seedBookingFacts: { status: 'approved', cacheAmountCents: 240000, description: 'cachê fixo R$2.400 já aprovado' },
+      turns: [{ professionalMessage: 'O promotor quer mudar o cachê.' }],
+    };
+    let capturedInput = '';
+    const plannerCall = async (p: { instructions: string; input: string }) => {
+      capturedInput = p.input;
+      return fakePlanner('Entendi, vou confirmar com você antes de qualquer mudança.')(p);
+    };
+    await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+    expect(capturedInput).toContain('240000');
+    expect(capturedInput).toContain('cachê fixo R$2.400 já aprovado');
+  });
+
+  // Identidade/apresentação pessoal (achado da fundadora, 19/10/2026)
+  // — maxConciseChars é AUXILIAR, nunca a única medida de qualidade
+  // (ela pediu explicitamente pra não depender só de caracteres).
+  it('maxConciseChars reprova um bloco claramente acima do teto, mas o turno pode falhar só por isso (nunca silencia o texto real pra leitura humana)', async () => {
+    const longText = 'Sou sua representante com IA. '.repeat(20);
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Quem é você?', maxConciseChars: 100 }] };
+    const result = await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner(longText) });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
+    expect(check?.pass).toBe(false);
+    // Reprovar o check nunca apaga o texto real — continua disponível
+    // pra leitura humana, só marcado como falho no critério objetivo.
+    expect(result.turns[0].proposedResponseFinal).not.toBeNull();
+    expect(result.turns[0].proposedResponseFinal).toContain('Sou sua representante com IA.');
+  });
+
+  it('maxConciseChars passa quando a resposta está dentro do teto', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ professionalMessage: 'Quem é você?', maxConciseChars: 220 }] };
+    const result = await runConversationScenario(scenario, {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('Sou sua representante com IA! Converso com clientes e cuido do operacional pra você.'),
+    });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
+    expect(check?.pass).toBe(true);
+  });
+
+  it('sem maxConciseChars no turno, nenhuma assertiva de concisão é adicionada (nunca um teto implícito pros demais 20+ cenários)', async () => {
+    const result = await runConversationScenario(SIMPLE_SCENARIO, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('Oi, tudo bem!') });
+    const check = result.turns[0].assertions.find((a) => a.name.includes('identidade concisa'));
+    expect(check).toBeUndefined();
+  });
+});
+
+describe('runConversationScenarios — teto de execução', () => {
+  it('recusa rodar acima de CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS, nunca executa parcialmente', async () => {
+    const hugeScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS + 1 }, (_, i) => ({ professionalMessage: `turno ${i}` })),
+    };
+    await expect(
+      runConversationScenarios([hugeScenario], { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('conversation_scenarios_turn_limit_exceeded');
+  });
+
+  it('metadata inclui hash de prompt e modelo — nunca compara resultado sem saber a versão (requisito 7)', async () => {
+    const result = await runConversationScenarios([SIMPLE_SCENARIO], {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('ok'),
+    });
+    expect(result.metadata.classifierInstructionsHash).toMatch(/^[a-f0-9]{12}$/);
+    expect(result.metadata.plannerInstructionsHash).toMatch(/^[a-f0-9]{12}$/);
+    expect(result.metadata.classifierModel).toBeTruthy();
+    expect(result.metadata.plannerModel).toBeTruthy();
+  });
+
+  it('custo total soma o custo de todos os cenários/turnos, nunca null se todos os modelos tiverem preço configurado', async () => {
+    const result = await runConversationScenarios([SIMPLE_SCENARIO], {
+      toolCtx: TOOL_CTX,
+      classifierModelCall: fakeClassifier('outro'),
+      plannerModelCall: fakePlanner('ok'),
+    });
+    expect(result.totalCostCents).not.toBeNull();
+    expect(result.totalCostCents).toBeGreaterThan(0);
+  });
+});
+
+// Task "Próxima fase: inteligência conversacional multiturno"
+// (21/10/2026) — gaps 1 e 2 da auditoria, corrigidos agora.
+describe('runConversationScenario — janela truncada como produção (gap 1 da auditoria)', () => {
+  it('nunca manda mais que CONTEXT_MAX_MESSAGES-1 mensagens anteriores pro Planner, mesmo num cenário de muitos turnos', async () => {
+    const seenRecentMessagesCounts: number[] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenRecentMessagesCounts.push(ctx.recentMessages.length);
+      return fakePlanner('ok, entendido')({ instructions: '', input });
+    };
+    // 12 turnos × 2 mensagens (profissional + resposta real) = até 24
+    // itens — mais que CONTEXT_MAX_MESSAGES (20), dentro do teto de
+    // CONVERSATION_SCENARIOS_MAX_TOTAL_TURNS.
+    const manyTurnsScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: 12 }, (_, i) => ({ professionalMessage: `pergunta número ${i}` })),
+    };
+
+    await runConversationScenario(manyTurnsScenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    // O corte é CONTEXT_MAX_MESSAGES no total da janela (anteriores + a
+    // própria mensagem-gatilho) — recentMessages (só as anteriores)
+    // nunca passa de CONTEXT_MAX_MESSAGES - 1. Antes desta correção,
+    // o último turno via 22 anteriores (items inteiro, sem corte).
+    for (const count of seenRecentMessagesCounts) {
+      expect(count).toBeLessThanOrEqual(19);
+    }
+    // E cresce normalmente até bater no teto — prova que o corte é
+    // real, não um teto artificial desde o primeiro turno.
+    expect(Math.max(...seenRecentMessagesCounts)).toBe(19);
+  });
+});
+
+describe('runConversationScenario — turnos de participante externo (gap 2 da auditoria)', () => {
+  it('um turno com externalParticipantMessage entra no histórico como external_participant, nunca como professional', async () => {
+    const seenAuthorTypes: string[][] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenAuthorTypes.push(ctx.recentMessages.map((m: { authorType: string }) => m.authorType));
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ externalParticipantMessage: 'Quanto custa pra tocar no meu casamento?' }, { professionalMessage: 'Me chama no privado' }],
+    };
+
+    const result = await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    expect(result.turns[0].triggerAuthorType).toBe('external_participant');
+    expect(result.turns[1].triggerAuthorType).toBe('professional');
+    // Turno 2 vê no histórico a mensagem do cliente (turno 1) + a resposta real da Doopla — ambas presentes com o authorType certo.
+    expect(seenAuthorTypes[1]).toEqual(['external_participant', 'ai']);
+  });
+
+  it('conversationType muda pra external_inquiry e externalParticipant fica loaded quando o cenário tem um turno de cliente', async () => {
+    let seenConversationType = '';
+    let seenExternalParticipantName: string | null = null;
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenConversationType = ctx.conversationType;
+      seenExternalParticipantName = ctx.externalParticipantName;
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{ externalParticipantMessage: 'Oi, vocês tocam em casamento?' }] };
+
+    await runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    expect(seenConversationType).toBe('external_inquiry');
+    expect(seenExternalParticipantName).not.toBeNull();
+  });
+
+  it('cenário só com professionalMessage continua professional_self (nunca regride o comportamento já existente)', async () => {
+    let seenConversationType = '';
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      seenConversationType = JSON.parse(input).conversationType;
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+
+    await runConversationScenario(SIMPLE_SCENARIO, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall });
+
+    expect(seenConversationType).toBe('professional_self');
+  });
+
+  it('turno sem nenhum dos dois campos de mensagem falha fechado, nunca silenciosamente vira string vazia', async () => {
+    const scenario: ConversationScenario = { ...SIMPLE_SCENARIO, turns: [{} as ConversationScenario['turns'][number]] };
+    await expect(
+      runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('scenario_turn_author_invalid');
+  });
+
+  it('turno com os dois campos de mensagem ao mesmo tempo também falha fechado (autoria ambígua)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ professionalMessage: 'oi', externalParticipantMessage: 'oi' }],
+    };
+    await expect(
+      runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('scenario_turn_author_invalid');
+  });
+
+  it('delegation num turno de participante externo falha fechado (pedido de delegação só faz sentido vindo do profissional)', async () => {
+    const scenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: [{ externalParticipantMessage: 'manda pra Gabi', delegation: { activeRequest: null, expectedSignal: 'new_request' } }],
+    };
+    await expect(
+      runConversationScenario(scenario, { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') })
+    ).rejects.toThrow('scenario_turn_delegation_requires_professional');
+  });
+});
+
+describe('runConversationScenarioChunk — execução retomável (achado real: cenário de 10-20 turnos sozinho ignora o lote de 6 do painel admin)', () => {
+  it('rodar um cenário de 10 turnos em 2 pedaços de 5 produz exatamente os mesmos turnResults que rodar tudo de uma vez', async () => {
+    const tenTurnScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: 10 }, (_, i) => ({ professionalMessage: `pergunta número ${i}` })),
+    };
+    const deps = { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok, entendido') };
+
+    const whole = await runConversationScenario(tenTurnScenario, deps);
+
+    const chunk1 = await runConversationScenarioChunk(tenTurnScenario, deps, null, 0, 5);
+    expect(chunk1.scenarioComplete).toBe(false);
+    expect(chunk1.nextTurnIndex).toBe(5);
+    expect(chunk1.turnResults).toHaveLength(5);
+
+    const chunk2 = await runConversationScenarioChunk(tenTurnScenario, deps, chunk1.items, chunk1.nextTurnIndex, 5);
+    expect(chunk2.scenarioComplete).toBe(true);
+    expect(chunk2.nextTurnIndex).toBe(10);
+    expect(chunk2.turnResults).toHaveLength(5);
+
+    const chunkedResult = buildScenarioResultFromTurns(tenTurnScenario, [...chunk1.turnResults, ...chunk2.turnResults]);
+
+    // turnIndex/triggerMessage/responsePlan idênticos turno a turno —
+    // prova que retomar em pedaços separados nunca perde nem embaralha
+    // histórico (o pedaço 2 precisa ver exatamente o que o pedaço 1
+    // gerou, não uma versão reconstruída errada).
+    expect(chunkedResult.turns.map((t) => [t.turnIndex, t.triggerMessage, t.responsePlan])).toEqual(
+      whole.turns.map((t) => [t.turnIndex, t.triggerMessage, t.responsePlan])
+    );
+    expect(chunkedResult.scenarioPass).toBe(whole.scenarioPass);
+  });
+
+  it('um pedaço vê no histórico tudo que o pedaço anterior gerou (gatilhos + respostas reais), nunca reinicia do zero', async () => {
+    const seenRecentMessagesCounts: number[] = [];
+    const plannerCall = async ({ input }: { instructions: string; input: string }): Promise<PlannerModelCallResult> => {
+      const ctx = JSON.parse(input);
+      seenRecentMessagesCounts.push(ctx.recentMessages.length);
+      return fakePlanner('ok')({ instructions: '', input });
+    };
+    const fourTurnScenario: ConversationScenario = {
+      ...SIMPLE_SCENARIO,
+      turns: Array.from({ length: 4 }, (_, i) => ({ professionalMessage: `turno ${i}` })),
+    };
+    const deps = { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: plannerCall };
+
+    const chunk1 = await runConversationScenarioChunk(fourTurnScenario, deps, null, 0, 2);
+    await runConversationScenarioChunk(fourTurnScenario, deps, chunk1.items, chunk1.nextTurnIndex, 2);
+
+    // Turno 0: 0 anteriores. Turno 1: turno 0 + resposta real = 2.
+    // Turno 2 (já no 2º pedaço, retomando o estado do 1º): turnos 0-1 +
+    // 2 respostas reais = 4. Turno 3: + o próprio turno 2 e resposta = 6.
+    expect(seenRecentMessagesCounts).toEqual([0, 2, 4, 6]);
+  });
+
+  it('fromTurnIndex fora do intervalo do cenário falha fechado', async () => {
+    const deps = { toolCtx: TOOL_CTX, classifierModelCall: fakeClassifier('outro'), plannerModelCall: fakePlanner('ok') };
+    await expect(runConversationScenarioChunk(SIMPLE_SCENARIO, deps, null, 99, 5)).rejects.toThrow('scenario_chunk_invalid_from_turn_index');
+  });
+});

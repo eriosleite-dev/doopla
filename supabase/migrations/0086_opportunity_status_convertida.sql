@@ -1,0 +1,20 @@
+-- Doopla — Direct Booking sem Booker (passo 1/2).
+--
+-- Preparação isolada pra migration seguinte (0087): adiciona o valor
+-- 'convertida' a public.opportunity_status ANTES de qualquer function
+-- que o use. Postgres não permite usar um valor de enum recém-criado
+-- dentro da MESMA transação em que ele foi adicionado em todas as
+-- versões/formas (a garantia de "mesma transação" da 12+ não cobre uso
+-- indireto dentro de PL/pgSQL criado na mesma migration com segurança
+-- suficiente pra apostar nisso) — então este valor precisa existir
+-- numa migration própria, comitada antes de 0087 usá-lo.
+--
+-- Nenhum status existente ('rascunho'|'aberta'|'em_distribuicao'|
+-- 'interesse_recebido'|'booker_selecionado'|'cancelada') representa
+-- corretamente "virou um Booking direto, sem Booker" — 'booker_selecionado'
+-- em particular seria semanticamente ERRADO aqui (implica que um Booker
+-- foi selecionado, o oposto do que Direct Booking significa). 'convertida'
+-- é um status novo e honesto: a oportunidade virou um booking de verdade,
+-- por qualquer caminho de conversão (hoje só o direto; nada impede reuso
+-- futuro se outro caminho de conversão for criado).
+alter type public.opportunity_status add value if not exists 'convertida';

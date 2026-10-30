@@ -1,0 +1,34 @@
+-- SUPERSEDIDA — NUNCA APLICAR O DESENHO ORIGINAL DESTE ARQUIVO.
+--
+-- Esta migration foi escrita em 13/10/2026 pra contornar um bug
+-- específico: antes do P0 de 14/10/2026 (migration 0107), cada
+-- mensagem professional_self criava uma conversation NOVA a cada
+-- turno, então a pergunta de confirmação da Doopla e o "sim" do
+-- profissional nasciam em conversations diferentes. A correção
+-- original trocava trigger_message_id/confirmation_message_id/
+-- decision_message_id de uuid (FK pra conversation_messages) pra text
+-- (guardando o provider_message_id/wamid da Meta).
+--
+-- Antes de implementar a Etapa 2.1 ("Doopla chama o cliente",
+-- 14/10/2026), confirmamos em produção (query em information_schema.columns)
+-- que esta migration NUNCA foi aplicada — as 3 colunas continuam uuid.
+-- E a causa raiz que ela contornava já foi corrigida pela migration
+-- 0107 (professional_self agora reaproveita a mesma conversation entre
+-- turnos, validado ao vivo). Decisão explícita (aprovada pela
+-- fundadora): tratar esta migration como obsoleta e NUNCA aplicá-la.
+--
+-- Por que este arquivo vira um no-op em vez de ser apagado: a migration
+-- 0109 foi construída sobre a premissa de que estas 3 colunas
+-- CONTINUAM uuid (FK real pra conversation_messages) — inclusive as
+-- RPCs que ela cria (claim_pending_delegated_contact_decision, já
+-- existente desde 0104) comparam confirmation_message_id (uuid) com um
+-- parâmetro uuid. Se o desenho original desta 0106 fosse aplicado
+-- DEPOIS da 0109 (por engano, ex.: uma ferramenta de migration que
+-- aplica tudo que está no diretório em ordem, sem saber deste
+-- histórico), o ALTER COLUMN TYPE quebraria a comparação de tipos
+-- dentro dessas functions (uuid vs text) e derrubaria em produção a
+-- aprovação de pedidos de delegação em andamento. Por isso o arquivo
+-- permanece no histórico (preserva a numeração/sequência), mas seu
+-- corpo agora não faz NADA — seguro de rodar (ou re-rodar) a qualquer
+-- momento, em qualquer ordem, sem efeito nenhum no schema.
+select 1;

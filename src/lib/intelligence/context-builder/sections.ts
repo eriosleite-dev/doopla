@@ -1,7 +1,7 @@
 import { executeTool } from '../tool-registry';
 import type { ContextSource, ToolContext, ToolExecutionError } from '../types';
-import { CONTEXT_MAX_PROFILE_FIELD_CHARS, truncateText } from './budget';
-import type { ContextFact, ContextSection } from './types';
+import { CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS, CONTEXT_MAX_COMMERCIAL_HISTORY_ITEMS, CONTEXT_MAX_PROFILE_FIELD_CHARS, truncateText } from './budget';
+import type { CommercialHistorySection, ContextFact, ContextSection } from './types';
 
 // Doopla Intelligence Core v1 — Context Builder v1: seções de fatos
 // (profissional/oportunidade/booking/participante externo).
@@ -143,6 +143,213 @@ export async function buildBookingSection(toolCtx: ToolContext, gate: Gate, now:
   pushFact(facts, 'booking', booking.id, 'eventLocation', booking.eventLocation, loadedAt);
 
   return { section: { status: 'loaded', facts }, calledTool: toolName };
+}
+
+// Junta uma lista declarada (work_types/client_types/regions/help_areas)
+// num único fato — lista vazia é tratada igual a "não informado" (o
+// profissional nunca vê essa distinção na UI de perfil, e um array
+// vazio nunca é diferente de "nada declarado ainda" pra quem consome).
+function pushJoinedListFact(facts: ContextFact[], sourceId: string, field: string, values: string[], loadedAt: string) {
+  if (values.length === 0) return;
+  pushFact(facts, 'professional_business_context', sourceId, field, values.join(', '), loadedAt);
+}
+
+// Professional Intelligence Context — preferências/dados de negócio
+// DECLARADOS (mesmos campos de /dashboard/perfil). Mesmo padrão de
+// gate das outras seções: nunca dependente de link de conversa (a
+// fonte já está sempre em allowedContextSources pro representado, ver
+// policy-gate.ts), só checa allowedContextSources/eligibleTools.
+// Preferências APRENDIDAS em conversa (ADR 0004, Rodadas 4/5) — nunca
+// confundidas com buildProfessionalBusinessContextSection (dado
+// digitado no painel). Zero preferências aprovadas é um estado normal
+// (profissional nova, ou nenhuma correção ainda) — 'loaded' com
+// facts:[], nunca 'not_found' (mesmo padrão de professionalCommercialHistory).
+export async function buildProfessionalLearnedPreferencesSection(toolCtx: ToolContext, gate: Gate, now: Date): Promise<SectionOutcome> {
+  const toolName = 'get_professional_learned_preferences';
+  if (!gate.allowedContextSources.includes('professional_learned_preferences') || !gate.eligibleTools.includes(toolName)) {
+    return { section: { status: 'not_allowed' }, calledTool: null };
+  }
+
+  const outcome = await executeTool<{
+    found: true;
+    preferences: Array<{ id: string; kind: string; value: string; confidence: number; contextOnly: true }>;
+  }>(toolName, {}, toolCtx, gate.eligibleTools);
+
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+
+  const loadedAt = now.toISOString();
+  const facts: ContextFact[] = outcome.output.preferences.map((pref) => ({
+    sourceType: 'professional_learned_preference',
+    sourceId: pref.id,
+    field: pref.kind,
+    value: pref.value,
+    factType: 'structured',
+    loadedAt,
+  }));
+
+  return { section: { status: 'loaded', facts }, calledTool: toolName };
+}
+
+export async function buildProfessionalBusinessContextSection(toolCtx: ToolContext, gate: Gate, now: Date): Promise<SectionOutcome> {
+  const toolName = 'get_professional_business_context';
+  if (!gate.allowedContextSources.includes('professional_business_context') || !gate.eligibleTools.includes(toolName)) {
+    return { section: { status: 'not_allowed' }, calledTool: null };
+  }
+
+  const outcome = await executeTool<
+    | {
+        found: true;
+        businessContext: {
+          baseFeeCents: number | null;
+          feeRange: string | null;
+          feeVariesByJobType: boolean | null;
+          pricingNotes: string | null;
+          negotiationNotes: string | null;
+          typicalJobDuration: string | null;
+          whatYouDo: string | null;
+          whereYouServe: string | null;
+          workTypes: string[];
+          clientTypes: string[];
+          regions: string[];
+          travels: boolean;
+          acceptsOutOfCityWork: boolean;
+          attentionChannel: string | null;
+          helpAreas: string[];
+          careerStage: string | null;
+          issuesInvoice: boolean | null;
+        };
+      }
+    | { found: false }
+  >(toolName, {}, toolCtx, gate.eligibleTools);
+
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+  if (outcome.output.found === false) {
+    return { section: { status: 'not_found' }, calledTool: toolName };
+  }
+
+  const { businessContext } = outcome.output;
+  const sourceId = toolCtx.representedProfessionalId;
+  const loadedAt = now.toISOString();
+  const facts: ContextFact[] = [];
+  // Redesign "Perfil e trabalho" (15/09/2026) — `baseFeeCents` é a
+  // fonte primária de cachê agora (UI parou de editar `fee_range`,
+  // migrations 0001/0038 já existiam órfãs). Mesma regra de precedência
+  // já usada abaixo pra whatYouDo/whereYouServe: campo novo primeiro,
+  // legado como fallback só quando o novo está vazio, nunca os dois
+  // juntos — profissional que preencheu `fee_range` entre 09/09 e
+  // 15/09/2026 não perde o contexto já declarado.
+  if (businessContext.baseFeeCents != null) {
+    pushFact(facts, 'professional_business_context', sourceId, 'baseFeeCents', businessContext.baseFeeCents, loadedAt);
+  } else {
+    pushFact(facts, 'professional_business_context', sourceId, 'feeRange', businessContext.feeRange, loadedAt);
+  }
+  pushFact(facts, 'professional_business_context', sourceId, 'feeVariesByJobType', businessContext.feeVariesByJobType, loadedAt);
+  if (businessContext.pricingNotes) {
+    const t = truncateText(businessContext.pricingNotes, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
+    pushFact(facts, 'professional_business_context', sourceId, 'pricingNotes', t.value, loadedAt, t.truncated);
+  }
+  if (businessContext.negotiationNotes) {
+    const t = truncateText(businessContext.negotiationNotes, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
+    pushFact(facts, 'professional_business_context', sourceId, 'negotiationNotes', t.value, loadedAt, t.truncated);
+  }
+  pushFact(facts, 'professional_business_context', sourceId, 'typicalJobDuration', businessContext.typicalJobDuration, loadedAt);
+  // Beta "Como você trabalha" simplificado (14/09/2026) — texto livre
+  // que substitui workTypes/clientTypes/regions na UI. Regra de
+  // precedência (decisão da fundadora, 14/09/2026, pra nunca mandar
+  // contexto duplicado/contraditório pro modelo): quando o campo novo
+  // está preenchido, ele é a fonte atual e o(s) array(s) antigo(s)
+  // correspondente(s) NÃO entram junto; enquanto estiver vazio (ex.:
+  // profissional cadastrado antes desta mudança, que só tem o array
+  // antigo), o legado funciona como fallback, pra não perder contexto
+  // de quem já preencheu antes. Nunca os dois ao mesmo tempo. Dado
+  // antigo nunca é apagado — só passa a não ser enviado quando
+  // superado pelo campo novo.
+  if (businessContext.whatYouDo) {
+    const t = truncateText(businessContext.whatYouDo, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
+    pushFact(facts, 'professional_business_context', sourceId, 'whatYouDo', t.value, loadedAt, t.truncated);
+  } else {
+    pushJoinedListFact(facts, sourceId, 'workTypes', businessContext.workTypes, loadedAt);
+    pushJoinedListFact(facts, sourceId, 'clientTypes', businessContext.clientTypes, loadedAt);
+  }
+  // Ajuste de precedência (14/09/2026): os 3 booleans antigos de
+  // disponibilidade pra viagem (travels/serves_other_locations/
+  // accepts_out_of_city_work — este último é o único também exposto
+  // por este tool) cobrem a mesma pergunta que "Onde você atende?"
+  // (o próprio placeholder do campo sugere "Também viajo..."), então
+  // seguem a MESMA regra de precedência de `regions`: presentes só
+  // quando whereYouServe está vazio, pra nunca contradizer o campo novo.
+  if (businessContext.whereYouServe) {
+    const t = truncateText(businessContext.whereYouServe, CONTEXT_MAX_BUSINESS_CONTEXT_FIELD_CHARS);
+    pushFact(facts, 'professional_business_context', sourceId, 'whereYouServe', t.value, loadedAt, t.truncated);
+  } else {
+    pushJoinedListFact(facts, sourceId, 'regions', businessContext.regions, loadedAt);
+    pushFact(facts, 'professional_business_context', sourceId, 'travels', businessContext.travels, loadedAt);
+    pushFact(facts, 'professional_business_context', sourceId, 'acceptsOutOfCityWork', businessContext.acceptsOutOfCityWork, loadedAt);
+  }
+  pushFact(facts, 'professional_business_context', sourceId, 'attentionChannel', businessContext.attentionChannel, loadedAt);
+  pushJoinedListFact(facts, sourceId, 'helpAreas', businessContext.helpAreas, loadedAt);
+  pushFact(facts, 'professional_business_context', sourceId, 'careerStage', businessContext.careerStage, loadedAt);
+  pushFact(facts, 'professional_business_context', sourceId, 'issuesInvoice', businessContext.issuesInvoice, loadedAt);
+
+  return { section: { status: 'loaded', facts }, calledTool: toolName };
+}
+
+type CommercialHistorySectionOutcome = { section: CommercialHistorySection; calledTool: string | null; unavailableReason?: ToolExecutionError };
+
+// Professional Intelligence Context — histórico comercial real
+// (bookings passados do próprio profissional), retrieval V1 por
+// recência (CONTEXT_MAX_COMMERCIAL_HISTORY_ITEMS, ver budget.ts) —
+// cada booking é seu próprio fato individual (sourceId = booking.id),
+// NUNCA agregado/calculado. status é sempre incluído por fato — nunca
+// omitido — pra nunca deixar implícito que um booking em
+// proposta/cancelado "aconteceu" de fato.
+export async function buildProfessionalCommercialHistorySection(
+  toolCtx: ToolContext,
+  gate: Gate,
+  now: Date
+): Promise<CommercialHistorySectionOutcome> {
+  const toolName = 'get_professional_commercial_history';
+  if (!gate.allowedContextSources.includes('professional_commercial_history') || !gate.eligibleTools.includes(toolName)) {
+    return { section: { status: 'not_allowed' }, calledTool: null };
+  }
+
+  const outcome = await executeTool<{
+    bookings: {
+      id: string;
+      status: string;
+      cacheAmountCents: number | null;
+      commissionPercent: number;
+      eventDate: string | null;
+      eventLocation: string | null;
+      description: string | null;
+      createdAt: string;
+    }[];
+  }>(toolName, { limit: CONTEXT_MAX_COMMERCIAL_HISTORY_ITEMS }, toolCtx, gate.eligibleTools);
+
+  if (!outcome.ok) {
+    return { section: { status: 'unavailable' }, calledTool: toolName, unavailableReason: outcome.error };
+  }
+
+  const loadedAt = now.toISOString();
+  const facts: ContextFact[] = [];
+  for (const booking of outcome.output.bookings) {
+    pushFact(facts, 'professional_commercial_history', booking.id, 'status', booking.status, loadedAt);
+    pushFact(facts, 'professional_commercial_history', booking.id, 'cacheAmountCents', booking.cacheAmountCents, loadedAt);
+    pushFact(facts, 'professional_commercial_history', booking.id, 'commissionPercent', booking.commissionPercent, loadedAt);
+    pushFact(facts, 'professional_commercial_history', booking.id, 'eventDate', booking.eventDate, loadedAt);
+    pushFact(facts, 'professional_commercial_history', booking.id, 'eventLocation', booking.eventLocation, loadedAt);
+    pushFact(facts, 'professional_commercial_history', booking.id, 'description', booking.description, loadedAt);
+    pushFact(facts, 'professional_commercial_history', booking.id, 'createdAt', booking.createdAt, loadedAt);
+  }
+
+  return {
+    section: { status: 'loaded', facts, retrievalStrategy: 'recency_bounded_v1', limit: CONTEXT_MAX_COMMERCIAL_HISTORY_ITEMS },
+    calledTool: toolName,
+  };
 }
 
 export async function buildExternalParticipantSection(toolCtx: ToolContext, gate: Gate, now: Date): Promise<SectionOutcome> {

@@ -15,7 +15,7 @@ import type {
   OpportunityInterestStatus,
   OpportunityInvitation,
   OpportunityInvitationStatus,
-  PayoutRequest,
+  PixKeyType,
   Profile,
   Referral,
   RepresentationRequest,
@@ -64,8 +64,20 @@ export function getBookingCheckpoints(booking: Booking): Checkpoint[] {
   ];
 }
 
-export function isDooplaVerified(booking: Booking): boolean {
-  return booking.validated_at != null;
+// Pura, sem I/O — testável determinística sem mock de Supabase.
+// Direct Booking (booker_profile_id null): não existe Booker pra
+// confirmar o recebimento, e criar um Booker fictício está fora de
+// cogitação (decisão de produto, §121/122) — o próprio profissional
+// confirma que recebeu o pagamento do cliente. Booking com Booker
+// real: comportamento 100% inalterado, só o Booker confirma (nunca o
+// artista, mesmo que ele peça).
+export function canMarkBookingPaid(
+  booking: Pick<Booking, 'booker_profile_id' | 'artist_profile_id'>,
+  actor: { role: string; userId: string }
+): boolean {
+  return booking.booker_profile_id === null
+    ? actor.role === 'artista' && actor.userId === booking.artist_profile_id
+    : actor.role === 'booker' && actor.userId === booking.booker_profile_id;
 }
 
 async function attachOtherPartyNames(
@@ -75,11 +87,17 @@ async function attachOtherPartyNames(
 ): Promise<BookingWithOtherParty[]> {
   if (bookings.length === 0) return [];
 
+  // Direct Booking (16/09/2026) — booker_profile_id null nunca aparece
+  // pro papel 'booker' (getUserBookings filtra por
+  // booker_profile_id=userId, que nunca bate com null), só pro
+  // profissional. Filtra null aqui pra nunca mandar um id inválido
+  // pro .in() (PostgREST não dá erro, mas também nunca bate — é
+  // trabalho à toa).
   const otherIds = [
     ...new Set(
-      bookings.map((b) =>
-        role === 'booker' ? b.artist_profile_id : b.booker_profile_id
-      )
+      bookings
+        .map((b) => (role === 'booker' ? b.artist_profile_id : b.booker_profile_id))
+        .filter((id): id is string => id !== null)
     ),
   ];
   const { data: others } = await supabase
@@ -89,12 +107,21 @@ async function attachOtherPartyNames(
     .returns<Pick<Profile, 'id' | 'full_name'>[]>();
 
   const nameById = new Map((others ?? []).map((p) => [p.id, p.full_name]));
-  return bookings.map((b) => ({
-    ...b,
-    otherPartyName:
-      nameById.get(role === 'booker' ? b.artist_profile_id : b.booker_profile_id) ??
-      'Alguém',
-  }));
+  return bookings.map((b) => {
+    if (role !== 'booker' && b.booker_profile_id === null) {
+      // Direct Booking: não existe Booker/contraparte Doopla — a
+      // "outra parte" é o cliente real, nunca "Alguém"/"Booker".
+      // client_name sempre vem preenchido pela conversão
+      // (convert_opportunity_to_booking copia da opportunity), mas o
+      // fallback cobre o caso defensivo de vir vazio mesmo assim.
+      return { ...b, otherPartyName: b.client_name ?? 'Cliente' };
+    }
+    return {
+      ...b,
+      otherPartyName:
+        nameById.get(role === 'booker' ? b.artist_profile_id : (b.booker_profile_id as string)) ?? 'Alguém',
+    };
+  });
 }
 
 export async function getUserBookings(
@@ -311,6 +338,10 @@ export async function getSentInvites(
   bookerId: string,
   supabase: SupabaseServerClient
 ): Promise<Invite[]> {
+  // Sweep sob demanda (mesmo padrão de expire_stale_representation_requests)
+  // — garante que um convite já vencido aparece como 'expirada' pra quem
+  // enviou, não como 'pendente' desatualizado.
+  await supabase.rpc('expire_stale_invites');
   const { data } = await supabase
     .from('invites')
     .select('*')
@@ -375,29 +406,56 @@ export async function getOrcamentoLinkInfo(
 
 export type MatchingCompletion = { filled: number; total: number };
 
-// Campos complementares (puláveis no cadastro) — os mesmos marcados como
-// `optional` no wizard de signup-form.tsx. Usado só pro card "Complete
-// suas preferências" do painel; não afeta o que já é essencial.
+// Correção 15/09/2026 (achado da fundadora) — este cálculo checava
+// `regions`/`career_stage`/`help_areas`, colunas do modelo antigo de
+// matching que a Simplificação de beta de 14/09/2026 (ver comentário
+// em `pro-profile-work-form.tsx`) já tinha removido da UI de "Como
+// você trabalha". Resultado: o card "Contexto profissional" nunca
+// chegava a N/N — 3 dos 4 critérios dependiam de colunas que o
+// profissional não tem mais como preencher, então a pendência nunca
+// desaparecia da Home mesmo depois de salvar tudo que a tela atual
+// oferece. Critérios agora são exatamente as colunas que
+// `updateArtistWorkContextAction` escreve hoje (mesmo padrão de
+// `getActivePaymentDetails`, que já lia certo: sempre os campos da
+// superfície de edição ATUAL, nunca uma coluna legada preservada só
+// por compatibilidade de dado histórico). `issues_invoice` conta como
+// preenchido em `false` também — é uma resposta válida, só `null`
+// (nunca respondido) é que falta.
+//
+// Ajuste 15/09/2026 (redesign "Perfil e trabalho") — `fee_range` saiu
+// da UI (vira legado, ver updateArtistWorkContextAction) e o critério
+// de cachê passa a ser `base_fee_cents` preenchido OU `pricing_notes`
+// com conteúdo: um profissional pode não ter um cachê-base único, mas
+// explicar a lógica em "Informações extras sobre seu cachê" — nenhum
+// dos dois pode virar obrigatório sozinho, exigir os dois travaria
+// quem só usa um.
+//
+// Nome da função: ainda `getArtistMatchingCompletion`, embora
+// "matching" não seja mais conceito do produto — não renomeado nesta
+// rodada (2 consumidores reais, `professional-home-view.tsx` e
+// `booker-home-view.tsx`, risco baixo mas fora do escopo mínimo deste
+// item). Registrado como dívida técnica no PROGRESS.md.
 export async function getArtistMatchingCompletion(
   artistId: string,
   supabase: SupabaseServerClient
 ): Promise<MatchingCompletion> {
   const { data } = await supabase
     .from('artist_profiles')
-    .select('regions, career_stage, fee_range, help_areas')
+    .select('what_you_do, where_you_serve, base_fee_cents, pricing_notes, issues_invoice')
     .eq('profile_id', artistId)
     .maybeSingle<{
-      regions: string[] | null;
-      career_stage: string | null;
-      fee_range: string | null;
-      help_areas: string[] | null;
+      what_you_do: string | null;
+      where_you_serve: string | null;
+      base_fee_cents: number | null;
+      pricing_notes: string | null;
+      issues_invoice: boolean | null;
     }>();
 
   const fields = [
-    (data?.regions?.length ?? 0) > 0,
-    Boolean(data?.career_stage),
-    Boolean(data?.fee_range),
-    (data?.help_areas?.length ?? 0) > 0,
+    Boolean(data?.what_you_do?.trim()),
+    Boolean(data?.where_you_serve?.trim()),
+    data?.base_fee_cents != null || Boolean(data?.pricing_notes?.trim()),
+    data?.issues_invoice != null,
   ];
   return { filled: fields.filter(Boolean).length, total: fields.length };
 }
@@ -974,6 +1032,26 @@ export async function getMyOpportunities(
   return data ?? [];
 }
 
+// Pedido individual, escopado ao dono (correção 15/09/2026) — usada
+// pelo detalhe compacto de Pedidos, que não precisa mais de
+// interests/invitations/invitableBookers (mecânica de matching/booker
+// removida da UI). getOpportunityManageDetail abaixo continua existindo
+// (tabelas/RPC de matching não foram apagadas), só deixou de ser
+// chamada por essa tela.
+export async function getMyOpportunityById(
+  opportunityId: string,
+  artistId: string,
+  supabase: SupabaseServerClient
+): Promise<Opportunity | null> {
+  const { data } = await supabase
+    .from('opportunities')
+    .select('*')
+    .eq('id', opportunityId)
+    .eq('artist_profile_id', artistId)
+    .maybeSingle<Opportunity>();
+  return data ?? null;
+}
+
 export type OpportunityManageDetail = {
   opportunity: Opportunity;
   interests: (OpportunityInterest & { bookerName: string; ratingAverage: number | null; ratingCount: number })[];
@@ -1228,7 +1306,7 @@ function isPrevMonth(iso: string): boolean {
   return d.getFullYear() === prev.getFullYear() && d.getMonth() === prev.getMonth();
 }
 
-function commissionCents(booking: Booking): number {
+export function commissionCents(booking: Booking): number {
   if (!booking.cache_amount_cents) return 0;
   return Math.round((booking.cache_amount_cents * booking.commission_percent) / 100);
 }
@@ -1567,6 +1645,9 @@ export async function getPendingInvites(
   userId: string,
   supabase: SupabaseServerClient
 ): Promise<PendingInvite[]> {
+  // Mesmo sweep de getSentInvites — nunca oferecer "Aceitar conexão" pra
+  // um convite que já venceu, mesmo que o sweep ainda não tenha rodado.
+  await supabase.rpc('expire_stale_invites');
   const { data: invites } = await supabase
     .from('invites')
     .select('*')
@@ -1636,32 +1717,29 @@ export async function getBookingContract(
   return { contract, booking: withName };
 }
 
-export type PayoutBalance = {
-  availableCents: number;
-  requests: PayoutRequest[];
+export type ActivePaymentDetails = {
+  pixKeyType: PixKeyType;
+  pixKey: string;
+  holderName: string | null;
 };
 
-// Disponível pra saque = total já recebido menos o que já foi solicitado
-// (não processado ainda — Bloco 2/Pagar.me faz a transferência de
-// verdade). Sem tabela de "já liquidado" separada, é uma aproximação
-// honesta: nunca deixa pedir mais do que já ganhou.
-export async function getPayoutBalance(
+// Financeiro (revisão Professional Web Dashboard, 06/09/2026) — extraída
+// da query inline que já existia em dinheiro/page.tsx. A Doopla nunca
+// recebe o dinheiro do booking (pagamento é direto cliente -> profissional
+// no beta); esta função só lê os dados que a Doopla usa pra ORIENTAR
+// esse pagamento direto, nunca um saldo/carteira. Ver DECISOES.md.
+export async function getActivePaymentDetails(
   userId: string,
-  totalReceivedCents: number,
   supabase: SupabaseServerClient
-): Promise<PayoutBalance> {
-  const { data: requests } = await supabase
-    .from('payout_requests')
-    .select('*')
+): Promise<ActivePaymentDetails | null> {
+  const { data } = await supabase
+    .from('payment_details')
+    .select('pix_key_type, pix_key, holder_name')
     .eq('profile_id', userId)
-    .order('created_at', { ascending: false })
-    .returns<PayoutRequest[]>();
-
-  const requested = (requests ?? []).reduce((sum, r) => sum + r.amount_cents, 0);
-  return {
-    availableCents: Math.max(totalReceivedCents - requested, 0),
-    requests: requests ?? [],
-  };
+    .eq('status', 'active')
+    .maybeSingle<{ pix_key_type: PixKeyType; pix_key: string; holder_name: string | null }>();
+  if (!data?.pix_key_type || !data.pix_key) return null;
+  return { pixKeyType: data.pix_key_type, pixKey: data.pix_key, holderName: data.holder_name };
 }
 
 export type ReferralWithName = Referral & { referredName: string };
@@ -1824,7 +1902,10 @@ export async function getAgendaEvents(
       date: b.event_date as string,
       kind: 'confirmado' as const,
       title: b.description || `Trabalho com ${b.otherPartyName}`,
-      sub: role === 'booker' ? `Artista: ${b.otherPartyName}` : `Booker: ${b.otherPartyName}`,
+      // Direct Booking (16/09/2026): sem Booker, "Booker: {nome}" seria
+      // falso — otherPartyName já é o cliente real (ver
+      // attachOtherPartyNames), então o rótulo vira "Cliente:".
+      sub: role === 'booker' ? `Artista: ${b.otherPartyName}` : b.booker_profile_id === null ? `Cliente: ${b.otherPartyName}` : `Booker: ${b.otherPartyName}`,
       bookingId: b.id,
     }));
 
