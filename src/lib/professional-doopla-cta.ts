@@ -36,6 +36,6 @@
 // nem finge identidade) — comportamento já coberto pelo algoritmo
 // congelado, não uma lacuna nova.
 export function buildTalkToYourDooplaUrl(dooplaWhatsappNumber: string): string {
-  const text = 'Oi, Doopla! Aqui é a minha própria conta — quero falar com você.';
+  const text = 'Oi, Doopla! Sou eu de novo — bora conversar?';
   return `https://wa.me/${dooplaWhatsappNumber}?text=${encodeURIComponent(text)}`;
 }

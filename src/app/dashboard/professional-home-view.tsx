@@ -425,7 +425,7 @@ function BookingChannelsCard({
           </div>
           <form action={disablePublicProfileAction} className="border-t border-[var(--pro-line)] pt-2.5">
             <button type="submit" className="text-[11px] text-[var(--pro-tx-50)] hover:text-[var(--pro-off)] hover:underline">
-              Desativar recebimento de solicitações
+              Desativar canais de booking
             </button>
           </form>
         </>
@@ -439,7 +439,7 @@ function BookingChannelsCard({
               type="submit"
               className="rounded-full border border-[var(--pro-red)] px-3.5 py-1.5 text-[11.5px] font-semibold text-[var(--pro-red)] hover:bg-[var(--pro-red)]/10"
             >
-              Ativar
+              Ativar canais de booking
             </button>
           </form>
         </div>
