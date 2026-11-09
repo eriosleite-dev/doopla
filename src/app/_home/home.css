@@ -589,11 +589,11 @@
      Bloco único horizontal, mesma largura dos cards de planos (1180px)
      — nunca um terceiro .plan-card (pedido explícito da fundadora: não
      é um plano, é uma seção à parte). */
-  #home-marketing .agency-banner{ max-width:1180px; margin:0 auto; background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:40px 44px; display:flex; align-items:center; justify-content:space-between; gap:40px; }
-  #home-marketing .agency-banner-copy{ max-width:640px; }
-  #home-marketing .agency-banner-copy .eyebrow{ display:block; margin-bottom:10px; }
-  #home-marketing .agency-banner-copy h3{ font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.01em; color:var(--off); font-size:1.5rem; line-height:1.2; margin:0 0 14px; }
-  #home-marketing .agency-banner-copy p{ color:var(--tx-70); font-size:.9rem; line-height:1.6; margin:0 0 10px; }
+  #home-marketing .agency-banner{ max-width:1180px; margin:0 auto; background:linear-gradient(165deg,#1c0d0e,#100708); border:1px solid rgba(226,41,28,.4); box-shadow:0 0 40px rgba(226,41,28,.12); border-radius:22px; padding:48px; display:flex; align-items:center; justify-content:space-between; gap:40px; }
+  #home-marketing .agency-banner-copy{ max-width:660px; }
+  #home-marketing .agency-banner-copy .eyebrow{ display:block; margin-bottom:12px; }
+  #home-marketing .agency-banner-copy h3{ font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.015em; color:var(--off); font-size:clamp(1.9rem,3vw,2.6rem); line-height:1.14; margin:0 0 18px; }
+  #home-marketing .agency-banner-copy p{ color:var(--tx-70); font-size:.97rem; line-height:1.65; margin:0 0 10px; }
   #home-marketing .agency-banner-copy p:last-of-type{ margin-bottom:0; }
   #home-marketing .agency-banner-cta{ flex:none; white-space:nowrap; }
 

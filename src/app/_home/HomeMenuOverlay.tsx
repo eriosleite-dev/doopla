@@ -21,6 +21,7 @@ const MENU_ITEMS = [
   { href: '#como-funciona', label: 'Como funciona' },
   { href: '#o-que-a-doopla-faz', label: 'O que a Doopla faz' },
   { href: '#planos', label: 'Planos' },
+  { href: '#agencias', label: 'Para agências' },
   { href: '/seguranca', label: 'Segurança' },
   { href: '#faq', label: 'FAQ' },
   { href: '/sobre', label: 'Sobre' },
