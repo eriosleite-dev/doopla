@@ -585,6 +585,18 @@
   #home-marketing .plan-more > ul{ overflow:hidden; min-height:0; }
   #home-marketing .plan-card.expanded .plan-more{ grid-template-rows:1fr; }
 
+  /* ===== DOOPLA PARA AGÊNCIAS =====
+     Bloco único horizontal, mesma largura dos cards de planos (1180px)
+     — nunca um terceiro .plan-card (pedido explícito da fundadora: não
+     é um plano, é uma seção à parte). */
+  #home-marketing .agency-banner{ max-width:1180px; margin:0 auto; background:var(--panel); border:1px solid var(--line); border-radius:22px; padding:40px 44px; display:flex; align-items:center; justify-content:space-between; gap:40px; }
+  #home-marketing .agency-banner-copy{ max-width:640px; }
+  #home-marketing .agency-banner-copy .eyebrow{ display:block; margin-bottom:10px; }
+  #home-marketing .agency-banner-copy h3{ font-family:'Inter',sans-serif; font-weight:800; letter-spacing:-.01em; color:var(--off); font-size:1.5rem; line-height:1.2; margin:0 0 14px; }
+  #home-marketing .agency-banner-copy p{ color:var(--tx-70); font-size:.9rem; line-height:1.6; margin:0 0 10px; }
+  #home-marketing .agency-banner-copy p:last-of-type{ margin-bottom:0; }
+  #home-marketing .agency-banner-cta{ flex:none; white-space:nowrap; }
+
   /* ===== FAQ (mantido da Home anterior — sem seção equivalente no novo
      mockup; overlay do Menu referencia "FAQ" como destino, então a
      seção precisa continuar existindo. Ver relatório.) ===== */
@@ -813,6 +825,9 @@
     #home-marketing .step:nth-child(even){ border-left:1px solid var(--line); padding-left:20px; }
     #home-marketing .step:nth-child(odd){ border-left:none; }
     #home-marketing .plans{ grid-template-columns:1fr; }
+    #home-marketing .agency-banner{ flex-direction:column; align-items:flex-start; padding:32px 24px; gap:22px; }
+    #home-marketing .agency-banner-copy{ max-width:none; }
+    #home-marketing .agency-banner-cta{ width:100%; justify-content:center; }
     #home-marketing .plans-head{ flex-direction:column; align-items:flex-start; gap:10px; }
     #home-marketing .cta-final{ padding:28px 22px; }
     #home-marketing .mascot-cta{ display:none; }
