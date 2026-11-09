@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/admin', label: 'Visão geral' },
   { href: '/admin/usuarios', label: 'Usuários' },
   { href: '/admin/comunidade', label: 'Comunidade' },
+  { href: '/admin/agencias', label: 'Agências Parceiras' },
   { href: '/admin/ia-custo', label: 'Custo de IA' },
 ];
 

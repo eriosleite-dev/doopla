@@ -1192,6 +1192,83 @@ export type ContactMessage = {
   created_at: string;
 };
 
+// Qualificação de agências (migration 0129) — formulário público em
+// etapas (Home) + gestão em Admin > Agências Parceiras.
+export type AgencyInterest = 'discovery_metrics' | 'recurring_revenue' | 'both';
+export type AgencyClassification = 'priority' | 'future_potential' | 'out_of_profile';
+export type AgencyApplicationStatus = 'new' | 'under_review' | 'contacted' | 'in_conversation' | 'partner' | 'rejected' | 'archived';
+export type AgencyNotificationStatus = 'not_applicable' | 'pending' | 'sent' | 'failed';
+
+export type AgencyApplication = {
+  id: string;
+  agency_name: string;
+  website_or_instagram: string;
+  city: string;
+  country: string;
+  contact_name: string;
+  contact_role: string;
+  contact_email: string;
+  team_size: number;
+  artists_represented: number;
+  monthly_requests_volume: number;
+  interest: AgencyInterest;
+  classification: AgencyClassification;
+  classification_snapshot: Record<string, number | string>;
+  status: AgencyApplicationStatus;
+  consent_contact_at: string;
+  notification_status: AgencyNotificationStatus;
+  notification_error: string | null;
+  notified_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgencyApplicationListRow = Omit<AgencyApplication, 'classification_snapshot' | 'consent_contact_at'>;
+
+export type AgencyApplicationHistoryRow = {
+  id: string;
+  admin_profile_id: string;
+  admin_name: string;
+  action: string;
+  previous_state: Record<string, unknown> | null;
+  new_state: Record<string, unknown> | null;
+  reason: string;
+  created_at: string;
+};
+
+export type AgencyClassificationCriteriaRow = {
+  id: string;
+  priority_min_team_size: number;
+  priority_min_artists: number;
+  priority_min_monthly_requests: number;
+  future_min_team_size: number;
+  future_min_artists: number;
+  future_min_monthly_requests: number;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+export type AgencyNotificationRecipientRow = {
+  id: string;
+  email: string;
+  active: boolean;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type AgencyFunnelEventRow = {
+  id: string;
+  event_type: string;
+  session_token: string;
+  application_id: string | null;
+  step: number | null;
+  classification: string | null;
+  created_at: string;
+};
+
+export type AgencyFunnelSummaryRow = { event_type: string; total: number };
+export type AgencyApplicationsWeeklySummaryRow = { classification: AgencyClassification; total: number };
+
 // A lib do Supabase exige `Relationships` em cada tabela (usado só pra
 // joins embutidos via .select('foo(*)')). Não usamos essa sintaxe — as
 // junções são feitas com queries separadas — então fica sempre [].
@@ -1573,6 +1650,33 @@ export type Database = {
       // Insert/Update direto nunca é concedido pra anon/authenticated.
       contact_messages: {
         Row: ContactMessage;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      // Qualificação de agências (migration 0129). Só escrita via
+      // submit_agency_application (público) e admin_* (Admin) —
+      // Insert/Update direto nunca é concedido pra anon/authenticated.
+      agency_applications: {
+        Row: AgencyApplication;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      agency_classification_criteria: {
+        Row: AgencyClassificationCriteriaRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      agency_notification_recipients: {
+        Row: AgencyNotificationRecipientRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      agency_funnel_events: {
+        Row: AgencyFunnelEventRow;
         Insert: never;
         Update: never;
         Relationships: [];
@@ -1961,6 +2065,110 @@ export type Database = {
       admin_list_audit_events: {
         Args: { p_limit?: number };
         Returns: AdminAuditEventRow[];
+      };
+      // Qualificação de agências (migration 0129) — formulário público
+      // em etapas (Home) + gestão em Admin > Agências Parceiras.
+      submit_agency_application: {
+        Args: {
+          p_agency_name: string;
+          p_website_or_instagram: string;
+          p_city: string;
+          p_country: string;
+          p_contact_name: string;
+          p_contact_role: string;
+          p_contact_email: string;
+          p_team_size: number;
+          p_artists_represented: number;
+          p_monthly_requests_volume: number;
+          p_interest: AgencyInterest;
+          p_consent: boolean;
+        };
+        Returns: { id: string; classification: AgencyClassification }[];
+      };
+      record_agency_funnel_event: {
+        Args: {
+          p_event_type: string;
+          p_session_token: string;
+          p_application_id?: string | null;
+          p_step?: number | null;
+          p_classification?: string | null;
+        };
+        Returns: undefined;
+      };
+      mark_agency_notification: {
+        Args: { p_id: string; p_status: 'sent' | 'failed'; p_error?: string | null };
+        Returns: undefined;
+      };
+      admin_list_agency_applications: {
+        Args: {
+          p_classification?: AgencyClassification | null;
+          p_status?: AgencyApplicationStatus | null;
+          p_min_team_size?: number | null;
+          p_min_artists?: number | null;
+          p_city?: string | null;
+          p_country?: string | null;
+          p_interest?: AgencyInterest | null;
+          p_query?: string | null;
+          p_from?: string | null;
+          p_to?: string | null;
+          p_limit?: number;
+        };
+        Returns: AgencyApplicationListRow[];
+      };
+      admin_get_agency_application: {
+        Args: { p_id: string };
+        Returns: AgencyApplication;
+      };
+      admin_set_agency_application_status: {
+        Args: { p_id: string; p_status: AgencyApplicationStatus; p_reason: string };
+        Returns: undefined;
+      };
+      admin_add_agency_application_note: {
+        Args: { p_id: string; p_note: string };
+        Returns: undefined;
+      };
+      admin_list_agency_application_history: {
+        Args: { p_id: string };
+        Returns: AgencyApplicationHistoryRow[];
+      };
+      admin_get_agency_classification_criteria: {
+        Args: Record<string, never>;
+        Returns: AgencyClassificationCriteriaRow;
+      };
+      admin_set_agency_classification_criteria: {
+        Args: {
+          p_priority_min_team_size: number;
+          p_priority_min_artists: number;
+          p_priority_min_monthly_requests: number;
+          p_future_min_team_size: number;
+          p_future_min_artists: number;
+          p_future_min_monthly_requests: number;
+        };
+        Returns: undefined;
+      };
+      admin_list_agency_notification_recipients: {
+        Args: Record<string, never>;
+        Returns: AgencyNotificationRecipientRow[];
+      };
+      admin_add_agency_notification_recipient: {
+        Args: { p_email: string };
+        Returns: string;
+      };
+      admin_remove_agency_notification_recipient: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      admin_reset_agency_notification: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      admin_get_agency_funnel_summary: {
+        Args: { p_days?: number };
+        Returns: AgencyFunnelSummaryRow[];
+      };
+      admin_get_agency_applications_weekly_summary: {
+        Args: Record<string, never>;
+        Returns: AgencyApplicationsWeeklySummaryRow[];
       };
     };
   };

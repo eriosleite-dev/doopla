@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 
 import { MARKETS } from '@/lib/market';
+import { AgencyQualificationModal } from './_home/AgencyQualificationModal';
 import { HomeCreateAccountModal } from './_home/HomeCreateAccountModal';
 import { HomeLoginModal } from './_home/HomeLoginModal';
 import { HomeMarketingBoot } from './_home/HomeMarketingBoot';
@@ -51,6 +52,7 @@ export default function Home() {
         {HOME_JS}
       </Script>
       <HomeLoginModal />
+      <AgencyQualificationModal />
       <HomeMenuOverlay />
       <HomeCreateAccountModal />
       <HomeSoftNav />
