@@ -57,10 +57,8 @@ export type AgencyClassificationCriteria = {
   id: string;
   priorityMinTeamSize: number;
   priorityMinArtists: number;
-  priorityMinMonthlyRequests: number;
-  futureMinTeamSize: number;
-  futureMinArtists: number;
-  futureMinMonthlyRequests: number;
+  outOfProfileMaxTeamSize: number;
+  outOfProfileMaxArtists: number;
   updatedAt: string;
 };
 

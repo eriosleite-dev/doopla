@@ -117,10 +117,8 @@ export async function setAgencyCriteriaAction(formData: FormData): Promise<void>
     await setAgencyClassificationCriteria(supabase, {
       priorityMinTeamSize: toNumber('priority_min_team_size'),
       priorityMinArtists: toNumber('priority_min_artists'),
-      priorityMinMonthlyRequests: toNumber('priority_min_monthly_requests'),
-      futureMinTeamSize: toNumber('future_min_team_size'),
-      futureMinArtists: toNumber('future_min_artists'),
-      futureMinMonthlyRequests: toNumber('future_min_monthly_requests'),
+      outOfProfileMaxTeamSize: toNumber('out_of_profile_max_team_size'),
+      outOfProfileMaxArtists: toNumber('out_of_profile_max_artists'),
     });
   } catch (err) {
     backToConfig('error', err instanceof Error ? err.message : 'Erro ao salvar critérios.');

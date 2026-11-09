@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { getAgencyApplicationsWeeklySummary, getAgencyFunnelSummary, listAgencyApplications } from '@/lib/agencies/admin-data';
+import { bucketByArtistsRepresented, bucketByTeamSize, computeConversionRates, groupByInterest, groupByLocation } from '@/lib/agencies/distribution';
 import type { AgencyClassification, AgencyInterest, AgencyStatus } from '@/lib/agencies/types';
 
 import { getAdminSession } from '../session';
@@ -50,7 +51,7 @@ export default async function AdminAgenciasPage({ searchParams }: { searchParams
   const { supabase } = await getAdminSession();
   const params = await searchParams;
 
-  const [rows, funnelSummary, weeklySummary] = await Promise.all([
+  const [rows, funnelSummary, weeklySummary, pendingPriority, allApplications] = await Promise.all([
     listAgencyApplications(supabase, {
       classification: (params.classification as AgencyClassification) || undefined,
       status: (params.status as AgencyStatus) || undefined,
@@ -62,7 +63,18 @@ export default async function AdminAgenciasPage({ searchParams }: { searchParams
     }),
     getAgencyFunnelSummary(supabase, 7),
     getAgencyApplicationsWeeklySummary(supabase),
+    listAgencyApplications(supabase, { classification: 'priority', status: 'new', limit: 50 }),
+    // Conjunto completo (sem os filtros da tabela) pras distribuições
+    // abaixo — nunca o mesmo `rows` filtrado, que mudaria o gráfico
+    // toda vez que alguém filtrasse a tabela.
+    listAgencyApplications(supabase, { limit: 500 }),
   ]);
+
+  const conversionRates = computeConversionRates(funnelSummary);
+  const teamSizeDistribution = bucketByTeamSize(allApplications);
+  const artistsDistribution = bucketByArtistsRepresented(allApplications);
+  const locationDistribution = groupByLocation(allApplications);
+  const interestDistribution = groupByInterest(allApplications);
 
   return (
     <div className="flex flex-col gap-6">
@@ -72,6 +84,13 @@ export default async function AdminAgenciasPage({ searchParams }: { searchParams
           Configurações →
         </Link>
       </div>
+
+      {pendingPriority.length > 0 && (
+        <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12.5px] text-red-300">
+          {pendingPriority.length} inscrição{pendingPriority.length > 1 ? 'ões' : ''} prioritária{pendingPriority.length > 1 ? 's' : ''} aguardando
+          avaliação.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {FUNNEL_ORDER.map((key) => (
@@ -89,6 +108,27 @@ export default async function AdminAgenciasPage({ searchParams }: { searchParams
             {CLASSIFICATION_LABEL[c]}: <span className="font-semibold text-zinc-100">{weeklySummary[c] ?? 0}</span>
           </span>
         ))}
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+        <p className="font-mono text-[9.5px] uppercase tracking-[.06em] text-zinc-500">Taxas de conversão (últimos 7 dias)</p>
+        <div className="mt-2 flex flex-wrap gap-4">
+          {conversionRates.map((rate) => (
+            <span key={rate.label} className="text-[12px] text-zinc-400">
+              {rate.label}: <span className="font-semibold text-zinc-100">{rate.percent === null ? '—' : `${rate.percent}%`}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <DistributionCard title="Por tamanho de equipe" buckets={teamSizeDistribution} />
+        <DistributionCard title="Por artistas representados" buckets={artistsDistribution} />
+        <DistributionCard title="Por localização (top 10)" buckets={locationDistribution} />
+        <DistributionCard
+          title="Por interesse"
+          buckets={interestDistribution.map((b) => ({ label: INTEREST_LABEL[b.label as AgencyInterest] ?? b.label, count: b.count }))}
+        />
       </div>
 
       <form className="flex flex-wrap items-end gap-2">
@@ -164,6 +204,27 @@ export default async function AdminAgenciasPage({ searchParams }: { searchParams
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function DistributionCard({ title, buckets }: { title: string; buckets: { label: string; count: number }[] }) {
+  const total = buckets.reduce((sum, b) => sum + b.count, 0);
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+      <p className="font-mono text-[9.5px] uppercase tracking-[.06em] text-zinc-500">{title}</p>
+      {total === 0 ? (
+        <p className="mt-2 text-[12px] text-zinc-600">Sem dados ainda.</p>
+      ) : (
+        <ul className="mt-2 flex flex-col gap-1.5">
+          {buckets.map((b) => (
+            <li key={b.label} className="flex items-center justify-between text-[12px] text-zinc-400">
+              <span>{b.label}</span>
+              <span className="font-semibold text-zinc-100">{b.count}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -114,10 +114,8 @@ export async function getAgencyClassificationCriteria(supabase: AnySupabaseClien
     id: row.id as string,
     priorityMinTeamSize: row.priority_min_team_size as number,
     priorityMinArtists: row.priority_min_artists as number,
-    priorityMinMonthlyRequests: row.priority_min_monthly_requests as number,
-    futureMinTeamSize: row.future_min_team_size as number,
-    futureMinArtists: row.future_min_artists as number,
-    futureMinMonthlyRequests: row.future_min_monthly_requests as number,
+    outOfProfileMaxTeamSize: row.out_of_profile_max_team_size as number,
+    outOfProfileMaxArtists: row.out_of_profile_max_artists as number,
     updatedAt: row.updated_at as string,
   };
 }
@@ -127,19 +125,15 @@ export async function setAgencyClassificationCriteria(
   params: {
     priorityMinTeamSize: number;
     priorityMinArtists: number;
-    priorityMinMonthlyRequests: number;
-    futureMinTeamSize: number;
-    futureMinArtists: number;
-    futureMinMonthlyRequests: number;
+    outOfProfileMaxTeamSize: number;
+    outOfProfileMaxArtists: number;
   }
 ): Promise<void> {
   const { error } = await supabase.rpc('admin_set_agency_classification_criteria', {
     p_priority_min_team_size: params.priorityMinTeamSize,
     p_priority_min_artists: params.priorityMinArtists,
-    p_priority_min_monthly_requests: params.priorityMinMonthlyRequests,
-    p_future_min_team_size: params.futureMinTeamSize,
-    p_future_min_artists: params.futureMinArtists,
-    p_future_min_monthly_requests: params.futureMinMonthlyRequests,
+    p_out_of_profile_max_team_size: params.outOfProfileMaxTeamSize,
+    p_out_of_profile_max_artists: params.outOfProfileMaxArtists,
   });
   if (error) throw new Error(`admin_set_agency_classification_criteria falhou: ${error.message}`);
 }

@@ -36,18 +36,22 @@ export default async function AdminAgenciasConfigPage({ searchParams }: { search
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
         <p className="font-mono text-[10px] uppercase tracking-[.06em] text-zinc-500">Critérios de classificação</p>
         <p className="mt-1 text-[12px] text-zinc-500">
-          Uma inscrição só entra numa faixa quando bate os TRÊS mínimos dela (equipe, artistas e volume mensal) ao mesmo tempo.
+          Prioridade alta exige os DOIS mínimos ao mesmo tempo (equipe E artistas). Fora do perfil basta UM dos dois tetos (equipe OU
+          artistas). Potencial futuro é tudo que sobra entre os dois — não tem número próprio. Volume mensal de solicitações é só
+          informativo, nunca entra nessa conta.
         </p>
         <form action={setAgencyCriteriaAction} className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <p className="col-span-2 text-[11px] font-semibold uppercase tracking-[.06em] text-red-300 sm:col-span-3">Prioridade alta — mínimos</p>
-          <NumberField name="priority_min_team_size" label="Pessoas na equipe" defaultValue={criteria.priorityMinTeamSize} />
-          <NumberField name="priority_min_artists" label="Artistas representados" defaultValue={criteria.priorityMinArtists} />
-          <NumberField name="priority_min_monthly_requests" label="Volume mensal de solicitações" defaultValue={criteria.priorityMinMonthlyRequests} />
+          <p className="col-span-2 text-[11px] font-semibold uppercase tracking-[.06em] text-red-300 sm:col-span-3">
+            Prioridade alta — mínimos (precisa bater os dois)
+          </p>
+          <NumberField name="priority_min_team_size" label="Pessoas na equipe, no mínimo" defaultValue={criteria.priorityMinTeamSize} />
+          <NumberField name="priority_min_artists" label="Artistas representados, no mínimo" defaultValue={criteria.priorityMinArtists} />
 
-          <p className="col-span-2 mt-2 text-[11px] font-semibold uppercase tracking-[.06em] text-amber-300 sm:col-span-3">Potencial futuro — mínimos</p>
-          <NumberField name="future_min_team_size" label="Pessoas na equipe" defaultValue={criteria.futureMinTeamSize} />
-          <NumberField name="future_min_artists" label="Artistas representados" defaultValue={criteria.futureMinArtists} />
-          <NumberField name="future_min_monthly_requests" label="Volume mensal de solicitações" defaultValue={criteria.futureMinMonthlyRequests} />
+          <p className="col-span-2 mt-2 text-[11px] font-semibold uppercase tracking-[.06em] text-zinc-400 sm:col-span-3">
+            Fora do perfil — tetos (qualquer um dos dois já classifica)
+          </p>
+          <NumberField name="out_of_profile_max_team_size" label="Pessoas na equipe, no máximo" defaultValue={criteria.outOfProfileMaxTeamSize} />
+          <NumberField name="out_of_profile_max_artists" label="Artistas representados, no máximo" defaultValue={criteria.outOfProfileMaxArtists} />
 
           <div className="col-span-2 sm:col-span-3">
             <button type="submit" className="mt-2 rounded-lg bg-zinc-100 px-4 py-2 text-[12.5px] font-semibold text-zinc-900">

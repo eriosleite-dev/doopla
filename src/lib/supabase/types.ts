@@ -1240,10 +1240,8 @@ export type AgencyClassificationCriteriaRow = {
   id: string;
   priority_min_team_size: number;
   priority_min_artists: number;
-  priority_min_monthly_requests: number;
-  future_min_team_size: number;
-  future_min_artists: number;
-  future_min_monthly_requests: number;
+  out_of_profile_max_team_size: number;
+  out_of_profile_max_artists: number;
   updated_by: string | null;
   updated_at: string;
 };
@@ -2139,10 +2137,8 @@ export type Database = {
         Args: {
           p_priority_min_team_size: number;
           p_priority_min_artists: number;
-          p_priority_min_monthly_requests: number;
-          p_future_min_team_size: number;
-          p_future_min_artists: number;
-          p_future_min_monthly_requests: number;
+          p_out_of_profile_max_team_size: number;
+          p_out_of_profile_max_artists: number;
         };
         Returns: undefined;
       };
