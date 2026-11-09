@@ -24,8 +24,16 @@ export function buildClassificationContext(
   const messages = contextPackage.messages.status === 'loaded' ? contextPackage.messages.items : [];
   // messages.items vem mais antiga primeiro (ver context-builder) —
   // a última é a mais recente, tratada como o gatilho desta rodada.
+  //
+  // Achado real (ADR 0005, 16/10/2026): até 14/10/2026 este corte era
+  // fixo em 2 mensagens anteriores, mesmo o Context Builder já tendo
+  // carregado até CONTEXT_MAX_MESSAGES (budget.ts, hoje 10) — descartava
+  // a âncora de correções/respostas curtas sempre que mais de 2 turnos
+  // se passavam. Agora usa TUDO que o Context Builder já carregou,
+  // nunca um corte próprio e menor — o orçamento de histórico vive só
+  // em budget.ts, nunca duplicado aqui.
   const trigger = messages.length > 0 ? messages[messages.length - 1] : null;
-  const previous = messages.length > 1 ? messages.slice(Math.max(0, messages.length - 3), messages.length - 1) : [];
+  const previous = messages.length > 1 ? messages.slice(0, messages.length - 1) : [];
 
   return {
     triggerMessage: trigger

@@ -71,11 +71,6 @@ export const cpLabelClass = (done: boolean) =>
     done ? 'text-[var(--ink)]/45' : 'font-semibold text-[var(--alert)]'
   }`;
 
-export const verifyBadgeClass = (verified: boolean) =>
-  `font-doopla-mono inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10.5px] uppercase tracking-[.03em] ${
-    verified ? 'bg-[var(--musgo)]/10 text-[var(--musgo)]' : 'bg-[var(--alert)]/10 text-[var(--alert)]'
-  }`;
-
 export const EVENT_LABELS: Record<string, string> = {
   proposta_enviada: 'Proposta enviada',
   contraproposta: 'Contraproposta',
@@ -96,6 +91,23 @@ export const EVENT_LABELS: Record<string, string> = {
   nf_enviada_cliente: 'NF marcada como enviada ao cliente',
   nf_pagamento_recebido: 'Pagamento do cliente confirmado pelo artista',
   nf_comissao_paga: 'Comissão do Booker marcada como paga',
+};
+
+// Conversas Bloco 2 — os 4 estados CURRENT (src/lib/conversations/state.ts).
+// "Você respondeu" NÃO tem entrada aqui de propósito: é um fato de
+// mensagem individual, nunca um destes 4 estados de conversa.
+export const CONVERSATION_STATE_LABELS: Record<string, string> = {
+  needs_you: 'Precisa de você',
+  waiting_client: 'Aguardando cliente',
+  in_progress: 'Em andamento',
+  closed: 'Encerrada',
+};
+
+export const conversationStatePillClasses: Record<string, string> = {
+  needs_you: `${STATUS_PILL_BASE} bg-[var(--alert)]/15 text-[var(--alert)]`,
+  waiting_client: `${STATUS_PILL_BASE} bg-[var(--accent-ink)]/15 text-[var(--accent-ink)]`,
+  in_progress: `${STATUS_PILL_BASE} border border-[var(--line-light)] text-[var(--ink)]/60`,
+  closed: `${STATUS_PILL_BASE} bg-[var(--paper-dim)] text-[var(--ink)]/40`,
 };
 
 export const avatarClass =

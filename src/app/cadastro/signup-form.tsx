@@ -800,7 +800,15 @@ export function SignupForm({
               />
             )}
 
-            {currentStep.kind === 'plan' && <PlanPicker initialPlan={resolvedPlan} />}
+            {/* showBetaCodeField NÃO entra aqui (07/10/2026) — nesse wizard
+               antigo o cadastro inteiro acontece numa chamada só, sem
+               sessão autenticada ainda (só depois de confirmar e-mail).
+               redeem_beta_code exige auth.uid() — não dá pra chamar
+               nesse momento. Mostrar o campo sem ele funcionar de
+               verdade repetiria o mesmo bug do voucher Founder (campo
+               que não faz nada). showVoucherField=false só tira o
+               Founder, que realmente não fazia nada aqui. */}
+            {currentStep.kind === 'plan' && <PlanPicker initialPlan={resolvedPlan} showVoucherField={false} />}
 
             {currentStep.kind === 'plan-booker' && <BookerPlanStep />}
 

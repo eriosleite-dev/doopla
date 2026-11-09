@@ -1,36 +1,53 @@
 import type { Metadata } from 'next';
 
 import { PageShell } from '../_home/PageShell';
+import { EyesShowcase } from '../_home/EyesShowcase';
 
 export const metadata: Metadata = {
   title: 'Política de Privacidade — Doopla',
   description: 'Como a Doopla coleta, utiliza e protege informações pessoais.',
 };
 
-const UPDATED = '20 de agosto de 2026';
+const UPDATED = '15 de setembro de 2026';
 
 export default function PrivacidadePage() {
   return (
     <PageShell>
+      <section className="legal-hero">
+        <div className="two-col">
+          <div>
+            <span className="eyebrow">Legal</span>
+            <h1>Política de Privacidade</h1>
+            <div className="updated">Última atualização: {UPDATED}</div>
+            <div className="intro">
+              <p>
+                Esta Política explica como a Doopla coleta, utiliza e protege
+                informações pessoais durante o uso da plataforma e de seus
+                serviços.
+              </p>
+            </div>
+          </div>
+          <EyesShowcase variant="plain" />
+        </div>
+      </section>
+
       <section className="legal-content">
-        <div className="inner">
-          <span className="eyebrow">Legal</span>
-          <h1>Política de Privacidade</h1>
-          <div className="updated">Última atualização: {UPDATED}</div>
-
-          <p>
-            Esta Política explica como a Doopla coleta, utiliza e protege
-            informações pessoais durante o uso da plataforma e de seus
-            serviços.
-          </p>
-
+        <div className="container">
+        <div className="legal-body">
           <h2>1. Informações que podemos coletar</h2>
           <p>
             Podemos tratar informações fornecidas pelo usuário durante o
             cadastro e uso da plataforma, informações profissionais
             necessárias para a prestação do serviço, preferências
             configuradas pelo usuário e dados relacionados às interações
-            realizadas por meio da Doopla.
+            realizadas por meio da Doopla, incluindo conversas e mensagens
+            trocadas com clientes e contratantes.
+          </p>
+          <p>
+            Também podemos tratar informações de clientes e contratantes com
+            quem o usuário interage por meio da Doopla, como nome e dados de
+            contato, na medida do necessário para conduzir atendimentos,
+            negociações e a organização dos trabalhos do usuário.
           </p>
 
           <h2>2. Como utilizamos essas informações</h2>
@@ -39,7 +56,10 @@ export default function PrivacidadePage() {
             <li>criar e manter sua conta;</li>
             <li>prestar os serviços contratados;</li>
             <li>personalizar o funcionamento da sua Doopla;</li>
-            <li>conduzir e organizar interações relacionadas a bookings;</li>
+            <li>
+              conduzir e organizar atendimentos, negociações e demais
+              interações relacionadas a oportunidades e trabalhos do usuário;
+            </li>
             <li>gerar documentos e comunicações solicitadas;</li>
             <li>prestar suporte;</li>
             <li>melhorar segurança e funcionamento da plataforma;</li>
@@ -48,10 +68,12 @@ export default function PrivacidadePage() {
 
           <h2>3. Inteligência artificial</h2>
           <p>
-            Determinadas informações podem ser processadas por sistemas de
-            inteligência artificial para permitir funcionalidades da Doopla,
-            como interpretação de solicitações, assistência em negociações,
-            organização de informações e geração de comunicações.
+            Determinadas informações — incluindo o conteúdo de conversas e
+            interações com clientes e contratantes — podem ser processadas
+            por sistemas de inteligência artificial para permitir
+            funcionalidades da Doopla, como interpretação de solicitações,
+            condução de atendimentos e negociações, organização de trabalhos
+            e geração de documentos e comunicações.
           </p>
 
           <h2>4. Serviços de terceiros</h2>
@@ -111,6 +133,7 @@ export default function PrivacidadePage() {
             ser enviadas para{' '}
             <a href="mailto:contato@doopla.pro">contato@doopla.pro</a>.
           </p>
+        </div>
         </div>
       </section>
     </PageShell>

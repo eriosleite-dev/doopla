@@ -1,6 +1,15 @@
 import type { ContextSource, ToolContext } from '../types';
+import { buildConversationStateSection } from './conversation-state-section';
 import { buildMessagesSection } from './messages';
-import { buildBookingSection, buildExternalParticipantSection, buildOpportunitySection, buildProfessionalSection } from './sections';
+import {
+  buildBookingSection,
+  buildExternalParticipantSection,
+  buildOpportunitySection,
+  buildProfessionalBusinessContextSection,
+  buildProfessionalCommercialHistorySection,
+  buildProfessionalLearnedPreferencesSection,
+  buildProfessionalSection,
+} from './sections';
 import type { ContextBuildResult, ContextPackageSectionName, UnavailableSource } from './types';
 
 // Doopla Intelligence Core v1 — Context Builder v1 (Bloco 2).
@@ -32,6 +41,22 @@ export async function buildContextPackage(
   if (professional.calledTool) calledTools.push(professional.calledTool);
   noteIfUnavailable('professional', professional.section.status, professional.unavailableReason);
 
+  const professionalBusinessContext = await buildProfessionalBusinessContextSection(toolCtx, gate, now);
+  if (professionalBusinessContext.calledTool) calledTools.push(professionalBusinessContext.calledTool);
+  noteIfUnavailable('professionalBusinessContext', professionalBusinessContext.section.status, professionalBusinessContext.unavailableReason);
+
+  const professionalCommercialHistory = await buildProfessionalCommercialHistorySection(toolCtx, gate, now);
+  if (professionalCommercialHistory.calledTool) calledTools.push(professionalCommercialHistory.calledTool);
+  noteIfUnavailable(
+    'professionalCommercialHistory',
+    professionalCommercialHistory.section.status,
+    professionalCommercialHistory.unavailableReason
+  );
+
+  const professionalLearnedPreferences = await buildProfessionalLearnedPreferencesSection(toolCtx, gate, now);
+  if (professionalLearnedPreferences.calledTool) calledTools.push(professionalLearnedPreferences.calledTool);
+  noteIfUnavailable('professionalLearnedPreferences', professionalLearnedPreferences.section.status, professionalLearnedPreferences.unavailableReason);
+
   const opportunity = await buildOpportunitySection(toolCtx, gate, now);
   if (opportunity.calledTool) calledTools.push(opportunity.calledTool);
   noteIfUnavailable('opportunity', opportunity.section.status, opportunity.unavailableReason);
@@ -49,13 +74,21 @@ export async function buildContextPackage(
   // por lá) — 'query_error' já é o motivo real aqui, não um genérico.
   noteIfUnavailable('messages', messages.status);
 
+  // Conversation State Ledger — nunca 'unavailable' (ver comentário em
+  // conversation-state-section.ts), então nada a notar aqui.
+  const conversationState = await buildConversationStateSection(toolCtx, gate);
+
   return {
     contextPackage: {
       conversationId: toolCtx.conversation.id,
       representedProfessionalId: toolCtx.representedProfessionalId,
       builtAt: now.toISOString(),
       professional: professional.section,
+      professionalBusinessContext: professionalBusinessContext.section,
+      professionalCommercialHistory: professionalCommercialHistory.section,
+      professionalLearnedPreferences: professionalLearnedPreferences.section,
       messages,
+      conversationState,
       opportunity: opportunity.section,
       booking: booking.section,
       externalParticipant: externalParticipant.section,

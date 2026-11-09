@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/runtime/reconcile-pending-replies",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/runtime/send-outbound-intents",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/runtime/drain-professional-self-messages",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/runtime/sweep-whatsapp-inbound-raw-captures",
+      "schedule": "* * * * *"
+    }
+  ]
+}

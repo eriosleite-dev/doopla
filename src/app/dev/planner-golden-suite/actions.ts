@@ -1,14 +1,19 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { zodTextFormat } from 'openai/helpers/zod';
 
 import { createClient } from '@/lib/supabase/server';
-import { classifyIntent } from '@/lib/intelligence/classification';
+import { classifyIntent, classifierModelOutputSchema, CLASSIFIER_MODEL } from '@/lib/intelligence/classification';
+import type { ClassifierModelCall, IntentClassification } from '@/lib/intelligence/classification';
 import type { ContextFact, ContextPackage, MessageContextItem } from '@/lib/intelligence/context-builder';
 import { getOpenAIClient } from '@/lib/intelligence/openai-client';
-import { planResponse, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
-import type { PlannerGoldenSuiteCase } from '@/lib/intelligence/planner';
+import { planResponse, plannerModelOutputSchema, resolveRequiresProfessionalReviewBeforeSend, PLANNER_GOLDEN_SUITE_CASES } from '@/lib/intelligence/planner';
+import type { PlannerGoldenSuiteCase, PlannerModelCall } from '@/lib/intelligence/planner';
+import { applyTerraVariantAddendum, PLANNER_PROMPT_VARIANT_TERRA_V1 } from '@/lib/intelligence/planner/prompt-variants';
 import type { ActorContext, MinimalConversation, ToolContext } from '@/lib/intelligence/types';
+import { estimateAiCostCents } from '@/lib/admin/ai-pricing';
+import type { PlannerGoldenSuiteCaseResult } from './golden-suite-summary';
 
 // Ferramenta de desenvolvimento/teste — não é parte do produto. Mesmo
 // padrão de /dev/classification-golden-suite: checagem de sessão
@@ -17,22 +22,141 @@ import type { ActorContext, MinimalConversation, ToolContext } from '@/lib/intel
 // supabase.from()/.rpc() (prova estrutural, coberta em teste
 // determinístico). A única chamada de rede real é ao model, pela
 // mesma abstração já auditada.
+//
+// ADR 0007 item 5 (comparação de modelos, 20/10/2026) — model é
+// parametrizável nesta ferramenta SEM tocar o pipeline real: plan.ts
+// já aceita um modelCall injetável (mesmo ponto usado pelos testes
+// determinísticos), nunca precisou mudar PLANNER_MODEL em produção.
+// Zero mudança estrutural, zero flag, zero migration — só esta
+// ferramenta de dev passa a chamar o model escolhido em vez do
+// hardcoded. Custo é SEMPRE estimativa (mesmo raciocínio de
+// ai-pricing.ts): tokens reais da chamada × preço cadastrado pro
+// model; um model sem linha em MODEL_PRICE_TABLE devolve
+// costCents=null, nunca inventa um preço.
 
-export type PlannerGoldenSuiteCaseResult = {
-  name: string;
-  category: string;
-  input: string;
-  responsePlan: string;
-  commitmentNature: string;
-  requiresProfessionalDecision: boolean;
-  professionalDecisionCategory: string[];
-  professionalDecisionSignal: string;
-  requiresProfessionalReviewBeforeSend: boolean;
-  proposedResponse: string | null;
-  pass: boolean;
-  note?: string;
-  error?: string;
+// ADR 0007 item 5 — métricas que PlannerModelCallResult (contrato
+// fixo de plan.ts, produção) não carrega: latência real e tokens
+// servidos do cache da própria OpenAI. Acumuladas num objeto
+// mutável passado por fora, nunca no retorno — nunca precisou mudar o
+// tipo de produção pra isto. Soma de TODAS as tentativas (planResponse
+// pode chamar modelCall mais de uma vez num retry), mesmo princípio já
+// usado pra tokens no resto do projeto.
+// Mesmo valor que classify.ts usa internamente quando o Classifier
+// falha em parsear — nunca inventa uma leitura real, só documenta "não
+// sei classificar" quando o erro nesta ferramenta ocorreu antes de
+// qualquer classificação real (ex.: erro de rede no próprio Classifier).
+const ERROR_CLASSIFICATION_FALLBACK: IntentClassification = {
+  classificationStatus: 'invalid',
+  primaryIntent: 'outro',
+  secondaryIntents: [],
+  modelConfidence: 'low',
+  effectiveConfidence: 'low',
+  contextCompleteness: 'partial_unavailable',
+  relevantCompetencies: [],
 };
+
+type ModelCallMetrics = {
+  cachedInputTokens: number;
+  latencyMs: number;
+  // reasoning.effort/context EFETIVOS, lidos de volta de
+  // response.reasoning (campo documentado pelo SDK como "quando
+  // devolvido numa resposta, é o modo efetivamente usado" — nunca só
+  // o default documentado). Sobrescrito a cada tentativa real, nunca
+  // acumulado (não é uma soma, é o último valor observado).
+  reasoningEffort: string | null;
+  reasoningContext: string | null;
+};
+
+// Task "Otimização do Planner para gpt-5.6-terra" (20/10/2026) — a
+// variante nunca toca prompt.ts/plan.ts: o modelCall aqui já recebe
+// `instructions` EXATAMENTE como buildPlannerInstructions (produção)
+// as monta, e só então, nesta camada de teste, aplica o addendum por
+// cima — gpt-5-mini nunca vê este texto a menos que promptVariant seja
+// pedido explicitamente pra ele também (comparação justa continua
+// possível, mas o default pra mini continua o prompt original).
+function buildModelCallForModel(model: string, metrics: ModelCallMetrics, promptVariant: string | null): PlannerModelCall {
+  return async ({ instructions, input }) => {
+    const client = getOpenAIClient();
+    const finalInstructions = promptVariant === PLANNER_PROMPT_VARIANT_TERRA_V1 ? applyTerraVariantAddendum(instructions) : instructions;
+    const startedAt = Date.now();
+    const response = await client.responses.parse({
+      model,
+      instructions: finalInstructions,
+      input,
+      text: { format: zodTextFormat(plannerModelOutputSchema, 'response_plan') },
+    });
+    metrics.latencyMs += Date.now() - startedAt;
+    metrics.cachedInputTokens += response.usage?.input_tokens_details?.cached_tokens ?? 0;
+    metrics.reasoningEffort = response.reasoning?.effort ?? null;
+    metrics.reasoningContext = response.reasoning?.context ?? null;
+    return {
+      parsed: response.output_parsed ?? null,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    };
+  };
+}
+
+// Mesmo princípio de buildModelCallForModel, mas pro Classifier —
+// SEMPRE no model de produção fixo (CLASSIFIER_MODEL), nunca
+// parametrizável por esta ferramenta: a comparação é sobre o Planner,
+// o Classifier nunca deveria ser uma variável nesta avaliação (mesmo
+// comentário já existente no resto do arquivo). Única razão de injetar
+// um modelCall aqui em vez de deixar classifyIntent usar o default é
+// capturar reasoning.effort/context efetivos — requisito explícito de
+// nunca atribuir diferenças a uma configuração não comprovada.
+function buildClassifierModelCall(metrics: ModelCallMetrics): ClassifierModelCall {
+  return async ({ instructions, input }) => {
+    const client = getOpenAIClient();
+    const response = await client.responses.parse({
+      model: CLASSIFIER_MODEL,
+      instructions,
+      input,
+      text: { format: zodTextFormat(classifierModelOutputSchema, 'intent_classification') },
+    });
+    metrics.reasoningEffort = response.reasoning?.effort ?? null;
+    metrics.reasoningContext = response.reasoning?.context ?? null;
+    return {
+      parsed: response.output_parsed ?? null,
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+    };
+  };
+}
+
+// ADR 0007 item 5 — "verificar disponibilidade do model na conta antes
+// de executar" (requisito explícito da fundadora): GET real na API da
+// OpenAI (models.retrieve), nunca uma suposição a partir do nome. Erro
+// de rede/chave/qualquer coisa também vira available:false — quem usa
+// isto nunca deve rodar a suite inteira (26 casos reais) achando que
+// um erro de disponibilidade era só uma falha pontual.
+export async function checkModelAvailabilityAction(model: string): Promise<{ available: boolean; error?: string }> {
+  await requireProfessional();
+  const trimmedModel = model.trim();
+  if (trimmedModel.length === 0) return { available: false, error: 'model_required' };
+
+  try {
+    const client = getOpenAIClient();
+    await client.models.retrieve(trimmedModel);
+    return { available: true };
+  } catch (err) {
+    return { available: false, error: err instanceof Error ? err.message : 'erro desconhecido ao verificar disponibilidade' };
+  }
+}
+
+// Execução em lotes (20/10/2026) — achado real em produção nesta
+// MESMA sessão (ver admin/conversation-scenarios/actions.ts pro
+// precedente exato): rodar os 26 casos reais numa Server Action só
+// trava a página sem nunca voltar, estourando o limite de execução da
+// plataforma (mesma causa estrutural já documentada ali — soma de
+// chamadas sequenciais reais à OpenAI, cresce com o número de casos).
+// listPlannerGoldenSuiteCasesAction devolve só os nomes (leve, sem
+// chamada ao model) pra o cliente montar os lotes; cada lote roda os
+// casos que o cliente escolher, nunca a suite inteira de uma vez.
+export async function listPlannerGoldenSuiteCasesAction(): Promise<{ cases: { name: string }[] }> {
+  await requireProfessional();
+  return { cases: PLANNER_GOLDEN_SUITE_CASES.map((c) => ({ name: c.name })) };
+}
 
 async function requireProfessional() {
   const supabase = await createClient();
@@ -103,6 +227,10 @@ function buildSyntheticContext(
     representedProfessionalId: professionalId,
     builtAt: now,
     professional: { status: 'loaded', facts: [] },
+    conversationState: { status: 'not_allowed' },
+    professionalBusinessContext: { status: 'loaded', facts: [] },
+    professionalCommercialHistory: { status: 'loaded', facts: [], retrievalStrategy: 'recency_bounded_v1', limit: 5 },
+    professionalLearnedPreferences: { status: 'loaded', facts: [] },
     messages: { status: 'loaded', items, windowMessageCount: items.length, windowSince: now },
     opportunity: goldenCase.opportunityFacts
       ? { status: 'loaded', facts: factsFromRecord('opportunity', 'planner-golden-suite-opportunity', goldenCase.opportunityFacts, now) }
@@ -116,7 +244,24 @@ function buildSyntheticContext(
   return { contextPackage, conversation };
 }
 
-export async function runPlannerGoldenSuiteAction(): Promise<{ results?: PlannerGoldenSuiteCaseResult[]; error?: string }> {
+// Roda só os casos cujo `name` está em caseNames, na ordem de
+// PLANNER_GOLDEN_SUITE_CASES — nunca a suite inteira (ver comentário
+// de listPlannerGoldenSuiteCasesAction acima). O cliente é quem decide
+// o tamanho do lote e agrega os resultados entre chamadas.
+export async function runPlannerGoldenSuiteBatchAction(
+  model: string,
+  caseNames: string[],
+  promptVariant: string | null = null,
+  // Requisito explícito (20/10/2026): "se houver variação no
+  // Classifier, precisamos conseguir executar uma comparação
+  // posterior mantendo sua saída fixa, para isolar o comportamento do
+  // Planner". Mapa name->classificação: quando um caso aparece aqui,
+  // esta chamada NUNCA invoca o Classifier pra ele — reusa o objeto
+  // dado direto, serializável de ida e volta entre cliente/Server
+  // Action porque IntentClassification é dado puro (zod-parsed), nunca
+  // uma instância de classe.
+  fixedClassifications: Record<string, IntentClassification> | null = null
+): Promise<{ results?: PlannerGoldenSuiteCaseResult[]; error?: string }> {
   const { supabase, user } = await requireProfessional();
 
   try {
@@ -124,6 +269,13 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
   } catch {
     return { error: 'openai_not_configured' };
   }
+
+  const trimmedModel = model.trim();
+  if (trimmedModel.length === 0) return { error: 'model_required' };
+
+  const caseNameSet = new Set(caseNames);
+  const casesToRun = PLANNER_GOLDEN_SUITE_CASES.filter((c) => caseNameSet.has(c.name));
+  if (casesToRun.length !== caseNames.length) return { error: 'unknown_case_name' };
 
   const actorContext: ActorContext = {
     representedProfessionalId: user.id,
@@ -134,8 +286,9 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
   };
 
   const results: PlannerGoldenSuiteCaseResult[] = [];
+  const usageDate = new Date().toISOString().slice(0, 10);
 
-  for (const goldenCase of PLANNER_GOLDEN_SUITE_CASES) {
+  for (const goldenCase of casesToRun) {
     const { contextPackage, conversation } = buildSyntheticContext(goldenCase, user.id);
     const toolCtx: ToolContext = {
       representedProfessionalId: user.id,
@@ -144,9 +297,34 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
       supabase,
     };
 
+    const metrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0, reasoningEffort: null, reasoningContext: null };
+    const classifierMetrics: ModelCallMetrics = { cachedInputTokens: 0, latencyMs: 0, reasoningEffort: null, reasoningContext: null };
+    let classification: IntentClassification | null = null;
+    let classificationSource: 'computed' | 'fixed' = 'computed';
     try {
-      const { classification } = await classifyIntent(toolCtx, contextPackage);
-      const { decision } = await planResponse(toolCtx, contextPackage, classification);
+      const fixed = fixedClassifications?.[goldenCase.name] ?? null;
+      if (fixed) {
+        classification = fixed;
+        classificationSource = 'fixed';
+      } else {
+        const result = await classifyIntent(toolCtx, contextPackage, { modelCall: buildClassifierModelCall(classifierMetrics) });
+        classification = result.classification;
+        classificationSource = 'computed';
+      }
+      const { decision, inputTokens, outputTokens } = await planResponse(toolCtx, contextPackage, classification, { modelCall: buildModelCallForModel(trimmedModel, metrics, promptVariant) });
+
+      let plannerCostCents: number | null = null;
+      if (inputTokens !== null && outputTokens !== null) {
+        const estimate = estimateAiCostCents({ model: trimmedModel, usageDate, inputTokens, outputTokens, cachedInputTokens: metrics.cachedInputTokens });
+        if (estimate.configured) {
+          plannerCostCents = estimate.costCents;
+        } else {
+          // Sem preço cadastrado — nunca inventa um valor;
+          // buildRunSummary (golden-suite-summary.ts, cliente) agrega
+          // costConfigured=false quando QUALQUER caso vier com
+          // plannerCostCents=null.
+        }
+      }
 
       const planMatches = (goldenCase.expectedResponsePlanFamily as string[]).includes(decision.responsePlan);
       const commitmentMatches = !goldenCase.expectedCommitmentNature || decision.commitmentNature === goldenCase.expectedCommitmentNature;
@@ -155,9 +333,15 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
         decision.requiresProfessionalDecision === goldenCase.expectedRequiresProfessionalDecision;
       const signalMatches =
         !goldenCase.expectedProfessionalDecisionSignal || decision.professionalDecisionSignal === goldenCase.expectedProfessionalDecisionSignal;
-      // Invariante checada em TODO caso, não só no de controle: nenhuma
-      // saída do Planner pode ser marcada como autorizada pra envio.
-      const invariantHolds = decision.requiresProfessionalReviewBeforeSend === true;
+      // Invariante checada em TODO caso, não só nos de controle:
+      // requiresProfessionalReviewBeforeSend precisa bater EXATAMENTE
+      // com a derivação determinística de invariants.ts a partir do
+      // responsePlan final — nunca true incondicional (decisão do
+      // usuário, fechamento do Runtime: consult_professional/
+      // answer_with_known_information exigem revisão, os 4 planos
+      // restantes não, mas o Post-model Policy Gate continua sendo o
+      // enforcement final independente disso).
+      const invariantHolds = decision.requiresProfessionalReviewBeforeSend === resolveRequiresProfessionalReviewBeforeSend(decision.responsePlan);
 
       const pass = planMatches && commitmentMatches && requiresDecisionMatches && signalMatches && invariantHolds;
 
@@ -174,8 +358,22 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
         proposedResponse: decision.proposedResponse,
         pass,
         note: goldenCase.note,
+        plannerInputTokens: inputTokens,
+        plannerOutputTokens: outputTokens,
+        plannerCachedInputTokens: metrics.cachedInputTokens,
+        plannerCostCents,
+        plannerLatencyMs: metrics.latencyMs,
+        classification,
+        classificationSource,
+        plannerReasoningEffort: metrics.reasoningEffort,
+        plannerReasoningContext: metrics.reasoningContext,
+        classifierReasoningEffort: classificationSource === 'computed' ? classifierMetrics.reasoningEffort : null,
+        classifierReasoningContext: classificationSource === 'computed' ? classifierMetrics.reasoningContext : null,
       });
     } catch (err) {
+      // Latência/cache registrados mesmo em erro — uma tentativa real
+      // pode ter chegado a sair (e demorar) antes de o ciclo falhar
+      // por outro motivo (ex.: guarda de invariante).
       results.push({
         name: goldenCase.name,
         category: goldenCase.category,
@@ -190,6 +388,22 @@ export async function runPlannerGoldenSuiteAction(): Promise<{ results?: Planner
         pass: false,
         note: goldenCase.note,
         error: err instanceof Error ? err.message : 'erro desconhecido',
+        plannerInputTokens: null,
+        plannerOutputTokens: null,
+        plannerCachedInputTokens: metrics.cachedInputTokens,
+        plannerCostCents: null,
+        plannerLatencyMs: metrics.latencyMs,
+        // classification pode nunca ter sido obtida (erro pode ter
+        // ocorrido antes mesmo do Classifier responder) — fallback
+        // nunca inventa uma leitura real, só marca 'invalid'/'outro'
+        // (mesmo valor que classify.ts usa internamente quando o
+        // próprio Classifier falha em parsear).
+        classification: classification ?? ERROR_CLASSIFICATION_FALLBACK,
+        classificationSource,
+        plannerReasoningEffort: metrics.reasoningEffort,
+        plannerReasoningContext: metrics.reasoningContext,
+        classifierReasoningEffort: classifierMetrics.reasoningEffort,
+        classifierReasoningContext: classifierMetrics.reasoningContext,
       });
     }
   }

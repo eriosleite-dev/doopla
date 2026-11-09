@@ -33,7 +33,19 @@ export function evaluatePreModelGate(ctx: PolicyGateContext): PolicyGateResult {
     return { ok: false, error: 'mandate_not_active' };
   }
 
-  const allowedContextSources: ContextSource[] = ['professional_profile', 'conversation_messages'];
+  // professional_business_context/professional_commercial_history/
+  // professional_learned_preferences nunca dependem de link de
+  // conversa (diferente de opportunity/booking/external_participant) —
+  // são sobre o profissional representado em si, sempre elegíveis pra
+  // ele, mesmo grupo de professional_profile/conversation_messages.
+  const allowedContextSources: ContextSource[] = [
+    'professional_profile',
+    'conversation_messages',
+    'conversation_state',
+    'professional_business_context',
+    'professional_commercial_history',
+    'professional_learned_preferences',
+  ];
   if (conversation.related_opportunity_id) {
     allowedContextSources.push('opportunity');
   }

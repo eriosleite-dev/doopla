@@ -1,5 +1,5 @@
 export { buildClassificationContext } from './classification-context';
-export { classifyIntent } from './classify';
+export { classifyIntent, classifierModelOutputSchema } from './classify';
 export type { ClassifierModelCall, ClassifierModelCallResult, ClassifyResult, ModelClassificationOutput } from './classify';
 export { COMPETENCIES, routeCompetencies } from './competencies';
 export type { Competency } from './competencies';

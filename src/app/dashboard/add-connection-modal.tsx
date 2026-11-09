@@ -1,39 +1,229 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 
 import {
   inviteArtistAction,
   inviteBookerAction,
   lookupContactAction,
+  lookupPublicIdAction,
   requestRepresentationAction,
   type ContactLookupResult,
 } from './actions';
+import { proGhostButtonClass, proInputClass, proLabelClass, proPrimaryButtonClass } from './pro-format';
+import { ProMascot } from './pro-mascot';
+import { ProUpgradeModal } from './pro-upgrade-modal';
 import { accentButtonClass, cardClass, ghostButtonClass } from './ui';
 
 type Role = 'artista' | 'booker';
 
-const TARGET_LABEL: Record<Role, string> = { artista: 'Booker', booker: 'Artista' };
+// Copy revisada (01/10/2026, achado de produto da fundadora) — "Booker"
+// deixa de ser o termo principal pro lado que o artista conecta (vira
+// linguagem de equipe, sem inventar um novo nome de cargo); "Artista"
+// também sai como termo genérico pro lado que o booker conecta (a
+// Doopla atende outras profissões), virando "Profissional" — mesmo
+// termo que o resto do produto já usa pro papel `artista`
+// (ProfessionalShellGate, Professional Home etc.), não é um termo
+// novo. Só apresentação: nenhum nome interno (`booker`/`artista`),
+// enum, coluna ou regra de permissão muda — `myRole` continua
+// exatamente os mesmos 2 valores de sempre, só a copy visível por
+// valor muda. Variant `pro` (isPro) só é usada com myRole="artista"
+// (ver bookers/page.tsx) — então todo texto gated por `isPro` abaixo é
+// na prática exclusivo do lado artista; os poucos campos usados pelos
+// dois lados (nome/código ID/resultado da busca) têm as duas versões.
+type RoleCopy = {
+  openButton: string;
+  contactStepTitle: string;
+  idStepTitle: string;
+  contactModeLabel: string;
+  idModeLabel: string;
+  contactIntro: string;
+  idIntro: string;
+  contactExplainer: string;
+  idExplainer: string;
+  nameLabel: string;
+  idLabel: string;
+  foundAsSuffix: string;
+  leftPanelTitle: string;
+  leftPanelSubtitle: string;
+  disconnectHint: string;
+};
 
-export function AddConnectionModal({ myRole }: { myRole: Role }) {
+const ROLE_COPY: Record<Role, RoleCopy> = {
+  // Copy revisada (07/10/2026, achado da fundadora) — progressão mais
+  // clara: contato primeiro, Nome só aparece se a conta não existir
+  // (ver mode==='contact' abaixo). "Tenho o código ID" virou "Com ID
+  // Doopla" pra bater com o nome do identificador em todo o produto
+  // (PublicIdChip já dizia "Seu código ID" antes — ambos migrados
+  // juntos pra "ID Doopla", mesmo termo em todo lugar).
+  artista: {
+    openButton: 'Adicionar alguém à equipe',
+    contactStepTitle: 'Adicionar alguém à sua equipe',
+    idStepTitle: 'Adicionar alguém à sua equipe',
+    contactModeLabel: 'WhatsApp ou e-mail',
+    idModeLabel: 'ID Doopla',
+    contactIntro: 'Digite o contato da pessoa que você quer adicionar.',
+    idIntro: 'Digite o ID Doopla que a pessoa compartilhou com você.',
+    // contactExplainer/idExplainer não são mais renderizados na pele
+    // pro (07/10/2026, 2ª rodada — achado da fundadora: "copy ainda
+    // muito orientada à lógica interna"). Mantidos só porque o tipo é
+    // compartilhado com a pele legacy (Booker), que ainda os usa.
+    contactExplainer:
+      'Se ela já estiver na Doopla, você poderá enviar uma solicitação de conexão. Se ainda não estiver, enviaremos um convite para criar a conta.',
+    idExplainer: 'O ID Doopla permite encontrar alguém que já tem conta sem precisar do telefone ou e-mail.',
+    nameLabel: 'Nome',
+    idLabel: 'ID Doopla',
+    foundAsSuffix: '',
+    leftPanelTitle: 'Adicionar alguém à equipe',
+    leftPanelSubtitle: 'Conecte alguém de confiança para ajudar a operar seus bookings.',
+    disconnectHint: 'Você pode encerrar essa conexão quando quiser.',
+  },
+  // Copy do lado Booker (/dashboard/artistas, pele legacy) inalterada
+  // de propósito — a revisão de texto pedida foi só pro lado Artista
+  // (Minha equipe); a melhoria de PROGRESSÃO (contato -> Nome só se
+  // no_match) é estrutural e vale pros dois, só o texto fica como já
+  // estava aqui.
+  booker: {
+    openButton: 'Adicionar profissional',
+    contactStepTitle: 'Informe os dados do profissional',
+    idStepTitle: 'Buscar por código ID',
+    contactModeLabel: 'Por contato',
+    idModeLabel: 'Tenho o código ID',
+    contactIntro: '',
+    idIntro: '',
+    contactExplainer:
+      'Se o profissional já tiver conta na Doopla, você manda uma solicitação de conexão. Se não tiver, a Doopla envia um convite com o link pra criar a conta.',
+    idExplainer: 'Peça o código ID pro profissional — ele encontra o dele em "Seu código ID", no painel dele.',
+    nameLabel: 'Nome do profissional',
+    idLabel: 'Código ID do profissional',
+    foundAsSuffix: ' como profissional',
+    // leftPanel* nunca renderizados pro booker hoje (isPro só é true
+    // com myRole="artista") — preenchidos por completude/segurança
+    // futura, nunca pelo caminho atual.
+    leftPanelTitle: 'Adicionar profissional',
+    leftPanelSubtitle: 'Conecte um profissional de confiança para ajudar a operar seus bookings.',
+    disconnectHint: 'Você pode encerrar essa conexão quando quiser.',
+  },
+};
+
+// Correção 06/09/2026 — este componente é compartilhado por Booker
+// (`/dashboard/artistas`, legado, `myRole="booker"`) e Artista
+// (`/dashboard/bookers` "Minha equipe", já no novo painel escuro,
+// `myRole="artista"`). Antes só existia na pele legada (accentButtonClass
+// dourado, cardClass branco, font-doopla-display serifado) — daí o
+// "botão dourado"/"composição administrativa antiga" vazando pro
+// painel novo mesmo com a página em volta já em --pro-*. `variant`
+// troca só a PELE (nunca a lógica: mesmos handlers, mesmas Server
+// Actions, mesmo fluxo lookup -> match/no_match -> request/invite).
+// Nenhum novo componente paralelo — Booker continua exatamente como
+// estava (variant default = 'legacy').
+type Variant = 'legacy' | 'pro';
+
+type LookupMode = 'contact' | 'id';
+
+export function AddConnectionModal({
+  myRole,
+  variant = 'legacy',
+  hasProPlan,
+  triggerLabel,
+}: {
+  myRole: Role;
+  variant?: Variant;
+  // Gate de UI de "Minha equipe é Pro" (07/09/2026) — só relevante pra
+  // myRole="artista" (o vínculo booker->artista, direção original, nunca
+  // foi gateado). `undefined` (default) preserva o comportamento de
+  // sempre — nenhuma outra chamada existente do componente precisa
+  // passar essa prop. O nome evita colisão com o `isPro` já existente
+  // aqui embaixo, que é só a PELE visual (variant === 'pro'), sem
+  // nenhuma relação com plano/assinatura.
+  hasProPlan?: boolean;
+  // Override só do texto do botão-gatilho (fechado), pra telas que
+  // precisam de um rótulo mais curto no mesmo lugar (ex.: empty state
+  // compacto de Minha equipe, 01/10/2026). `undefined` preserva
+  // copy.openButton de sempre — o modal aberto nunca muda.
+  triggerLabel?: string;
+}) {
+  const isPro = variant === 'pro';
   const [open, setOpen] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [mode, setMode] = useState<LookupMode>('contact');
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
+  const [publicId, setPublicId] = useState('');
   const [result, setResult] = useState<ContactLookupResult | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [linkRevealed, setLinkRevealed] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [pending, startTransition] = useTransition();
-  const targetLabel = TARGET_LABEL[myRole];
+  const copy = ROLE_COPY[myRole];
+  const openLabel = triggerLabel ?? copy.openButton;
+
+  const primaryBtn = isPro ? proPrimaryButtonClass : accentButtonClass;
+  const secondaryBtn = isPro ? proGhostButtonClass : ghostButtonClass;
+  const containerClass = isPro
+    ? 'rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel)] p-5 backdrop-blur-xl sm:p-6 flex flex-col gap-3'
+    : `${cardClass} flex flex-col gap-3`;
+  const titleClass = isPro ? 'font-pro-sub text-[15px] font-bold' : 'font-doopla-display text-lg font-semibold';
+  const bodyTextClass = isPro ? 'text-[13px] text-[var(--pro-tx-70)]' : 'text-sm text-[var(--ink)]/70';
+  const mutedTextClass = isPro ? 'text-[12px] text-[var(--pro-tx-50)]' : 'text-[12px] text-[var(--ink)]/55';
+  const errorTextClass = isPro ? 'text-[13px] text-[#ff8b80]' : 'text-sm text-red-700';
+  const highlightBoxClass = isPro
+    ? 'rounded-[14px] border border-[var(--pro-line)] bg-white/[0.03] p-4'
+    : 'rounded-[14px] bg-[var(--paper-dim)] p-4';
+  const inviteLinkBoxClass = isPro
+    ? 'flex flex-col gap-2 rounded-[12px] border border-[var(--pro-line)] bg-white/[0.03] p-3'
+    : 'flex flex-col gap-2 rounded-[12px] bg-[var(--paper-dim)] p-3';
+  const labelWrapClass = isPro ? 'flex flex-col gap-1.5' : 'flex flex-col gap-1 text-sm';
+  const labelTextClass = isPro ? proLabelClass : 'font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/55';
+  const inputClass = isPro
+    ? proInputClass
+    : 'rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]';
+  const inviteLinkValueClass = isPro ? 'font-doopla-mono truncate text-[12px] text-[var(--pro-off)]' : 'font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]';
+  const resultTextClass = isPro ? 'text-[13px] text-[var(--pro-tx-70)]' : 'text-sm text-[var(--ink)]/70';
+  const linkToggleClass = isPro
+    ? 'flex items-center gap-1.5 font-pro-sub text-[11.5px] font-bold text-[var(--pro-tx-50)] hover:text-[var(--pro-off)]'
+    : 'flex items-center gap-1.5 font-doopla-mono text-[11px] uppercase tracking-[.03em] text-[var(--ink)]/60 hover:text-[var(--ink)]';
+
+  // Overlay de verdade só na pele pro (07/10/2026, achado da fundadora):
+  // antes esse "modal" era um card que se expandia no próprio lugar do
+  // botão-gatilho — que muda de posição conforme o estado da página
+  // (header quando já existe alguém na equipe, dentro do card de estado
+  // vazio quando não existe ninguém), fazendo o card "pular" de lugar
+  // sem motivo. Overlay fixo centralizado nunca depende de onde o
+  // gatilho está no DOM. Mesmo padrão de ProUpgradeModal (Escape fecha,
+  // scroll do body trava). Pele legacy (Booker) inalterada de propósito.
+  useEffect(() => {
+    if (!open || !isPro) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') reset();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isPro]);
 
   function reset() {
     setOpen(false);
+    setMode('contact');
     setName('');
     setContact('');
+    setPublicId('');
     setResult(null);
     setSent(null);
     setInviteLink(null);
+    setLinkRevealed(false);
     setLinkCopied(false);
+  }
+
+  function switchMode(next: LookupMode) {
+    setMode(next);
+    setResult(null);
   }
 
   async function copyInviteLink() {
@@ -44,9 +234,17 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
   }
 
   function handleLookup() {
-    if (!name.trim() || !contact.trim()) return;
+    if (!contact.trim()) return;
     startTransition(async () => {
       const outcome = await lookupContactAction(contact);
+      setResult(outcome);
+    });
+  }
+
+  function handleLookupById() {
+    if (!publicId.trim()) return;
+    startTransition(async () => {
+      const outcome = await lookupPublicIdAction(publicId);
       setResult(outcome);
     });
   }
@@ -83,146 +281,414 @@ export function AddConnectionModal({ myRole }: { myRole: Role }) {
   }
 
   if (!open) {
+    // Padrão canônico de upgrade contextual (07/09/2026) — o backend já
+    // bloqueia inviteBookerAction/requestRepresentationAction (direção
+    // artista->booker) sem Doopla Pro, mas isso nunca pode ser a
+    // PRIMEIRA coisa que a pessoa descobre. Um artista Básico que clica
+    // aqui NUNCA abre o formulário de convite nem navega pra outra
+    // página — abre o ProUpgradeModal (mesmo componente usado em
+    // Configurações → Plano e assinatura), sem perder o contexto de
+    // Minha equipe.
+    if (myRole === 'artista' && hasProPlan === false) {
+      return (
+        <>
+          <button type="button" onClick={() => setUpgradeModalOpen(true)} className={primaryBtn}>
+            {isPro && <PlusIcon />}
+            {openLabel}
+          </button>
+          <ProUpgradeModal open={upgradeModalOpen} onClose={() => setUpgradeModalOpen(false)} context="equipe" />
+        </>
+      );
+    }
     return (
-      <button type="button" onClick={() => setOpen(true)} className={accentButtonClass}>
-        Adicionar um {targetLabel}
+      <button type="button" onClick={() => setOpen(true)} className={primaryBtn}>
+        {isPro && <PlusIcon />}
+        {openLabel}
       </button>
     );
   }
 
-  return (
-    <div className={`${cardClass} flex flex-col gap-3`}>
-      <p className="font-doopla-display text-lg font-semibold">Adicionar um {targetLabel}</p>
+  // Título da coluna da direita (pro) — muda com o estado, mais
+  // específico que o "Adicionar um X" genérico que a pele legacy usa
+  // (esse título continua só na legacy; na pro ele vira o painel de
+  // contexto à esquerda, ver LeftPanel abaixo).
+  const rightHeading = sent
+    ? sent === 'request'
+      ? 'Solicitação enviada'
+      : 'Convite enviado'
+    : mode === 'contact'
+      ? copy.contactStepTitle
+      : copy.idStepTitle;
+
+  const formContent = (
+    <>
+      {!isPro && <p className={titleClass}>{copy.openButton}</p>}
+      {isPro && <p className={titleClass}>{rightHeading}</p>}
 
       {sent ? (
         <>
-          <p className="text-sm text-[var(--ink)]/70">
+          <p className={resultTextClass}>
             {sent === 'request'
               ? 'Solicitação enviada. Você vê o status em Solicitações e Convites.'
               : 'Convite enviado. Assim que a pessoa se cadastrar, vocês podem conectar.'}
           </p>
+          {/* Link escondido por padrão (07/10/2026, achado da fundadora:
+             "apareceu o bloco com o link cortando a tela dentro do
+             modal") — antes aparecia expandido automaticamente assim
+             que o convite era enviado. Mesmo padrão de toggle
+             olho/olho-riscado já usado em ViewInviteLinkButton
+             (resend-invite-button.tsx): nunca mostra a URL sem o clique
+             da pessoa, elimina a classe inteira de bug de layout que só
+             acontecia com o bloco aberto, e fica consistente com o
+             card de convite pendente no painel. */}
           {inviteLink && (
-            <div className="flex flex-col gap-2 rounded-[12px] bg-[var(--paper-dim)] p-3">
-              <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/50">
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setLinkRevealed((r) => !r)}
+                aria-label={linkRevealed ? 'Esconder link do convite' : 'Ver link do convite'}
+                aria-pressed={linkRevealed}
+                className={linkToggleClass}
+              >
+                {linkRevealed ? <EyeIcon /> : <EyeOffIcon />}
                 Link do convite
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-doopla-mono truncate text-[12px] text-[var(--accent-ink)]">
-                  {inviteLink}
-                </span>
-                <button type="button" onClick={copyInviteLink} className={ghostButtonClass}>
-                  {linkCopied ? 'Copiado!' : 'Copiar link'}
-                </button>
-              </div>
-              <p className="text-[12px] text-[var(--ink)]/55">
-                Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.
-              </p>
+              </button>
+              {linkRevealed && (
+                <div className={inviteLinkBoxClass}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`min-w-0 flex-1 ${inviteLinkValueClass}`}>{inviteLink}</span>
+                    <button type="button" onClick={copyInviteLink} className={`flex-none ${secondaryBtn}`}>
+                      {linkCopied ? 'Copiado!' : 'Copiar link'}
+                    </button>
+                  </div>
+                  <p className={mutedTextClass}>Manda esse link direto — quem clicar já entra sabendo que foi você quem convidou.</p>
+                </div>
+              )}
             </div>
           )}
-          <button type="button" onClick={reset} className={`${ghostButtonClass} self-start`}>
+          <button type="button" onClick={reset} className={`${secondaryBtn} self-start`}>
             Fechar
           </button>
         </>
       ) : (
         <>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/55">
-              Nome do {targetLabel.toLowerCase()}
-            </span>
-            <input
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                setResult(null);
-              }}
-              className="rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]"
-              placeholder="Nome completo"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-doopla-mono text-[11px] uppercase tracking-[.05em] text-[var(--ink)]/55">
-              Contato
-            </span>
-            <input
-              value={contact}
-              onChange={(e) => {
-                setContact(e.target.value);
-                setResult(null);
-              }}
-              className="rounded-[12px] border border-[var(--line-light)] bg-white px-3 py-2 outline-none focus:border-[var(--accent)]"
-              placeholder="E-mail ou telefone"
-            />
-          </label>
+          {/* Segundo caminho do fluxo (07/09/2026) — quando as duas contas já
+             existem, nem sempre a pessoa quer informar e-mail/telefone de
+             alguém; o código ID público (mesmo que "Seu código ID" nos
+             canais de booking) resolve isso sem precisar de contato. Só
+             muda a busca — resultado, e o que fazer com "match" (sempre
+             solicitação, nunca convite), continua idêntico. */}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => switchMode('contact')}
+              className={`${mutedTextClass} ${mode === 'contact' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
+            >
+              {copy.contactModeLabel}
+            </button>
+            <span className={mutedTextClass}>·</span>
+            <button
+              type="button"
+              onClick={() => switchMode('id')}
+              className={`${mutedTextClass} ${mode === 'id' ? `font-semibold ${isPro ? 'text-[var(--pro-off)]' : 'text-[var(--ink)]'}` : ''} underline-offset-2 hover:underline`}
+            >
+              {copy.idModeLabel}
+            </button>
+          </div>
 
-          {result === null && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={!name.trim() || !contact.trim() || pending}
-                onClick={handleLookup}
-                className={accentButtonClass}
-              >
-                {pending ? 'Verificando…' : 'Continuar'}
-              </button>
-              <button type="button" onClick={reset} className={ghostButtonClass}>
-                Cancelar
-              </button>
-            </div>
+          {/* Texto curto (07/10/2026) — só pele pro, some assim que um
+             resultado aparece (o resultado substitui a orientação).
+             Caixa de explicação (contactExplainer/idExplainer) removida
+             de vez na pele pro (07/10/2026, 2ª rodada — achado da
+             fundadora: "copy ainda muito orientada à lógica interna"),
+             continua existindo no tipo só pra pele legacy (Booker). */}
+          {isPro && result === null && (mode === 'contact' ? copy.contactIntro : copy.idIntro) && (
+            <p className={bodyTextClass}>{mode === 'contact' ? copy.contactIntro : copy.idIntro}</p>
+          )}
+
+          {mode === 'contact' ? (
+            <>
+              {/* Nome removido daqui (07/10/2026, achado da fundadora):
+                 não é usado em nenhum momento do caminho "conta já
+                 existe" (handleSendRequest só manda profileId) — só é
+                 necessário quando a conta NÃO existe, pra invitee_name
+                 do convite. Agora só aparece revelado no bloco
+                 no_match abaixo, com o contato já preenchido, sem
+                 pedir de novo. */}
+              <label className={labelWrapClass}>
+                <span className={labelTextClass}>WhatsApp ou e-mail</span>
+                <input
+                  value={contact}
+                  onChange={(e) => {
+                    setContact(e.target.value);
+                    setResult(null);
+                  }}
+                  className={inputClass}
+                  placeholder="E-mail ou telefone"
+                />
+              </label>
+
+              {result === null && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={!contact.trim() || pending}
+                    onClick={handleLookup}
+                    className={primaryBtn}
+                  >
+                    {pending ? 'Verificando…' : 'Continuar'}
+                  </button>
+                  <button type="button" onClick={reset} className={secondaryBtn}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <label className={labelWrapClass}>
+                <span className={labelTextClass}>{copy.idLabel}</span>
+                <input
+                  value={publicId}
+                  onChange={(e) => {
+                    setPublicId(e.target.value);
+                    setResult(null);
+                  }}
+                  className={inputClass}
+                  placeholder="Ex: joao-silva"
+                />
+              </label>
+
+              {result === null && (
+                <div className="flex gap-2">
+                  <button type="button" disabled={!publicId.trim() || pending} onClick={handleLookupById} className={primaryBtn}>
+                    {pending ? 'Buscando…' : 'Buscar'}
+                  </button>
+                  <button type="button" onClick={reset} className={secondaryBtn}>
+                    Cancelar
+                  </button>
+                </div>
+              )}
+
+              {result?.kind === 'no_match' && (
+                <>
+                  <p className={bodyTextClass}>Não encontramos ninguém com esse código. Confira se está certo com quem te passou.</p>
+                  <button type="button" onClick={() => setResult(null)} className={`${secondaryBtn} self-start`}>
+                    Tentar de novo
+                  </button>
+                </>
+              )}
+            </>
           )}
 
           {result?.kind === 'error' && (
             <>
-              <p className="text-sm text-red-700">{result.error}</p>
-              <button type="button" onClick={() => setResult(null)} className={`${ghostButtonClass} self-start`}>
+              <p className={errorTextClass}>{result.error}</p>
+              <button type="button" onClick={() => setResult(null)} className={`${secondaryBtn} self-start`}>
                 Tentar de novo
               </button>
             </>
           )}
 
-          {result?.kind === 'existing_connection' && (
-            <p className="text-sm text-[var(--ink)]/70">
-              {result.name} já está conectado com você.
-            </p>
-          )}
+          {result?.kind === 'existing_connection' && <p className={bodyTextClass}>{result.name} já está conectado com você.</p>}
 
           {result?.kind === 'pending_request' && (
-            <p className="text-sm text-[var(--ink)]/70">
-              Já existe uma solicitação pendente com {result.name} · aguardando resposta.
-            </p>
+            <p className={bodyTextClass}>Já existe uma solicitação pendente com {result.name} · aguardando resposta.</p>
           )}
 
-          {result?.kind === 'pending_invite' && (
-            <p className="text-sm text-[var(--ink)]/70">
-              Convite já enviado pra {result.name} · aguardando cadastro.
-            </p>
-          )}
+          {result?.kind === 'pending_invite' && <p className={bodyTextClass}>Convite já enviado pra {result.name} · aguardando cadastro.</p>}
 
-          {result?.kind === 'match' && (
-            <div className="rounded-[14px] bg-[var(--paper-dim)] p-4">
-              <p className="text-sm">
-                Encontramos {result.name} na Doopla como {targetLabel.toLowerCase()}.
+          {/* Copy simplificada na pele pro (07/10/2026, 2ª rodada —
+             achado da fundadora: "copy ainda muito orientada à lógica
+             interna"). Booker (!isPro) mantém o texto original, decisão
+             já tomada na rodada anterior de não mexer lá. */}
+          {result?.kind === 'match' &&
+            (isPro ? (
+              <div className={highlightBoxClass}>
+                <p className={`${titleClass} !text-[13px]`}>Encontramos essa pessoa</p>
+                <p className={`${bodyTextClass} mt-1`}>{result.name}</p>
+                <p className={`${bodyTextClass} mt-3`}>Quer adicionar {result.name} à sua equipe?</p>
+                <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
+                  {pending ? 'Enviando…' : 'Enviar solicitação'}
+                </button>
+              </div>
+            ) : (
+              <div className={highlightBoxClass}>
+                <p className={bodyTextClass}>
+                  Encontramos {result.name} na Doopla{copy.foundAsSuffix}.
+                </p>
+                <button type="button" disabled={pending} onClick={() => handleSendRequest(result.profileId)} className={`${primaryBtn} mt-3`}>
+                  {pending ? 'Enviando…' : 'Enviar solicitação'}
+                </button>
+              </div>
+            ))}
+
+          {mode === 'contact' && result?.kind === 'no_match' && (
+            <div className={highlightBoxClass}>
+              <p className={bodyTextClass}>
+                {isPro ? 'Essa pessoa ainda não usa a Doopla' : 'Essa pessoa ainda não está na Doopla.'}
               </p>
+              {isPro && (
+                <p className={`${mutedTextClass} mt-1`}>
+                  Informe o nome dela e enviaremos um convite para entrar na sua equipe.
+                </p>
+              )}
+              {/* Nome revelado aqui (07/10/2026) — só agora que sabemos
+                 que precisa de convite. Contato já preenchido acima,
+                 não pede de novo. */}
+              <label className={`${labelWrapClass} mt-3`}>
+                <span className={labelTextClass}>{copy.nameLabel}</span>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputClass}
+                  placeholder="Nome completo"
+                />
+              </label>
               <button
                 type="button"
-                disabled={pending}
-                onClick={() => handleSendRequest(result.profileId)}
-                className={`${accentButtonClass} mt-3`}
+                disabled={!name.trim() || pending}
+                onClick={handleSendInvite}
+                className={`${primaryBtn} mt-3`}
               >
-                {pending ? 'Enviando…' : 'Enviar solicitação'}
-              </button>
-            </div>
-          )}
-
-          {result?.kind === 'no_match' && (
-            <div className="rounded-[14px] bg-[var(--paper-dim)] p-4">
-              <p className="text-sm">{name} ainda não está na Doopla.</p>
-              <button type="button" disabled={pending} onClick={handleSendInvite} className={`${accentButtonClass} mt-3`}>
                 {pending ? 'Enviando…' : 'Enviar convite'}
               </button>
             </div>
           )}
         </>
       )}
+    </>
+  );
+
+  if (!isPro) {
+    return <div className={containerClass}>{formContent}</div>;
+  }
+
+  // Composição em duas áreas (07/09/2026, referência visual aprovada
+  // pelo founder) — mascote/contexto à esquerda, formulário/resultado à
+  // direita. Overlay fixo centralizado (07/10/2026, ver comentário no
+  // useEffect acima) — mesma composição interna de sempre, só o
+  // CONTAINER externo virou um dialog de verdade em vez de um card
+  // inline. formContent/LeftPanel sem nenhuma mudança de lógica.
+  return (
+    <div className="pro-shell contents">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6" role="presentation">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={reset} aria-hidden="true" />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy.leftPanelTitle}
+          className="relative max-h-[92vh] w-full max-w-[680px] overflow-y-auto overflow-hidden rounded-[18px] border border-[var(--pro-line)] bg-[var(--pro-panel-solid)] backdrop-blur-xl lg:grid lg:grid-cols-[280px_1fr]"
+        >
+          <button
+            type="button"
+            onClick={reset}
+            aria-label="Fechar"
+            className="absolute top-4 right-4 z-10 flex h-8 w-8 flex-none items-center justify-center rounded-full text-[var(--pro-tx-30)] hover:text-[var(--pro-off)]"
+          >
+            ✕
+          </button>
+          <LeftPanel copy={copy} />
+          <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] p-5 sm:p-6 lg:border-t-0 lg:border-l">
+            {formContent}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// "+" discreto no CTA principal de Minha equipe (07/10/2026, achado da
+// fundadora) — só pele pro, pra não mudar a aparência do botão
+// "Adicionar profissional" do lado Booker/legacy.
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" width="13" height="13">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Mesmo desenho de EyeIcon/EyeOffIcon de resend-invite-button.tsx
+// (não exportado de lá) — toggle do link do convite logo depois do
+// envio, dentro deste modal.
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M3 3l18 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="17" height="17">
+      <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+      <path d="M3.5 9.5h17M8 3v3.5M16 3v3.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function UnlinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="17" height="17">
+      <path d="M9 12h6" strokeLinecap="round" />
+      <path d="M8 8H6a4 4 0 0 0 0 8h2M16 8h2a4 4 0 0 1 0 8h-2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Painel de contexto (só pele pro) — mascote como elemento de
+// identidade (mesmo ProMascot usado na Home, não um desenho novo) +
+// só o que é 100% real hoje: booker opera bookings do artista que
+// representa (negociar/organizar/acompanhar — já é o que "Minha
+// equipe"/oportunidades fazem) e o vínculo pode ser desfeito a
+// qualquer momento (TerminateRelationshipButton, já existente). Nunca
+// promete "nível de acesso"/permissão granular — isso não existe.
+function LeftPanel({ copy }: { copy: RoleCopy }) {
+  return (
+    <div className="flex flex-col items-start gap-4 p-5 sm:p-6">
+      <ProMascot size={64} />
+      <div>
+        <p className="font-pro-sub text-[16px] font-bold text-[var(--pro-off)]">{copy.leftPanelTitle}</p>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-[var(--pro-tx-50)]">{copy.leftPanelSubtitle}</p>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-[var(--pro-line)] pt-4">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex-none text-[var(--pro-red)]">
+            <CalendarIcon />
+          </span>
+          <div>
+            <p className="text-[12.5px] font-bold text-[var(--pro-off)]">Alguém da sua equipe</p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-[var(--pro-tx-50)]">
+              Pode negociar, organizar e acompanhar seus bookings na Doopla.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex-none text-[var(--pro-red)]">
+            <UnlinkIcon />
+          </span>
+          <div>
+            <p className="text-[12.5px] font-bold text-[var(--pro-off)]">Você continua no controle</p>
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-[var(--pro-tx-50)]">
+              {copy.disconnectHint}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
