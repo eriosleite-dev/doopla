@@ -1206,7 +1206,7 @@ export type AgencyApplication = {
   city: string;
   country: string;
   contact_name: string;
-  contact_role: string;
+  contact_role: string | null;
   contact_email: string;
   team_size: number;
   artists_represented: number;
@@ -2073,7 +2073,7 @@ export type Database = {
           p_city: string;
           p_country: string;
           p_contact_name: string;
-          p_contact_role: string;
+          p_contact_role: string | null;
           p_contact_email: string;
           p_team_size: number;
           p_artists_represented: number;

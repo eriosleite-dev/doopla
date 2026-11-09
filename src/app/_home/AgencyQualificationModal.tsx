@@ -13,13 +13,16 @@ import type { AgencyClassification, AgencyInterest } from '@/lib/agencies/types'
 // nativo, renderiza o card via portal (mesmo motivo de LoginModal:
 // nunca refém do reset de CSS de #home-marketing).
 //
-// Etapa 1 (Identificação) + Etapa 2 (Qualificação, com consentimento)
-// são as únicas telas de ENTRADA — "Etapa 3: Classificação automática"
-// (briefing da fundadora) não é uma tela de formulário, é o resultado
-// automático mostrado depois do envio (3 mensagens possíveis, por
-// classification). sessionToken é um valor aleatório persistido em
-// localStorage, nunca dado pessoal — só agrupa os eventos de funil de
-// uma mesma sessão de navegador.
+// Etapa 1 (Perfil da agência — qualificação) + Etapa 2 (Identificação,
+// com consentimento) são as únicas telas de ENTRADA. Ordem invertida
+// de propósito (pedido da fundadora, redução de fricção): nunca pede
+// identificação antes de mostrar valor — "Etapa 3: Classificação
+// automática" do briefing original não é uma tela de formulário, é o
+// resultado automático mostrado depois do envio (3 mensagens
+// possíveis, por classification). Cargo (contactRole) é opcional.
+// sessionToken é um valor aleatório persistido em localStorage, nunca
+// dado pessoal — só agrupa os eventos de funil de uma mesma sessão de
+// navegador.
 
 const SESSION_TOKEN_KEY = 'doopla_agency_session_token';
 
@@ -172,20 +175,23 @@ export function AgencyQualificationModal() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  // Etapa 1 = perfil/qualificação (reordenado — reduz fricção, nunca
+  // pede identificação antes de mostrar valor). Cargo (contactRole)
+  // nunca entra em nenhuma validação — é opcional.
   function step1Valid() {
+    return form.teamSize.trim() && form.artistsRepresented.trim() && form.monthlyRequestsVolume.trim() && form.interest;
+  }
+
+  function step2Valid() {
     return (
       form.agencyName.trim() &&
       form.websiteOrInstagram.trim() &&
       form.city.trim() &&
       form.country.trim() &&
       form.contactName.trim() &&
-      form.contactRole.trim() &&
-      /.+@.+\..+/.test(form.contactEmail.trim())
+      /.+@.+\..+/.test(form.contactEmail.trim()) &&
+      form.consent
     );
-  }
-
-  function step2Valid() {
-    return form.teamSize.trim() && form.artistsRepresented.trim() && form.monthlyRequestsVolume.trim() && form.interest && form.consent;
   }
 
   function handleNext() {
@@ -260,55 +266,11 @@ export function AgencyQualificationModal() {
           {view.kind === 'form' && view.step === 1 && (
             <>
               <h2 className="mt-2 font-pro-display text-[26px] uppercase leading-[1.08] text-[var(--pro-off)] sm:text-[30px]">
-                Identificação
+                Vamos conhecer sua agência?
               </h2>
-              <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">Etapa 1 de 2</p>
-
-              <div className="mt-6 flex flex-col gap-4">
-                <Field label="Nome da agência">
-                  <input className={inputClass} value={form.agencyName} onChange={(e) => update('agencyName', e.target.value)} />
-                </Field>
-                <Field label="Site ou Instagram profissional">
-                  <input className={inputClass} value={form.websiteOrInstagram} onChange={(e) => update('websiteOrInstagram', e.target.value)} placeholder="instagram.com/suaagencia" />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Cidade">
-                    <input className={inputClass} value={form.city} onChange={(e) => update('city', e.target.value)} />
-                  </Field>
-                  <Field label="País">
-                    <input className={inputClass} value={form.country} onChange={(e) => update('country', e.target.value)} />
-                  </Field>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Nome do responsável">
-                    <input className={inputClass} value={form.contactName} onChange={(e) => update('contactName', e.target.value)} />
-                  </Field>
-                  <Field label="Cargo">
-                    <input className={inputClass} value={form.contactRole} onChange={(e) => update('contactRole', e.target.value)} />
-                  </Field>
-                </div>
-                <Field label="E-mail profissional">
-                  <input type="email" className={inputClass} value={form.contactEmail} onChange={(e) => update('contactEmail', e.target.value)} />
-                </Field>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleNext}
-                disabled={!step1Valid()}
-                className="mt-7 w-full rounded-full bg-[var(--pro-red)] py-3 text-[13.5px] font-semibold text-white disabled:opacity-40"
-              >
-                Continuar
-              </button>
-            </>
-          )}
-
-          {view.kind === 'form' && view.step === 2 && (
-            <>
-              <h2 className="mt-2 font-pro-display text-[26px] uppercase leading-[1.08] text-[var(--pro-off)] sm:text-[30px]">
-                Qualificação
-              </h2>
-              <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">Etapa 2 de 2</p>
+              <p className="mt-2 text-[13px] leading-relaxed text-[var(--pro-tx-50)]">
+                Responda algumas perguntas rápidas para descobrirmos as possibilidades de parceria com a Doopla.
+              </p>
 
               <div className="mt-6 flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -337,6 +299,52 @@ export function AgencyQualificationModal() {
                       </label>
                     ))}
                   </div>
+                </Field>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={!step1Valid()}
+                className="mt-7 w-full rounded-full bg-[var(--pro-red)] py-3 text-[13.5px] font-semibold text-white disabled:opacity-40"
+              >
+                Continuar
+              </button>
+            </>
+          )}
+
+          {view.kind === 'form' && view.step === 2 && (
+            <>
+              <h2 className="mt-2 font-pro-display text-[26px] uppercase leading-[1.08] text-[var(--pro-off)] sm:text-[30px]">
+                Identificação
+              </h2>
+              <p className="mt-2 text-[13px] text-[var(--pro-tx-50)]">Etapa 2 de 2</p>
+
+              <div className="mt-6 flex flex-col gap-4">
+                <Field label="Nome da agência">
+                  <input className={inputClass} value={form.agencyName} onChange={(e) => update('agencyName', e.target.value)} />
+                </Field>
+                <Field label="Site ou Instagram profissional">
+                  <input className={inputClass} value={form.websiteOrInstagram} onChange={(e) => update('websiteOrInstagram', e.target.value)} placeholder="instagram.com/suaagencia" />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Cidade">
+                    <input className={inputClass} value={form.city} onChange={(e) => update('city', e.target.value)} />
+                  </Field>
+                  <Field label="País">
+                    <input className={inputClass} value={form.country} onChange={(e) => update('country', e.target.value)} />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Nome do responsável">
+                    <input className={inputClass} value={form.contactName} onChange={(e) => update('contactName', e.target.value)} />
+                  </Field>
+                  <Field label="Cargo (opcional)">
+                    <input className={inputClass} value={form.contactRole} onChange={(e) => update('contactRole', e.target.value)} />
+                  </Field>
+                </div>
+                <Field label="E-mail profissional">
+                  <input type="email" className={inputClass} value={form.contactEmail} onChange={(e) => update('contactEmail', e.target.value)} />
                 </Field>
 
                 {/* Honeypot — invisível pra usuário real, bots de preenchimento tendem a preencher */}

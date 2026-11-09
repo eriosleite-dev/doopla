@@ -69,7 +69,7 @@ export default async function AdminAgenciaDetailPage({
       <div className="grid grid-cols-2 gap-4 rounded-xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-3">
         <Field label="Site ou Instagram" value={application.websiteOrInstagram} />
         <Field label="Cidade/País" value={`${application.city}, ${application.country}`} />
-        <Field label="Responsável" value={`${application.contactName} (${application.contactRole})`} />
+        <Field label="Responsável" value={application.contactRole ? `${application.contactName} (${application.contactRole})` : application.contactName} />
         <Field label="E-mail" value={application.contactEmail} />
         <Field label="Pessoas na operação" value={application.teamSize} />
         <Field label="Artistas representados" value={application.artistsRepresented} />

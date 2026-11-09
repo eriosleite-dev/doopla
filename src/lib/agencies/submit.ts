@@ -13,7 +13,7 @@ export type SubmitAgencyApplicationInput = {
   city: string;
   country: string;
   contactName: string;
-  contactRole: string;
+  contactRole: string | null;
   contactEmail: string;
   teamSize: number;
   artistsRepresented: number;

@@ -25,7 +25,7 @@ function mapApplicationRow(row: Record<string, unknown>): AgencyApplicationSumma
     city: row.city as string,
     country: row.country as string,
     contactName: row.contact_name as string,
-    contactRole: row.contact_role as string,
+    contactRole: row.contact_role as string | null,
     contactEmail: row.contact_email as string,
     teamSize: row.team_size as number,
     artistsRepresented: row.artists_represented as number,
